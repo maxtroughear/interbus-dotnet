@@ -81,12 +81,10 @@ public class OrderService(IMessagePublisher publisher)
 
 ```
 src/
-└── InterBus/
-    ├── IMessagePublisher.cs        # Publisher endpoint abstraction
-    ├── IConsumer.cs                # Consumer endpoint abstraction
-    └── InMemory/
-        ├── InMemoryTransport.cs    # In-memory channel transport
-        └── InMemoryMessagePublisher.cs  # In-memory publisher implementation
+├── InterBus/                    # Core abstractions (IMessagePublisher, IConsumer<T>)
+├── InterBus.InMemory/           # In-memory transport package
+├── InterBus.RabbitMq/           # RabbitMQ transport package (planned)
+└── InterBus.AwsSqs/             # AWS SQS transport package (planned)
 ```
 
 See [docs/architecture.md](docs/architecture.md) for a full description of the project structure and design.

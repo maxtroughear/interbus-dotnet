@@ -96,13 +96,28 @@ Topics are registered explicitly at startup, either by message type (using the f
 
 ### Queue — Point-to-Point Channel
 
-A **Queue** is a per-consumer buffer attached to a topic. Each `IConsumer<T>` registration results in a dedicated queue on the topic. The Message Pump reads messages from this queue and dispatches them to the consumer, ensuring point-to-point semantics within the fan-out.
+A **Queue** is a buffer attached to a topic for a specific consumer. Queues are scoped at the **consumer × message type** level: each `IConsumer<T>` registration produces one dedicated queue on the corresponding topic.
+
+This means a single consumer class that implements multiple `IConsumer<T>` interfaces (e.g. `IConsumer<OrderPlaced>` and `IConsumer<OrderShipped>`) receives **one queue per message type**, not one shared queue for all its messages.
+
+**Trade-offs compared to a single queue per consumer class:**
+
+| Approach | Pros | Cons |
+|---|---|---|
+| One queue per consumer × message type *(chosen)* | Simple routing — no type discrimination inside the queue. Independent backpressure and throughput per message type. Aligns naturally with the type-to-topic routing model. | Slightly more queues in the system (one per registered `IConsumer<T>`). |
+| One queue per consumer class | Fewer queues overall. | Requires the pump or consumer to discriminate message types after dequeue. More complex; breaks the single-responsibility of `IConsumer<T>`. |
+
+The per-(consumer × message type) model is preferred because it keeps the queue responsibility narrow, matches the `IConsumer<T>` contract, and avoids type inspection in the hot path.
+
+The Message Pump reads messages from this queue and dispatches them to the consumer, ensuring point-to-point semantics within the fan-out.
 
 ---
 
 ### Message Pump — Service Activator
 
-The Message Pump is a background hosted service (`IHostedService`) that connects the transport layer to registered consumers. It reads messages from a consumer's queue and invokes the corresponding `IConsumer<T>.Consume` method.
+The Message Pump is a background hosted service (`IHostedService`) that connects a transport to its registered consumers. It reads messages from a consumer's queue and invokes the corresponding `IConsumer<T>.Consume` method.
+
+**Transport-agnostic interface, transport-specific implementation.** The pump contract (read a message, dispatch to a consumer, handle errors) is generic and defined in the core library. However, each physical transport has fundamentally different delivery semantics — RabbitMQ is push-based via AMQP channels, AWS SQS requires polling, and the in-memory transport uses .NET `Channel<T>`. Therefore, each transport package provides its own Message Pump implementation that satisfies the core interface. Application code never interacts with the pump directly; it is wired up automatically when a transport is configured.
 
 The pump is responsible for:
 - Concurrent or sequential dispatch (configurable).
@@ -172,29 +187,50 @@ src/
         └── InMemoryMessagePublisher.cs  # IMessagePublisher for the in-memory transport
 ```
 
-### Planned additions
+### Planned structure
+
+Each physical transport is a **separate project and NuGet package** that depends on the core `InterBus` package. This keeps the core library minimal and allows consuming applications to include only the transport(s) they need.
 
 ```
 src/
-└── InterBus/
-    ├── Extensions/
-    │   └── ServiceCollectionExtensions.cs  # AddInterBus() DI registration helpers
-    ├── Pump/
-    │   └── MessagePump.cs                  # Background Service Activator
-    ├── RabbitMq/                           # RabbitMQ transport
-    └── AwsSqs/                             # AWS SQS transport
+├── InterBus/                        # Core abstractions only (IMessagePublisher, IConsumer<T>)
+│   ├── InterBus.csproj
+│   ├── IMessagePublisher.cs
+│   ├── IConsumer.cs
+│   └── Extensions/
+│       └── ServiceCollectionExtensions.cs  # AddInterBus() core DI helpers
+│
+├── InterBus.InMemory/               # In-memory transport package
+│   ├── InterBus.InMemory.csproj
+│   └── ...                          # Channel-backed topics, queues, and Message Pump
+│
+├── InterBus.RabbitMq/               # RabbitMQ transport package
+│   ├── InterBus.RabbitMq.csproj
+│   └── ...                          # AMQP topics, queues, and push-based Message Pump
+│
+└── InterBus.AwsSqs/                 # AWS SQS transport package
+    ├── InterBus.AwsSqs.csproj
+    └── ...                          # SQS queues and polling-based Message Pump
 ```
 
 ---
 
 ## Transport Model
 
-Transports are pluggable and implement the internal channel abstractions (Topic, Queue). Application code interacts only with `IMessagePublisher` and `IConsumer<T>`, remaining entirely transport-agnostic.
+Transports are pluggable and implement the internal channel abstractions (Topic, Queue, and Message Pump). Application code interacts only with `IMessagePublisher` and `IConsumer<T>`, remaining entirely transport-agnostic.
+
+Each transport is shipped as an independent NuGet package (`InterBus.InMemory`, `InterBus.RabbitMq`, `InterBus.AwsSqs`, etc.) that references the core `InterBus` package. This ensures the core library stays lean and applications only pull in the dependencies of the transport they use.
+
+| Transport | Package | Status | Description |
+|---|---|---|---|
+| In-Memory | `InterBus.InMemory` | In progress | `System.Threading.Channels`-backed topics and queues. Suitable for testing and single-process applications. |
+| RabbitMQ | `InterBus.RabbitMq` | Planned | AMQP-based durable messaging via the RabbitMQ .NET client. Push-based Message Pump. |
+| AWS SQS | `InterBus.AwsSqs` | Planned | Cloud-native queue-based messaging via the AWS SDK for .NET. Polling-based Message Pump. |
 
 At startup, exactly one transport is configured per bus instance. The transport is responsible for:
 - Managing the lifecycle of topics and queues.
 - Serializing and deserializing messages (using `System.Text.Json` by default).
-- Providing the backing channel for the Message Pump.
+- Providing the transport-specific Message Pump implementation.
 
 ---
 

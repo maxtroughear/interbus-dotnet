@@ -96,20 +96,35 @@ Topics are registered explicitly at startup, either by message type (using the f
 
 ### Queue — Point-to-Point Channel
 
-A **Queue** is a buffer attached to a topic for a specific consumer. Queues are scoped at the **consumer × message type** level: each `IConsumer<T>` registration produces one dedicated queue on the corresponding topic.
+A **Queue** is a buffer attached to a topic for a specific consumer. By default, queues are scoped at the **consumer × message type** level: each `IConsumer<T>` registration produces one dedicated queue on the corresponding topic.
 
 This means a single consumer class that implements multiple `IConsumer<T>` interfaces (e.g. `IConsumer<OrderPlaced>` and `IConsumer<OrderShipped>`) receives **one queue per message type**, not one shared queue for all its messages.
 
-**Trade-offs compared to a single queue per consumer class:**
+**Comparison of queue granularity models:**
 
-| Approach | Pros | Cons |
-|---|---|---|
-| One queue per consumer × message type *(chosen)* | Simple routing — no type discrimination inside the queue. Independent backpressure and throughput per message type. Aligns naturally with the type-to-topic routing model. | Slightly more queues in the system (one per registered `IConsumer<T>`). |
-| One queue per consumer class | Fewer queues overall. | Requires the pump or consumer to discriminate message types after dequeue. More complex; breaks the single-responsibility of `IConsumer<T>`. |
+| Approach | When to use | Pros | Cons |
+|---|---|---|---|
+| One queue per consumer × message type *(default)* | Independent message types with no ordering constraint across types. | Simple routing — no type discrimination inside the queue. Independent backpressure and throughput per message type. Aligns naturally with the type-to-topic routing model. | Multiple message types targeting the same consumer are processed concurrently and independently — not in global arrival order. |
+| One queue per consumer class *(FIFO mode)* | A consumer must process all its message types in strict global arrival order (e.g. `OrderPlaced` then `OrderShipped` for the same order). | Messages interleave across types in arrival order. Back-pressure is applied uniformly across all message types the consumer handles, which is fundamental to correct FIFO processing when types share a dependency. | Requires the Message Pump to carry type metadata alongside the message payload and perform type dispatch after dequeue. |
 
-The per-(consumer × message type) model is preferred because it keeps the queue responsibility narrow, matches the `IConsumer<T>` contract, and avoids type inspection in the hot path.
+#### FIFO mode: per-consumer-class queue
 
-The Message Pump reads messages from this queue and dispatches them to the consumer, ensuring point-to-point semantics within the fan-out.
+In a FIFO scenario, the per-consumer-class queue model is not only acceptable — the shared backpressure behaviour is actually required for correctness. If `OrderPlaced` and `OrderShipped` messages for the same order must be processed in arrival order, separate per-type queues would allow `OrderShipped` to be dispatched before the preceding `OrderPlaced` had been processed, violating ordering guarantees.
+
+#### Supporting both models
+
+Supporting both is feasible and the added complexity is moderate. The main pieces of work are:
+
+1. **Consumer registration opt-in.** A flag or attribute on the consumer registration (`AddConsumer<T>(ConsumerQueueMode.Fifo)`) signals that the consumer should use a single shared queue.
+2. **Type envelope in the shared queue.** The single queue must store a `(Type, object)` pair so the pump knows which `IConsumer<T>` method to dispatch to after dequeue. This is the only place type inspection is needed and it is confined to the pump.
+3. **Message Pump branching.** The pump already needs to know its queue mode to decide whether to create one queue or many per consumer. The dispatch path diverges only after dequeue: per-type queues go straight to `Consume(message)`; the shared queue first resolves the correct `IConsumer<T>` from DI.
+4. **Transport mapping.** For external transports (RabbitMQ, SQS) the FIFO mode typically maps to a single named queue bound to multiple routing keys or a FIFO SQS queue, rather than multiple queues. The transport layer must express this distinction.
+
+The core API surface change is small (one extra parameter on `AddConsumer`). The implementation overhead is mainly in the pump and transport mapping layers, and is self-contained enough that it does not affect consumers that use the default per-type mode.
+
+> Queue mode configuration is planned and not yet implemented. The default per-(consumer × message type) model is the current implementation target.
+
+The Message Pump reads messages from a consumer's queue(s) and dispatches them to the consumer, ensuring point-to-point semantics within the fan-out.
 
 ---
 

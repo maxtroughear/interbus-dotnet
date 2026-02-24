@@ -37,7 +37,7 @@ public sealed class InMemoryBroker : IInterBusTransport, IDisposable
         if (_topics.TryGetValue(topicName, out var topic))
             return topic.FanOutAsync(payload, cancellationToken);
 
-        // No registered consumers — message is silently dropped.
+        // No registered consumers - message is silently dropped.
         return Task.CompletedTask;
     }
 

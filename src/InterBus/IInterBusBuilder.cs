@@ -3,7 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 namespace InterBus;
 
 /// <summary>
-/// Fluent builder for configuring InterBus — consumers, transport, and options.
+/// Fluent builder for configuring InterBus - consumers, transport, and options.
 /// Obtained from <c>services.AddInterBus(builder => { ... })</c>.
 /// </summary>
 public interface IInterBusBuilder

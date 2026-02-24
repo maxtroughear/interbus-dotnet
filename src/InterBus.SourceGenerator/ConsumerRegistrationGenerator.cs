@@ -61,7 +61,7 @@ public sealed class ConsumerRegistrationGenerator : IIncrementalGenerator
         Compilation compilation)
     {
         // Resolve InterBus.IConsumer<T> from the compilation's symbol table.
-        // If it cannot be found, the InterBus package is not referenced — nothing to generate.
+        // If it cannot be found, the InterBus package is not referenced - nothing to generate.
         var consumerInterfaceSymbol = compilation.GetTypeByMetadataName(ConsumerInterfaceMetadataName);
         if (consumerInterfaceSymbol is null) return;
 
@@ -102,7 +102,7 @@ public sealed class ConsumerRegistrationGenerator : IIncrementalGenerator
         sb.AppendLine("{");
         sb.AppendLine("    /// <summary>");
         sb.AppendLine("    /// Source-generated consumer registrations.");
-        sb.AppendLine("    /// Produced by <c>InterBus.SourceGenerator</c> at compile time —");
+        sb.AppendLine("    /// Produced by <c>InterBus.SourceGenerator</c> at compile time -");
         sb.AppendLine("    /// no runtime reflection is required.");
         sb.AppendLine("    /// </summary>");
         sb.AppendLine("    internal static class InterBusConsumerRegistrations");

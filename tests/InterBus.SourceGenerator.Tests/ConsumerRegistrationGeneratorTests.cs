@@ -142,7 +142,7 @@ public sealed class ConsumerRegistrationGeneratorTests
             {
                 public record OrderPlaced(System.Guid OrderId);
 
-                // Abstract — must be skipped even though it implements IConsumer<T>.
+                // Abstract - must be skipped even though it implements IConsumer<T>.
                 public abstract class BaseConsumer : IConsumer<OrderPlaced>
                 {
                     public abstract Task Consume(OrderPlaced message, CancellationToken ct = default);

@@ -156,7 +156,7 @@ public class PublishConsumeTests
             var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
             var msg = new OrderPlaced(Guid.NewGuid(), "direct@send.test", 25m);
 
-            // Send directly to OrderPlacedConsumer only — AuditConsumer should NOT receive.
+            // Send directly to OrderPlacedConsumer only - AuditConsumer should NOT receive.
             await publisher.Send<OrderPlacedConsumer, OrderPlaced>(msg);
 
             await WaitUntilAsync(() => orderTracker.Messages.Count == 1);
@@ -172,8 +172,8 @@ public class PublishConsumeTests
     }
 
     /// <summary>
-    /// Verifies that <c>AddGeneratedConsumers()</c> — the extension method emitted by the
-    /// <c>InterBus.SourceGenerator</c> incremental source generator — correctly registers every
+    /// Verifies that <c>AddGeneratedConsumers()</c> - the extension method emitted by the
+    /// <c>InterBus.SourceGenerator</c> incremental source generator - correctly registers every
     /// <see cref="IConsumer{T}"/> implementation found in this assembly at compile time, so that
     /// all consumers receive published messages without any manual <c>AddConsumer&lt;&gt;</c> calls.
     /// </summary>
@@ -205,7 +205,7 @@ public class PublishConsumeTests
             var msg = new OrderPlaced(Guid.NewGuid(), "generated@test.com", 75m);
             await publisher.Publish(msg);
 
-            // Both consumers are registered via AddGeneratedConsumers — both should receive.
+            // Both consumers are registered via AddGeneratedConsumers - both should receive.
             await WaitUntilAsync(() =>
                 orderTracker.Messages.Count == 1 && auditTracker.Messages.Count == 1);
 

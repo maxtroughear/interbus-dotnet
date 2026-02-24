@@ -23,9 +23,13 @@ dotnet add package InterBus
 
 For the in-memory transport (useful for development and testing):
 
+> **Note:** A separate `InterBus.InMemory` NuGet package is planned. Once published, add it with:
+
 ```bash
 dotnet add package InterBus.InMemory
 ```
+
+> When building from source, the in-memory transport currently lives under `src/InterBus/InMemory/` as part of the main `InterBus` project — there is no separate `InterBus.InMemory` project yet.
 
 ---
 
@@ -89,6 +93,8 @@ Consumer classes are resolved from the DI container on each invocation, so const
 ## Step 3 — Configure the Host
 
 Register InterBus in your application's `IServiceCollection`. The example below uses a .NET Generic Host:
+
+> **Note:** `AddInterBus`, `AddInMemoryTransport`, and `AddConsumer` are planned DI extension methods. The snippets below reflect the intended API.
 
 ```csharp
 using InterBus;
@@ -197,9 +203,21 @@ builder.Services.AddInterBus(bus =>
 
 ## Testing with the In-Memory Transport
 
-The in-memory transport makes it straightforward to write integration tests without any external infrastructure:
+The in-memory transport makes it straightforward to write integration tests without any external infrastructure. The example below uses a simple `RecordingConsumer<T>` test helper to capture received messages:
 
 ```csharp
+// Test helper — records every message it receives
+public class RecordingConsumer<T> : IConsumer<T> where T : class
+{
+    public List<T> Received { get; } = new();
+
+    public Task Consume(T message)
+    {
+        Received.Add(message);
+        return Task.CompletedTask;
+    }
+}
+
 public class OrderServiceTests
 {
     [Fact]

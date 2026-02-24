@@ -82,7 +82,7 @@ public class OrderService(IMessagePublisher publisher)
 ```
 src/
 ├── InterBus/                    # Core abstractions (IMessagePublisher, IConsumer<T>)
-├── InterBus.InMemory/           # In-memory transport package
+├── InterBus.InMemory/           # In-memory transport package (planned — currently src/InterBus/InMemory/)
 ├── InterBus.RabbitMq/           # RabbitMQ transport package (planned)
 └── InterBus.AwsSqs/             # AWS SQS transport package (planned)
 ```

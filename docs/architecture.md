@@ -260,7 +260,7 @@ InterBus is designed to integrate naturally with the standard .NET hosting and D
 | Application Hosting | `IHostedService` for the Message Pump background service |
 | Configuration | `IConfiguration` / `IOptions<T>` for transport settings |
 | Logging | `ILogger<T>` injected into the Message Pump and consumers |
-| Cancellation | `CancellationToken` propagated through publish and consume paths |
+| Cancellation (planned) | `CancellationToken` will be propagated through publish and consume paths |
 | Serialization | `System.Text.Json` (source-generated, AOT-compatible) |
 
 ---

@@ -42,6 +42,16 @@ internal sealed class InterBusBuilder : IInterBusBuilder
         return this;
     }
 
+    public IInterBusBuilder AddConsumer<TConsumer, T>()
+        where TConsumer : class, IConsumer<T>
+        where T : class
+    {
+        // Both type parameters are known at compile time — no reflection needed.
+        _options.AddConsumer(CreateDescriptor<TConsumer, T>());
+        Services.AddScoped<TConsumer>();
+        return this;
+    }
+
     private static ConsumerDescriptor CreateDescriptor<TConsumer, T>()
         where TConsumer : class, IConsumer<T>
         where T : class

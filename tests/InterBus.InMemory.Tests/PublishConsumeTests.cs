@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using InterBus.Extensions;
+using InterBus.Generated;
 using InterBus.InMemory.Extensions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -164,6 +165,55 @@ public class PublishConsumeTests
             Assert.Single(orderTracker.Messages);
             Assert.Equal(msg.OrderId, orderTracker.Messages.Single().OrderId);
             Assert.Empty(auditTracker.Messages);
+        }
+        finally
+        {
+            await StopAsync(provider, cts);
+        }
+    }
+
+    /// <summary>
+    /// Verifies that <c>AddGeneratedConsumers()</c> — the extension method emitted by the
+    /// <c>InterBus.SourceGenerator</c> incremental source generator — correctly registers every
+    /// <see cref="IConsumer{T}"/> implementation found in this assembly at compile time, so that
+    /// all consumers receive published messages without any manual <c>AddConsumer&lt;&gt;</c> calls.
+    /// </summary>
+    [Fact]
+    public async Task AddGeneratedConsumers_RegistersAllDiscoveredConsumers_MessagesDelivered()
+    {
+        var orderTracker = new OrderPlacedTracker();
+        var auditTracker = new AuditTracker();
+
+        // Use AddGeneratedConsumers() instead of individual AddConsumer<> calls.
+        // The generator discovered OrderPlacedConsumer and AuditConsumer at compile time and
+        // emitted reflection-free AddConsumer<TConsumer, T>() calls for each.
+        var (provider, cts) = await StartAsync(
+            services =>
+            {
+                services.AddSingleton(orderTracker);
+                services.AddSingleton(auditTracker);
+            },
+            bus =>
+            {
+                bus.AddInMemoryTransport();
+                bus.AddGeneratedConsumers();
+            });
+
+        try
+        {
+            using var scope = provider.CreateScope();
+            var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
+            var msg = new OrderPlaced(Guid.NewGuid(), "generated@test.com", 75m);
+            await publisher.Publish(msg);
+
+            // Both consumers are registered via AddGeneratedConsumers — both should receive.
+            await WaitUntilAsync(() =>
+                orderTracker.Messages.Count == 1 && auditTracker.Messages.Count == 1);
+
+            Assert.Single(orderTracker.Messages);
+            Assert.Equal(msg.OrderId, orderTracker.Messages.Single().OrderId);
+            Assert.Single(auditTracker.Messages);
+            Assert.Equal(msg.OrderId, auditTracker.Messages.Single().OrderId);
         }
         finally
         {

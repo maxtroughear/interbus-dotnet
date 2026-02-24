@@ -5,11 +5,12 @@ namespace InterBus.InMemory;
 /// </summary>
 internal sealed class InMemoryTopic
 {
+    private readonly string _name;
     private readonly List<InMemoryQueue> _subscribers = [];
 
     public InMemoryTopic(string name)
     {
-        _ = name; // stored for potential future diagnostics
+        _name = name;
     }
 
     /// <summary>Subscribe a queue to this topic. Called at startup.</summary>

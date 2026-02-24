@@ -154,7 +154,7 @@ public class OrderService
 }
 ```
 
-`IMessagePublisher` is registered as a singleton by `AddInterBus` and is safe to inject into any lifetime scope.
+`IMessagePublisher` is registered as **scoped** by `AddInterBus`. A scoped lifetime allows the publisher to participate in the same unit-of-work as the calling service — which is required for features like a transactional outbox, where message publication must be tied to the same database transaction as the business operation. Inject it into any scoped or transient service (e.g. an ASP.NET Core controller or a scoped application service) without lifetime concerns. Singleton services should resolve it via `IServiceScopeFactory` if needed.
 
 ---
 

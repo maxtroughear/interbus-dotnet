@@ -256,6 +256,7 @@ InterBus is designed to integrate naturally with the standard .NET hosting and D
 | Concern | Integration |
 |---|---|
 | Dependency Injection | `IServiceCollection` extension methods (`AddInterBus`) |
+| `IMessagePublisher` lifetime | **Scoped** — participates in the caller's unit-of-work; required for transactional outbox support |
 | Application Hosting | `IHostedService` for the Message Pump background service |
 | Configuration | `IConfiguration` / `IOptions<T>` for transport settings |
 | Logging | `ILogger<T>` injected into the Message Pump and consumers |

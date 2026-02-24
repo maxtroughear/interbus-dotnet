@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using InterBus.Extensions;
 using InterBus.Generated;
 using InterBus.InMemory.Extensions;
@@ -71,7 +70,7 @@ public class PublishConsumeTests
             bus =>
             {
                 bus.AddInMemoryTransport();
-                bus.AddConsumer<OrderPlacedConsumer>();
+                bus.AddConsumer<OrderPlacedConsumer, OrderPlaced>();
             });
 
         try
@@ -107,8 +106,8 @@ public class PublishConsumeTests
             bus =>
             {
                 bus.AddInMemoryTransport();
-                bus.AddConsumer<OrderPlacedConsumer>();
-                bus.AddConsumer<AuditConsumer>();
+                bus.AddConsumer<OrderPlacedConsumer, OrderPlaced>();
+                bus.AddConsumer<AuditConsumer, OrderPlaced>();
             });
 
         try
@@ -147,8 +146,8 @@ public class PublishConsumeTests
             bus =>
             {
                 bus.AddInMemoryTransport();
-                bus.AddConsumer<OrderPlacedConsumer>();
-                bus.AddConsumer<AuditConsumer>();
+                bus.AddConsumer<OrderPlacedConsumer, OrderPlaced>();
+                bus.AddConsumer<AuditConsumer, OrderPlaced>();
             });
 
         try

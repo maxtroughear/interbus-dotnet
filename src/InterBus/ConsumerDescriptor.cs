@@ -20,7 +20,7 @@ public sealed class ConsumerDescriptor
 
     /// <summary>
     /// Pre-compiled dispatch delegate. Resolves the consumer from the provided <see cref="IServiceProvider"/>,
-    /// deserialises the payload, and invokes <c>Consume</c>.
+    /// deserializes the payload, and invokes <c>Consume</c>.
     /// </summary>
     public Func<IServiceProvider, byte[], CancellationToken, Task> Dispatch { get; }
 

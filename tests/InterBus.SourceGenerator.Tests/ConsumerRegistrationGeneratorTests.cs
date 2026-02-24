@@ -198,8 +198,8 @@ public sealed class ConsumerRegistrationGeneratorTests
 
         var compilation = CSharpCompilation.Create(
             "TestAssembly",
-            new[] { CSharpSyntaxTree.ParseText(source) },
-            new[] { MetadataReference.CreateFromFile(typeof(object).Assembly.Location) },
+            [CSharpSyntaxTree.ParseText(source)],
+            [MetadataReference.CreateFromFile(typeof(object).Assembly.Location)],
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
 
         var driver = CSharpGeneratorDriver
@@ -310,7 +310,7 @@ public sealed class ConsumerRegistrationGeneratorTests
 
         return CSharpCompilation.Create(
             "TestAssembly",
-            new[] { CSharpSyntaxTree.ParseText(source) },
+            [CSharpSyntaxTree.ParseText(source)],
             references,
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
     }

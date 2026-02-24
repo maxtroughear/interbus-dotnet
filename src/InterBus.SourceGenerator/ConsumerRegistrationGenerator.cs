@@ -61,7 +61,7 @@ public sealed class ConsumerRegistrationGenerator : IIncrementalGenerator
         Compilation compilation)
     {
         // Resolve InterBus.IConsumer<T> from the compilation's symbol table.
-        // If it cannot be found the InterBus package is not referenced — nothing to generate.
+        // If it cannot be found, the InterBus package is not referenced — nothing to generate.
         var consumerInterfaceSymbol = compilation.GetTypeByMetadataName(ConsumerInterfaceMetadataName);
         if (consumerInterfaceSymbol is null) return;
 

@@ -39,8 +39,6 @@ internal sealed class InterBusBuilder : IInterBusBuilder
             static (sp, payload, headers, ct) =>
             {
                 var context = new MessageContext(headers);
-                var accessor = sp.GetRequiredService<IMessageContextAccessor>();
-                accessor.MessageContext = context;
                 var consumer = sp.GetRequiredService<TConsumer>();
                 var message = JsonSerializer.Deserialize<T>(payload)
                               ?? throw new InvalidOperationException(

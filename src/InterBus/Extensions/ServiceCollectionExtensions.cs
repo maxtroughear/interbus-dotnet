@@ -23,9 +23,6 @@ public static class ServiceCollectionExtensions
         // Register options so transports can resolve them.
         services.AddSingleton(options);
 
-        // Register the message context accessor (AsyncLocal-backed singleton).
-        services.AddSingleton<IMessageContextAccessor, MessageContextAccessor>();
-
         // Register the scoped publisher.
         services.AddScoped<IMessagePublisher, MessagePublisher>();
 

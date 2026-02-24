@@ -20,16 +20,16 @@ public sealed class ConsumerDescriptor
 
     /// <summary>
     /// Pre-compiled dispatch delegate. Resolves the consumer from the provided <see cref="IServiceProvider"/>,
-    /// deserializes the payload, and invokes <c>Consume</c>.
+    /// deserializes the payload, sets the message context, and invokes <c>Consume</c>.
     /// </summary>
-    public Func<IServiceProvider, byte[], CancellationToken, Task> Dispatch { get; }
+    public Func<IServiceProvider, byte[], MessageHeaders, CancellationToken, Task> Dispatch { get; }
 
     internal ConsumerDescriptor(
         Type consumerType,
         Type messageType,
         string topicName,
         string queueName,
-        Func<IServiceProvider, byte[], CancellationToken, Task> dispatch)
+        Func<IServiceProvider, byte[], MessageHeaders, CancellationToken, Task> dispatch)
     {
         ConsumerType = consumerType;
         MessageType = messageType;

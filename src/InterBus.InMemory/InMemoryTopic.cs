@@ -16,12 +16,12 @@ internal sealed class InMemoryTopic
     /// <summary>Subscribe a queue to this topic. Called at startup.</summary>
     public void AddSubscriber(InMemoryQueue queue) => _subscribers.Add(queue);
 
-    /// <summary>Fan out a payload to all subscriber queues.</summary>
-    public async Task FanOutAsync(byte[] payload, CancellationToken cancellationToken)
+    /// <summary>Fan out an envelope to all subscriber queues.</summary>
+    public async Task FanOutAsync(InMemoryEnvelope envelope, CancellationToken cancellationToken)
     {
         foreach (var queue in _subscribers)
         {
-            await queue.WriteAsync(payload, cancellationToken);
+            await queue.WriteAsync(envelope, cancellationToken);
         }
     }
 }

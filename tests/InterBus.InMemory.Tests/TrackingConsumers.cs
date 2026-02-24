@@ -3,7 +3,6 @@ using System.Collections.Concurrent;
 namespace InterBus.InMemory.Tests;
 
 // ReSharper disable ClassNeverInstantiated.Global
-
 /// <summary>
 /// Singleton-safe tracker. Registered as singleton in DI so all consumer scopes write to the same list.
 /// Use distinct subclasses to differentiate trackers for different consumers handling the same message type.
@@ -16,8 +15,13 @@ public class MessageTracker<T> where T : class
 }
 
 // Distinct tracker types so OrderPlacedConsumer and AuditConsumer don't share the same singleton.
-public sealed class OrderPlacedTracker : MessageTracker<OrderPlaced> { }
-public sealed class AuditTracker : MessageTracker<OrderPlaced> { }
+public sealed class OrderPlacedTracker : MessageTracker<OrderPlaced>
+{
+}
+
+public sealed class AuditTracker : MessageTracker<OrderPlaced>
+{
+}
 
 public sealed class OrderPlacedConsumer(OrderPlacedTracker tracker) : IConsumer<OrderPlaced>
 {

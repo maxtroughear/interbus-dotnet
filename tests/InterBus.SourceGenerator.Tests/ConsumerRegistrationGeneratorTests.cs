@@ -21,21 +21,21 @@ public sealed class ConsumerRegistrationGeneratorTests
     public void Generator_SingleConsumer_GeneratesAddGeneratedConsumers()
     {
         const string source = """
-            using System.Threading;
-            using System.Threading.Tasks;
-            using InterBus;
+                              using System.Threading;
+                              using System.Threading.Tasks;
+                              using InterBus;
 
-            namespace MyApp
-            {
-                public record OrderPlaced(System.Guid OrderId);
+                              namespace MyApp
+                              {
+                                  public record OrderPlaced(System.Guid OrderId);
 
-                public sealed class OrderPlacedConsumer : IConsumer<OrderPlaced>
-                {
-                    public Task Consume(OrderPlaced message, CancellationToken cancellationToken = default)
-                        => Task.CompletedTask;
-                }
-            }
-            """;
+                                  public sealed class OrderPlacedConsumer : IConsumer<OrderPlaced>
+                                  {
+                                      public Task Consume(OrderPlaced message, CancellationToken cancellationToken = default)
+                                          => Task.CompletedTask;
+                                  }
+                              }
+                              """;
 
         var result = RunGenerator(source);
 
@@ -47,34 +47,35 @@ public sealed class ConsumerRegistrationGeneratorTests
         Assert.Contains("AddGeneratedConsumers", generated);
         Assert.Contains("global::MyApp.OrderPlacedConsumer", generated);
         Assert.Contains("global::MyApp.OrderPlaced", generated);
-        Assert.Contains("builder.AddConsumer<global::MyApp.OrderPlacedConsumer, global::MyApp.OrderPlaced>()", generated);
+        Assert.Contains("builder.AddConsumer<global::MyApp.OrderPlacedConsumer, global::MyApp.OrderPlaced>()",
+            generated);
     }
 
     [Fact]
     public void Generator_MultipleConsumers_SameMessageType_GeneratesAllRegistrations()
     {
         const string source = """
-            using System.Threading;
-            using System.Threading.Tasks;
-            using InterBus;
+                              using System.Threading;
+                              using System.Threading.Tasks;
+                              using InterBus;
 
-            namespace MyApp
-            {
-                public record OrderPlaced(System.Guid OrderId);
+                              namespace MyApp
+                              {
+                                  public record OrderPlaced(System.Guid OrderId);
 
-                public sealed class OrderPlacedConsumer : IConsumer<OrderPlaced>
-                {
-                    public Task Consume(OrderPlaced message, CancellationToken ct = default)
-                        => Task.CompletedTask;
-                }
+                                  public sealed class OrderPlacedConsumer : IConsumer<OrderPlaced>
+                                  {
+                                      public Task Consume(OrderPlaced message, CancellationToken ct = default)
+                                          => Task.CompletedTask;
+                                  }
 
-                public sealed class AuditConsumer : IConsumer<OrderPlaced>
-                {
-                    public Task Consume(OrderPlaced message, CancellationToken ct = default)
-                        => Task.CompletedTask;
-                }
-            }
-            """;
+                                  public sealed class AuditConsumer : IConsumer<OrderPlaced>
+                                  {
+                                      public Task Consume(OrderPlaced message, CancellationToken ct = default)
+                                          => Task.CompletedTask;
+                                  }
+                              }
+                              """;
 
         var result = RunGenerator(source);
 
@@ -90,25 +91,25 @@ public sealed class ConsumerRegistrationGeneratorTests
     public void Generator_ConsumerImplementsMultipleMessageTypes_GeneratesOneLinePerPair()
     {
         const string source = """
-            using System.Threading;
-            using System.Threading.Tasks;
-            using InterBus;
+                              using System.Threading;
+                              using System.Threading.Tasks;
+                              using InterBus;
 
-            namespace MyApp
-            {
-                public record OrderPlaced(System.Guid OrderId);
-                public record OrderShipped(System.Guid OrderId);
+                              namespace MyApp
+                              {
+                                  public record OrderPlaced(System.Guid OrderId);
+                                  public record OrderShipped(System.Guid OrderId);
 
-                /// <summary>A single class handling two message types.</summary>
-                public sealed class MultiConsumer : IConsumer<OrderPlaced>, IConsumer<OrderShipped>
-                {
-                    public Task Consume(OrderPlaced message, CancellationToken ct = default)
-                        => Task.CompletedTask;
-                    public Task Consume(OrderShipped message, CancellationToken ct = default)
-                        => Task.CompletedTask;
-                }
-            }
-            """;
+                                  /// <summary>A single class handling two message types.</summary>
+                                  public sealed class MultiConsumer : IConsumer<OrderPlaced>, IConsumer<OrderShipped>
+                                  {
+                                      public Task Consume(OrderPlaced message, CancellationToken ct = default)
+                                          => Task.CompletedTask;
+                                      public Task Consume(OrderShipped message, CancellationToken ct = default)
+                                          => Task.CompletedTask;
+                                  }
+                              }
+                              """;
 
         var result = RunGenerator(source);
 
@@ -134,27 +135,27 @@ public sealed class ConsumerRegistrationGeneratorTests
     public void Generator_AbstractConsumer_IsNotRegistered()
     {
         const string source = """
-            using System.Threading;
-            using System.Threading.Tasks;
-            using InterBus;
+                              using System.Threading;
+                              using System.Threading.Tasks;
+                              using InterBus;
 
-            namespace MyApp
-            {
-                public record OrderPlaced(System.Guid OrderId);
+                              namespace MyApp
+                              {
+                                  public record OrderPlaced(System.Guid OrderId);
 
-                // Abstract - must be skipped even though it implements IConsumer<T>.
-                public abstract class BaseConsumer : IConsumer<OrderPlaced>
-                {
-                    public abstract Task Consume(OrderPlaced message, CancellationToken ct = default);
-                }
+                                  // Abstract - must be skipped even though it implements IConsumer<T>.
+                                  public abstract class BaseConsumer : IConsumer<OrderPlaced>
+                                  {
+                                      public abstract Task Consume(OrderPlaced message, CancellationToken ct = default);
+                                  }
 
-                public sealed class ConcreteConsumer : BaseConsumer
-                {
-                    public override Task Consume(OrderPlaced message, CancellationToken ct = default)
-                        => Task.CompletedTask;
-                }
-            }
-            """;
+                                  public sealed class ConcreteConsumer : BaseConsumer
+                                  {
+                                      public override Task Consume(OrderPlaced message, CancellationToken ct = default)
+                                          => Task.CompletedTask;
+                                  }
+                              }
+                              """;
 
         var result = RunGenerator(source);
 
@@ -173,11 +174,11 @@ public sealed class ConsumerRegistrationGeneratorTests
     public void Generator_NoConsumersInAssembly_ProducesNoOutput()
     {
         const string source = """
-            namespace MyApp
-            {
-                public class NotAConsumer { }
-            }
-            """;
+                              namespace MyApp
+                              {
+                                  public class NotAConsumer { }
+                              }
+                              """;
 
         var result = RunGenerator(source);
 
@@ -189,22 +190,22 @@ public sealed class ConsumerRegistrationGeneratorTests
     {
         // Build a compilation that does NOT reference InterBus at all.
         const string source = """
-            namespace MyApp
-            {
-                public interface IConsumer<T> { } // local, not InterBus
-                public class Foo : IConsumer<int> { }
-            }
-            """;
+                              namespace MyApp
+                              {
+                                  public interface IConsumer<T> { } // local, not InterBus
+                                  public class Foo : IConsumer<int> { }
+                              }
+                              """;
 
         var compilation = CSharpCompilation.Create(
             "TestAssembly",
-            [CSharpSyntaxTree.ParseText(source)],
+            [CSharpSyntaxTree.ParseText(source, cancellationToken: TestContext.Current.CancellationToken)],
             [MetadataReference.CreateFromFile(typeof(object).Assembly.Location)],
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
 
         var driver = CSharpGeneratorDriver
             .Create(new ConsumerRegistrationGenerator())
-            .RunGeneratorsAndUpdateCompilation(compilation, out _, out _);
+            .RunGeneratorsAndUpdateCompilation(compilation, out _, out _, TestContext.Current.CancellationToken);
 
         Assert.Empty(driver.GetRunResult().GeneratedTrees);
     }
@@ -217,21 +218,21 @@ public sealed class ConsumerRegistrationGeneratorTests
     public void Generator_GeneratedFile_UsesFullyQualifiedNames()
     {
         const string source = """
-            using System.Threading;
-            using System.Threading.Tasks;
-            using InterBus;
+                              using System.Threading;
+                              using System.Threading.Tasks;
+                              using InterBus;
 
-            namespace Deep.Nested.Namespace
-            {
-                public record MyMessage(string Text);
+                              namespace Deep.Nested.Namespace
+                              {
+                                  public record MyMessage(string Text);
 
-                public sealed class MyConsumer : IConsumer<MyMessage>
-                {
-                    public Task Consume(MyMessage message, CancellationToken ct = default)
-                        => Task.CompletedTask;
-                }
-            }
-            """;
+                                  public sealed class MyConsumer : IConsumer<MyMessage>
+                                  {
+                                      public Task Consume(MyMessage message, CancellationToken ct = default)
+                                          => Task.CompletedTask;
+                                  }
+                              }
+                              """;
 
         var result = RunGenerator(source);
 
@@ -248,21 +249,21 @@ public sealed class ConsumerRegistrationGeneratorTests
     public void Generator_GeneratedFile_IsInInterBusGeneratedNamespace()
     {
         const string source = """
-            using System.Threading;
-            using System.Threading.Tasks;
-            using InterBus;
+                              using System.Threading;
+                              using System.Threading.Tasks;
+                              using InterBus;
 
-            namespace MyApp
-            {
-                public record Ping;
+                              namespace MyApp
+                              {
+                                  public record Ping;
 
-                public sealed class PingConsumer : IConsumer<Ping>
-                {
-                    public Task Consume(Ping message, CancellationToken ct = default)
-                        => Task.CompletedTask;
-                }
-            }
-            """;
+                                  public sealed class PingConsumer : IConsumer<Ping>
+                                  {
+                                      public Task Consume(Ping message, CancellationToken ct = default)
+                                          => Task.CompletedTask;
+                                  }
+                              }
+                              """;
 
         var result = RunGenerator(source);
         var generated = result.GeneratedTrees[0].ToString();

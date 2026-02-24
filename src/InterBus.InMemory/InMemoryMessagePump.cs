@@ -29,7 +29,7 @@ internal sealed class InMemoryMessagePump : BackgroundService
         var queues = _broker.GetAllQueues();
         if (queues.Count == 0)
         {
-            _logger.LogInformation("InterBus InMemory: no consumers registered; message pump idle.");
+            _logger.LogInformation("InterBus InMemory: no consumers registered; message pump idle");
             return Task.CompletedTask;
         }
 
@@ -41,7 +41,7 @@ internal sealed class InMemoryMessagePump : BackgroundService
     private async Task ProcessQueueAsync(InMemoryQueue queue, CancellationToken stoppingToken)
     {
         _logger.LogDebug(
-            "InterBus InMemory: starting pump for queue {QueueName}.",
+            "InterBus InMemory: starting pump for queue {QueueName}",
             queue.Descriptor.QueueName);
 
         await foreach (var payload in queue.ReadAllAsync(stoppingToken))
@@ -50,7 +50,7 @@ internal sealed class InMemoryMessagePump : BackgroundService
         }
 
         _logger.LogDebug(
-            "InterBus InMemory: pump for queue {QueueName} stopped.",
+            "InterBus InMemory: pump for queue {QueueName} stopped",
             queue.Descriptor.QueueName);
     }
 
@@ -65,7 +65,7 @@ internal sealed class InMemoryMessagePump : BackgroundService
         {
             _logger.LogError(
                 ex,
-                "InterBus InMemory: unhandled exception in consumer {ConsumerType} for message {MessageType}.",
+                "InterBus InMemory: unhandled exception in consumer {ConsumerType} for message {MessageType}",
                 descriptor.ConsumerType.Name,
                 descriptor.MessageType.Name);
         }

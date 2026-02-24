@@ -58,14 +58,22 @@ public class HeadersTests
 
     public sealed class HeaderAwareConsumer(
         OrderPlacedTracker tracker,
-        HeaderCapture headerCapture,
-        IMessageContextAccessor contextAccessor) : IConsumer<OrderPlaced>
+        HeaderCapture headerCapture) : IConsumer<OrderPlaced>
     {
-        public Task Consume(OrderPlaced message, CancellationToken cancellationToken = default)
+        public Task Consume(OrderPlaced message, IMessageContext context, CancellationToken cancellationToken = default)
         {
             tracker.Track(message);
-            if (contextAccessor.MessageContext is { } ctx)
-                headerCapture.Add(ctx.Headers);
+            headerCapture.Add(context.Headers);
+            return Task.CompletedTask;
+        }
+    }
+
+    public sealed class CorrelationIdCapturingConsumer(
+        ConcurrentBag<string?> correlationIds) : IConsumer<OrderPlaced>
+    {
+        public Task Consume(OrderPlaced message, IMessageContext context, CancellationToken cancellationToken = default)
+        {
+            correlationIds.Add(context.CorrelationId);
             return Task.CompletedTask;
         }
     }
@@ -194,5 +202,46 @@ public class HeadersTests
 
         Assert.Equal("test-id", headers["x-correlation-id"]);
         Assert.Equal("test-id", headers["X-CORRELATION-ID"]);
+    }
+
+    [Fact]
+    public async Task Publish_WithCorrelationIdHeader_ContextExposesConvenienceProperty()
+    {
+        var tracker = new OrderPlacedTracker();
+        var headerCapture = new HeaderCapture();
+
+        // Use a consumer that captures the CorrelationId from context.CorrelationId directly.
+        var correlationIds = new ConcurrentBag<string?>();
+
+        var (provider, cts) = await StartAsync(
+            services =>
+            {
+                services.AddSingleton(tracker);
+                services.AddSingleton(headerCapture);
+                services.AddSingleton(correlationIds);
+            },
+            bus =>
+            {
+                bus.AddInMemoryTransport();
+                bus.AddConsumer<CorrelationIdCapturingConsumer, OrderPlaced>();
+            });
+
+        try
+        {
+            using var scope = provider.CreateScope();
+            var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
+            var msg = new OrderPlaced(Guid.NewGuid(), "corr@test.com", 5.00m);
+            var headers = new MessageHeaders { [InterBusHeaders.CorrelationId] = "corr-999" };
+
+            await publisher.Publish(msg, headers, TestContext.Current.CancellationToken);
+
+            await WaitUntilAsync(() => correlationIds.Count == 1);
+
+            Assert.Equal("corr-999", correlationIds.Single());
+        }
+        finally
+        {
+            await StopAsync(provider, cts);
+        }
     }
 }

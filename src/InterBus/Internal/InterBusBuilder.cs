@@ -38,13 +38,14 @@ internal sealed class InterBusBuilder : IInterBusBuilder
             queueName,
             static (sp, payload, headers, ct) =>
             {
+                var context = new MessageContext(headers);
                 var accessor = sp.GetRequiredService<IMessageContextAccessor>();
-                accessor.MessageContext = new MessageContext(headers);
+                accessor.MessageContext = context;
                 var consumer = sp.GetRequiredService<TConsumer>();
                 var message = JsonSerializer.Deserialize<T>(payload)
                               ?? throw new InvalidOperationException(
                                   $"Failed to deserialize message payload as {typeof(T).FullName}.");
-                return consumer.Consume(message, ct);
+                return consumer.Consume(message, context, ct);
             });
     }
 }

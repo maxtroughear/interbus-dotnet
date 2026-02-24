@@ -25,7 +25,7 @@ public sealed class AuditTracker : MessageTracker<OrderPlaced>
 
 public sealed class OrderPlacedConsumer(OrderPlacedTracker tracker) : IConsumer<OrderPlaced>
 {
-    public Task Consume(OrderPlaced message, IMessageContext context, CancellationToken cancellationToken = default)
+    public Task Consume(OrderPlaced message, IConsumeContext context, CancellationToken cancellationToken = default)
     {
         tracker.Track(message);
         return Task.CompletedTask;
@@ -34,7 +34,7 @@ public sealed class OrderPlacedConsumer(OrderPlacedTracker tracker) : IConsumer<
 
 public sealed class AuditConsumer(AuditTracker tracker) : IConsumer<OrderPlaced>
 {
-    public Task Consume(OrderPlaced message, IMessageContext context, CancellationToken cancellationToken = default)
+    public Task Consume(OrderPlaced message, IConsumeContext context, CancellationToken cancellationToken = default)
     {
         tracker.Track(message);
         return Task.CompletedTask;

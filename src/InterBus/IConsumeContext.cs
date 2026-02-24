@@ -4,7 +4,7 @@ namespace InterBus;
 /// Provides access to the metadata associated with the message currently being consumed.
 /// An instance is passed directly to <see cref="IConsumer{T}.Consume"/> for each message dispatch.
 /// </summary>
-public interface IMessageContext
+public interface IConsumeContext
 {
     /// <summary>The headers attached to the current message.</summary>
     IReadOnlyDictionary<string, string> Headers { get; }

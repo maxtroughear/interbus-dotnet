@@ -43,7 +43,7 @@ public record FarewellMessage(string Text);
 // ReSharper disable ClassNeverInstantiated.Global
 public class GreetingConsumer(IMessagePublisher publisher) : IConsumer<GreetingMessage>
 {
-    public async Task Consume(GreetingMessage message, IMessageContext context, CancellationToken cancellationToken = default)
+    public async Task Consume(GreetingMessage message, IConsumeContext context, CancellationToken cancellationToken = default)
     {
         Console.WriteLine($"[GreetingConsumer] Received message: {message.Text}");
 
@@ -56,7 +56,7 @@ public class GreetingConsumer(IMessagePublisher publisher) : IConsumer<GreetingM
 
 public class FarewellConsumer : IConsumer<FarewellMessage>
 {
-    public Task Consume(FarewellMessage message, IMessageContext context, CancellationToken cancellationToken = default)
+    public Task Consume(FarewellMessage message, IConsumeContext context, CancellationToken cancellationToken = default)
     {
         Console.WriteLine($"[FarewellConsumer] Received farewell message: {message.Text}");
         return Task.CompletedTask;
@@ -65,13 +65,13 @@ public class FarewellConsumer : IConsumer<FarewellMessage>
 
 public class EavesDroppingConsumer : IConsumer<GreetingMessage>, IConsumer<FarewellMessage>
 {
-    public Task Consume(GreetingMessage message, IMessageContext context, CancellationToken cancellationToken = default)
+    public Task Consume(GreetingMessage message, IConsumeContext context, CancellationToken cancellationToken = default)
     {
         Console.WriteLine($"[EavesDroppingConsumer] Received greeting message: {message.Text}");
         return Task.CompletedTask;
     }
 
-    public Task Consume(FarewellMessage message, IMessageContext context, CancellationToken cancellationToken = default)
+    public Task Consume(FarewellMessage message, IConsumeContext context, CancellationToken cancellationToken = default)
     {
         Console.WriteLine($"[EavesDroppingConsumer] Received farewell message: {message.Text}");
         return Task.CompletedTask;

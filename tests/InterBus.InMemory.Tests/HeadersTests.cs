@@ -60,7 +60,7 @@ public class HeadersTests
         OrderPlacedTracker tracker,
         HeaderCapture headerCapture) : IConsumer<OrderPlaced>
     {
-        public Task Consume(OrderPlaced message, IMessageContext context, CancellationToken cancellationToken = default)
+        public Task Consume(OrderPlaced message, IConsumeContext context, CancellationToken cancellationToken = default)
         {
             tracker.Track(message);
             headerCapture.Add(context.Headers);
@@ -71,7 +71,7 @@ public class HeadersTests
     public sealed class CorrelationIdCapturingConsumer(
         ConcurrentBag<string?> correlationIds) : IConsumer<OrderPlaced>
     {
-        public Task Consume(OrderPlaced message, IMessageContext context, CancellationToken cancellationToken = default)
+        public Task Consume(OrderPlaced message, IConsumeContext context, CancellationToken cancellationToken = default)
         {
             correlationIds.Add(context.CorrelationId);
             return Task.CompletedTask;

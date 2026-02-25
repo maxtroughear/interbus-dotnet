@@ -1,0 +1,53 @@
+name: Build and Test
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build-and-test:
+    name: Build and Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --no-restore --configuration Release
+
+      - name: Test
+        run: dotnet test --no-build --configuration Release --verbosity normal
+
+  reflection-check:
+    name: No-Reflection Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build (ILLink trim-analyzer, warnings as errors)
+        # The ILLink Roslyn analyzer is enabled via IsTrimmable=true in InterBus.csproj and
+        # InterBus.InMemory.csproj. TreatWarningsAsErrors=true promotes any IL2xxx warning
+        # (runtime reflection usage) to a build error.
+        #
+        # Transports that require reflection-based dependencies may opt out by removing
+        # <IsTrimmable>true</IsTrimmable> from their .csproj and documenting the reason.
+        run: dotnet build --no-restore --configuration Release /p:TreatWarningsAsErrors=true

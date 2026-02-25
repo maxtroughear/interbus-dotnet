@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace InterBus;
@@ -16,7 +17,7 @@ public interface IInterBusBuilder
     /// No runtime reflection is performed - this overload is intended to be called by source-generated
     /// code produced by the <c>InterBus.SourceGenerator</c> package.
     /// </summary>
-    IInterBusBuilder AddConsumer<TConsumer, T>()
+    IInterBusBuilder AddConsumer<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TConsumer, T>()
         where TConsumer : class, IConsumer<T>
         where T : class;
 }

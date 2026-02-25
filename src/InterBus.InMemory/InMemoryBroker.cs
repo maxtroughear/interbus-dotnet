@@ -4,6 +4,7 @@ namespace InterBus.InMemory;
 /// Singleton broker that owns all <see cref="InMemoryTopic"/> and <see cref="InMemoryQueue"/> instances.
 /// Implements <see cref="IInterBusTransport"/> so the core <c>MessagePublisher</c> can dispatch through it.
 /// Initialised from <see cref="InterBusOptions"/> at construction time.
+/// Each consumer class is assigned exactly one queue, which is subscribed to all topics that consumer handles.
 /// </summary>
 public sealed class InMemoryBroker : IInterBusTransport, IDisposable
 {
@@ -13,21 +14,26 @@ public sealed class InMemoryBroker : IInterBusTransport, IDisposable
 
     public InMemoryBroker(InterBusOptions options)
     {
-        foreach (var descriptor in options.Consumers)
+        // Group descriptors by queue name so each consumer class gets exactly one queue.
+        var byConsumer = options.Consumers.GroupBy(d => d.QueueName);
+
+        foreach (var group in byConsumer)
         {
-            // Ensure the topic exists.
-            if (!_topics.TryGetValue(descriptor.TopicName, out var topic))
+            // One queue per consumer class, handling all of that consumer's message types.
+            var queue = new InMemoryQueue(group.AsEnumerable());
+            _queues[group.Key] = queue;
+
+            // Subscribe the queue to every topic it handles (one topic per message type).
+            foreach (var descriptor in group)
             {
-                topic = new InMemoryTopic(descriptor.TopicName);
-                _topics[descriptor.TopicName] = topic;
+                if (!_topics.TryGetValue(descriptor.TopicName, out var topic))
+                {
+                    topic = new InMemoryTopic(descriptor.TopicName);
+                    _topics[descriptor.TopicName] = topic;
+                }
+
+                topic.AddSubscriber(queue);
             }
-
-            // Each consumer gets its own queue (Point-to-Point Channel).
-            var queue = new InMemoryQueue(descriptor);
-            _queues[descriptor.QueueName] = queue;
-
-            // Subscribe the queue to the topic (Publish-Subscribe fan-out).
-            topic.AddSubscriber(queue);
         }
     }
 
@@ -36,17 +42,17 @@ public sealed class InMemoryBroker : IInterBusTransport, IDisposable
         CancellationToken cancellationToken)
     {
         if (_topics.TryGetValue(topicName, out var topic))
-            return topic.FanOutAsync(new InMemoryEnvelope(payload, headers), cancellationToken);
+            return topic.FanOutAsync(new InMemoryEnvelope(topicName, payload, headers), cancellationToken);
 
         return Task.CompletedTask;
     }
 
     /// <inheritdoc/>
-    public Task SendToQueueAsync(string queueName, string payload, MessageHeaders headers,
+    public Task SendToQueueAsync(string queueName, string topicName, string payload, MessageHeaders headers,
         CancellationToken cancellationToken)
     {
         if (_queues.TryGetValue(queueName, out var queue))
-            return queue.WriteAsync(new InMemoryEnvelope(payload, headers), cancellationToken).AsTask();
+            return queue.WriteAsync(new InMemoryEnvelope(topicName, payload, headers), cancellationToken).AsTask();
 
         return Task.CompletedTask;
     }

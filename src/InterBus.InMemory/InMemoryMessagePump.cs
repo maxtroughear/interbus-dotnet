@@ -42,20 +42,30 @@ internal sealed class InMemoryMessagePump : BackgroundService
     {
         _logger.LogDebug(
             "InterBus InMemory: starting pump for queue {QueueName}",
-            queue.Descriptor.QueueName);
+            queue.QueueName);
 
         await foreach (var envelope in queue.ReadAllAsync(stoppingToken))
         {
-            await DispatchAsync(queue.Descriptor, envelope, stoppingToken);
+            await DispatchAsync(queue, envelope, stoppingToken);
         }
 
         _logger.LogDebug(
             "InterBus InMemory: pump for queue {QueueName} stopped",
-            queue.Descriptor.QueueName);
+            queue.QueueName);
     }
 
-    private async Task DispatchAsync(ConsumerDescriptor descriptor, InMemoryEnvelope envelope, CancellationToken ct)
+    private async Task DispatchAsync(InMemoryQueue queue, InMemoryEnvelope envelope, CancellationToken ct)
     {
+        var descriptor = queue.FindHandler(envelope.TopicName);
+        if (descriptor is null)
+        {
+            _logger.LogWarning(
+                "InterBus InMemory: no handler registered on queue {QueueName} for topic {TopicName}",
+                queue.QueueName,
+                envelope.TopicName);
+            return;
+        }
+
         await using var scope = _scopeFactory.CreateAsyncScope();
         try
         {

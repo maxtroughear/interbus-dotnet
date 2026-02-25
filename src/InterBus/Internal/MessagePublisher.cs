@@ -41,12 +41,13 @@ internal sealed class MessagePublisher : IMessagePublisher
         where TConsumer : IConsumer<T>
         where T : class
     {
-        var descriptor = _options.Consumers.FirstOrDefault(
-            c => c.ConsumerType == typeof(TConsumer) && c.MessageType == typeof(T));
-        var queueName = descriptor?.QueueName ?? RoutingConventions.QueueName(typeof(TConsumer), typeof(T));
+        var topicName = _options.TryGetTopicName(typeof(T), out var customName)
+            ? customName
+            : RoutingConventions.TopicName(typeof(T));
+        var queueName = RoutingConventions.QueueName(typeof(TConsumer));
         var typeInfo = (JsonTypeInfo<T>)_options.SerializerOptions.GetTypeInfo(typeof(T));
         var payload = JsonSerializer.Serialize(message, typeInfo);
-        return _transport.SendToQueueAsync(queueName, payload, headers, cancellationToken);
+        return _transport.SendToQueueAsync(queueName, topicName, payload, headers, cancellationToken);
     }
 
     public Task Send<T>(string queueName, T message, CancellationToken cancellationToken = default)
@@ -56,8 +57,11 @@ internal sealed class MessagePublisher : IMessagePublisher
     public Task Send<T>(string queueName, T message, MessageHeaders headers, CancellationToken cancellationToken = default)
         where T : class
     {
+        var topicName = _options.TryGetTopicName(typeof(T), out var customName)
+            ? customName
+            : RoutingConventions.TopicName(typeof(T));
         var typeInfo = (JsonTypeInfo<T>)_options.SerializerOptions.GetTypeInfo(typeof(T));
         var payload = JsonSerializer.Serialize(message, typeInfo);
-        return _transport.SendToQueueAsync(queueName, payload, headers, cancellationToken);
+        return _transport.SendToQueueAsync(queueName, topicName, payload, headers, cancellationToken);
     }
 }

@@ -2,6 +2,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace InterBus.Internal;
 
@@ -35,7 +36,7 @@ internal sealed class InterBusBuilder : IInterBusBuilder
             ? customName
             : RoutingConventions.TopicName(typeof(T));
         _options.AddConsumer(CreateDescriptor<TConsumer, T>(_options.SerializerOptions, topicName));
-        Services.AddScoped<TConsumer>();
+        Services.TryAddScoped<TConsumer>();
         return this;
     }
 
@@ -47,7 +48,7 @@ internal sealed class InterBusBuilder : IInterBusBuilder
         where TConsumer : class, IConsumer<T>
         where T : class
     {
-        var queueName = RoutingConventions.QueueName(typeof(TConsumer), typeof(T));
+        var queueName = RoutingConventions.QueueName(typeof(TConsumer));
 
         var typeInfo = (JsonTypeInfo<T>)serializerOptions.GetTypeInfo(typeof(T));
 

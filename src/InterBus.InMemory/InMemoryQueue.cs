@@ -3,21 +3,38 @@ using System.Threading.Channels;
 namespace InterBus.InMemory;
 
 /// <summary>
-/// A Channel-backed Point-to-Point queue for a specific consumer and message type.
-/// Each registered consumer gets one <see cref="InMemoryQueue"/> per message type it handles.
+/// A Channel-backed Point-to-Point queue for a single consumer class.
+/// Each registered consumer gets exactly one <see cref="InMemoryQueue"/>, regardless of how many
+/// message types it handles. Routing to the correct handler is performed via <see cref="FindHandler"/>
+/// using the <see cref="InMemoryEnvelope.TopicName"/> on each arriving envelope.
 /// </summary>
 internal sealed class InMemoryQueue
 {
     private readonly Channel<InMemoryEnvelope> _channel = Channel.CreateUnbounded<InMemoryEnvelope>(
         new UnboundedChannelOptions { SingleReader = true, AllowSynchronousContinuations = false });
 
-    /// <summary>The consumer descriptor that owns this queue.</summary>
-    public ConsumerDescriptor Descriptor { get; }
+    private readonly IReadOnlyDictionary<string, ConsumerDescriptor> _handlersByTopic;
 
-    internal InMemoryQueue(ConsumerDescriptor descriptor)
+    /// <summary>The name of this queue (derived from the consumer type by convention).</summary>
+    public string QueueName { get; }
+
+    /// <summary>The concrete consumer type that owns this queue.</summary>
+    public Type ConsumerType { get; }
+
+    internal InMemoryQueue(IEnumerable<ConsumerDescriptor> descriptors)
     {
-        Descriptor = descriptor;
+        var list = descriptors.ToList();
+        QueueName = list[0].QueueName;
+        ConsumerType = list[0].ConsumerType;
+        _handlersByTopic = list.ToDictionary(d => d.TopicName, StringComparer.Ordinal);
     }
+
+    /// <summary>
+    /// Finds the descriptor whose topic matches <paramref name="topicName"/>.
+    /// Returns <c>null</c> if no handler is registered for that topic on this queue.
+    /// </summary>
+    public ConsumerDescriptor? FindHandler(string topicName) =>
+        _handlersByTopic.TryGetValue(topicName, out var d) ? d : null;
 
     /// <summary>Enqueue a serialised payload with its headers.</summary>
     public ValueTask WriteAsync(InMemoryEnvelope envelope, CancellationToken cancellationToken) =>

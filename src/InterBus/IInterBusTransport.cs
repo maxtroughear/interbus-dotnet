@@ -11,7 +11,11 @@ public interface IInterBusTransport
     Task PublishToTopicAsync(string topicName, string payload, MessageHeaders headers,
         CancellationToken cancellationToken);
 
-    /// <summary>Send a serialised payload directly to the named queue (bypassing topic fan-out).</summary>
-    Task SendToQueueAsync(string queueName, string payload, MessageHeaders headers,
+    /// <summary>
+    /// Send a serialised payload directly to the named queue (bypassing topic fan-out).
+    /// The <paramref name="topicName"/> identifies the message type so the consumer queue
+    /// can dispatch to the correct handler method.
+    /// </summary>
+    Task SendToQueueAsync(string queueName, string topicName, string payload, MessageHeaders headers,
         CancellationToken cancellationToken);
 }

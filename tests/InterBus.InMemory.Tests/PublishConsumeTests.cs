@@ -174,12 +174,6 @@ public class PublishConsumeTests
         }
     }
 
-    /// <summary>
-    /// Verifies that <c>AddGeneratedConsumers()</c> - the extension method emitted by the
-    /// <c>InterBus.SourceGenerator</c> incremental source generator - correctly registers every
-    /// <see cref="IConsumer{T}"/> implementation found in this assembly at compile time, so that
-    /// all consumers receive published messages without any manual <c>AddConsumer&lt;&gt;</c> calls.
-    /// </summary>
     [Fact]
     public async Task AddGeneratedConsumers_RegistersAllDiscoveredConsumers_MessagesDelivered()
     {
@@ -216,6 +210,64 @@ public class PublishConsumeTests
             Assert.Equal(msg.OrderId, orderTracker.Messages.Single().OrderId);
             Assert.Single(auditTracker.Messages);
             Assert.Equal(msg.OrderId, auditTracker.Messages.Single().OrderId);
+        }
+        finally
+        {
+            await StopAsync(provider, cts);
+        }
+    }
+
+    /// <summary>
+    /// Verifies the one-queue-per-consumer design: a consumer implementing two <c>IConsumer&lt;T&gt;</c>
+    /// interfaces shares a single queue. Both descriptors have the same queue name, and messages of
+    /// both types are dispatched to the correct <c>Consume</c> overload without runtime reflection.
+    /// </summary>
+    [Fact]
+    public async Task MultiTypeConsumer_SingleQueue_ReceivesBothMessageTypes()
+    {
+        var orderTracker = new OrderPlacedTracker();
+        var shippedTracker = new OrderShippedTracker();
+        InterBusOptions? capturedOptions = null;
+
+        var (provider, cts) = await StartAsync(
+            services =>
+            {
+                services.AddSingleton(orderTracker);
+                services.AddSingleton(shippedTracker);
+            },
+            bus =>
+            {
+                bus.AddInMemoryTransport();
+                bus.AddConsumer<MultiTypeConsumer, OrderPlaced>();
+                bus.AddConsumer<MultiTypeConsumer, OrderShipped>();
+                capturedOptions = bus.Options;
+            });
+
+        try
+        {
+            // Structural assertion: two descriptors but exactly ONE shared queue name.
+            var descriptors = capturedOptions!.Consumers
+                .Where(c => c.ConsumerType == typeof(MultiTypeConsumer))
+                .ToList();
+            Assert.Equal(2, descriptors.Count);
+            Assert.Single(descriptors.Select(d => d.QueueName).Distinct());
+
+            using var scope = provider.CreateScope();
+            var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
+
+            var orderMsg = new OrderPlaced(Guid.NewGuid(), "multi@test.com", 100m);
+            var shippedMsg = new OrderShipped(Guid.NewGuid(), "TRK-001");
+
+            await publisher.Publish(orderMsg, TestContext.Current.CancellationToken);
+            await publisher.Publish(shippedMsg, TestContext.Current.CancellationToken);
+
+            await WaitUntilAsync(() =>
+                orderTracker.Messages.Count == 1 && shippedTracker.Messages.Count == 1);
+
+            Assert.Single(orderTracker.Messages);
+            Assert.Equal(orderMsg.OrderId, orderTracker.Messages.Single().OrderId);
+            Assert.Single(shippedTracker.Messages);
+            Assert.Equal(shippedMsg.OrderId, shippedTracker.Messages.Single().OrderId);
         }
         finally
         {

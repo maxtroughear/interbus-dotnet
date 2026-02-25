@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <!-- Enable Native AOT compilation and the associated Roslyn analyzer.
+         This project is the canonical example of using InterBus with full AOT support.
+         It deliberately avoids the SourceGenerator reference (no netstandard2.0 dependency)
+         and wires up a source-generated JsonSerializerContext in its place. -->
+    <PublishAot>true</PublishAot>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\InterBus\InterBus.csproj" />
+    <ProjectReference Include="..\..\src\InterBus.InMemory\InterBus.InMemory.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.*" />
+  </ItemGroup>
+
+</Project>

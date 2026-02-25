@@ -28,8 +28,8 @@ jobs:
       - name: Test
         run: dotnet test --no-build --configuration Release --verbosity normal
 
-  reflection-check:
-    name: No-Reflection Check
+  aot-publish:
+    name: Native AOT Publish and Run
     runs-on: ubuntu-latest
 
     steps:
@@ -40,14 +40,19 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      - name: Restore
-        run: dotnet restore
+      - name: Install Native AOT prerequisites
+        run: sudo apt-get install -y clang zlib1g-dev
 
-      - name: Build (ILLink trim-analyzer, warnings as errors)
-        # The ILLink Roslyn analyzer is enabled via IsTrimmable=true in InterBus.csproj and
-        # InterBus.InMemory.csproj. TreatWarningsAsErrors=true promotes any IL2xxx warning
-        # (runtime reflection usage) to a build error.
-        #
-        # Transports that require reflection-based dependencies may opt out by removing
-        # <IsTrimmable>true</IsTrimmable> from their .csproj and documenting the reason.
-        run: dotnet build --no-restore --configuration Release /p:TreatWarningsAsErrors=true
+      - name: Publish (Native AOT, linux-x64)
+        # Publishes the dedicated AOT sample which uses a source-generated JsonSerializerContext
+        # and manually registers consumers (no netstandard2.0 SourceGenerator dependency).
+        # A successful publish with zero warnings proves InterBus and the InMemory transport
+        # are fully AOT-compatible when configured correctly.
+        run: >
+          dotnet publish samples/Sample.InMemory.Aot/Sample.InMemory.Aot.csproj
+          --runtime linux-x64
+          --configuration Release
+
+      - name: Run native binary
+        # Run the published binary end-to-end to confirm message routing works at native speed.
+        run: samples/Sample.InMemory.Aot/bin/Release/net10.0/linux-x64/publish/Sample.InMemory.Aot

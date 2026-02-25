@@ -11,6 +11,8 @@ internal sealed class InterBusBuilder : IInterBusBuilder
 
     public IServiceCollection Services { get; }
 
+    public InterBusOptions Options => _options;
+
     internal InterBusBuilder(IServiceCollection services, InterBusOptions options)
     {
         Services = services;

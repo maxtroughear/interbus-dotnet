@@ -44,9 +44,9 @@ internal sealed class InMemoryMessagePump : BackgroundService
             "InterBus InMemory: starting pump for queue {QueueName}",
             queue.Descriptor.QueueName);
 
-        await foreach (var payload in queue.ReadAllAsync(stoppingToken))
+        await foreach (var envelope in queue.ReadAllAsync(stoppingToken))
         {
-            await DispatchAsync(queue.Descriptor, payload, stoppingToken);
+            await DispatchAsync(queue.Descriptor, envelope, stoppingToken);
         }
 
         _logger.LogDebug(
@@ -54,12 +54,12 @@ internal sealed class InMemoryMessagePump : BackgroundService
             queue.Descriptor.QueueName);
     }
 
-    private async Task DispatchAsync(ConsumerDescriptor descriptor, byte[] payload, CancellationToken ct)
+    private async Task DispatchAsync(ConsumerDescriptor descriptor, InMemoryEnvelope envelope, CancellationToken ct)
     {
         await using var scope = _scopeFactory.CreateAsyncScope();
         try
         {
-            await descriptor.Dispatch(scope.ServiceProvider, payload, ct);
+            await descriptor.Dispatch(scope.ServiceProvider, envelope.Payload, envelope.Headers, ct);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

@@ -15,19 +15,27 @@ internal sealed class MessagePublisher : IMessagePublisher
         _transport = transport;
     }
 
-    public Task Publish<T>(T message, CancellationToken cancellationToken = default) where T : class
+    public Task Publish<T>(T message, CancellationToken cancellationToken = default) where T : class =>
+        Publish(message, [], cancellationToken);
+
+    public Task Publish<T>(T message, MessageHeaders headers, CancellationToken cancellationToken = default) where T : class
     {
         var topicName = RoutingConventions.TopicName(typeof(T));
         var payload = JsonSerializer.SerializeToUtf8Bytes(message);
-        return _transport.PublishToTopicAsync(topicName, payload, cancellationToken);
+        return _transport.PublishToTopicAsync(topicName, payload, headers, cancellationToken);
     }
 
     public Task Send<TConsumer, T>(T message, CancellationToken cancellationToken = default)
+        where TConsumer : IConsumer<T>
+        where T : class =>
+        Send<TConsumer, T>(message, [], cancellationToken);
+
+    public Task Send<TConsumer, T>(T message, MessageHeaders headers, CancellationToken cancellationToken = default)
         where TConsumer : IConsumer<T>
         where T : class
     {
         var queueName = RoutingConventions.QueueName(typeof(TConsumer), typeof(T));
         var payload = JsonSerializer.SerializeToUtf8Bytes(message);
-        return _transport.SendToQueueAsync(queueName, payload, cancellationToken);
+        return _transport.SendToQueueAsync(queueName, payload, headers, cancellationToken);
     }
 }

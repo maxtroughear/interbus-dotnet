@@ -36,13 +36,14 @@ internal sealed class InterBusBuilder : IInterBusBuilder
             typeof(T),
             topicName,
             queueName,
-            static (sp, payload, ct) =>
+            static (sp, payload, headers, ct) =>
             {
+                var context = new ConsumeContext(headers);
                 var consumer = sp.GetRequiredService<TConsumer>();
                 var message = JsonSerializer.Deserialize<T>(payload)
                               ?? throw new InvalidOperationException(
                                   $"Failed to deserialize message payload as {typeof(T).FullName}.");
-                return consumer.Consume(message, ct);
+                return consumer.Consume(message, context, ct);
             });
     }
 }

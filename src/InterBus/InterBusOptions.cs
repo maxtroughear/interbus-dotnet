@@ -31,9 +31,11 @@ public sealed class InterBusOptions
     /// for trimmed or Native AOT applications.
     /// </summary>
     [UnconditionalSuppressMessage("ReflectionAnalysis", "IL2026",
-        Justification = "DefaultJsonTypeInfoResolver uses reflection. Override SerializerOptions with a source-generated JsonSerializerContext for AOT/trim applications.")]
+        Justification =
+            "DefaultJsonTypeInfoResolver uses reflection. Override SerializerOptions with a source-generated JsonSerializerContext for AOT/trim applications.")]
     [UnconditionalSuppressMessage("AotAnalysis", "IL3050",
-        Justification = "DefaultJsonTypeInfoResolver requires dynamic code. Override SerializerOptions with a source-generated JsonSerializerContext for AOT applications.")]
+        Justification =
+            "DefaultJsonTypeInfoResolver requires dynamic code. Override SerializerOptions with a source-generated JsonSerializerContext for AOT applications.")]
     public InterBusOptions()
     {
         SerializerOptions = new JsonSerializerOptions { TypeInfoResolver = new DefaultJsonTypeInfoResolver() };

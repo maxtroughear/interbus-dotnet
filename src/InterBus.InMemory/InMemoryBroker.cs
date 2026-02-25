@@ -32,7 +32,8 @@ public sealed class InMemoryBroker : IInterBusTransport, IDisposable
     }
 
     /// <inheritdoc/>
-    public Task PublishToTopicAsync(string topicName, byte[] payload, MessageHeaders headers, CancellationToken cancellationToken)
+    public Task PublishToTopicAsync(string topicName, byte[] payload, MessageHeaders headers,
+        CancellationToken cancellationToken)
     {
         if (_topics.TryGetValue(topicName, out var topic))
             return topic.FanOutAsync(new InMemoryEnvelope(payload, headers), cancellationToken);
@@ -41,7 +42,8 @@ public sealed class InMemoryBroker : IInterBusTransport, IDisposable
     }
 
     /// <inheritdoc/>
-    public Task SendToQueueAsync(string queueName, byte[] payload, MessageHeaders headers, CancellationToken cancellationToken)
+    public Task SendToQueueAsync(string queueName, byte[] payload, MessageHeaders headers,
+        CancellationToken cancellationToken)
     {
         if (_queues.TryGetValue(queueName, out var queue))
             return queue.WriteAsync(new InMemoryEnvelope(payload, headers), cancellationToken).AsTask();

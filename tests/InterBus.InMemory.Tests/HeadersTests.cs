@@ -32,9 +32,15 @@ public class HeadersTests
         cts.Cancel();
         foreach (var svc in provider.GetServices<IHostedService>())
         {
-            try { await svc.StopAsync(CancellationToken.None); }
-            catch (OperationCanceledException) { }
+            try
+            {
+                await svc.StopAsync(CancellationToken.None);
+            }
+            catch (OperationCanceledException)
+            {
+            }
         }
+
         await provider.DisposeAsync();
         cts.Dispose();
     }

@@ -21,7 +21,8 @@ internal sealed class MessagePublisher : IMessagePublisher
     public Task Publish<T>(T message, CancellationToken cancellationToken = default) where T : class =>
         Publish(message, [], cancellationToken);
 
-    public Task Publish<T>(T message, MessageHeaders headers, CancellationToken cancellationToken = default) where T : class
+    public Task Publish<T>(T message, MessageHeaders headers, CancellationToken cancellationToken = default)
+        where T : class
     {
         var topicName = RoutingConventions.TopicName(typeof(T));
         var typeInfo = (JsonTypeInfo<T>)_options.SerializerOptions.GetTypeInfo(typeof(T));

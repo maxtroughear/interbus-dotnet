@@ -19,7 +19,9 @@ internal sealed class InterBusBuilder : IInterBusBuilder
         _options = options;
     }
 
-    public IInterBusBuilder AddConsumer<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TConsumer, T>()
+    public IInterBusBuilder AddConsumer<
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
+        TConsumer, T>()
         where TConsumer : class, IConsumer<T>
         where T : class
     {
@@ -28,7 +30,10 @@ internal sealed class InterBusBuilder : IInterBusBuilder
         return this;
     }
 
-    private static ConsumerDescriptor CreateDescriptor<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TConsumer, T>(JsonSerializerOptions serializerOptions)
+    private static ConsumerDescriptor CreateDescriptor<
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
+        TConsumer, T>(
+        JsonSerializerOptions serializerOptions)
         where TConsumer : class, IConsumer<T>
         where T : class
     {
@@ -37,7 +42,7 @@ internal sealed class InterBusBuilder : IInterBusBuilder
 
         // Resolve JsonTypeInfo<T> at registration time using the configured serializer options.
         // Using the typed overload avoids runtime reflection during message dispatch.
-        JsonTypeInfo<T> typeInfo = (JsonTypeInfo<T>)serializerOptions.GetTypeInfo(typeof(T));
+        var typeInfo = (JsonTypeInfo<T>)serializerOptions.GetTypeInfo(typeof(T));
 
         return new ConsumerDescriptor(
             typeof(TConsumer),

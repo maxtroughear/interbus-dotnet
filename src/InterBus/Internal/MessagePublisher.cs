@@ -28,7 +28,7 @@ internal sealed class MessagePublisher : IMessagePublisher
             ? customName
             : RoutingConventions.TopicName(typeof(T));
         var typeInfo = (JsonTypeInfo<T>)_options.SerializerOptions.GetTypeInfo(typeof(T));
-        var payload = JsonSerializer.SerializeToUtf8Bytes(message, typeInfo);
+        var payload = JsonSerializer.Serialize(message, typeInfo);
         return _transport.PublishToTopicAsync(topicName, payload, headers, cancellationToken);
     }
 
@@ -45,7 +45,7 @@ internal sealed class MessagePublisher : IMessagePublisher
             c => c.ConsumerType == typeof(TConsumer) && c.MessageType == typeof(T));
         var queueName = descriptor?.QueueName ?? RoutingConventions.QueueName(typeof(TConsumer), typeof(T));
         var typeInfo = (JsonTypeInfo<T>)_options.SerializerOptions.GetTypeInfo(typeof(T));
-        var payload = JsonSerializer.SerializeToUtf8Bytes(message, typeInfo);
+        var payload = JsonSerializer.Serialize(message, typeInfo);
         return _transport.SendToQueueAsync(queueName, payload, headers, cancellationToken);
     }
 
@@ -57,7 +57,7 @@ internal sealed class MessagePublisher : IMessagePublisher
         where T : class
     {
         var typeInfo = (JsonTypeInfo<T>)_options.SerializerOptions.GetTypeInfo(typeof(T));
-        var payload = JsonSerializer.SerializeToUtf8Bytes(message, typeInfo);
+        var payload = JsonSerializer.Serialize(message, typeInfo);
         return _transport.SendToQueueAsync(queueName, payload, headers, cancellationToken);
     }
 }

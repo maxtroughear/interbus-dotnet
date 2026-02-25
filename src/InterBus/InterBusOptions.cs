@@ -11,6 +11,7 @@ namespace InterBus;
 public sealed class InterBusOptions
 {
     private readonly List<ConsumerDescriptor> _consumers = [];
+    private readonly Dictionary<Type, string> _topicNames = [];
 
     /// <summary>All registered consumer descriptors.</summary>
     public IReadOnlyList<ConsumerDescriptor> Consumers => _consumers;
@@ -42,4 +43,9 @@ public sealed class InterBusOptions
     }
 
     internal void AddConsumer(ConsumerDescriptor descriptor) => _consumers.Add(descriptor);
+
+    internal void SetTopicName(Type messageType, string topicName) => _topicNames[messageType] = topicName;
+
+    internal bool TryGetTopicName(Type messageType, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out string? topicName) =>
+        _topicNames.TryGetValue(messageType, out topicName);
 }

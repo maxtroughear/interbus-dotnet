@@ -24,7 +24,9 @@ internal sealed class MessagePublisher : IMessagePublisher
     public Task Publish<T>(T message, MessageHeaders headers, CancellationToken cancellationToken = default)
         where T : class
     {
-        var topicName = RoutingConventions.TopicName(typeof(T));
+        var topicName = _options.TryGetTopicName(typeof(T), out var customName)
+            ? customName
+            : RoutingConventions.TopicName(typeof(T));
         var typeInfo = (JsonTypeInfo<T>)_options.SerializerOptions.GetTypeInfo(typeof(T));
         var payload = JsonSerializer.Serialize(message, typeInfo);
         return _transport.PublishToTopicAsync(topicName, payload, headers, cancellationToken);
@@ -39,7 +41,21 @@ internal sealed class MessagePublisher : IMessagePublisher
         where TConsumer : IConsumer<T>
         where T : class
     {
-        var queueName = RoutingConventions.QueueName(typeof(TConsumer), typeof(T));
+        var descriptor = _options.Consumers.FirstOrDefault(
+            c => c.ConsumerType == typeof(TConsumer) && c.MessageType == typeof(T));
+        var queueName = descriptor?.QueueName ?? RoutingConventions.QueueName(typeof(TConsumer), typeof(T));
+        var typeInfo = (JsonTypeInfo<T>)_options.SerializerOptions.GetTypeInfo(typeof(T));
+        var payload = JsonSerializer.Serialize(message, typeInfo);
+        return _transport.SendToQueueAsync(queueName, payload, headers, cancellationToken);
+    }
+
+    public Task Send<T>(string queueName, T message, CancellationToken cancellationToken = default)
+        where T : class =>
+        Send(queueName, message, [], cancellationToken);
+
+    public Task Send<T>(string queueName, T message, MessageHeaders headers, CancellationToken cancellationToken = default)
+        where T : class
+    {
         var typeInfo = (JsonTypeInfo<T>)_options.SerializerOptions.GetTypeInfo(typeof(T));
         var payload = JsonSerializer.Serialize(message, typeInfo);
         return _transport.SendToQueueAsync(queueName, payload, headers, cancellationToken);

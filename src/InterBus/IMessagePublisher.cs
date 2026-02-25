@@ -33,4 +33,17 @@ public interface IMessagePublisher
     Task Send<TConsumer, T>(T message, MessageHeaders headers, CancellationToken cancellationToken = default)
         where TConsumer : IConsumer<T>
         where T : class;
+
+    /// <summary>
+    /// Send a message directly to the named <paramref name="queueName"/>, bypassing topic fan-out.
+    /// Use this overload when the consumer type is not available at the call site (e.g. cross-project sends).
+    /// </summary>
+    Task Send<T>(string queueName, T message, CancellationToken cancellationToken = default) where T : class;
+
+    /// <summary>
+    /// Send a message directly to the named <paramref name="queueName"/>, attaching the supplied
+    /// <paramref name="headers"/>. Use this overload when the consumer type is not available at the call site.
+    /// </summary>
+    Task Send<T>(string queueName, T message, MessageHeaders headers, CancellationToken cancellationToken = default)
+        where T : class;
 }

@@ -19,13 +19,22 @@ internal sealed class InterBusBuilder : IInterBusBuilder
         _options = options;
     }
 
+    public IInterBusBuilder ConfigureTopic<T>(string topicName) where T : class
+    {
+        _options.SetTopicName(typeof(T), topicName);
+        return this;
+    }
+
     public IInterBusBuilder AddConsumer<
         [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
         TConsumer, T>()
         where TConsumer : class, IConsumer<T>
         where T : class
     {
-        _options.AddConsumer(CreateDescriptor<TConsumer, T>(_options.SerializerOptions));
+        var topicName = _options.TryGetTopicName(typeof(T), out var customName)
+            ? customName
+            : RoutingConventions.TopicName(typeof(T));
+        _options.AddConsumer(CreateDescriptor<TConsumer, T>(_options.SerializerOptions, topicName));
         Services.AddScoped<TConsumer>();
         return this;
     }
@@ -33,11 +42,11 @@ internal sealed class InterBusBuilder : IInterBusBuilder
     private static ConsumerDescriptor CreateDescriptor<
         [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
         TConsumer, T>(
-        JsonSerializerOptions serializerOptions)
+        JsonSerializerOptions serializerOptions,
+        string topicName)
         where TConsumer : class, IConsumer<T>
         where T : class
     {
-        var topicName = RoutingConventions.TopicName(typeof(T));
         var queueName = RoutingConventions.QueueName(typeof(TConsumer), typeof(T));
 
         var typeInfo = (JsonTypeInfo<T>)serializerOptions.GetTypeInfo(typeof(T));

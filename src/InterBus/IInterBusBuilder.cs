@@ -19,6 +19,14 @@ public interface IInterBusBuilder
     InterBusOptions Options { get; }
 
     /// <summary>
+    /// Configure an explicit topic name for message type <typeparamref name="T"/>. The name is used
+    /// by both consumer registration and <see cref="IMessagePublisher.Publish{T}"/>, overriding the
+    /// convention-based name derived from the type's fully-qualified name.
+    /// Call this before <see cref="AddConsumer{TConsumer,T}"/> for the same message type.
+    /// </summary>
+    IInterBusBuilder ConfigureTopic<T>(string topicName) where T : class;
+
+    /// <summary>
     /// Register a consumer for a specific message type with both type parameters supplied at compile time.
     /// No runtime reflection is performed - this overload is intended to be called by source-generated
     /// code produced by the <c>InterBus.SourceGenerator</c> package.

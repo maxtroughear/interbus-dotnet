@@ -1,20 +1,17 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-    <LangVersion>latest</LangVersion>
-    <!-- Mark assembly as trim-compatible and enable the ILLink Roslyn analyzer.
-         Any runtime reflection usage will produce build warnings (treated as errors in CI).
-         Transports that require reflection-based dependencies may remove this property. -->
-    <IsTrimmable>true</IsTrimmable>
-  </PropertyGroup>
-  <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.*" />
-    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.*" />
-    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.*" />
-  </ItemGroup>
-  <ItemGroup>
-    <ProjectReference Include="..\InterBus\InterBus.csproj" />
-  </ItemGroup>
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <LangVersion>latest</LangVersion>
+        <IsTrimmable>true</IsTrimmable>
+    </PropertyGroup>
+    <ItemGroup>
+        <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.*"/>
+        <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.*"/>
+        <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.*"/>
+    </ItemGroup>
+    <ItemGroup>
+        <ProjectReference Include="..\InterBus\InterBus.csproj"/>
+    </ItemGroup>
 </Project>

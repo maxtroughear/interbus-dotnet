@@ -26,16 +26,12 @@ namespace InterBus.SourceGenerator;
 [Generator]
 public sealed class ConsumerRegistrationGenerator : IIncrementalGenerator
 {
-    /// <summary>Fully-qualified metadata name of <c>InterBus.IConsumer&lt;T&gt;</c>.</summary>
+    /// <summary>Fully qualified metadata name of <c>InterBus.IConsumer&lt;T&gt;</c></summary>
     private const string ConsumerInterfaceMetadataName = "InterBus.IConsumer`1";
 
     /// <inheritdoc/>
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
-        // --- Pipeline step 1 ---
-        // Collect the semantic symbol for every class declaration in the compilation.
-        // Using SyntaxProvider keeps incremental evaluation efficient: only nodes whose
-        // SyntaxTree has changed are re-evaluated.
         var classSymbols = context.SyntaxProvider
             .CreateSyntaxProvider(
                 predicate: static (node, _) => node is ClassDeclarationSyntax,
@@ -43,14 +39,9 @@ public sealed class ConsumerRegistrationGenerator : IIncrementalGenerator
                     ctx.SemanticModel.GetDeclaredSymbol(ctx.Node, ct) as INamedTypeSymbol)
             .Where(static symbol => symbol is not null)
             .Select(static (symbol, _) => symbol!);
-
-        // --- Pipeline step 2 ---
-        // Combine the collected symbols with the Compilation so that Execute can look up
-        // the IConsumer<T> interface symbol by metadata name.
+        
         var combined = classSymbols.Collect().Combine(context.CompilationProvider);
-
-        // --- Pipeline step 3 ---
-        // Register the source-production callback.
+        
         context.RegisterSourceOutput(combined, static (ctx, data) =>
             Execute(ctx, data.Left, data.Right));
     }
@@ -60,30 +51,22 @@ public sealed class ConsumerRegistrationGenerator : IIncrementalGenerator
         ImmutableArray<INamedTypeSymbol> classSymbols,
         Compilation compilation)
     {
-        // Resolve InterBus.IConsumer<T> from the compilation's symbol table.
-        // If it cannot be found, the InterBus package is not referenced - nothing to generate.
         var consumerInterfaceSymbol = compilation.GetTypeByMetadataName(ConsumerInterfaceMetadataName);
         if (consumerInterfaceSymbol is null) return;
-
-        // Walk every collected class and check whether it implements any closed form of IConsumer<T>.
+        
         var registrations = new List<(INamedTypeSymbol Consumer, INamedTypeSymbol Message)>();
 
         foreach (var classSymbol in classSymbols)
         {
-            // Skip abstract classes and non-class types (should not occur via the syntax predicate,
-            // but guard defensively).
             if (classSymbol.IsAbstract || classSymbol.TypeKind != TypeKind.Class) continue;
 
             foreach (var iface in classSymbol.AllInterfaces)
             {
-                // Only consider single-argument generic interfaces ...
                 if (iface.TypeArguments.Length != 1) continue;
 
-                // ... whose open generic form is exactly IConsumer<>.
                 if (!SymbolEqualityComparer.Default.Equals(
                         iface.OriginalDefinition, consumerInterfaceSymbol)) continue;
 
-                // The sole type argument is the message type T.
                 if (iface.TypeArguments[0] is not INamedTypeSymbol messageType) continue;
 
                 registrations.Add((classSymbol, messageType));
@@ -117,7 +100,7 @@ public sealed class ConsumerRegistrationGenerator : IIncrementalGenerator
 
         foreach (var (consumer, message) in registrations)
         {
-            // Use the fully-qualified format so that no using directives are needed in the
+            // Use the fully qualified format so that no using directives are needed in the
             // generated file, and there is no ambiguity regardless of the user's namespaces.
             var consumerFqn = consumer.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
             var messageFqn = message.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);

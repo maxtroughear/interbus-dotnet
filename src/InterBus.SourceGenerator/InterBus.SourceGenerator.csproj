@@ -1,19 +1,14 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <!-- Source generators must target netstandard2.0 to be loaded by the compiler. -->
-    <TargetFramework>netstandard2.0</TargetFramework>
-    <LangVersion>latest</LangVersion>
-    <Nullable>enable</Nullable>
-    <!-- Disable implicit usings: not available in netstandard2.0. -->
-    <ImplicitUsings>disable</ImplicitUsings>
-    <!-- Enforces analyzer/generator project rules (e.g. no forbidden APIs). -->
-    <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
-    <!-- Mark this as a Roslyn component so the SDK wires up the right build properties. -->
-    <IsRoslynComponent>true</IsRoslynComponent>
-  </PropertyGroup>
-  <ItemGroup>
-    <!-- Roslyn APIs used to implement the incremental generator. -->
-    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.0.0" PrivateAssets="all" />
-    <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="3.11.*" PrivateAssets="all" />
-  </ItemGroup>
+    <PropertyGroup>
+        <TargetFramework>netstandard2.0</TargetFramework>
+        <LangVersion>latest</LangVersion>
+        <Nullable>enable</Nullable>
+        <ImplicitUsings>disable</ImplicitUsings>
+        <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
+        <IsRoslynComponent>true</IsRoslynComponent>
+    </PropertyGroup>
+    <ItemGroup>
+        <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.0.0" PrivateAssets="all"/>
+        <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="3.11.*" PrivateAssets="all"/>
+    </ItemGroup>
 </Project>

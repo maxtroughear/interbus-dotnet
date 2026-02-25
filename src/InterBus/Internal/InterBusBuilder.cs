@@ -26,6 +26,35 @@ internal sealed class InterBusBuilder : IInterBusBuilder
         return this;
     }
 
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Called by source-generated <c>AddGeneratedConsumers()</c>. The <paramref name="dispatch"/>
+    /// delegate is generated at compile time and routes using the <see cref="InterBusHeaders.MessageType"/>
+    /// header — no runtime reflection.
+    /// </remarks>
+    public IInterBusBuilder AddConsumer<
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
+        TConsumer>(
+        Type[] messageTypes,
+        Func<IServiceProvider, string, MessageHeaders, CancellationToken, Task> dispatch)
+        where TConsumer : class, IConsumer
+    {
+        var queueName = RoutingConventions.QueueName(typeof(TConsumer));
+        var topicNames = messageTypes
+            .Select(t => _options.TryGetTopicName(t, out var custom) ? custom : RoutingConventions.TopicName(t))
+            .ToArray();
+
+        _options.SetConsumerDispatch(typeof(TConsumer), queueName, topicNames, dispatch);
+        Services.TryAddScoped<TConsumer>();
+        return this;
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Suitable for manual registration in tests or single-type consumers without source generation.
+    /// Calling this multiple times for the same <typeparamref name="TConsumer"/> with different
+    /// message types is supported; the handlers are merged into a single queue.
+    /// </remarks>
     public IInterBusBuilder AddConsumer<
         [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
         TConsumer, T>()
@@ -35,28 +64,14 @@ internal sealed class InterBusBuilder : IInterBusBuilder
         var topicName = _options.TryGetTopicName(typeof(T), out var customName)
             ? customName
             : RoutingConventions.TopicName(typeof(T));
-        _options.AddConsumer(CreateDescriptor<TConsumer, T>(_options.SerializerOptions, topicName));
-        Services.TryAddScoped<TConsumer>();
-        return this;
-    }
-
-    private static ConsumerDescriptor CreateDescriptor<
-        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
-        TConsumer, T>(
-        JsonSerializerOptions serializerOptions,
-        string topicName)
-        where TConsumer : class, IConsumer<T>
-        where T : class
-    {
         var queueName = RoutingConventions.QueueName(typeof(TConsumer));
+        var typeInfo = (JsonTypeInfo<T>)_options.SerializerOptions.GetTypeInfo(typeof(T));
 
-        var typeInfo = (JsonTypeInfo<T>)serializerOptions.GetTypeInfo(typeof(T));
-
-        return new ConsumerDescriptor(
+        _options.AccumulateConsumerHandler(
             typeof(TConsumer),
-            typeof(T),
-            topicName,
             queueName,
+            topicName,
+            typeof(T).FullName ?? typeof(T).Name,
             (sp, payload, headers, ct) =>
             {
                 var context = new ConsumeContext(headers);
@@ -66,5 +81,15 @@ internal sealed class InterBusBuilder : IInterBusBuilder
                                   $"Failed to deserialize message payload as {typeof(T).FullName}.");
                 return consumer.Consume(message, context, ct);
             });
+
+        Services.TryAddScoped<TConsumer>();
+        return this;
     }
+
+    /// <summary>
+    /// Finalizes all accumulated consumer registrations into <see cref="InterBusOptions.Consumers"/>.
+    /// Called by <see cref="Extensions.ServiceCollectionExtensions.AddInterBus"/> after the configure
+    /// delegate returns.
+    /// </summary>
+    internal void FinalizeConsumers() => _options.FinalizeConsumers();
 }

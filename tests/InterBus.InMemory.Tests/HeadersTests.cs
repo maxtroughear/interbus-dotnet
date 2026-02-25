@@ -165,7 +165,7 @@ public class HeadersTests
     }
 
     [Fact]
-    public async Task Publish_WithoutHeaders_ConsumerReceivesEmptyHeaders()
+    public async Task Publish_WithoutUserHeaders_ConsumerReceivesOnlySystemHeaders()
     {
         var tracker = new OrderPlacedTracker();
         var headerCapture = new HeaderCapture();
@@ -193,7 +193,12 @@ public class HeadersTests
             await WaitUntilAsync(() => tracker.Messages.Count == 1);
 
             Assert.Single(headerCapture.Captured);
-            Assert.Empty(headerCapture.Captured.Single());
+            var received = headerCapture.Captured.Single();
+            // The publisher always stamps the interbus-message-type header; no user headers present.
+            Assert.Single(received);
+            Assert.Equal(
+                typeof(OrderPlaced).FullName,
+                received[InterBusHeaders.MessageType]);
         }
         finally
         {

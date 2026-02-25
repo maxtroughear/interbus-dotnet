@@ -101,10 +101,10 @@ public class TopicConfigurationTests
             capturedOptions = bus.Options;
         });
 
-        // Assert: the descriptor's TopicName reflects the configured value.
+        // Assert: the descriptor's TopicNames reflects the configured value.
         Assert.NotNull(capturedOptions);
         var descriptor = capturedOptions.Consumers.Single(c => c.ConsumerType == typeof(OrderPlacedConsumer));
-        Assert.Equal("my-orders", descriptor.TopicName);
+        Assert.Equal("my-orders", descriptor.TopicNames.Single());
     }
 
     [Fact]
@@ -124,11 +124,11 @@ public class TopicConfigurationTests
 
         Assert.NotNull(capturedOptions);
         var descriptors = capturedOptions.Consumers
-            .Where(c => c.MessageType == typeof(OrderPlaced))
+            .Where(c => c.ConsumerType == typeof(OrderPlacedConsumer) || c.ConsumerType == typeof(AuditConsumer))
             .ToList();
 
         Assert.Equal(2, descriptors.Count);
-        Assert.All(descriptors, d => Assert.Equal("shared-orders", d.TopicName));
+        Assert.All(descriptors, d => Assert.Equal("shared-orders", d.TopicNames.Single()));
     }
 
     [Fact]

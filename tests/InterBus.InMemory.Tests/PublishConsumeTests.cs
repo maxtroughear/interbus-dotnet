@@ -245,12 +245,10 @@ public class PublishConsumeTests
 
         try
         {
-            // Structural assertion: two descriptors but exactly ONE shared queue name.
-            var descriptors = capturedOptions!.Consumers
-                .Where(c => c.ConsumerType == typeof(MultiTypeConsumer))
-                .ToList();
-            Assert.Equal(2, descriptors.Count);
-            Assert.Single(descriptors.Select(d => d.QueueName).Distinct());
+            // Structural assertion: ONE descriptor for MultiTypeConsumer with TWO topic names.
+            var descriptor = capturedOptions!.Consumers
+                .Single(c => c.ConsumerType == typeof(MultiTypeConsumer));
+            Assert.Equal(2, descriptor.TopicNames.Count);
 
             using var scope = provider.CreateScope();
             var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();

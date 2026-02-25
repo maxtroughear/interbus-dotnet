@@ -31,7 +31,7 @@ public sealed class ConsumerRegistrationGeneratorTests
 
                                   public sealed class OrderPlacedConsumer : IConsumer<OrderPlaced>
                                   {
-                                      public Task Consume(OrderPlaced message, CancellationToken cancellationToken = default)
+                                      public Task Consume(OrderPlaced message, IConsumeContext context, CancellationToken cancellationToken = default)
                                           => Task.CompletedTask;
                                   }
                               }
@@ -47,8 +47,12 @@ public sealed class ConsumerRegistrationGeneratorTests
         Assert.Contains("AddGeneratedConsumers", generated);
         Assert.Contains("global::MyApp.OrderPlacedConsumer", generated);
         Assert.Contains("global::MyApp.OrderPlaced", generated);
-        Assert.Contains("builder.AddConsumer<global::MyApp.OrderPlacedConsumer, global::MyApp.OrderPlaced>()",
-            generated);
+        // New API: AddConsumer<TConsumer>(Type[], dispatch) - no message type in type params.
+        Assert.Contains("builder.AddConsumer<global::MyApp.OrderPlacedConsumer>(", generated);
+        Assert.Contains("typeof(global::MyApp.OrderPlaced)", generated);
+        // Generated dispatch checks the message type header.
+        Assert.Contains("InterBusHeaders.MessageType", generated);
+        Assert.Contains("\"MyApp.OrderPlaced\"", generated);
     }
 
     [Fact]
@@ -65,13 +69,13 @@ public sealed class ConsumerRegistrationGeneratorTests
 
                                   public sealed class OrderPlacedConsumer : IConsumer<OrderPlaced>
                                   {
-                                      public Task Consume(OrderPlaced message, CancellationToken ct = default)
+                                      public Task Consume(OrderPlaced message, IConsumeContext context, CancellationToken ct = default)
                                           => Task.CompletedTask;
                                   }
 
                                   public sealed class AuditConsumer : IConsumer<OrderPlaced>
                                   {
-                                      public Task Consume(OrderPlaced message, CancellationToken ct = default)
+                                      public Task Consume(OrderPlaced message, IConsumeContext context, CancellationToken ct = default)
                                           => Task.CompletedTask;
                                   }
                               }
@@ -85,10 +89,13 @@ public sealed class ConsumerRegistrationGeneratorTests
         var generated = result.GeneratedTrees[0].ToString();
         Assert.Contains("global::MyApp.OrderPlacedConsumer", generated);
         Assert.Contains("global::MyApp.AuditConsumer", generated);
+        // Two separate AddConsumer calls, one per consumer class.
+        Assert.Contains("builder.AddConsumer<global::MyApp.OrderPlacedConsumer>(", generated);
+        Assert.Contains("builder.AddConsumer<global::MyApp.AuditConsumer>(", generated);
     }
 
     [Fact]
-    public void Generator_ConsumerImplementsMultipleMessageTypes_GeneratesOneLinePerPair()
+    public void Generator_ConsumerImplementsMultipleMessageTypes_GeneratesOneAddConsumerCall()
     {
         const string source = """
                               using System.Threading;
@@ -103,9 +110,9 @@ public sealed class ConsumerRegistrationGeneratorTests
                                   /// <summary>A single class handling two message types.</summary>
                                   public sealed class MultiConsumer : IConsumer<OrderPlaced>, IConsumer<OrderShipped>
                                   {
-                                      public Task Consume(OrderPlaced message, CancellationToken ct = default)
+                                      public Task Consume(OrderPlaced message, IConsumeContext context, CancellationToken ct = default)
                                           => Task.CompletedTask;
-                                      public Task Consume(OrderShipped message, CancellationToken ct = default)
+                                      public Task Consume(OrderShipped message, IConsumeContext context, CancellationToken ct = default)
                                           => Task.CompletedTask;
                                   }
                               }
@@ -118,13 +125,18 @@ public sealed class ConsumerRegistrationGeneratorTests
 
         var generated = result.GeneratedTrees[0].ToString();
 
-        // One line for each interface.
-        Assert.Contains(
-            "builder.AddConsumer<global::MyApp.MultiConsumer, global::MyApp.OrderPlaced>()",
-            generated);
-        Assert.Contains(
-            "builder.AddConsumer<global::MyApp.MultiConsumer, global::MyApp.OrderShipped>()",
-            generated);
+        // One AddConsumer call for the consumer class (not one per message type).
+        Assert.Contains("builder.AddConsumer<global::MyApp.MultiConsumer>(", generated);
+        // Both message types appear in the Type[] array.
+        Assert.Contains("typeof(global::MyApp.OrderPlaced)", generated);
+        Assert.Contains("typeof(global::MyApp.OrderShipped)", generated);
+        // Dispatch switches on message type header for each handled type.
+        Assert.Contains("\"MyApp.OrderPlaced\"", generated);
+        Assert.Contains("\"MyApp.OrderShipped\"", generated);
+        // Only ONE AddConsumer call exists (not two).
+        var addConsumerCount = System.Text.RegularExpressions.Regex
+            .Matches(generated, @"builder\.AddConsumer<").Count;
+        Assert.Equal(1, addConsumerCount);
     }
 
     // -------------------------------------------------------------------------
@@ -146,12 +158,12 @@ public sealed class ConsumerRegistrationGeneratorTests
                                   // Abstract - must be skipped even though it implements IConsumer<T>.
                                   public abstract class BaseConsumer : IConsumer<OrderPlaced>
                                   {
-                                      public abstract Task Consume(OrderPlaced message, CancellationToken ct = default);
+                                      public abstract Task Consume(OrderPlaced message, IConsumeContext context, CancellationToken ct = default);
                                   }
 
                                   public sealed class ConcreteConsumer : BaseConsumer
                                   {
-                                      public override Task Consume(OrderPlaced message, CancellationToken ct = default)
+                                      public override Task Consume(OrderPlaced message, IConsumeContext context, CancellationToken ct = default)
                                           => Task.CompletedTask;
                                   }
                               }
@@ -228,7 +240,7 @@ public sealed class ConsumerRegistrationGeneratorTests
 
                                   public sealed class MyConsumer : IConsumer<MyMessage>
                                   {
-                                      public Task Consume(MyMessage message, CancellationToken ct = default)
+                                      public Task Consume(MyMessage message, IConsumeContext context, CancellationToken ct = default)
                                           => Task.CompletedTask;
                                   }
                               }
@@ -259,7 +271,7 @@ public sealed class ConsumerRegistrationGeneratorTests
 
                                   public sealed class PingConsumer : IConsumer<Ping>
                                   {
-                                      public Task Consume(Ping message, CancellationToken ct = default)
+                                      public Task Consume(Ping message, IConsumeContext context, CancellationToken ct = default)
                                           => Task.CompletedTask;
                                   }
                               }
@@ -270,6 +282,41 @@ public sealed class ConsumerRegistrationGeneratorTests
 
         Assert.Contains("namespace InterBus.Generated", generated);
         Assert.Contains("internal static class InterBusConsumerRegistrations", generated);
+    }
+
+    [Fact]
+    public void Generator_GeneratedDispatch_ContainsMessageTypeHeaderCheck()
+    {
+        const string source = """
+                              using System.Threading;
+                              using System.Threading.Tasks;
+                              using InterBus;
+
+                              namespace MyApp
+                              {
+                                  public record OrderPlaced(System.Guid OrderId);
+                                  public record OrderShipped(System.Guid OrderId);
+
+                                  public sealed class MultiConsumer : IConsumer<OrderPlaced>, IConsumer<OrderShipped>
+                                  {
+                                      public Task Consume(OrderPlaced m, IConsumeContext ctx, CancellationToken ct = default) => Task.CompletedTask;
+                                      public Task Consume(OrderShipped m, IConsumeContext ctx, CancellationToken ct = default) => Task.CompletedTask;
+                                  }
+                              }
+                              """;
+
+        var result = RunGenerator(source);
+        var generated = result.GeneratedTrees[0].ToString();
+
+        // Dispatch reads the message type header, not the topic name.
+        Assert.Contains("InterBusHeaders.MessageType", generated);
+        // Dispatch branches on the fully-qualified message type name (matching typeof(T).FullName).
+        Assert.Contains("\"MyApp.OrderPlaced\"", generated);
+        Assert.Contains("\"MyApp.OrderShipped\"", generated);
+        // Uses ConsumeContextFactory to avoid internal class access.
+        Assert.Contains("ConsumeContextFactory.Create(headers)", generated);
+        // Falls through to error log for unknown types.
+        Assert.Contains("does not handle message type", generated);
     }
 
     // -------------------------------------------------------------------------

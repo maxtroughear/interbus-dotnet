@@ -27,9 +27,26 @@ public interface IInterBusBuilder
     IInterBusBuilder ConfigureTopic<T>(string topicName) where T : class;
 
     /// <summary>
-    /// Register a consumer for a specific message type with both type parameters supplied at compile time.
-    /// No runtime reflection is performed - this overload is intended to be called by source-generated
-    /// code produced by the <c>InterBus.SourceGenerator</c> package.
+    /// Register a consumer with a source-generated dispatch delegate that handles all of the
+    /// consumer's message types without runtime reflection. This is the primary registration path
+    /// and is called automatically by <c>AddGeneratedConsumers()</c>.
+    /// <para>
+    /// The <paramref name="messageTypes"/> array is used to resolve topic names (respecting any
+    /// <see cref="ConfigureTopic{T}"/> overrides), and to subscribe the consumer's queue to each topic.
+    /// The <paramref name="dispatch"/> delegate reads the <see cref="InterBusHeaders.MessageType"/>
+    /// header and routes to the appropriate <c>Consume</c> overload.
+    /// </para>
+    /// </summary>
+    IInterBusBuilder AddConsumer<
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TConsumer>(
+        Type[] messageTypes,
+        Func<IServiceProvider, string, MessageHeaders, CancellationToken, Task> dispatch)
+        where TConsumer : class, IConsumer;
+
+    /// <summary>
+    /// Register a consumer for a single message type. Suitable for manual registration in tests
+    /// or when source generation is not used. For consumers that handle multiple message types,
+    /// call this method once per type; the framework merges them into a single queue automatically.
     /// </summary>
     IInterBusBuilder AddConsumer<
         [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TConsumer, T>()

@@ -43,7 +43,8 @@ public record FarewellMessage(string Text);
 // ReSharper disable ClassNeverInstantiated.Global
 public class GreetingConsumer(IMessagePublisher publisher) : IConsumer<GreetingMessage>
 {
-    public async Task Consume(GreetingMessage message, IConsumeContext context, CancellationToken cancellationToken = default)
+    public async Task Consume(GreetingMessage message, IConsumeContext context,
+        CancellationToken cancellationToken = default)
     {
         Console.WriteLine($"[GreetingConsumer] Received message: {message.Text}");
 

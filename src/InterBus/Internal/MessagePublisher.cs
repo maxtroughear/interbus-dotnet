@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization.Metadata;
 
 namespace InterBus.Internal;
 
@@ -9,19 +10,23 @@ namespace InterBus.Internal;
 internal sealed class MessagePublisher : IMessagePublisher
 {
     private readonly IInterBusTransport _transport;
+    private readonly InterBusOptions _options;
 
-    public MessagePublisher(IInterBusTransport transport)
+    public MessagePublisher(IInterBusTransport transport, InterBusOptions options)
     {
         _transport = transport;
+        _options = options;
     }
 
     public Task Publish<T>(T message, CancellationToken cancellationToken = default) where T : class =>
         Publish(message, [], cancellationToken);
 
-    public Task Publish<T>(T message, MessageHeaders headers, CancellationToken cancellationToken = default) where T : class
+    public Task Publish<T>(T message, MessageHeaders headers, CancellationToken cancellationToken = default)
+        where T : class
     {
         var topicName = RoutingConventions.TopicName(typeof(T));
-        var payload = JsonSerializer.SerializeToUtf8Bytes(message);
+        var typeInfo = (JsonTypeInfo<T>)_options.SerializerOptions.GetTypeInfo(typeof(T));
+        var payload = JsonSerializer.SerializeToUtf8Bytes(message, typeInfo);
         return _transport.PublishToTopicAsync(topicName, payload, headers, cancellationToken);
     }
 
@@ -35,7 +40,8 @@ internal sealed class MessagePublisher : IMessagePublisher
         where T : class
     {
         var queueName = RoutingConventions.QueueName(typeof(TConsumer), typeof(T));
-        var payload = JsonSerializer.SerializeToUtf8Bytes(message);
+        var typeInfo = (JsonTypeInfo<T>)_options.SerializerOptions.GetTypeInfo(typeof(T));
+        var payload = JsonSerializer.SerializeToUtf8Bytes(message, typeInfo);
         return _transport.SendToQueueAsync(queueName, payload, headers, cancellationToken);
     }
 }

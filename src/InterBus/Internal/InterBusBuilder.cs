@@ -40,8 +40,6 @@ internal sealed class InterBusBuilder : IInterBusBuilder
         var topicName = RoutingConventions.TopicName(typeof(T));
         var queueName = RoutingConventions.QueueName(typeof(TConsumer), typeof(T));
 
-        // Resolve JsonTypeInfo<T> at registration time using the configured serializer options.
-        // Using the typed overload avoids runtime reflection during message dispatch.
         var typeInfo = (JsonTypeInfo<T>)serializerOptions.GetTypeInfo(typeof(T));
 
         return new ConsumerDescriptor(

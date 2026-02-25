@@ -48,4 +48,16 @@ internal sealed class MessagePublisher : IMessagePublisher
         var payload = JsonSerializer.SerializeToUtf8Bytes(message, typeInfo);
         return _transport.SendToQueueAsync(queueName, payload, headers, cancellationToken);
     }
+
+    public Task Send<T>(string queueName, T message, CancellationToken cancellationToken = default)
+        where T : class =>
+        Send(queueName, message, [], cancellationToken);
+
+    public Task Send<T>(string queueName, T message, MessageHeaders headers, CancellationToken cancellationToken = default)
+        where T : class
+    {
+        var typeInfo = (JsonTypeInfo<T>)_options.SerializerOptions.GetTypeInfo(typeof(T));
+        var payload = JsonSerializer.SerializeToUtf8Bytes(message, typeInfo);
+        return _transport.SendToQueueAsync(queueName, payload, headers, cancellationToken);
+    }
 }

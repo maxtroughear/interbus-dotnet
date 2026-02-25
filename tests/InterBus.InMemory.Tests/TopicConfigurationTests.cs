@@ -209,4 +209,99 @@ public class TopicConfigurationTests
             await StopAsync(provider, cts);
         }
     }
+
+    [Fact]
+    public async Task Send_ByQueueName_OnlyTargetConsumerReceives()
+    {
+        var orderTracker = new OrderPlacedTracker();
+        var auditTracker = new AuditTracker();
+
+        InterBusOptions? capturedOptions = null;
+
+        var (provider, cts) = await StartAsync(
+            services =>
+            {
+                services.AddSingleton(orderTracker);
+                services.AddSingleton(auditTracker);
+            },
+            bus =>
+            {
+                bus.AddInMemoryTransport();
+                bus.AddConsumer<OrderPlacedConsumer, OrderPlaced>();
+                bus.AddConsumer<AuditConsumer, OrderPlaced>();
+                capturedOptions = bus.Options;
+            });
+
+        try
+        {
+            // Obtain the queue name from the descriptor (simulates a cross-project sender that resolves
+            // the name once at startup and passes it as a string).
+            var queueName = capturedOptions!.Consumers
+                .Single(c => c.ConsumerType == typeof(OrderPlacedConsumer))
+                .QueueName;
+
+            using var scope = provider.CreateScope();
+            var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
+            var msg = new OrderPlaced(Guid.NewGuid(), "queue@name.test", 40m);
+
+            await publisher.Send(queueName, msg, TestContext.Current.CancellationToken);
+
+            await WaitUntilAsync(() => orderTracker.Messages.Count == 1);
+
+            Assert.Single(orderTracker.Messages);
+            Assert.Equal(msg.OrderId, orderTracker.Messages.Single().OrderId);
+            Assert.Empty(auditTracker.Messages);
+        }
+        finally
+        {
+            await StopAsync(provider, cts);
+        }
+    }
+
+    [Fact]
+    public async Task Send_ByQueueNameWithHeaders_ConsumerReceivesHeaders()
+    {
+        var orderTracker = new OrderPlacedTracker();
+        var auditTracker = new AuditTracker();
+
+        InterBusOptions? capturedOptions = null;
+
+        var (provider, cts) = await StartAsync(
+            services =>
+            {
+                services.AddSingleton(orderTracker);
+                services.AddSingleton(auditTracker);
+            },
+            bus =>
+            {
+                bus.AddInMemoryTransport();
+                bus.AddConsumer<OrderPlacedConsumer, OrderPlaced>();
+                bus.AddConsumer<AuditConsumer, OrderPlaced>();
+                capturedOptions = bus.Options;
+            });
+
+        try
+        {
+            var queueName = capturedOptions!.Consumers
+                .Single(c => c.ConsumerType == typeof(OrderPlacedConsumer))
+                .QueueName;
+
+            using var scope = provider.CreateScope();
+            var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
+            var msg = new OrderPlaced(Guid.NewGuid(), "hdr@queue.test", 5m);
+            var headers = new MessageHeaders { ["x-source"] = "cross-project" };
+
+            await publisher.Send(queueName, msg, headers, TestContext.Current.CancellationToken);
+
+            await WaitUntilAsync(() => orderTracker.Messages.Count == 1);
+
+            Assert.Single(orderTracker.Messages);
+            Assert.Equal(msg.OrderId, orderTracker.Messages.Single().OrderId);
+            Assert.Empty(auditTracker.Messages);
+        }
+        finally
+        {
+            await StopAsync(provider, cts);
+        }
+    }
 }

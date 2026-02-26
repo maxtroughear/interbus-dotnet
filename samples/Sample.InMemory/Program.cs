@@ -13,7 +13,7 @@ builder.Services.AddInterBus(bus =>
     bus.AddInMemoryTransport();
 
     // Automatically register consumers discovered by the source generator
-    bus.AddGeneratedConsumers();
+    bus.AddConsumers();
 });
 
 var host = builder.Build();

@@ -1,9 +1,9 @@
-namespace InterBus.Internal;
+namespace InterBus;
 
 /// <summary>Convention-based naming for topics and queues.</summary>
-internal static class RoutingConventions
+public static class RoutingConventions
 {
-    /// <summary>Derives the topic name from a message type using its fully-qualified name.</summary>
+    /// <summary>Derives the topic name from a message type using its fully qualified name.</summary>
     public static string TopicName(Type messageType) =>
         messageType.FullName ?? messageType.Name;
 

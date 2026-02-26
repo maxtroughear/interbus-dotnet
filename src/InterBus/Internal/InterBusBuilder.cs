@@ -26,23 +26,33 @@ internal sealed class InterBusBuilder : IInterBusBuilder
 
     /// <inheritdoc/>
     /// <remarks>
-    /// Called by source-generated <c>AddGeneratedConsumers()</c>. The <paramref name="dispatch"/>
+    /// Called by source-generated <c>AddConsumers()</c>. The <paramref name="dispatch"/>
     /// delegate is generated at compile time and routes using the <see cref="InterBusHeaders.MessageType"/>
-    /// header — no runtime reflection.
+    /// header
     /// </remarks>
     public IInterBusBuilder AddConsumer<
         [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
         TConsumer>(
         Type[] messageTypes,
         Func<IServiceProvider, string, MessageHeaders, CancellationToken, Task> dispatch)
+        where TConsumer : class, IConsumer =>
+        AddConsumer<TConsumer>(messageTypes, RoutingConventions.QueueName(typeof(TConsumer)), dispatch);
+    
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Called by source-generated <c>AddConsumers()</c>. The <paramref name="dispatch"/>
+    /// delegate is generated at compile time and routes using the <see cref="InterBusHeaders.MessageType"/>
+    /// header
+    /// </remarks>
+    public IInterBusBuilder AddConsumer<
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
+        TConsumer>(
+        Type[] messageTypes,
+        string queueName,
+        Func<IServiceProvider, string, MessageHeaders, CancellationToken, Task> dispatch)
         where TConsumer : class, IConsumer
     {
-        var queueName = RoutingConventions.QueueName(typeof(TConsumer));
-        var topicNames = messageTypes
-            .Select(t => _options.TryGetTopicName(t, out var custom) ? custom : RoutingConventions.TopicName(t))
-            .ToArray();
-
-        _options.AddConsumer(new ConsumerDescriptor(typeof(TConsumer), queueName, topicNames, dispatch));
+        _options.AddConsumer(new ConsumerDescriptor(typeof(TConsumer), queueName, messageTypes, dispatch));
         Services.TryAddScoped<TConsumer>();
         return this;
     }

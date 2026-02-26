@@ -73,7 +73,7 @@ public class PublishConsumeTests
             bus =>
             {
                 bus.AddInMemoryTransport();
-                bus.AddGeneratedConsumers();
+                bus.AddConsumers();
             });
 
         try
@@ -109,7 +109,7 @@ public class PublishConsumeTests
             bus =>
             {
                 bus.AddInMemoryTransport();
-                bus.AddGeneratedConsumers();
+                bus.AddConsumers();
             });
 
         try
@@ -148,7 +148,7 @@ public class PublishConsumeTests
             bus =>
             {
                 bus.AddInMemoryTransport();
-                bus.AddGeneratedConsumers();
+                bus.AddConsumers();
             });
 
         try
@@ -173,12 +173,12 @@ public class PublishConsumeTests
     }
 
     [Fact]
-    public async Task AddGeneratedConsumers_RegistersAllDiscoveredConsumers_MessagesDelivered()
+    public async Task AddConsumers_RegistersAllDiscoveredConsumers_MessagesDelivered()
     {
         var orderTracker = new OrderPlacedTracker();
         var auditTracker = new AuditTracker();
 
-        // Use AddGeneratedConsumers() — the source generator discovered OrderPlacedConsumer and
+        // Use AddConsumers() — the source generator discovered OrderPlacedConsumer and
         // AuditConsumer at compile time and emitted reflection-free dispatch delegates for each.
         var (provider, cts) = await StartAsync(
             services =>
@@ -189,7 +189,7 @@ public class PublishConsumeTests
             bus =>
             {
                 bus.AddInMemoryTransport();
-                bus.AddGeneratedConsumers();
+                bus.AddConsumers();
             });
 
         try
@@ -199,7 +199,7 @@ public class PublishConsumeTests
             var msg = new OrderPlaced(Guid.NewGuid(), "generated@test.com", 75m);
             await publisher.Publish(msg, TestContext.Current.CancellationToken);
 
-            // Both consumers are registered via AddGeneratedConsumers - both should receive.
+            // Both consumers are registered via AddConsumers - both should receive.
             await WaitUntilAsync(() =>
                 orderTracker.Messages.Count == 1 && auditTracker.Messages.Count == 1);
 
@@ -235,7 +235,7 @@ public class PublishConsumeTests
             bus =>
             {
                 bus.AddInMemoryTransport();
-                bus.AddGeneratedConsumers();
+                bus.AddConsumers();
                 capturedOptions = bus.Options;
             });
 
@@ -244,7 +244,7 @@ public class PublishConsumeTests
             // Structural assertion: ONE descriptor for MultiTypeConsumer with TWO topic names.
             var descriptor = capturedOptions!.Consumers
                 .Single(c => c.ConsumerType == typeof(MultiTypeConsumer));
-            Assert.Equal(2, descriptor.TopicNames.Count);
+            Assert.Equal(2, descriptor.MessageTypes.Count);
 
             using var scope = provider.CreateScope();
             var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();

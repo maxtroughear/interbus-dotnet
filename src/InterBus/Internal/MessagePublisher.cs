@@ -66,7 +66,7 @@ internal sealed class MessagePublisher : IMessagePublisher
 
     /// <summary>
     /// Returns a copy of <paramref name="headers"/> with <see cref="InterBusHeaders.MessageType"/>
-    /// stamped to the fully-qualified CLR type name of <typeparamref name="T"/>.
+    /// stamped to the fully qualified CLR type name of <typeparamref name="T"/>.
     /// </summary>
     private static MessageHeaders Enrich<T>(MessageHeaders headers) where T : class
     {

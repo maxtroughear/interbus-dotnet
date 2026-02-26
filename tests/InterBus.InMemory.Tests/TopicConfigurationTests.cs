@@ -64,7 +64,7 @@ public class TopicConfigurationTests
             {
                 bus.AddInMemoryTransport();
                 bus.ConfigureTopic<OrderPlaced>("custom.orders.topic");
-                bus.AddGeneratedConsumers();
+                bus.AddConsumers();
             });
 
         try
@@ -88,50 +88,6 @@ public class TopicConfigurationTests
     }
 
     [Fact]
-    public void ConfigureTopic_CustomTopicName_StoredInConsumerDescriptor()
-    {
-        // Arrange
-        var services = new ServiceCollection();
-        services.AddLogging();
-        InterBusOptions? capturedOptions = null;
-
-        services.AddInterBus(bus =>
-        {
-            bus.ConfigureTopic<OrderPlaced>("my-orders");
-            bus.AddGeneratedConsumers();
-            capturedOptions = bus.Options;
-        });
-
-        // Assert: the descriptor's TopicNames reflects the configured value.
-        Assert.NotNull(capturedOptions);
-        var descriptor = capturedOptions.Consumers.Single(c => c.ConsumerType == typeof(OrderPlacedConsumer));
-        Assert.Equal("my-orders", descriptor.TopicNames.Single());
-    }
-
-    [Fact]
-    public void ConfigureTopic_MultipleConsumers_SameTopicNameUsedForAll()
-    {
-        var services = new ServiceCollection();
-        services.AddLogging();
-        InterBusOptions? capturedOptions = null;
-
-        services.AddInterBus(bus =>
-        {
-            bus.ConfigureTopic<OrderPlaced>("shared-orders");
-            bus.AddGeneratedConsumers();
-            capturedOptions = bus.Options;
-        });
-
-        Assert.NotNull(capturedOptions);
-        var descriptors = capturedOptions.Consumers
-            .Where(c => c.ConsumerType == typeof(OrderPlacedConsumer) || c.ConsumerType == typeof(AuditConsumer))
-            .ToList();
-
-        Assert.Equal(2, descriptors.Count);
-        Assert.All(descriptors, d => Assert.Equal("shared-orders", d.TopicNames.Single()));
-    }
-
-    [Fact]
     public async Task ConfigureTopic_CustomTopicName_MultipleConsumersAllReceiveMessage()
     {
         var orderTracker = new OrderPlacedTracker();
@@ -147,7 +103,7 @@ public class TopicConfigurationTests
             {
                 bus.AddInMemoryTransport();
                 bus.ConfigureTopic<OrderPlaced>("orders");
-                bus.AddGeneratedConsumers();
+                bus.AddConsumers();
             });
 
         try
@@ -184,7 +140,7 @@ public class TopicConfigurationTests
             {
                 bus.AddInMemoryTransport();
                 bus.ConfigureTopic<OrderPlaced>("orders");
-                bus.AddGeneratedConsumers();
+                bus.AddConsumers();
             });
 
         try
@@ -225,7 +181,7 @@ public class TopicConfigurationTests
             bus =>
             {
                 bus.AddInMemoryTransport();
-                bus.AddGeneratedConsumers();
+                bus.AddConsumers();
                 capturedOptions = bus.Options;
             });
 
@@ -272,7 +228,7 @@ public class TopicConfigurationTests
             bus =>
             {
                 bus.AddInMemoryTransport();
-                bus.AddGeneratedConsumers();
+                bus.AddConsumers();
                 capturedOptions = bus.Options;
             });
 

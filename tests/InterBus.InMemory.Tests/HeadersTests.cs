@@ -98,7 +98,7 @@ public class HeadersTests
             bus =>
             {
                 bus.AddInMemoryTransport();
-                bus.AddGeneratedConsumers();
+                bus.AddConsumers();
             });
 
         try
@@ -136,7 +136,7 @@ public class HeadersTests
             bus =>
             {
                 bus.AddInMemoryTransport();
-                bus.AddGeneratedConsumers();
+                bus.AddConsumers();
             });
 
         try
@@ -172,7 +172,7 @@ public class HeadersTests
             bus =>
             {
                 bus.AddInMemoryTransport();
-                bus.AddGeneratedConsumers();
+                bus.AddConsumers();
             });
 
         try
@@ -221,7 +221,7 @@ public class HeadersTests
             bus =>
             {
                 bus.AddInMemoryTransport();
-                bus.AddGeneratedConsumers();
+                bus.AddConsumers();
             });
 
         try

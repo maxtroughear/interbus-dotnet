@@ -83,7 +83,7 @@ public sealed class ConsumerRegistrationGenerator : IIncrementalGenerator
         sb.AppendLine("        /// Each consumer is registered once with a source-generated dispatch delegate that");
         sb.AppendLine("        /// routes incoming messages using the <c>interbus-message-type</c> header.");
         sb.AppendLine("        /// </summary>");
-        sb.AppendLine("        public static global::InterBus.IInterBusBuilder AddGeneratedConsumers(");
+        sb.AppendLine("        public static global::InterBus.IInterBusBuilder AddConsumers(");
         sb.AppendLine("            this global::InterBus.IInterBusBuilder builder)");
         sb.AppendLine("        {");
 
@@ -91,7 +91,7 @@ public sealed class ConsumerRegistrationGenerator : IIncrementalGenerator
         {
             var consumerFqn = consumer.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
 
-            // Build the Type[] array for messageTypes parameter.
+            // Build the Type[] array for the messageTypes parameter.
             var typeArray = string.Join(", ",
                 messages.Select(m => $"typeof({m.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)})"));
 

@@ -5,7 +5,7 @@ namespace InterBus;
 /// There is exactly one <see cref="ConsumerDescriptor"/> per consumer class, regardless of how
 /// many message types that consumer handles.
 /// <para>
-/// The <see cref="Dispatch"/> delegate is either source-generated (via <c>AddGeneratedConsumers()</c>)
+/// The <see cref="Dispatch"/> delegate is either source-generated (via <c>AddConsumers()</c>)
 /// or constructed at startup from accumulated per-type handlers. Either way, no runtime reflection
 /// is performed during message dispatch.
 /// </para>
@@ -20,13 +20,11 @@ public sealed class ConsumerDescriptor
     /// Each consumer class has exactly one queue.
     /// </summary>
     public string QueueName { get; }
-
+    
     /// <summary>
-    /// The topic names this consumer subscribes to — one entry per message type the consumer handles.
-    /// The transport subscribes the consumer's queue to each of these topics so published messages
-    /// are fan-out delivered to the queue.
+    /// The message types this consumer handles
     /// </summary>
-    public IReadOnlyList<string> TopicNames { get; }
+    public IReadOnlyList<Type> MessageTypes { get; }
 
     /// <summary>
     /// Dispatch delegate. Reads the <see cref="InterBusHeaders.MessageType"/> header from the
@@ -39,12 +37,12 @@ public sealed class ConsumerDescriptor
     internal ConsumerDescriptor(
         Type consumerType,
         string queueName,
-        IReadOnlyList<string> topicNames,
+        IReadOnlyList<Type> messageTypes,
         Func<IServiceProvider, string, MessageHeaders, CancellationToken, Task> dispatch)
     {
         ConsumerType = consumerType;
         QueueName = queueName;
-        TopicNames = topicNames;
+        MessageTypes = messageTypes;
         Dispatch = dispatch;
     }
 }

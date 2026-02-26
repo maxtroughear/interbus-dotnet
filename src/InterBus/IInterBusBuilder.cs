@@ -14,7 +14,7 @@ public interface IInterBusBuilder
 
     /// <summary>
     /// The runtime options for this InterBus instance. Configure <see cref="InterBusOptions.SerializerOptions"/>
-    /// here before calling <see cref="AddConsumer{TConsumer,T}"/> to enable AOT-safe or custom serialization.
+    /// here before calling <see cref="AddConsumer{TConsumer}"/> to enable AOT-safe or custom serialization.
     /// </summary>
     InterBusOptions Options { get; }
 
@@ -22,17 +22,44 @@ public interface IInterBusBuilder
     /// Configure an explicit topic name for message type <typeparamref name="T"/>. The name is used
     /// by both consumer registration and <see cref="IMessagePublisher.Publish{T}"/>, overriding the
     /// convention-based name derived from the type's fully-qualified name.
-    /// Call this before <see cref="AddConsumer{TConsumer,T}"/> for the same message type.
+    /// Call this before <see cref="AddConsumer{TConsumer}"/> for the same message type.
     /// </summary>
     IInterBusBuilder ConfigureTopic<T>(string topicName) where T : class;
 
     /// <summary>
-    /// Register a consumer for a specific message type with both type parameters supplied at compile time.
-    /// No runtime reflection is performed - this overload is intended to be called by source-generated
-    /// code produced by the <c>InterBus.SourceGenerator</c> package.
+    /// Register a consumer with a source-generated dispatch delegate.
+    /// This is the only registration path; call it via the source-generated
+    /// <c>AddConsumers()</c> extension method which is produced at compile time.
+    /// <para>
+    /// The <paramref name="messageTypes"/> array is used to resolve topic names (respecting any
+    /// <see cref="ConfigureTopic{T}"/> overrides) and to subscribe the consumer's queue to each topic.
+    /// The <paramref name="dispatch"/> delegate reads the <see cref="InterBusHeaders.MessageType"/>
+    /// header and routes to the appropriate <c>Consume</c> overload — no runtime reflection.
+    /// </para>
     /// </summary>
     IInterBusBuilder AddConsumer<
-        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TConsumer, T>()
-        where TConsumer : class, IConsumer<T>
-        where T : class;
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TConsumer>(
+        Type[] messageTypes,
+        Func<IServiceProvider, string, MessageHeaders, CancellationToken, Task> dispatch)
+        where TConsumer : class, IConsumer;
+    
+    /// <summary>
+    /// Register a consumer with a source-generated dispatch delegate.
+    /// This is the only registration path; call it via the source-generated
+    /// <c>AddConsumers()</c> extension method which is produced at compile time.
+    /// <para>
+    /// The <paramref name="messageTypes"/> array is used to resolve topic names (respecting any
+    /// <see cref="ConfigureTopic{T}"/> overrides) and to subscribe the consumer's queue to each topic.
+    /// The <paramref name="queueName"/> is used to override the default queue name derived from the
+    /// consumer type's fully qualified name
+    /// The <paramref name="dispatch"/> delegate reads the <see cref="InterBusHeaders.MessageType"/>
+    /// header and routes to the appropriate <c>Consume</c> overload — no runtime reflection.
+    /// </para>
+    /// </summary>
+    IInterBusBuilder AddConsumer<
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TConsumer>(
+        Type[] messageTypes,
+        string queueName,
+        Func<IServiceProvider, string, MessageHeaders, CancellationToken, Task> dispatch)
+        where TConsumer : class, IConsumer;
 }

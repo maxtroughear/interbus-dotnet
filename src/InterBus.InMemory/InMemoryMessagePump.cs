@@ -65,9 +65,8 @@ internal sealed class InMemoryMessagePump : BackgroundService
         {
             _logger.LogError(
                 ex,
-                "InterBus InMemory: unhandled exception in consumer {ConsumerType} for message {MessageType}",
-                descriptor.ConsumerType.Name,
-                descriptor.MessageType.Name);
+                "InterBus InMemory: unhandled exception dispatching to consumer {ConsumerType}",
+                descriptor.ConsumerType.Name);
         }
     }
 }

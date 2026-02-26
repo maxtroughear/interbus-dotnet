@@ -3,8 +3,11 @@ using System.Threading.Channels;
 namespace InterBus.InMemory;
 
 /// <summary>
-/// A Channel-backed Point-to-Point queue for a specific consumer and message type.
-/// Each registered consumer gets one <see cref="InMemoryQueue"/> per message type it handles.
+/// A Channel-backed Point-to-Point queue for a single consumer class.
+/// Each registered consumer gets exactly one <see cref="InMemoryQueue"/>.
+/// Routing to the correct <c>Consume</c> overload is handled by the consumer's
+/// <see cref="ConsumerDescriptor.Dispatch"/> delegate using the
+/// <see cref="InterBusHeaders.MessageType"/> header — no topic-name lookup required here.
 /// </summary>
 internal sealed class InMemoryQueue
 {

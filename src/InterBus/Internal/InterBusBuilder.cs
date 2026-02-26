@@ -1,7 +1,6 @@
 using System.Diagnostics.CodeAnalysis;
-using System.Text.Json;
-using System.Text.Json.Serialization.Metadata;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace InterBus.Internal;
 
@@ -25,45 +24,36 @@ internal sealed class InterBusBuilder : IInterBusBuilder
         return this;
     }
 
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Called by source-generated <c>AddConsumers()</c>. The <paramref name="dispatch"/>
+    /// delegate is generated at compile time and routes using the <see cref="InterBusHeaders.MessageType"/>
+    /// header
+    /// </remarks>
     public IInterBusBuilder AddConsumer<
         [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
-        TConsumer, T>()
-        where TConsumer : class, IConsumer<T>
-        where T : class
-    {
-        var topicName = _options.TryGetTopicName(typeof(T), out var customName)
-            ? customName
-            : RoutingConventions.TopicName(typeof(T));
-        _options.AddConsumer(CreateDescriptor<TConsumer, T>(_options.SerializerOptions, topicName));
-        Services.AddScoped<TConsumer>();
-        return this;
-    }
-
-    private static ConsumerDescriptor CreateDescriptor<
+        TConsumer>(
+        Type[] messageTypes,
+        Func<IServiceProvider, string, MessageHeaders, CancellationToken, Task> dispatch)
+        where TConsumer : class, IConsumer =>
+        AddConsumer<TConsumer>(messageTypes, RoutingConventions.QueueName(typeof(TConsumer)), dispatch);
+    
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Called by source-generated <c>AddConsumers()</c>. The <paramref name="dispatch"/>
+    /// delegate is generated at compile time and routes using the <see cref="InterBusHeaders.MessageType"/>
+    /// header
+    /// </remarks>
+    public IInterBusBuilder AddConsumer<
         [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
-        TConsumer, T>(
-        JsonSerializerOptions serializerOptions,
-        string topicName)
-        where TConsumer : class, IConsumer<T>
-        where T : class
+        TConsumer>(
+        Type[] messageTypes,
+        string queueName,
+        Func<IServiceProvider, string, MessageHeaders, CancellationToken, Task> dispatch)
+        where TConsumer : class, IConsumer
     {
-        var queueName = RoutingConventions.QueueName(typeof(TConsumer), typeof(T));
-
-        var typeInfo = (JsonTypeInfo<T>)serializerOptions.GetTypeInfo(typeof(T));
-
-        return new ConsumerDescriptor(
-            typeof(TConsumer),
-            typeof(T),
-            topicName,
-            queueName,
-            (sp, payload, headers, ct) =>
-            {
-                var context = new ConsumeContext(headers);
-                var consumer = sp.GetRequiredService<TConsumer>();
-                var message = JsonSerializer.Deserialize(payload, typeInfo)
-                              ?? throw new InvalidOperationException(
-                                  $"Failed to deserialize message payload as {typeof(T).FullName}.");
-                return consumer.Consume(message, context, ct);
-            });
+        _options.AddConsumer(new ConsumerDescriptor(typeof(TConsumer), queueName, messageTypes, dispatch));
+        Services.TryAddScoped<TConsumer>();
+        return this;
     }
 }

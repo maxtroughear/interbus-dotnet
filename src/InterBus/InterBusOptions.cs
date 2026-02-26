@@ -13,14 +13,14 @@ public sealed class InterBusOptions
     private readonly List<ConsumerDescriptor> _consumers = [];
     private readonly Dictionary<Type, string> _topicNames = [];
 
-    /// <summary>All registered consumer descriptors.</summary>
+    /// <summary>All registered consumer descriptors. One descriptor per consumer class.</summary>
     public IReadOnlyList<ConsumerDescriptor> Consumers => _consumers;
 
     /// <summary>
     /// The <see cref="System.Text.Json.JsonSerializerOptions"/> used to serialize and deserialize
     /// message payloads. To enable trimming and AOT compatibility, configure this with a
     /// source-generated <see cref="System.Text.Json.Serialization.JsonSerializerContext"/> via
-    /// <see cref="IInterBusBuilder.Options"/> before calling <c>AddConsumer</c>.
+    /// <see cref="IInterBusBuilder.Options"/> before calling <c>AddConsumers()</c>.
     /// Defaults to a reflection-based resolver; override for trimmed or AOT applications.
     /// </summary>
     public JsonSerializerOptions SerializerOptions { get; set; }
@@ -46,6 +46,6 @@ public sealed class InterBusOptions
 
     internal void SetTopicName(Type messageType, string topicName) => _topicNames[messageType] = topicName;
 
-    internal bool TryGetTopicName(Type messageType, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out string? topicName) =>
+    public bool TryGetTopicName(Type messageType, [NotNullWhen(true)] out string? topicName) =>
         _topicNames.TryGetValue(messageType, out topicName);
 }

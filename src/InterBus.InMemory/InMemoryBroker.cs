@@ -4,6 +4,7 @@ namespace InterBus.InMemory;
 /// Singleton broker that owns all <see cref="InMemoryTopic"/> and <see cref="InMemoryQueue"/> instances.
 /// Implements <see cref="IInterBusTransport"/> so the core <c>MessagePublisher</c> can dispatch through it.
 /// Initialised from <see cref="InterBusOptions"/> at construction time.
+/// Each consumer class is assigned exactly one queue, subscribed to all topics that consumer handles.
 /// </summary>
 public sealed class InMemoryBroker : IInterBusTransport, IDisposable
 {
@@ -15,19 +16,27 @@ public sealed class InMemoryBroker : IInterBusTransport, IDisposable
     {
         foreach (var descriptor in options.Consumers)
         {
-            // Ensure the topic exists.
-            if (!_topics.TryGetValue(descriptor.TopicName, out var topic))
-            {
-                topic = new InMemoryTopic(descriptor.TopicName);
-                _topics[descriptor.TopicName] = topic;
-            }
-
-            // Each consumer gets its own queue (Point-to-Point Channel).
+            // One queue per consumer class.
             var queue = new InMemoryQueue(descriptor);
             _queues[descriptor.QueueName] = queue;
 
-            // Subscribe the queue to the topic (Publish-Subscribe fan-out).
-            topic.AddSubscriber(queue);
+            // Subscribe the queue to every topic the consumer handles
+            
+            foreach (var type in descriptor.MessageTypes)
+            {
+                // Resolve topics from descriptor types
+                var topicName = options.TryGetTopicName(type, out var custom)
+                    ? custom
+                    : RoutingConventions.TopicName(type);
+                
+                if (!_topics.TryGetValue(topicName, out var topic))
+                {
+                    topic = new InMemoryTopic(topicName);
+                    _topics[topicName] = topic;
+                }
+
+                topic.AddSubscriber(queue);
+            }
         }
     }
 

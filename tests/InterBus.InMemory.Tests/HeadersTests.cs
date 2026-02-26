@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using InterBus.Extensions;
+using InterBus.Generated;
 using InterBus.InMemory.Extensions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -63,12 +64,10 @@ public class HeadersTests
     }
 
     public sealed class HeaderAwareConsumer(
-        OrderPlacedTracker tracker,
         HeaderCapture headerCapture) : IConsumer<OrderPlaced>
     {
         public Task Consume(OrderPlaced message, IConsumeContext context, CancellationToken cancellationToken = default)
         {
-            tracker.Track(message);
             headerCapture.Add(context.Headers);
             return Task.CompletedTask;
         }
@@ -89,19 +88,17 @@ public class HeadersTests
     [Fact]
     public async Task Publish_WithHeaders_ConsumerReceivesHeaders()
     {
-        var tracker = new OrderPlacedTracker();
         var headerCapture = new HeaderCapture();
 
         var (provider, cts) = await StartAsync(
             services =>
             {
-                services.AddSingleton(tracker);
                 services.AddSingleton(headerCapture);
             },
             bus =>
             {
                 bus.AddInMemoryTransport();
-                bus.AddConsumer<HeaderAwareConsumer, OrderPlaced>();
+                bus.AddConsumers();
             });
 
         try
@@ -113,7 +110,7 @@ public class HeadersTests
 
             await publisher.Publish(msg, headers, TestContext.Current.CancellationToken);
 
-            await WaitUntilAsync(() => tracker.Messages.Count == 1);
+            await WaitUntilAsync(() => headerCapture.Captured.Count == 1);
 
             Assert.Single(headerCapture.Captured);
             var received = headerCapture.Captured.Single();
@@ -129,19 +126,17 @@ public class HeadersTests
     [Fact]
     public async Task Send_WithHeaders_ConsumerReceivesHeaders()
     {
-        var tracker = new OrderPlacedTracker();
         var headerCapture = new HeaderCapture();
 
         var (provider, cts) = await StartAsync(
             services =>
             {
-                services.AddSingleton(tracker);
                 services.AddSingleton(headerCapture);
             },
             bus =>
             {
                 bus.AddInMemoryTransport();
-                bus.AddConsumer<HeaderAwareConsumer, OrderPlaced>();
+                bus.AddConsumers();
             });
 
         try
@@ -153,7 +148,7 @@ public class HeadersTests
 
             await publisher.Send<HeaderAwareConsumer, OrderPlaced>(msg, headers, TestContext.Current.CancellationToken);
 
-            await WaitUntilAsync(() => tracker.Messages.Count == 1);
+            await WaitUntilAsync(() => headerCapture.Captured.Count == 1);
 
             Assert.Single(headerCapture.Captured);
             Assert.Equal("unit-test", headerCapture.Captured.Single()["x-source"]);
@@ -165,21 +160,19 @@ public class HeadersTests
     }
 
     [Fact]
-    public async Task Publish_WithoutHeaders_ConsumerReceivesEmptyHeaders()
+    public async Task Publish_WithoutUserHeaders_ConsumerReceivesOnlySystemHeaders()
     {
-        var tracker = new OrderPlacedTracker();
         var headerCapture = new HeaderCapture();
 
         var (provider, cts) = await StartAsync(
             services =>
             {
-                services.AddSingleton(tracker);
                 services.AddSingleton(headerCapture);
             },
             bus =>
             {
                 bus.AddInMemoryTransport();
-                bus.AddConsumer<HeaderAwareConsumer, OrderPlaced>();
+                bus.AddConsumers();
             });
 
         try
@@ -190,10 +183,15 @@ public class HeadersTests
 
             await publisher.Publish(msg, TestContext.Current.CancellationToken);
 
-            await WaitUntilAsync(() => tracker.Messages.Count == 1);
+            await WaitUntilAsync(() => headerCapture.Captured.Count == 1);
 
             Assert.Single(headerCapture.Captured);
-            Assert.Empty(headerCapture.Captured.Single());
+            var received = headerCapture.Captured.Single();
+            // The publisher always stamps the interbus-message-type header; no user headers present.
+            Assert.Single(received);
+            Assert.Equal(
+                typeof(OrderPlaced).FullName,
+                received[InterBusHeaders.MessageType]);
         }
         finally
         {
@@ -213,23 +211,17 @@ public class HeadersTests
     [Fact]
     public async Task Publish_WithCorrelationIdHeader_ContextExposesConvenienceProperty()
     {
-        var tracker = new OrderPlacedTracker();
-        var headerCapture = new HeaderCapture();
-
-        // Use a consumer that captures the CorrelationId from context.CorrelationId directly.
         var correlationIds = new ConcurrentBag<string?>();
 
         var (provider, cts) = await StartAsync(
             services =>
             {
-                services.AddSingleton(tracker);
-                services.AddSingleton(headerCapture);
                 services.AddSingleton(correlationIds);
             },
             bus =>
             {
                 bus.AddInMemoryTransport();
-                bus.AddConsumer<CorrelationIdCapturingConsumer, OrderPlaced>();
+                bus.AddConsumers();
             });
 
         try

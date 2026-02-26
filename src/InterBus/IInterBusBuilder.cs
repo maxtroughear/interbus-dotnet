@@ -62,4 +62,26 @@ public interface IInterBusBuilder
         string queueName,
         Func<IServiceProvider, string, MessageHeaders, CancellationToken, Task> dispatch)
         where TConsumer : class, IConsumer;
+
+    /// <summary>
+    /// Add a middleware step to the publish pipeline.
+    /// Steps are executed in registration order — the first registered step is outermost
+    /// and runs first. The terminal step calls the configured <see cref="IInterBusTransport"/>.
+    /// </summary>
+    IInterBusBuilder AddPublishMiddleware<
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TMiddleware>()
+        where TMiddleware : class, IPublishMiddleware;
+
+    /// <summary>
+    /// Add a middleware step to the consume pipeline.
+    /// Steps are executed in registration order — the first registered step is outermost
+    /// and runs first. The terminal step invokes the consumer's dispatch delegate.
+    /// </summary>
+    /// <remarks>
+    /// An exception-logging middleware is automatically registered as the first (outermost)
+    /// step before any user-defined steps.
+    /// </remarks>
+    IInterBusBuilder AddConsumeMiddleware<
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TMiddleware>()
+        where TMiddleware : class, IConsumeMiddleware;
 }

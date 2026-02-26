@@ -7,6 +7,8 @@ namespace InterBus.InMemory;
 /// <summary>
 /// Service Activator (Message Pump). A <see cref="BackgroundService"/> that starts one reader task per
 /// registered queue and dispatches messages to consumers resolved from a fresh DI scope per message.
+/// Message dispatch runs through the <see cref="ConsumePipelineExecutor"/> so that all registered
+/// consume middleware (including the default exception-logging step) is applied to every message.
 /// </summary>
 internal sealed class InMemoryMessagePump : BackgroundService
 {
@@ -57,16 +59,7 @@ internal sealed class InMemoryMessagePump : BackgroundService
     private async Task DispatchAsync(ConsumerDescriptor descriptor, InMemoryEnvelope envelope, CancellationToken ct)
     {
         await using var scope = _scopeFactory.CreateAsyncScope();
-        try
-        {
-            await descriptor.Dispatch(scope.ServiceProvider, envelope.Payload, envelope.Headers, ct);
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            _logger.LogError(
-                ex,
-                "InterBus InMemory: unhandled exception dispatching to consumer {ConsumerType}",
-                descriptor.ConsumerType.Name);
-        }
+        var executor = scope.ServiceProvider.GetRequiredService<ConsumePipelineExecutor>();
+        await executor.ExecuteAsync(descriptor, envelope.Payload, envelope.Headers, ct);
     }
 }

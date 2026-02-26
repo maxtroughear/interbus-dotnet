@@ -56,4 +56,24 @@ internal sealed class InterBusBuilder : IInterBusBuilder
         Services.TryAddScoped<TConsumer>();
         return this;
     }
+
+    /// <inheritdoc/>
+    public IInterBusBuilder AddPublishMiddleware<
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
+        TMiddleware>()
+        where TMiddleware : class, IPublishMiddleware
+    {
+        Services.AddScoped<IPublishMiddleware, TMiddleware>();
+        return this;
+    }
+
+    /// <inheritdoc/>
+    public IInterBusBuilder AddConsumeMiddleware<
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
+        TMiddleware>()
+        where TMiddleware : class, IConsumeMiddleware
+    {
+        Services.AddScoped<IConsumeMiddleware, TMiddleware>();
+        return this;
+    }
 }

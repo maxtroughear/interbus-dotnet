@@ -28,17 +28,17 @@ public sealed class ConsumerDescriptor
 
     /// <summary>
     /// Dispatch delegate. Reads the <see cref="InterBusHeaders.MessageType"/> header from the
-    /// incoming message, deserializes the payload to the matching type, and invokes the correct
-    /// <c>Consume</c> overload on the consumer. If the message type is not handled by this consumer
-    /// it logs an error and returns without throwing.
+    /// incoming <see cref="IConsumeContext"/>, deserializes the payload to the matching type,
+    /// and invokes the correct <c>Consume</c> overload on the consumer. If the message type is
+    /// not handled by this consumer it logs an error and returns without throwing.
     /// </summary>
-    public Func<IServiceProvider, string, MessageHeaders, CancellationToken, Task> Dispatch { get; }
+    public Func<IServiceProvider, string, IConsumeContext, CancellationToken, Task> Dispatch { get; }
 
     internal ConsumerDescriptor(
         Type consumerType,
         string queueName,
         IReadOnlyList<Type> messageTypes,
-        Func<IServiceProvider, string, MessageHeaders, CancellationToken, Task> dispatch)
+        Func<IServiceProvider, string, IConsumeContext, CancellationToken, Task> dispatch)
     {
         ConsumerType = consumerType;
         QueueName = queueName;

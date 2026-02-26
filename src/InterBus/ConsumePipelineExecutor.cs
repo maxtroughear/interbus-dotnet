@@ -35,7 +35,7 @@ public sealed class ConsumePipelineExecutor
         var context = new ConsumePipelineContext(descriptor, payload, headers, _serviceProvider);
 
         ConsumeDelegate terminal = (ctx, ct) =>
-            ctx.Descriptor.Dispatch(ctx.ServiceProvider, ctx.Payload, ctx.Headers, ct);
+            ctx.Descriptor.Dispatch(ctx.ServiceProvider, ctx.Payload, ctx, ct);
 
         // Build pipeline: first registered middleware is outermost.
         // Iterate in reverse so each new step wraps the already-built inner chain.

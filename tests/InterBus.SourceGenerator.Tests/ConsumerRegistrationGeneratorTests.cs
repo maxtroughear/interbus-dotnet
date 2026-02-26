@@ -313,8 +313,9 @@ public sealed class ConsumerRegistrationGeneratorTests
         // Dispatch branches on the fully-qualified message type name (matching typeof(T).FullName).
         Assert.Contains("\"MyApp.OrderPlaced\"", generated);
         Assert.Contains("\"MyApp.OrderShipped\"", generated);
-        // Uses ConsumeContextFactory to avoid internal class access.
-        Assert.Contains("ConsumeContextFactory.Create(headers)", generated);
+        // Passes the IConsumeContext directly to the consumer; no separate context factory call.
+        Assert.Contains("context.Headers", generated);
+        Assert.DoesNotContain("ConsumeContextFactory", generated);
         // Falls through to error log for unknown types.
         Assert.Contains("does not handle message type", generated);
     }

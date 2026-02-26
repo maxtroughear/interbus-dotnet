@@ -1,4 +1,5 @@
 using InterBus.Extensions;
+using InterBus.Generated;
 using InterBus.InMemory.Extensions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -63,7 +64,7 @@ public class TopicConfigurationTests
             {
                 bus.AddInMemoryTransport();
                 bus.ConfigureTopic<OrderPlaced>("custom.orders.topic");
-                bus.AddConsumer<OrderPlacedConsumer, OrderPlaced>();
+                bus.AddGeneratedConsumers();
             });
 
         try
@@ -97,7 +98,7 @@ public class TopicConfigurationTests
         services.AddInterBus(bus =>
         {
             bus.ConfigureTopic<OrderPlaced>("my-orders");
-            bus.AddConsumer<OrderPlacedConsumer, OrderPlaced>();
+            bus.AddGeneratedConsumers();
             capturedOptions = bus.Options;
         });
 
@@ -117,8 +118,7 @@ public class TopicConfigurationTests
         services.AddInterBus(bus =>
         {
             bus.ConfigureTopic<OrderPlaced>("shared-orders");
-            bus.AddConsumer<OrderPlacedConsumer, OrderPlaced>();
-            bus.AddConsumer<AuditConsumer, OrderPlaced>();
+            bus.AddGeneratedConsumers();
             capturedOptions = bus.Options;
         });
 
@@ -147,8 +147,7 @@ public class TopicConfigurationTests
             {
                 bus.AddInMemoryTransport();
                 bus.ConfigureTopic<OrderPlaced>("orders");
-                bus.AddConsumer<OrderPlacedConsumer, OrderPlaced>();
-                bus.AddConsumer<AuditConsumer, OrderPlaced>();
+                bus.AddGeneratedConsumers();
             });
 
         try
@@ -185,8 +184,7 @@ public class TopicConfigurationTests
             {
                 bus.AddInMemoryTransport();
                 bus.ConfigureTopic<OrderPlaced>("orders");
-                bus.AddConsumer<OrderPlacedConsumer, OrderPlaced>();
-                bus.AddConsumer<AuditConsumer, OrderPlaced>();
+                bus.AddGeneratedConsumers();
             });
 
         try
@@ -227,8 +225,7 @@ public class TopicConfigurationTests
             bus =>
             {
                 bus.AddInMemoryTransport();
-                bus.AddConsumer<OrderPlacedConsumer, OrderPlaced>();
-                bus.AddConsumer<AuditConsumer, OrderPlaced>();
+                bus.AddGeneratedConsumers();
                 capturedOptions = bus.Options;
             });
 
@@ -275,8 +272,7 @@ public class TopicConfigurationTests
             bus =>
             {
                 bus.AddInMemoryTransport();
-                bus.AddConsumer<OrderPlacedConsumer, OrderPlaced>();
-                bus.AddConsumer<AuditConsumer, OrderPlaced>();
+                bus.AddGeneratedConsumers();
                 capturedOptions = bus.Options;
             });
 

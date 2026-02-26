@@ -1,6 +1,4 @@
 using System.Diagnostics.CodeAnalysis;
-using System.Text.Json;
-using System.Text.Json.Serialization.Metadata;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
@@ -44,52 +42,8 @@ internal sealed class InterBusBuilder : IInterBusBuilder
             .Select(t => _options.TryGetTopicName(t, out var custom) ? custom : RoutingConventions.TopicName(t))
             .ToArray();
 
-        _options.SetConsumerDispatch(typeof(TConsumer), queueName, topicNames, dispatch);
+        _options.AddConsumer(new ConsumerDescriptor(typeof(TConsumer), queueName, topicNames, dispatch));
         Services.TryAddScoped<TConsumer>();
         return this;
     }
-
-    /// <inheritdoc/>
-    /// <remarks>
-    /// Suitable for manual registration in tests or single-type consumers without source generation.
-    /// Calling this multiple times for the same <typeparamref name="TConsumer"/> with different
-    /// message types is supported; the handlers are merged into a single queue.
-    /// </remarks>
-    public IInterBusBuilder AddConsumer<
-        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
-        TConsumer, T>()
-        where TConsumer : class, IConsumer<T>
-        where T : class
-    {
-        var topicName = _options.TryGetTopicName(typeof(T), out var customName)
-            ? customName
-            : RoutingConventions.TopicName(typeof(T));
-        var queueName = RoutingConventions.QueueName(typeof(TConsumer));
-        var typeInfo = (JsonTypeInfo<T>)_options.SerializerOptions.GetTypeInfo(typeof(T));
-
-        _options.AccumulateConsumerHandler(
-            typeof(TConsumer),
-            queueName,
-            topicName,
-            typeof(T).FullName ?? typeof(T).Name,
-            (sp, payload, headers, ct) =>
-            {
-                var context = new ConsumeContext(headers);
-                var consumer = sp.GetRequiredService<TConsumer>();
-                var message = JsonSerializer.Deserialize(payload, typeInfo)
-                              ?? throw new InvalidOperationException(
-                                  $"Failed to deserialize message payload as {typeof(T).FullName}.");
-                return consumer.Consume(message, context, ct);
-            });
-
-        Services.TryAddScoped<TConsumer>();
-        return this;
-    }
-
-    /// <summary>
-    /// Finalizes all accumulated consumer registrations into <see cref="InterBusOptions.Consumers"/>.
-    /// Called by <see cref="Extensions.ServiceCollectionExtensions.AddInterBus"/> after the configure
-    /// delegate returns.
-    /// </summary>
-    internal void FinalizeConsumers() => _options.FinalizeConsumers();
 }

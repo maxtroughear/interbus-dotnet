@@ -73,7 +73,7 @@ public class PublishConsumeTests
             bus =>
             {
                 bus.AddInMemoryTransport();
-                bus.AddConsumer<OrderPlacedConsumer, OrderPlaced>();
+                bus.AddGeneratedConsumers();
             });
 
         try
@@ -109,8 +109,7 @@ public class PublishConsumeTests
             bus =>
             {
                 bus.AddInMemoryTransport();
-                bus.AddConsumer<OrderPlacedConsumer, OrderPlaced>();
-                bus.AddConsumer<AuditConsumer, OrderPlaced>();
+                bus.AddGeneratedConsumers();
             });
 
         try
@@ -149,8 +148,7 @@ public class PublishConsumeTests
             bus =>
             {
                 bus.AddInMemoryTransport();
-                bus.AddConsumer<OrderPlacedConsumer, OrderPlaced>();
-                bus.AddConsumer<AuditConsumer, OrderPlaced>();
+                bus.AddGeneratedConsumers();
             });
 
         try
@@ -180,9 +178,8 @@ public class PublishConsumeTests
         var orderTracker = new OrderPlacedTracker();
         var auditTracker = new AuditTracker();
 
-        // Use AddGeneratedConsumers() instead of individual AddConsumer<> calls.
-        // The generator discovered OrderPlacedConsumer and AuditConsumer at compile time and
-        // emitted reflection-free AddConsumer<TConsumer, T>() calls for each.
+        // Use AddGeneratedConsumers() — the source generator discovered OrderPlacedConsumer and
+        // AuditConsumer at compile time and emitted reflection-free dispatch delegates for each.
         var (provider, cts) = await StartAsync(
             services =>
             {
@@ -219,14 +216,14 @@ public class PublishConsumeTests
 
     /// <summary>
     /// Verifies the one-queue-per-consumer design: a consumer implementing two <c>IConsumer&lt;T&gt;</c>
-    /// interfaces shares a single queue. Both descriptors have the same queue name, and messages of
-    /// both types are dispatched to the correct <c>Consume</c> overload without runtime reflection.
+    /// interfaces shares a single queue. Both message types are dispatched to the correct
+    /// <c>Consume</c> overload via the source-generated delegate — no runtime reflection.
     /// </summary>
     [Fact]
     public async Task MultiTypeConsumer_SingleQueue_ReceivesBothMessageTypes()
     {
-        var orderTracker = new OrderPlacedTracker();
-        var shippedTracker = new OrderShippedTracker();
+        var orderTracker = new MultiTypeOrderPlacedTracker();
+        var shippedTracker = new MultiTypeOrderShippedTracker();
         InterBusOptions? capturedOptions = null;
 
         var (provider, cts) = await StartAsync(
@@ -238,8 +235,7 @@ public class PublishConsumeTests
             bus =>
             {
                 bus.AddInMemoryTransport();
-                bus.AddConsumer<MultiTypeConsumer, OrderPlaced>();
-                bus.AddConsumer<MultiTypeConsumer, OrderShipped>();
+                bus.AddGeneratedConsumers();
                 capturedOptions = bus.Options;
             });
 

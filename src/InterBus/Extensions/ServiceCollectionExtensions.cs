@@ -20,9 +20,6 @@ public static class ServiceCollectionExtensions
 
         configure(builder);
 
-        // Finalize: merge all accumulated per-type handlers into ConsumerDescriptors.
-        builder.FinalizeConsumers();
-
         // Register options so transports can resolve them.
         services.AddSingleton(options);
 

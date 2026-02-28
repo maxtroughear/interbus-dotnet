@@ -32,10 +32,10 @@ public sealed class ConsumePipelineExecutor
         MessageHeaders headers,
         CancellationToken cancellationToken = default)
     {
-        var context = new ConsumePipelineContext(descriptor, payload, headers, _serviceProvider);
+        var context = new ConsumePipelineContext(descriptor, payload, headers);
 
         ConsumeDelegate terminal = (ctx, ct) =>
-            ctx.Descriptor.Dispatch(ctx.ServiceProvider, ctx.Payload, ctx, ct);
+            ctx.Descriptor.Dispatch(_serviceProvider, ctx.Payload, ctx, ct);
 
         // Build pipeline: first registered middleware is outermost.
         // Iterate in reverse so each new step wraps the already-built inner chain.

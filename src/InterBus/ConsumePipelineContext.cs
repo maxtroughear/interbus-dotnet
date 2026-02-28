@@ -22,12 +22,6 @@ public sealed class ConsumePipelineContext : IConsumeContext
     /// </summary>
     public MessageHeaders Headers { get; set; }
 
-    /// <summary>
-    /// The DI scope for the current message dispatch. Use this to resolve
-    /// additional services within middleware (e.g. a claim-check store).
-    /// </summary>
-    public IServiceProvider ServiceProvider { get; }
-
     // IConsumeContext explicit implementation so consumers see the read-only interface view
     // while middleware retains full mutable access via ConsumePipelineContext.
     IReadOnlyDictionary<string, string> IConsumeContext.Headers => Headers;
@@ -37,12 +31,10 @@ public sealed class ConsumePipelineContext : IConsumeContext
     internal ConsumePipelineContext(
         ConsumerDescriptor descriptor,
         string payload,
-        MessageHeaders headers,
-        IServiceProvider serviceProvider)
+        MessageHeaders headers)
     {
         Descriptor = descriptor;
         Payload = payload;
         Headers = headers;
-        ServiceProvider = serviceProvider;
     }
 }

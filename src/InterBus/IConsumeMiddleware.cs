@@ -6,7 +6,7 @@ namespace InterBus;
 /// and executed in registration order (first registered = outermost).
 /// </summary>
 /// <remarks>
-/// Register via <see cref="IInterBusBuilder.AddConsumeMiddleware{TMiddleware}"/>.
+/// Register via <see cref="IInterBusBuilder.UseConsumeMiddleware{TMiddleware}"/>.
 /// </remarks>
 public interface IConsumeMiddleware
 {

@@ -58,7 +58,7 @@ internal sealed class InterBusBuilder : IInterBusBuilder
     }
 
     /// <inheritdoc/>
-    public IInterBusBuilder AddPublishMiddleware<
+    public IInterBusBuilder UsePublishMiddleware<
         [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
         TMiddleware>()
         where TMiddleware : class, IPublishMiddleware
@@ -68,7 +68,7 @@ internal sealed class InterBusBuilder : IInterBusBuilder
     }
 
     /// <inheritdoc/>
-    public IInterBusBuilder AddConsumeMiddleware<
+    public IInterBusBuilder UseConsumeMiddleware<
         [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
         TMiddleware>()
         where TMiddleware : class, IConsumeMiddleware

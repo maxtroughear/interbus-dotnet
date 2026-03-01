@@ -68,7 +68,7 @@ public interface IInterBusBuilder
     /// Steps are executed in registration order — the first registered step is outermost
     /// and runs first. The terminal step calls the configured <see cref="IInterBusTransport"/>.
     /// </summary>
-    IInterBusBuilder AddPublishMiddleware<
+    IInterBusBuilder UsePublishMiddleware<
         [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TMiddleware>()
         where TMiddleware : class, IPublishMiddleware;
 
@@ -81,7 +81,7 @@ public interface IInterBusBuilder
     /// An exception-logging middleware is automatically registered as the first (outermost)
     /// step before any user-defined steps.
     /// </remarks>
-    IInterBusBuilder AddConsumeMiddleware<
+    IInterBusBuilder UseConsumeMiddleware<
         [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TMiddleware>()
         where TMiddleware : class, IConsumeMiddleware;
 }

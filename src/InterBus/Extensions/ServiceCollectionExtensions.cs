@@ -1,4 +1,5 @@
 using InterBus.Internal;
+using InterBus.Middleware;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace InterBus.Extensions;
@@ -18,10 +19,17 @@ public static class ServiceCollectionExtensions
         var options = new InterBusOptions();
         var builder = new InterBusBuilder(services, options);
 
+        // Register the exception-logging consume middleware as the outermost (first) step
+        // before user-defined middleware so it catches exceptions from all downstream steps.
+        services.AddScoped<IConsumeMiddleware, ExceptionLoggingConsumeMiddleware>();
+
         configure(builder);
 
         // Register options so transports can resolve them.
         services.AddSingleton(options);
+
+        // Register the consume pipeline executor (scoped: one per message dispatch scope).
+        services.AddScoped<ConsumePipelineExecutor>();
 
         // Register the scoped publisher.
         services.AddScoped<IMessagePublisher, MessagePublisher>();

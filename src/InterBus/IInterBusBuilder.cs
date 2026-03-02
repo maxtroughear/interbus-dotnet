@@ -1,4 +1,5 @@
 using System.Diagnostics.CodeAnalysis;
+using InterBus.Middleware;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace InterBus;
@@ -40,7 +41,7 @@ public interface IInterBusBuilder
     IInterBusBuilder AddConsumer<
         [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TConsumer>(
         Type[] messageTypes,
-        Func<IServiceProvider, string, MessageHeaders, CancellationToken, Task> dispatch)
+        Func<IServiceProvider, string, IConsumeContext, CancellationToken, Task> dispatch)
         where TConsumer : class, IConsumer;
     
     /// <summary>
@@ -60,6 +61,28 @@ public interface IInterBusBuilder
         [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TConsumer>(
         Type[] messageTypes,
         string queueName,
-        Func<IServiceProvider, string, MessageHeaders, CancellationToken, Task> dispatch)
+        Func<IServiceProvider, string, IConsumeContext, CancellationToken, Task> dispatch)
         where TConsumer : class, IConsumer;
+
+    /// <summary>
+    /// Add a middleware step to the publish pipeline.
+    /// Steps are executed in registration order — the first registered step is outermost
+    /// and runs first. The terminal step calls the configured <see cref="IInterBusTransport"/>.
+    /// </summary>
+    IInterBusBuilder UsePublishMiddleware<
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TMiddleware>()
+        where TMiddleware : class, IPublishMiddleware;
+
+    /// <summary>
+    /// Add a middleware step to the consume pipeline.
+    /// Steps are executed in registration order — the first registered step is outermost
+    /// and runs first. The terminal step invokes the consumer's dispatch delegate.
+    /// </summary>
+    /// <remarks>
+    /// An exception-logging middleware is automatically registered as the first (outermost)
+    /// step before any user-defined steps.
+    /// </remarks>
+    IInterBusBuilder UseConsumeMiddleware<
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TMiddleware>()
+        where TMiddleware : class, IConsumeMiddleware;
 }

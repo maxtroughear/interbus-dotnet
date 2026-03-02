@@ -1,4 +1,5 @@
 using System.Diagnostics.CodeAnalysis;
+using InterBus.Middleware;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
@@ -34,7 +35,7 @@ internal sealed class InterBusBuilder : IInterBusBuilder
         [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
         TConsumer>(
         Type[] messageTypes,
-        Func<IServiceProvider, string, MessageHeaders, CancellationToken, Task> dispatch)
+        Func<IServiceProvider, string, IConsumeContext, CancellationToken, Task> dispatch)
         where TConsumer : class, IConsumer =>
         AddConsumer<TConsumer>(messageTypes, RoutingConventions.QueueName(typeof(TConsumer)), dispatch);
     
@@ -49,11 +50,31 @@ internal sealed class InterBusBuilder : IInterBusBuilder
         TConsumer>(
         Type[] messageTypes,
         string queueName,
-        Func<IServiceProvider, string, MessageHeaders, CancellationToken, Task> dispatch)
+        Func<IServiceProvider, string, IConsumeContext, CancellationToken, Task> dispatch)
         where TConsumer : class, IConsumer
     {
         _options.AddConsumer(new ConsumerDescriptor(typeof(TConsumer), queueName, messageTypes, dispatch));
         Services.TryAddScoped<TConsumer>();
+        return this;
+    }
+
+    /// <inheritdoc/>
+    public IInterBusBuilder UsePublishMiddleware<
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
+        TMiddleware>()
+        where TMiddleware : class, IPublishMiddleware
+    {
+        Services.AddScoped<IPublishMiddleware, TMiddleware>();
+        return this;
+    }
+
+    /// <inheritdoc/>
+    public IInterBusBuilder UseConsumeMiddleware<
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
+        TMiddleware>()
+        where TMiddleware : class, IConsumeMiddleware
+    {
+        Services.AddScoped<IConsumeMiddleware, TMiddleware>();
         return this;
     }
 }

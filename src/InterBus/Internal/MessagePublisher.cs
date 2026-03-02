@@ -1,23 +1,46 @@
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
+using InterBus.Middleware;
 
 namespace InterBus.Internal;
 
 /// <summary>
-/// Scoped <see cref="IMessagePublisher"/> implementation. Routes messages through the registered
-/// <see cref="IInterBusTransport"/> using convention-based topic and queue names.
+/// Scoped <see cref="IMessagePublisher"/> implementation. Serializes each message and routes it
+/// through the configured <see cref="IPublishMiddleware"/> pipeline. The terminal pipeline step
+/// forwards the message to the registered <see cref="IInterBusTransport"/>.
 /// Always stamps the <see cref="InterBusHeaders.MessageType"/> header so consumer dispatch
 /// delegates can identify the message type without runtime reflection.
 /// </summary>
 internal sealed class MessagePublisher : IMessagePublisher
 {
-    private readonly IInterBusTransport _transport;
     private readonly InterBusOptions _options;
+    private readonly Func<PublishContext, CancellationToken, Task> _pipeline;
 
-    public MessagePublisher(IInterBusTransport transport, InterBusOptions options)
+    public MessagePublisher(
+        IInterBusTransport transport,
+        InterBusOptions options,
+        IEnumerable<IPublishMiddleware> middlewares)
     {
-        _transport = transport;
         _options = options;
+
+        // Build pipeline: first registered middleware is outermost.
+        // Iterate in reverse so each new step wraps the already-built inner chain.
+        var pipeline = TerminalPublishDelegate;
+        foreach (var middleware in middlewares.Reverse())
+        {
+            var current = middleware;
+            var next = pipeline;
+            pipeline = (ctx, ct) => current.InvokeAsync(ctx, next, ct);
+        }
+
+        _pipeline = pipeline;
+        return;
+
+        // Terminal step: forward serialized payload to the transport.
+        Task TerminalPublishDelegate(PublishContext ctx, CancellationToken ct) =>
+            ctx.IsTopic
+                ? transport.PublishToTopicAsync(ctx.Destination, ctx.Payload, ctx.Headers, ct)
+                : transport.SendToQueueAsync(ctx.Destination, ctx.Payload, ctx.Headers, ct);
     }
 
     public Task Publish<T>(T message, CancellationToken cancellationToken = default) where T : class =>
@@ -32,7 +55,8 @@ internal sealed class MessagePublisher : IMessagePublisher
         var enriched = Enrich<T>(headers);
         var typeInfo = (JsonTypeInfo<T>)_options.SerializerOptions.GetTypeInfo(typeof(T));
         var payload = JsonSerializer.Serialize(message, typeInfo);
-        return _transport.PublishToTopicAsync(topicName, payload, enriched, cancellationToken);
+        var context = new PublishContext(topicName, isTopic: true, payload, enriched);
+        return _pipeline(context, cancellationToken);
     }
 
     public Task Send<TConsumer, T>(T message, CancellationToken cancellationToken = default)
@@ -48,20 +72,23 @@ internal sealed class MessagePublisher : IMessagePublisher
         var enriched = Enrich<T>(headers);
         var typeInfo = (JsonTypeInfo<T>)_options.SerializerOptions.GetTypeInfo(typeof(T));
         var payload = JsonSerializer.Serialize(message, typeInfo);
-        return _transport.SendToQueueAsync(queueName, payload, enriched, cancellationToken);
+        var context = new PublishContext(queueName, isTopic: false, payload, enriched);
+        return _pipeline(context, cancellationToken);
     }
 
     public Task Send<T>(string queueName, T message, CancellationToken cancellationToken = default)
         where T : class =>
         Send(queueName, message, [], cancellationToken);
 
-    public Task Send<T>(string queueName, T message, MessageHeaders headers, CancellationToken cancellationToken = default)
+    public Task Send<T>(string queueName, T message, MessageHeaders headers,
+        CancellationToken cancellationToken = default)
         where T : class
     {
         var enriched = Enrich<T>(headers);
         var typeInfo = (JsonTypeInfo<T>)_options.SerializerOptions.GetTypeInfo(typeof(T));
         var payload = JsonSerializer.Serialize(message, typeInfo);
-        return _transport.SendToQueueAsync(queueName, payload, enriched, cancellationToken);
+        var context = new PublishContext(queueName, isTopic: false, payload, enriched);
+        return _pipeline(context, cancellationToken);
     }
 
     /// <summary>

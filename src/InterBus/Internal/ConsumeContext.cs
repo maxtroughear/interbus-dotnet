@@ -1,13 +1,8 @@
 namespace InterBus.Internal;
 
-internal sealed class ConsumeContext : IConsumeContext
+internal sealed class ConsumeContext(MessageHeaders headers) : IConsumeContext
 {
-    public IReadOnlyDictionary<string, string> Headers { get; }
-    public string? CorrelationId { get; }
-
-    public ConsumeContext(MessageHeaders headers)
-    {
-        Headers = headers;
-        CorrelationId = headers.TryGetValue(InterBusHeaders.CorrelationId, out var value) ? value : null;
-    }
+    public IReadOnlyDictionary<string, string> Headers { get; } = headers;
+    public string? CorrelationId { get; } = headers.GetValueOrDefault(InterBusHeaders.CorrelationId);
+    public string MessageType { get; } = headers[InterBusHeaders.MessageType];
 }

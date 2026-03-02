@@ -97,11 +97,11 @@ public sealed class ConsumerRegistrationGenerator : IIncrementalGenerator
 
             sb.AppendLine($"            builder.AddConsumer<{consumerFqn}>(");
             sb.AppendLine($"                new global::System.Type[] {{ {typeArray} }},");
-            sb.AppendLine($"                static (sp, payload, headers, ct) =>");
+            sb.AppendLine($"                static (sp, payload, context, ct) =>");
             sb.AppendLine("                {");
 
             // Read the message type header.
-            sb.AppendLine("                    if (!headers.TryGetValue(global::InterBus.InterBusHeaders.MessageType, out var msgType))");
+            sb.AppendLine("                    if (!context.Headers.TryGetValue(global::InterBus.InterBusHeaders.MessageType, out var msgType))");
             sb.AppendLine("                    {");
             sb.AppendLine("                        sp.GetService<global::Microsoft.Extensions.Logging.ILoggerFactory>()");
             sb.AppendLine($"                            ?.CreateLogger(typeof({consumerFqn}).FullName!)");
@@ -113,7 +113,6 @@ public sealed class ConsumerRegistrationGenerator : IIncrementalGenerator
             sb.AppendLine("                    }");
             sb.AppendLine("                    var opts = sp.GetRequiredService<global::InterBus.InterBusOptions>().SerializerOptions;");
             sb.AppendLine($"                    var consumer = sp.GetRequiredService<{consumerFqn}>();");
-            sb.AppendLine("                    var context = global::InterBus.ConsumeContextFactory.Create(headers);");
 
             // Generate if-chain on msgType (message type full name matching header value).
             foreach (var message in messages)

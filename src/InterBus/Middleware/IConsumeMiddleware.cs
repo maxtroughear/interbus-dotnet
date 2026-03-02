@@ -1,4 +1,4 @@
-namespace InterBus;
+namespace InterBus.Middleware;
 
 /// <summary>
 /// A step in the consume middleware pipeline.
@@ -14,10 +14,12 @@ public interface IConsumeMiddleware
     /// Execute this middleware step.
     /// Call <paramref name="next"/> to pass control to the next step in the pipeline.
     /// </summary>
-    Task InvokeAsync(ConsumePipelineContext context, ConsumeDelegate next, CancellationToken cancellationToken = default);
+    Task InvokeAsync(ConsumeContext context, Func<ConsumeContext, CancellationToken, Task> next,
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>
 /// Delegate representing a step — or the remainder — of the consume pipeline.
 /// </summary>
-public delegate Task ConsumeDelegate(ConsumePipelineContext context, CancellationToken cancellationToken = default);
+public delegate Task ConsumeDelegate(ConsumeContext context, CancellationToken cancellationToken = default);
+

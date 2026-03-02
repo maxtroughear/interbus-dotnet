@@ -1,4 +1,4 @@
-namespace InterBus;
+namespace InterBus.Middleware;
 
 /// <summary>
 /// Carries the state of a single publish or send operation through the

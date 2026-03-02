@@ -1,4 +1,6 @@
-namespace InterBus;
+using InterBus.Internal;
+
+namespace InterBus.Middleware;
 
 /// <summary>
 /// Executes the consume middleware pipeline for a single message dispatch.
@@ -32,14 +34,11 @@ public sealed class ConsumePipelineExecutor
         MessageHeaders headers,
         CancellationToken cancellationToken = default)
     {
-        var context = new ConsumePipelineContext(descriptor, payload, headers);
-
-        ConsumeDelegate terminal = (ctx, ct) =>
-            ctx.Descriptor.Dispatch(_serviceProvider, ctx.Payload, ctx, ct);
+        var context = new ConsumeContext(descriptor, payload, headers);
 
         // Build pipeline: first registered middleware is outermost.
         // Iterate in reverse so each new step wraps the already-built inner chain.
-        var pipeline = terminal;
+        var pipeline = TerminalConsumeDelegate;
         foreach (var middleware in _middlewares.Reverse())
         {
             var current = middleware;
@@ -48,5 +47,11 @@ public sealed class ConsumePipelineExecutor
         }
 
         return pipeline(context, cancellationToken);
+
+        Task TerminalConsumeDelegate(ConsumeContext ctx, CancellationToken ct)
+        {
+            var consumeContext = new Internal.ConsumeContext(headers);
+            return ctx.Descriptor.Dispatch(_serviceProvider, ctx.Payload, consumeContext, ct);
+        }
     }
 }

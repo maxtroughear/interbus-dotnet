@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
+using InterBus.Middleware;
 
 namespace InterBus.Internal;
 
@@ -13,7 +14,7 @@ namespace InterBus.Internal;
 internal sealed class MessagePublisher : IMessagePublisher
 {
     private readonly InterBusOptions _options;
-    private readonly PublishDelegate _pipeline;
+    private readonly Func<PublishContext, CancellationToken, Task> _pipeline;
 
     public MessagePublisher(
         IInterBusTransport transport,
@@ -22,15 +23,9 @@ internal sealed class MessagePublisher : IMessagePublisher
     {
         _options = options;
 
-        // Terminal step: forward serialized payload to the transport.
-        PublishDelegate terminal = (ctx, ct) =>
-            ctx.IsTopic
-                ? transport.PublishToTopicAsync(ctx.Destination, ctx.Payload, ctx.Headers, ct)
-                : transport.SendToQueueAsync(ctx.Destination, ctx.Payload, ctx.Headers, ct);
-
         // Build pipeline: first registered middleware is outermost.
         // Iterate in reverse so each new step wraps the already-built inner chain.
-        var pipeline = terminal;
+        var pipeline = TerminalPublishDelegate;
         foreach (var middleware in middlewares.Reverse())
         {
             var current = middleware;
@@ -39,6 +34,13 @@ internal sealed class MessagePublisher : IMessagePublisher
         }
 
         _pipeline = pipeline;
+        return;
+
+        // Terminal step: forward serialized payload to the transport.
+        Task TerminalPublishDelegate(PublishContext ctx, CancellationToken ct) =>
+            ctx.IsTopic
+                ? transport.PublishToTopicAsync(ctx.Destination, ctx.Payload, ctx.Headers, ct)
+                : transport.SendToQueueAsync(ctx.Destination, ctx.Payload, ctx.Headers, ct);
     }
 
     public Task Publish<T>(T message, CancellationToken cancellationToken = default) where T : class =>
@@ -78,7 +80,8 @@ internal sealed class MessagePublisher : IMessagePublisher
         where T : class =>
         Send(queueName, message, [], cancellationToken);
 
-    public Task Send<T>(string queueName, T message, MessageHeaders headers, CancellationToken cancellationToken = default)
+    public Task Send<T>(string queueName, T message, MessageHeaders headers,
+        CancellationToken cancellationToken = default)
         where T : class
     {
         var enriched = Enrich<T>(headers);

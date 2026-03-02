@@ -1,4 +1,5 @@
 using InterBus.Internal;
+using InterBus.Middleware;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace InterBus.Extensions;

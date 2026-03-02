@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using InterBus.Extensions;
 using InterBus.Generated;
 using InterBus.InMemory.Extensions;
+using InterBus.Middleware;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Xunit;
@@ -50,8 +51,13 @@ public class PipelineTests
         cts.Cancel();
         foreach (var svc in provider.GetServices<IHostedService>())
         {
-            try { await svc.StopAsync(CancellationToken.None); }
-            catch (OperationCanceledException) { }
+            try
+            {
+                await svc.StopAsync(CancellationToken.None);
+            }
+            catch (OperationCanceledException)
+            {
+            }
         }
 
         await provider.DisposeAsync();
@@ -77,7 +83,7 @@ public class PipelineTests
     /// </summary>
     public sealed class RecordingPublishMiddleware(PublishCallTracker tracker) : IPublishMiddleware
     {
-        public async Task InvokeAsync(PublishContext context, PublishDelegate next,
+        public async Task InvokeAsync(PublishContext context, Func<PublishContext, CancellationToken, Task> next,
             CancellationToken cancellationToken = default)
         {
             tracker.Record("before-" + context.Destination);
@@ -321,7 +327,7 @@ public class PipelineTests
 
     public sealed class RecordingConsumeMiddleware(ConsumeMiddlewareCallTracker tracker) : IConsumeMiddleware
     {
-        public async Task InvokeAsync(ConsumePipelineContext context, ConsumeDelegate next,
+        public async Task InvokeAsync(ConsumeContext context, Func<ConsumeContext, CancellationToken, Task> next,
             CancellationToken cancellationToken = default)
         {
             tracker.Increment();
@@ -331,7 +337,7 @@ public class PipelineTests
 
     public sealed class FirstPublishMiddleware(ConcurrentQueue<string> log) : IPublishMiddleware
     {
-        public async Task InvokeAsync(PublishContext context, PublishDelegate next,
+        public async Task InvokeAsync(PublishContext context, Func<PublishContext, CancellationToken, Task> next,
             CancellationToken cancellationToken = default)
         {
             log.Enqueue("first-enter");
@@ -342,7 +348,7 @@ public class PipelineTests
 
     public sealed class SecondPublishMiddleware(ConcurrentQueue<string> log) : IPublishMiddleware
     {
-        public async Task InvokeAsync(PublishContext context, PublishDelegate next,
+        public async Task InvokeAsync(PublishContext context, Func<PublishContext, CancellationToken, Task> next,
             CancellationToken cancellationToken = default)
         {
             log.Enqueue("second-enter");

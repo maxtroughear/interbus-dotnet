@@ -11,4 +11,12 @@
         <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.*" />
         <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.*" />
     </ItemGroup>
+    <Target Name="CopyAnalyzer" AfterTargets="Build">
+        <MakeDir Directories="$(OutputPath)analyzers/dotnet/cs" />
+    </Target>
+    <ItemGroup>
+        <None Include="..\InterBus.SourceGenerator\bin\$(Configuration)\netstandard2.0\InterBus.SourceGenerator.dll"
+              Pack="true"
+              PackagePath="analyzers/dotnet/cs" />
+    </ItemGroup>
 </Project>

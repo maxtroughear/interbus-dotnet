@@ -1,4 +1,5 @@
 using System.Diagnostics.CodeAnalysis;
+using InterBus.Middleware;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 

@@ -1,4 +1,4 @@
-namespace InterBus;
+namespace InterBus.Middleware;
 
 /// <summary>
 /// Carries the state of a single message dispatch through the
@@ -8,7 +8,7 @@ namespace InterBus;
 /// (e.g. to implement the Claim Check pattern) before the terminal step invokes
 /// the consumer's dispatch delegate.
 /// </summary>
-public sealed class ConsumePipelineContext : IConsumeContext
+public sealed class ConsumeContext
 {
     /// <summary>The descriptor for the consumer that will handle this message.</summary>
     public ConsumerDescriptor Descriptor { get; }
@@ -22,13 +22,7 @@ public sealed class ConsumePipelineContext : IConsumeContext
     /// </summary>
     public MessageHeaders Headers { get; set; }
 
-    // IConsumeContext explicit implementation so consumers see the read-only interface view
-    // while middleware retains full mutable access via ConsumePipelineContext.
-    IReadOnlyDictionary<string, string> IConsumeContext.Headers => Headers;
-    string? IConsumeContext.CorrelationId =>
-        Headers.TryGetValue(InterBusHeaders.CorrelationId, out var value) ? value : null;
-
-    internal ConsumePipelineContext(
+    internal ConsumeContext(
         ConsumerDescriptor descriptor,
         string payload,
         MessageHeaders headers)

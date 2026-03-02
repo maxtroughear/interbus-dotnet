@@ -1,4 +1,4 @@
-namespace InterBus;
+namespace InterBus.Middleware;
 
 /// <summary>
 /// A step in the publish middleware pipeline.
@@ -15,10 +15,6 @@ public interface IPublishMiddleware
     /// Execute this middleware step.
     /// Call <paramref name="next"/> to pass control to the next step in the pipeline.
     /// </summary>
-    Task InvokeAsync(PublishContext context, PublishDelegate next, CancellationToken cancellationToken = default);
+    Task InvokeAsync(PublishContext context, Func<PublishContext, CancellationToken, Task> next,
+        CancellationToken cancellationToken = default);
 }
-
-/// <summary>
-/// Delegate representing a step — or the remainder — of the publish pipeline.
-/// </summary>
-public delegate Task PublishDelegate(PublishContext context, CancellationToken cancellationToken = default);

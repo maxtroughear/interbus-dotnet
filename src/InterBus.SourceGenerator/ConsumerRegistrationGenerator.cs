@@ -87,14 +87,34 @@ public sealed class ConsumerRegistrationGenerator : IIncrementalGenerator
         sb.AppendLine("            this global::InterBus.IInterBusBuilder builder)");
         sb.AppendLine("        {");
 
+        foreach (var (consumer, _) in byConsumer)
+        {
+            var methodName = $"Add{consumer.Name}";
+            sb.AppendLine($"            builder.{methodName}();");
+        }
+
+        sb.AppendLine("            return builder;");
+        sb.AppendLine("        }");
+
+        // Generate individual per-consumer extension methods.
         foreach (var (consumer, messages) in byConsumer)
         {
             var consumerFqn = consumer.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+            var methodName = $"Add{consumer.Name}";
 
             // Build the Type[] array for the messageTypes parameter.
             var typeArray = string.Join(", ",
                 messages.Select(m => $"typeof({m.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)})"));
 
+            sb.AppendLine();
+            sb.AppendLine($"        /// <summary>");
+            sb.AppendLine($"        /// Register the <c>{consumer.Name}</c> consumer with a source-generated dispatch delegate.");
+            sb.AppendLine($"        /// </summary>");
+            sb.AppendLine($"        /// <param name=\"builder\">The <see cref=\"global::InterBus.IInterBusBuilder\"/> to register the consumer with.</param>");
+            sb.AppendLine($"        /// <returns>The same builder instance for fluent chaining.</returns>");
+            sb.AppendLine($"        public static global::InterBus.IInterBusBuilder {methodName}(");
+            sb.AppendLine($"            this global::InterBus.IInterBusBuilder builder)");
+            sb.AppendLine("        {");
             sb.AppendLine($"            builder.AddConsumer<{consumerFqn}>(");
             sb.AppendLine($"                new global::System.Type[] {{ {typeArray} }},");
             sb.AppendLine($"                static (sp, payload, context, ct) =>");
@@ -137,10 +157,10 @@ public sealed class ConsumerRegistrationGenerator : IIncrementalGenerator
             sb.AppendLine($"                            \"{consumer.Name}\", msgType);");
             sb.AppendLine("                    return global::System.Threading.Tasks.Task.CompletedTask;");
             sb.AppendLine("                });");
+            sb.AppendLine("            return builder;");
+            sb.AppendLine("        }");
         }
 
-        sb.AppendLine("            return builder;");
-        sb.AppendLine("        }");
         sb.AppendLine("    }");
         sb.AppendLine("}");
 

@@ -53,6 +53,44 @@ public sealed class ConsumerRegistrationGeneratorTests
         // Generated dispatch checks the message type header.
         Assert.Contains("InterBusHeaders.MessageType", generated);
         Assert.Contains("\"MyApp.OrderPlaced\"", generated);
+        // AddConsumers() delegates to the per-consumer method.
+        Assert.Contains("builder.AddOrderPlacedConsumer();", generated);
+    }
+
+    [Fact]
+    public void Generator_SingleConsumer_GeneratesIndividualAddConsumerMethod()
+    {
+        const string source = """
+                              using System.Threading;
+                              using System.Threading.Tasks;
+                              using InterBus;
+
+                              namespace MyApp
+                              {
+                                  public record OrderPlaced(System.Guid OrderId);
+
+                                  public sealed class OrderPlacedConsumer : IConsumer<OrderPlaced>
+                                  {
+                                      public Task Consume(OrderPlaced message, IConsumeContext context, CancellationToken cancellationToken = default)
+                                          => Task.CompletedTask;
+                                  }
+                              }
+                              """;
+
+        var result = RunGenerator(source);
+
+        Assert.Single(result.GeneratedTrees);
+        var generated = result.GeneratedTrees[0].ToString();
+
+        // A per-consumer method is generated for individual registration.
+        Assert.Contains(
+            "public static global::InterBus.IInterBusBuilder AddOrderPlacedConsumer(\n            this global::InterBus.IInterBusBuilder builder)",
+            generated);
+        // The individual method contains the actual AddConsumer<TConsumer> call.
+        Assert.Contains("builder.AddConsumer<global::MyApp.OrderPlacedConsumer>(", generated);
+        Assert.Contains("typeof(global::MyApp.OrderPlaced)", generated);
+        // The individual method returns the builder (fluent).
+        Assert.Contains("return builder;", generated);
     }
 
     [Fact]
@@ -92,6 +130,12 @@ public sealed class ConsumerRegistrationGeneratorTests
         // Two separate AddConsumer calls, one per consumer class.
         Assert.Contains("builder.AddConsumer<global::MyApp.OrderPlacedConsumer>(", generated);
         Assert.Contains("builder.AddConsumer<global::MyApp.AuditConsumer>(", generated);
+        // AddConsumers() delegates to the individual per-consumer methods.
+        Assert.Contains("builder.AddOrderPlacedConsumer();", generated);
+        Assert.Contains("builder.AddAuditConsumer();", generated);
+        // Individual methods are generated for each consumer.
+        Assert.Contains("public static global::InterBus.IInterBusBuilder AddOrderPlacedConsumer(", generated);
+        Assert.Contains("public static global::InterBus.IInterBusBuilder AddAuditConsumer(", generated);
     }
 
     [Fact]

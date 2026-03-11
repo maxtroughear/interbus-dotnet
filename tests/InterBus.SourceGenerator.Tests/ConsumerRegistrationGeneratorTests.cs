@@ -47,18 +47,16 @@ public sealed class ConsumerRegistrationGeneratorTests
         Assert.Contains("AddConsumers", generated);
         Assert.Contains("global::MyApp.OrderPlacedConsumer", generated);
         Assert.Contains("global::MyApp.OrderPlaced", generated);
-        // New API: AddConsumer<TConsumer>(Type[], dispatch) - no message type in type params.
-        Assert.Contains("builder.AddConsumer<global::MyApp.OrderPlacedConsumer>(", generated);
+        // AddConsumers() delegates to the generic AddConsumer<T>() extension.
+        Assert.Contains("builder.AddConsumer<global::MyApp.OrderPlacedConsumer>();", generated);
         Assert.Contains("typeof(global::MyApp.OrderPlaced)", generated);
         // Generated dispatch checks the message type header.
         Assert.Contains("InterBusHeaders.MessageType", generated);
         Assert.Contains("\"MyApp.OrderPlaced\"", generated);
-        // AddConsumers() delegates to the per-consumer method.
-        Assert.Contains("builder.AddOrderPlacedConsumer();", generated);
     }
 
     [Fact]
-    public void Generator_SingleConsumer_GeneratesIndividualAddConsumerMethod()
+    public void Generator_SingleConsumer_GeneratesGenericAddConsumerMethod()
     {
         const string source = """
                               using System.Threading;
@@ -82,15 +80,49 @@ public sealed class ConsumerRegistrationGeneratorTests
         Assert.Single(result.GeneratedTrees);
         var generated = result.GeneratedTrees[0].ToString();
 
-        // A per-consumer method is generated for individual registration.
-        Assert.Contains(
-            "public static global::InterBus.IInterBusBuilder AddOrderPlacedConsumer(\n            this global::InterBus.IInterBusBuilder builder)",
-            generated);
-        // The individual method contains the actual AddConsumer<TConsumer> call.
-        Assert.Contains("builder.AddConsumer<global::MyApp.OrderPlacedConsumer>(", generated);
+        // A single generic AddConsumer<TConsumer>() extension method is generated.
+        Assert.Contains("public static global::InterBus.IInterBusBuilder AddConsumer<", generated);
+        Assert.Contains("where TConsumer : class, global::InterBus.IConsumer", generated);
+        // The method uses the dispatch table lookup.
+        Assert.Contains("_dispatches.TryGetValue(typeof(TConsumer), out var entry)", generated);
+        // The method returns the builder for fluent chaining.
+        Assert.Contains("return builder.AddConsumer<TConsumer>(entry.MessageTypes, entry.Dispatch);", generated);
+    }
+
+    [Fact]
+    public void Generator_SingleConsumer_GeneratesDispatchTable()
+    {
+        const string source = """
+                              using System.Threading;
+                              using System.Threading.Tasks;
+                              using InterBus;
+
+                              namespace MyApp
+                              {
+                                  public record OrderPlaced(System.Guid OrderId);
+
+                                  public sealed class OrderPlacedConsumer : IConsumer<OrderPlaced>
+                                  {
+                                      public Task Consume(OrderPlaced message, IConsumeContext context, CancellationToken cancellationToken = default)
+                                          => Task.CompletedTask;
+                                  }
+                              }
+                              """;
+
+        var result = RunGenerator(source);
+
+        Assert.Single(result.GeneratedTrees);
+        var generated = result.GeneratedTrees[0].ToString();
+
+        // A static dispatch table keyed by consumer Type is generated.
+        Assert.Contains("_dispatches", generated);
+        Assert.Contains("[typeof(global::MyApp.OrderPlacedConsumer)]", generated);
         Assert.Contains("typeof(global::MyApp.OrderPlaced)", generated);
-        // The individual method returns the builder (fluent).
-        Assert.Contains("return builder;", generated);
+        // The dispatch table contains the generated dispatch logic.
+        Assert.Contains("InterBusHeaders.MessageType", generated);
+        Assert.Contains("\"MyApp.OrderPlaced\"", generated);
+        // No named Add{ConsumerName}() methods - all registration goes through AddConsumer<T>().
+        Assert.DoesNotContain("AddOrderPlacedConsumer", generated);
     }
 
     [Fact]
@@ -127,15 +159,16 @@ public sealed class ConsumerRegistrationGeneratorTests
         var generated = result.GeneratedTrees[0].ToString();
         Assert.Contains("global::MyApp.OrderPlacedConsumer", generated);
         Assert.Contains("global::MyApp.AuditConsumer", generated);
-        // Two separate AddConsumer calls, one per consumer class.
-        Assert.Contains("builder.AddConsumer<global::MyApp.OrderPlacedConsumer>(", generated);
-        Assert.Contains("builder.AddConsumer<global::MyApp.AuditConsumer>(", generated);
-        // AddConsumers() delegates to the individual per-consumer methods.
-        Assert.Contains("builder.AddOrderPlacedConsumer();", generated);
-        Assert.Contains("builder.AddAuditConsumer();", generated);
-        // Individual methods are generated for each consumer.
-        Assert.Contains("public static global::InterBus.IInterBusBuilder AddOrderPlacedConsumer(", generated);
-        Assert.Contains("public static global::InterBus.IInterBusBuilder AddAuditConsumer(", generated);
+        // Dispatch table has an entry for each consumer type.
+        Assert.Contains("[typeof(global::MyApp.OrderPlacedConsumer)]", generated);
+        Assert.Contains("[typeof(global::MyApp.AuditConsumer)]", generated);
+        // AddConsumers() uses the generic AddConsumer<T>() for each consumer.
+        Assert.Contains("builder.AddConsumer<global::MyApp.OrderPlacedConsumer>();", generated);
+        Assert.Contains("builder.AddConsumer<global::MyApp.AuditConsumer>();", generated);
+        // Only one generic AddConsumer<TConsumer>() extension method is generated (not one per consumer).
+        var addConsumerMethodCount = System.Text.RegularExpressions.Regex
+            .Matches(generated, @"public static global::InterBus\.IInterBusBuilder AddConsumer<").Count;
+        Assert.Equal(1, addConsumerMethodCount);
     }
 
     [Fact]
@@ -169,18 +202,20 @@ public sealed class ConsumerRegistrationGeneratorTests
 
         var generated = result.GeneratedTrees[0].ToString();
 
-        // One AddConsumer call for the consumer class (not one per message type).
-        Assert.Contains("builder.AddConsumer<global::MyApp.MultiConsumer>(", generated);
-        // Both message types appear in the Type[] array.
+        // One dispatch table entry for the consumer class (not one per message type).
+        Assert.Contains("[typeof(global::MyApp.MultiConsumer)]", generated);
+        // Both message types appear in the Type[] array inside the dispatch table entry.
         Assert.Contains("typeof(global::MyApp.OrderPlaced)", generated);
         Assert.Contains("typeof(global::MyApp.OrderShipped)", generated);
         // Dispatch switches on message type header for each handled type.
         Assert.Contains("\"MyApp.OrderPlaced\"", generated);
         Assert.Contains("\"MyApp.OrderShipped\"", generated);
-        // Only ONE AddConsumer call exists (not two).
-        var addConsumerCount = System.Text.RegularExpressions.Regex
-            .Matches(generated, @"builder\.AddConsumer<").Count;
-        Assert.Equal(1, addConsumerCount);
+        // AddConsumers() calls AddConsumer<T>() only once for MultiConsumer.
+        Assert.Contains("builder.AddConsumer<global::MyApp.MultiConsumer>();", generated);
+        var addConsumerBulkCount = System.Text.RegularExpressions.Regex
+            .Matches(generated, @"builder\.AddConsumer<global::")
+            .Count;
+        Assert.Equal(1, addConsumerBulkCount);
     }
 
     // -------------------------------------------------------------------------

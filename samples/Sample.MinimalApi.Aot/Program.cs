@@ -74,7 +74,7 @@ todosApi.MapPut("/{id}/complete",
 
 app.Run();
 
-public record Todo(int Id, string? Title, DateOnly? DueBy = null, bool IsComplete = false);
+public record Todo(int Id, string Title, DateOnly? DueBy = null, bool IsComplete = false);
 
 public record TaskAdded(int Id, string Title);
 

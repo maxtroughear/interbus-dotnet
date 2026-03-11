@@ -400,6 +400,131 @@ public sealed class ConsumerRegistrationGeneratorTests
     }
 
     // -------------------------------------------------------------------------
+    // Cross-assembly consumer discovery
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void Generator_ConsumerInReferencedAssembly_IsDiscoveredAndRegistered()
+    {
+        // Build a "components" assembly that defines a consumer.
+        const string componentSource = """
+                                       using System.Threading;
+                                       using System.Threading.Tasks;
+                                       using InterBus;
+
+                                       namespace Components
+                                       {
+                                           public record OrderPlaced(System.Guid OrderId);
+
+                                           public sealed class OrderPlacedConsumer : IConsumer<OrderPlaced>
+                                           {
+                                               public Task Consume(OrderPlaced message, IConsumeContext context, CancellationToken ct = default)
+                                                   => Task.CompletedTask;
+                                           }
+                                       }
+                                       """;
+
+        var componentCompilation = CreateCompilationWithInterBus(componentSource, assemblyName: "Components");
+        var componentAssembly = componentCompilation.ToMetadataReference();
+
+        // Build a "host" compilation that has NO consumers of its own but references the components assembly.
+        const string hostSource = """
+                                  namespace Host
+                                  {
+                                      public class Startup { }
+                                  }
+                                  """;
+
+        var hostCompilation = CreateCompilationWithInterBus(
+            hostSource,
+            assemblyName: "Host",
+            extraReferences: [componentAssembly]);
+
+        var driver = CSharpGeneratorDriver
+            .Create(new ConsumerRegistrationGenerator())
+            .RunGeneratorsAndUpdateCompilation(hostCompilation, out _, out _, TestContext.Current.CancellationToken);
+
+        var result = driver.GetRunResult();
+
+        // Even though the host has no consumers of its own, the generator should discover
+        // the consumer from the referenced Components assembly and generate registration code.
+        Assert.Single(result.GeneratedTrees);
+        var generated = result.GeneratedTrees[0].ToString();
+
+        Assert.Contains("global::Components.OrderPlacedConsumer", generated);
+        Assert.Contains("global::Components.OrderPlaced", generated);
+        Assert.Contains("builder.AddConsumer<global::Components.OrderPlacedConsumer>();", generated);
+        Assert.Contains("[typeof(global::Components.OrderPlacedConsumer)]", generated);
+    }
+
+    [Fact]
+    public void Generator_ConsumersSpreadAcrossMultipleReferencedAssemblies_AllDiscovered()
+    {
+        // Assembly A: defines GreetingConsumer
+        const string assemblyASource = """
+                                       using System.Threading;
+                                       using System.Threading.Tasks;
+                                       using InterBus;
+
+                                       namespace AssemblyA
+                                       {
+                                           public record Greeting(string Text);
+
+                                           public sealed class GreetingConsumer : IConsumer<Greeting>
+                                           {
+                                               public Task Consume(Greeting m, IConsumeContext ctx, CancellationToken ct = default)
+                                                   => Task.CompletedTask;
+                                           }
+                                       }
+                                       """;
+
+        // Assembly B: defines AuditConsumer
+        const string assemblyBSource = """
+                                       using System.Threading;
+                                       using System.Threading.Tasks;
+                                       using InterBus;
+                                       using AssemblyA;
+
+                                       namespace AssemblyB
+                                       {
+                                           public sealed class AuditConsumer : IConsumer<Greeting>
+                                           {
+                                               public Task Consume(Greeting m, IConsumeContext ctx, CancellationToken ct = default)
+                                                   => Task.CompletedTask;
+                                           }
+                                       }
+                                       """;
+
+        var compilationA = CreateCompilationWithInterBus(assemblyASource, assemblyName: "AssemblyA");
+        var refA = compilationA.ToMetadataReference();
+
+        var compilationB = CreateCompilationWithInterBus(assemblyBSource, assemblyName: "AssemblyB", extraReferences: [refA]);
+        var refB = compilationB.ToMetadataReference();
+
+        // Host has no consumers of its own but references both assemblies.
+        const string hostSource = "namespace Host { public class Startup { } }";
+        var hostCompilation = CreateCompilationWithInterBus(
+            hostSource,
+            assemblyName: "Host",
+            extraReferences: [refA, refB]);
+
+        var driver = CSharpGeneratorDriver
+            .Create(new ConsumerRegistrationGenerator())
+            .RunGeneratorsAndUpdateCompilation(hostCompilation, out _, out _, TestContext.Current.CancellationToken);
+
+        var result = driver.GetRunResult();
+
+        Assert.Single(result.GeneratedTrees);
+        var generated = result.GeneratedTrees[0].ToString();
+
+        // Both consumers from both referenced assemblies are discovered.
+        Assert.Contains("global::AssemblyA.GreetingConsumer", generated);
+        Assert.Contains("global::AssemblyB.AuditConsumer", generated);
+        Assert.Contains("builder.AddConsumer<global::AssemblyA.GreetingConsumer>();", generated);
+        Assert.Contains("builder.AddConsumer<global::AssemblyB.AuditConsumer>();", generated);
+    }
+
+    // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
 
@@ -416,7 +541,10 @@ public sealed class ConsumerRegistrationGeneratorTests
     /// Creates a minimal <see cref="CSharpCompilation"/> that includes the InterBus assembly
     /// so that <c>InterBus.IConsumer&lt;T&gt;</c> can be resolved by the generator.
     /// </summary>
-    private static CSharpCompilation CreateCompilationWithInterBus(string source)
+    private static CSharpCompilation CreateCompilationWithInterBus(
+        string source,
+        string assemblyName = "TestAssembly",
+        IEnumerable<MetadataReference>? extraReferences = null)
     {
         var dotnetDir = Path.GetDirectoryName(typeof(object).Assembly.Location)!;
 
@@ -436,8 +564,11 @@ public sealed class ConsumerRegistrationGeneratorTests
                 references.Add(MetadataReference.CreateFromFile(path));
         }
 
+        if (extraReferences is not null)
+            references.AddRange(extraReferences);
+
         return CSharpCompilation.Create(
-            "TestAssembly",
+            assemblyName,
             [CSharpSyntaxTree.ParseText(source)],
             references,
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));

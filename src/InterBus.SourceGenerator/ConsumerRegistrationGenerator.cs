@@ -1,9 +1,7 @@
 using System.Collections.Generic;
-using System.Collections.Immutable;
 using System.Linq;
 using System.Text;
 using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Text;
 
 namespace InterBus.SourceGenerator;
@@ -15,32 +13,21 @@ public sealed class ConsumerRegistrationGenerator : IIncrementalGenerator
 
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
-        var classSymbols = context.SyntaxProvider
-            .CreateSyntaxProvider(
-                predicate: static (node, _) => node is ClassDeclarationSyntax,
-                transform: static (ctx, ct) =>
-                    ctx.SemanticModel.GetDeclaredSymbol(ctx.Node, ct) as INamedTypeSymbol)
-            .Where(static symbol => symbol is not null)
-            .Select(static (symbol, _) => symbol!);
-
-        var combined = classSymbols.Collect().Combine(context.CompilationProvider);
-
-        context.RegisterSourceOutput(combined, static (ctx, data) =>
-            Execute(ctx, data.Left, data.Right));
+        context.RegisterSourceOutput(context.CompilationProvider, static (ctx, compilation) =>
+            Execute(ctx, compilation));
     }
 
-    private static void Execute(
-        SourceProductionContext ctx,
-        ImmutableArray<INamedTypeSymbol> classSymbols,
-        Compilation compilation)
+    private static void Execute(SourceProductionContext ctx, Compilation compilation)
     {
         var consumerInterfaceSymbol = compilation.GetTypeByMetadataName(ConsumerInterfaceMetadataName);
         if (consumerInterfaceSymbol is null) return;
 
         // One entry per consumer class, with all handled message types.
+        // Scan the entire global namespace so consumers defined in referenced assemblies
+        // (e.g. NuGet packages or project references) are also discovered.
         var byConsumer = new List<(INamedTypeSymbol Consumer, List<INamedTypeSymbol> Messages)>();
 
-        foreach (var classSymbol in classSymbols)
+        foreach (var classSymbol in GetAllTypes(compilation.GlobalNamespace))
         {
             if (classSymbol.IsAbstract || classSymbol.TypeKind != TypeKind.Class) continue;
 
@@ -195,5 +182,34 @@ public sealed class ConsumerRegistrationGenerator : IIncrementalGenerator
         ctx.AddSource(
             "InterBusConsumerRegistrations.g.cs",
             SourceText.From(sb.ToString(), Encoding.UTF8));
+    }
+
+    /// <summary>
+    /// Recursively yields all named type symbols declared in <paramref name="ns"/> and its
+    /// nested namespaces, including types from referenced assemblies since the caller passes
+    /// <c>compilation.GlobalNamespace</c>.
+    /// </summary>
+    private static IEnumerable<INamedTypeSymbol> GetAllTypes(INamespaceSymbol ns)
+    {
+        foreach (var type in ns.GetTypeMembers())
+        {
+            yield return type;
+            foreach (var nested in GetNestedTypes(type))
+                yield return nested;
+        }
+
+        foreach (var nestedNs in ns.GetNamespaceMembers())
+            foreach (var type in GetAllTypes(nestedNs))
+                yield return type;
+    }
+
+    private static IEnumerable<INamedTypeSymbol> GetNestedTypes(INamedTypeSymbol type)
+    {
+        foreach (var nested in type.GetTypeMembers())
+        {
+            yield return nested;
+            foreach (var deep in GetNestedTypes(nested))
+                yield return deep;
+        }
     }
 }

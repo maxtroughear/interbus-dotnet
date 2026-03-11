@@ -4,6 +4,7 @@ using InterBus.Generated;
 using InterBus.InMemory.Extensions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Sample.AuditComponents;
 using Sample.Components;
 
 var builder = Host.CreateApplicationBuilder(args);

@@ -115,7 +115,13 @@ public sealed class ConsumerRegistrationGenerator : IIncrementalGenerator
         var assemblyName = SanitizeAssemblyName(compilation.AssemblyName ?? "Unknown");
         var currentModuleName = DispatchModulePrefix + assemblyName;
 
-        // Build the full list of module names visible to the aggregating class.
+        // AddConsumers() registers only the current project's consumers — each referenced
+        // library already has InterBus.SourceGenerator and will generate its own dispatch module,
+        // so there is no need to aggregate across assemblies here.
+        string? currentModule = currentConsumers.Count > 0 ? currentModuleName : null;
+
+        // AddConsumer<TConsumer>() must be able to find consumers from referenced assemblies,
+        // so we still build the full module list for that method.
         var allModuleNames = new List<string>(externalModuleNames);
         if (currentConsumers.Count > 0)
             allModuleNames.Add(currentModuleName);
@@ -138,7 +144,7 @@ public sealed class ConsumerRegistrationGenerator : IIncrementalGenerator
         }
 
         // ── Part B: aggregating registrations class ──────────────────────────────────────────
-        AppendAggregatingClass(sb, allModuleNames);
+        AppendAggregatingClass(sb, currentModule, allModuleNames);
 
         sb.AppendLine("}");
 
@@ -232,7 +238,7 @@ public sealed class ConsumerRegistrationGenerator : IIncrementalGenerator
 
     // ── Aggregating class ────────────────────────────────────────────────────────────────────
 
-    private static void AppendAggregatingClass(StringBuilder sb, List<string> allModuleNames)
+    private static void AppendAggregatingClass(StringBuilder sb, string? currentModule, List<string> allModuleNames)
     {
         sb.AppendLine("    /// <summary>");
         sb.AppendLine("    /// Source-generated consumer registrations and dispatch delegates.");
@@ -242,10 +248,15 @@ public sealed class ConsumerRegistrationGenerator : IIncrementalGenerator
         sb.AppendLine($"    internal static class {AggregatingClassName}");
         sb.AppendLine("    {");
 
-        // AddConsumers(): calls Register() on every dispatch module.
+        // AddConsumers(): registers only the current project's consumers.
+        // Each referenced library also has InterBus.SourceGenerator and generates its own dispatch
+        // module, so host projects that want all consumers should call AddConsumers() on each
+        // referenced library's InterBusConsumerRegistrations, or use individual AddConsumer<T>()
+        // calls for consumers from specific referenced assemblies.
         sb.AppendLine("        /// <summary>");
-        sb.AppendLine("        /// Register all <c>IConsumer&lt;T&gt;</c> implementations discovered in this");
-        sb.AppendLine("        /// assembly and all referenced assemblies that carry a source-generated dispatch module.");
+        sb.AppendLine("        /// Register all <c>IConsumer&lt;T&gt;</c> implementations defined in this assembly.");
+        sb.AppendLine("        /// Consumers defined in referenced assemblies can be registered with");
+        sb.AppendLine("        /// <c>AddConsumer&lt;TConsumer&gt;()</c> individually.");
         sb.AppendLine("        /// Each consumer is registered once with a compile-time dispatch delegate that routes");
         sb.AppendLine("        /// incoming messages using the <c>interbus-message-type</c> header.");
         sb.AppendLine("        /// </summary>");
@@ -253,8 +264,8 @@ public sealed class ConsumerRegistrationGenerator : IIncrementalGenerator
         sb.AppendLine($"            this global::InterBus.IInterBusBuilder builder)");
         sb.AppendLine("        {");
 
-        foreach (var module in allModuleNames)
-            sb.AppendLine($"            global::{GeneratedNamespace}.{module}.Register(builder);");
+        if (currentModule is not null)
+            sb.AppendLine($"            global::{GeneratedNamespace}.{currentModule}.Register(builder);");
 
         sb.AppendLine("            return builder;");
         sb.AppendLine("        }");

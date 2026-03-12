@@ -464,13 +464,15 @@ public sealed class ConsumerRegistrationGeneratorTests
         var result = driver.GetRunResult();
 
         // The host generator discovered InterBusConsumerRegistrations_Components from the reference
-        // and generated an aggregating class that delegates to it.
+        // and generated an aggregating class with access to it.
         Assert.Single(result.GeneratedTrees);
         var generated = result.GeneratedTrees[0].ToString();
 
-        // The aggregating AddConsumers() calls the component dispatch module's Register().
-        Assert.Contains("InterBusConsumerRegistrations_Components.Register(builder)", generated);
-        // The aggregating AddConsumer<T>() uses TryGetDispatch on the component module.
+        // AddConsumers() only registers the host's own consumers.
+        // The host has no consumers, so it should NOT call the component module's Register().
+        Assert.DoesNotContain("InterBusConsumerRegistrations_Components.Register(builder)", generated);
+        // The aggregating AddConsumer<T>() uses TryGetDispatch on the component module,
+        // allowing individual cross-assembly consumer registration.
         Assert.Contains("InterBusConsumerRegistrations_Components.TryGetDispatch(", generated);
         // No per-assembly dispatch module is generated for the host (it has no consumers).
         Assert.DoesNotContain("InterBusConsumerRegistrations_Host", generated);
@@ -552,10 +554,12 @@ public sealed class ConsumerRegistrationGeneratorTests
         Assert.Single(result.GeneratedTrees);
         var generated = result.GeneratedTrees[0].ToString();
 
-        // Both dispatch modules are called from AddConsumers().
-        Assert.Contains("InterBusConsumerRegistrations_AssemblyA.Register(builder)", generated);
-        Assert.Contains("InterBusConsumerRegistrations_AssemblyB.Register(builder)", generated);
-        // Both modules are searched in AddConsumer<TConsumer>().
+        // AddConsumers() only registers the host's own consumers — the host has none, so
+        // neither external module's Register() should be called from AddConsumers().
+        Assert.DoesNotContain("InterBusConsumerRegistrations_AssemblyA.Register(builder)", generated);
+        Assert.DoesNotContain("InterBusConsumerRegistrations_AssemblyB.Register(builder)", generated);
+        // AddConsumer<TConsumer>() still searches both external modules to support
+        // individual cross-assembly consumer registration.
         Assert.Contains("InterBusConsumerRegistrations_AssemblyA.TryGetDispatch(", generated);
         Assert.Contains("InterBusConsumerRegistrations_AssemblyB.TryGetDispatch(", generated);
     }

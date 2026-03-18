@@ -11,6 +11,6 @@
         <ProjectReference Include="..\..\src\InterBus.SourceGenerator\InterBus.SourceGenerator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false"/>
     </ItemGroup>
     <ItemGroup>
-        <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.3"/>
+        <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.5"/>
     </ItemGroup>
 </Project>

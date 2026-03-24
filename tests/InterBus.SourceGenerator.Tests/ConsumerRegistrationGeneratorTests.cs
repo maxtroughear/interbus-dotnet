@@ -47,9 +47,7 @@ public sealed class ConsumerRegistrationGeneratorTests
         Assert.Contains("AddConsumers", generated);
         Assert.Contains("global::MyApp.OrderPlacedConsumer", generated);
         Assert.Contains("global::MyApp.OrderPlaced", generated);
-        // AddConsumers() delegates to the dispatch module's Register() method.
-        Assert.Contains("InterBusConsumerRegistrations_TestAssembly.Register(builder)", generated);
-        // Register() calls builder.AddConsumer<T> with dispatch arguments.
+        // AddConsumers() calls builder.AddConsumer<T> with dispatch arguments.
         Assert.Contains("builder.AddConsumer<global::MyApp.OrderPlacedConsumer>(", generated);
         Assert.Contains("typeof(global::MyApp.OrderPlaced)", generated);
         // Generated dispatch checks the message type header.

@@ -88,11 +88,11 @@ public sealed class ConsumerRegistrationGenerator : IIncrementalGenerator
 
             List<INamedTypeSymbol>? messages = null;
 
-            foreach (var iface in classSymbol.AllInterfaces)
+            foreach (var symbol in classSymbol.AllInterfaces)
             {
-                if (iface.TypeArguments.Length != 1) continue;
-                if (!SymbolEqualityComparer.Default.Equals(iface.OriginalDefinition, consumerInterface)) continue;
-                if (iface.TypeArguments[0] is not INamedTypeSymbol messageType) continue;
+                if (symbol.TypeArguments.Length != 1) continue;
+                if (!SymbolEqualityComparer.Default.Equals(symbol.OriginalDefinition, consumerInterface)) continue;
+                if (symbol.TypeArguments[0] is not INamedTypeSymbol messageType) continue;
 
                 messages ??= new List<INamedTypeSymbol>();
                 messages.Add(messageType);
@@ -114,12 +114,7 @@ public sealed class ConsumerRegistrationGenerator : IIncrementalGenerator
 
         var assemblyName = SanitizeAssemblyName(compilation.AssemblyName ?? "Unknown");
         var currentModuleName = DispatchModulePrefix + assemblyName;
-
-        // AddConsumers() registers only the current project's consumers — each referenced
-        // library already has InterBus.SourceGenerator and will generate its own dispatch module,
-        // so there is no need to aggregate across assemblies here.
-        var currentModule = currentConsumers.Count > 0 ? currentModuleName : null;
-
+        
         // AddConsumer<TConsumer>() must be able to find consumers from referenced assemblies,
         // so we still build the full module list for that method.
         var allModuleNames = new List<string>(externalModuleNames);
@@ -144,7 +139,7 @@ public sealed class ConsumerRegistrationGenerator : IIncrementalGenerator
         }
 
         // ── Part B: aggregating registrations class ──────────────────────────────────────────
-        AppendAggregatingClass(sb, currentModule, allModuleNames);
+        AppendAggregatingClass(sb, allModuleNames);
 
         sb.AppendLine("}");
 
@@ -191,7 +186,7 @@ public sealed class ConsumerRegistrationGenerator : IIncrementalGenerator
         // Called by the host's aggregating AddConsumers() extension method.
         sb.AppendLine("        /// <summary>Adds all consumers defined in this assembly module.</summary>");
         sb.AppendLine("        public static global::InterBus.IInterBusBuilder AddConsumers(");
-        sb.AppendLine("            global::InterBus.IInterBusBuilder builder)");
+        sb.AppendLine("            this global::InterBus.IInterBusBuilder builder)");
         sb.AppendLine("        {");
 
         for (var i = 0; i < consumers.Count; i++)
@@ -230,7 +225,7 @@ public sealed class ConsumerRegistrationGenerator : IIncrementalGenerator
 
     // ── Aggregating class ────────────────────────────────────────────────────────────────────
 
-    private static void AppendAggregatingClass(StringBuilder sb, string? currentModule, List<string> allModuleNames)
+    private static void AppendAggregatingClass(StringBuilder sb, List<string> allModuleNames)
     {
         sb.AppendLine("    /// <summary>");
         sb.AppendLine("    /// Source-generated consumer registrations and dispatch delegates.");
@@ -239,29 +234,6 @@ public sealed class ConsumerRegistrationGenerator : IIncrementalGenerator
         sb.AppendLine("    /// </summary>");
         sb.AppendLine($"    internal static class {AggregatingClassName}");
         sb.AppendLine("    {");
-
-        // AddConsumers(): registers only the current project's consumers.
-        // Each referenced library also has InterBus.SourceGenerator and generates its own dispatch
-        // module, so host projects that want all consumers should call AddConsumers() on each
-        // referenced library's InterBusConsumerRegistrations, or use individual AddConsumer<T>()
-        // calls for consumers from specific referenced assemblies.
-        sb.AppendLine("        /// <summary>");
-        sb.AppendLine("        /// Register all <c>IConsumer&lt;T&gt;</c> implementations defined in this assembly.");
-        sb.AppendLine("        /// Consumers defined in referenced assemblies can be registered with");
-        sb.AppendLine("        /// <c>AddConsumer&lt;TConsumer&gt;()</c> individually.");
-        sb.AppendLine("        /// Each consumer is registered once with a compile-time dispatch delegate that routes");
-        sb.AppendLine("        /// incoming messages using the <c>interbus-message-type</c> header.");
-        sb.AppendLine("        /// </summary>");
-        sb.AppendLine("        public static global::InterBus.IInterBusBuilder AddConsumers(");
-        sb.AppendLine("            this global::InterBus.IInterBusBuilder builder)");
-        sb.AppendLine("        {");
-
-        if (currentModule is not null)
-            sb.AppendLine($"            global::{GeneratedNamespace}.{currentModule}.AddConsumers(builder);");
-
-        sb.AppendLine("            return builder;");
-        sb.AppendLine("        }");
-        sb.AppendLine();
 
         // AddConsumer<TConsumer>(): individual consumer registration via dispatch module lookup.
         sb.AppendLine("        /// <summary>");
@@ -372,9 +344,8 @@ public sealed class ConsumerRegistrationGenerator : IIncrementalGenerator
         foreach (var type in ns.GetTypeMembers())
         {
             if (type.Name.StartsWith(DispatchModulePrefix, global::System.StringComparison.Ordinal) &&
-                type.TypeKind == TypeKind.Class &&
-                type.IsStatic &&
-                type.DeclaredAccessibility == Accessibility.Public)
+                type.TypeKind == TypeKind.Class && type is
+                    { IsStatic: true, DeclaredAccessibility: Accessibility.Public })
             {
                 modules.Add(type.Name);
             }

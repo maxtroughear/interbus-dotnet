@@ -88,35 +88,61 @@ public sealed class RetryMiddlewareTests
     // ─── OperationCanceledException ──────────────────────────────────────────
 
     [Fact]
-    public async Task DoesNotRetry_OnOperationCanceledException()
+    public async Task DoesNotRetry_OnOperationCanceledException_WhenTokenCancelled()
     {
         var callCount = 0;
         var middleware = CreateMiddleware(new RetryOptions { RetryCount = 5 });
+        using var cts = new CancellationTokenSource();
+        await cts.CancelAsync();
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
             middleware.InvokeAsync(BuildContext(), (_, _) =>
             {
                 callCount++;
-                throw new OperationCanceledException();
-            }, TestContext.Current.CancellationToken));
+                throw new OperationCanceledException(cts.Token);
+            }, cts.Token));
 
         Assert.Equal(1, callCount);
     }
 
     [Fact]
-    public async Task DoesNotRetry_OnTaskCanceledException()
+    public async Task DoesNotRetry_OnTaskCanceledException_WhenTokenCancelled()
     {
         var callCount = 0;
         var middleware = CreateMiddleware(new RetryOptions { RetryCount = 5 });
+        using var cts = new CancellationTokenSource();
+        await cts.CancelAsync();
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
             middleware.InvokeAsync(BuildContext(), (_, _) =>
             {
                 callCount++;
                 throw new TaskCanceledException();
-            }, TestContext.Current.CancellationToken));
+            }, cts.Token));
 
         Assert.Equal(1, callCount);
+    }
+
+    [Fact]
+    public async Task Retries_OnOperationCanceledException_FromInternalToken()
+    {
+        // Consumer uses its own internal CancellationToken (not the middleware's token).
+        // The middleware's token is NOT cancelled, so the exception should be retried.
+        const int retryCount = 2;
+        var callCount = 0;
+        var middleware = CreateMiddleware(new RetryOptions { RetryCount = retryCount });
+        using var internalCts = new CancellationTokenSource();
+        await internalCts.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            middleware.InvokeAsync(BuildContext(), (_, _) =>
+            {
+                callCount++;
+                throw new OperationCanceledException(internalCts.Token);
+            }, TestContext.Current.CancellationToken));
+
+        // Initial attempt + retryCount retries.
+        Assert.Equal(retryCount + 1, callCount);
     }
 
     // ─── RetryOptions.RetryCount validation ──────────────────────────────────

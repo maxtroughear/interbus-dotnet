@@ -34,7 +34,8 @@ public sealed class RetryOptions
     /// <summary>
     /// Determines whether a thrown exception should trigger a retry.
     /// Return <c>true</c> to retry, <c>false</c> to rethrow immediately.
-    /// <see cref="OperationCanceledException"/> is never retried regardless of this predicate.
+    /// <see cref="OperationCanceledException"/> caused by the middleware's own
+    /// <see cref="CancellationToken"/> is never retried regardless of this predicate.
     /// Defaults to <c>null</c>, meaning all non-cancellation exceptions are retried.
     /// </summary>
     public Func<Exception, bool>? ShouldRetry { get; set; }

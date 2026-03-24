@@ -14,7 +14,9 @@ namespace InterBus.Retry;
 /// instance to control the retry count, delay strategy, and exception filter.
 /// </para>
 /// <para>
-/// <see cref="OperationCanceledException"/> is never retried — it propagates immediately.
+/// <see cref="OperationCanceledException"/> is only bypassed (propagated without retrying)
+/// when the supplied <see cref="CancellationToken"/> is cancelled.
+/// Exceptions thrown by consumer-internal cancellation tokens are retried normally.
 /// </para>
 /// </remarks>
 public sealed class RetryConsumeMiddleware(
@@ -36,7 +38,7 @@ public sealed class RetryConsumeMiddleware(
                 await next(context, cancellationToken);
                 return;
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
                 throw;
             }

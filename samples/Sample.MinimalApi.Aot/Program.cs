@@ -17,7 +17,7 @@ builder.Services.AddInterBus(bus =>
 {
     bus.Options.SerializerOptions.TypeInfoResolverChain.Insert(0, AppJsonSerializerContext.Default);
     bus.AddInMemoryTransport();
-    bus.AddConsumers();
+    bus.AddConsumer<TodoNotifier>();
 });
 
 var app = builder.Build();
@@ -74,7 +74,7 @@ todosApi.MapPut("/{id}/complete",
 
 app.Run();
 
-public record Todo(int Id, string? Title, DateOnly? DueBy = null, bool IsComplete = false);
+public record Todo(int Id, string Title, DateOnly? DueBy = null, bool IsComplete = false);
 
 public record TaskAdded(int Id, string Title);
 

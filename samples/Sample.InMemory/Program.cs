@@ -4,6 +4,8 @@ using InterBus.Generated;
 using InterBus.InMemory.Extensions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Sample.AuditComponents;
+using Sample.Components;
 
 var builder = Host.CreateApplicationBuilder(args);
 
@@ -12,8 +14,9 @@ builder.Services.AddInterBus(bus =>
 {
     bus.AddInMemoryTransport();
 
-    // Automatically register consumers discovered by the source generator
-    bus.AddConsumers();
+    bus.AddConsumer<GreetingConsumer>();
+    bus.AddConsumer<FarewellConsumer>();
+    bus.AddConsumer<EavesDroppingConsumer>();
 });
 
 var host = builder.Build();
@@ -35,46 +38,3 @@ using (var scope = host.Services.CreateScope())
 await Task.Delay(1000);
 
 await host.StopAsync();
-
-public record GreetingMessage(string Text);
-
-public record FarewellMessage(string Text);
-
-// ReSharper disable ClassNeverInstantiated.Global
-public class GreetingConsumer(IMessagePublisher publisher) : IConsumer<GreetingMessage>
-{
-    public async Task Consume(GreetingMessage message, IConsumeContext context,
-        CancellationToken cancellationToken = default)
-    {
-        Console.WriteLine($"[GreetingConsumer] Received message: {message.Text}");
-
-        var farewell = new FarewellMessage($"Goodbye from In-Memory Transport!");
-        Console.WriteLine($"[GreetingConsumer] Publishing farewell message: {farewell.Text}");
-
-        await publisher.Publish(farewell, cancellationToken);
-    }
-}
-
-public class FarewellConsumer : IConsumer<FarewellMessage>
-{
-    public Task Consume(FarewellMessage message, IConsumeContext context, CancellationToken cancellationToken = default)
-    {
-        Console.WriteLine($"[FarewellConsumer] Received farewell message: {message.Text}");
-        return Task.CompletedTask;
-    }
-}
-
-public class EavesDroppingConsumer : IConsumer<GreetingMessage>, IConsumer<FarewellMessage>
-{
-    public Task Consume(GreetingMessage message, IConsumeContext context, CancellationToken cancellationToken = default)
-    {
-        Console.WriteLine($"[EavesDroppingConsumer] Received greeting message: {message.Text}");
-        return Task.CompletedTask;
-    }
-
-    public Task Consume(FarewellMessage message, IConsumeContext context, CancellationToken cancellationToken = default)
-    {
-        Console.WriteLine($"[EavesDroppingConsumer] Received farewell message: {message.Text}");
-        return Task.CompletedTask;
-    }
-}

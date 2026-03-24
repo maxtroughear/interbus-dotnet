@@ -47,12 +47,83 @@ public sealed class ConsumerRegistrationGeneratorTests
         Assert.Contains("AddConsumers", generated);
         Assert.Contains("global::MyApp.OrderPlacedConsumer", generated);
         Assert.Contains("global::MyApp.OrderPlaced", generated);
-        // New API: AddConsumer<TConsumer>(Type[], dispatch) - no message type in type params.
+        // AddConsumers() calls builder.AddConsumer<T> with dispatch arguments.
         Assert.Contains("builder.AddConsumer<global::MyApp.OrderPlacedConsumer>(", generated);
         Assert.Contains("typeof(global::MyApp.OrderPlaced)", generated);
         // Generated dispatch checks the message type header.
         Assert.Contains("InterBusHeaders.MessageType", generated);
         Assert.Contains("\"MyApp.OrderPlaced\"", generated);
+    }
+
+    [Fact]
+    public void Generator_SingleConsumer_GeneratesGenericAddConsumerMethod()
+    {
+        const string source = """
+                              using System.Threading;
+                              using System.Threading.Tasks;
+                              using InterBus;
+
+                              namespace MyApp
+                              {
+                                  public record OrderPlaced(System.Guid OrderId);
+
+                                  public sealed class OrderPlacedConsumer : IConsumer<OrderPlaced>
+                                  {
+                                      public Task Consume(OrderPlaced message, IConsumeContext context, CancellationToken cancellationToken = default)
+                                          => Task.CompletedTask;
+                                  }
+                              }
+                              """;
+
+        var result = RunGenerator(source);
+
+        Assert.Single(result.GeneratedTrees);
+        var generated = result.GeneratedTrees[0].ToString();
+
+        // A single generic AddConsumer<TConsumer>() extension method is generated.
+        Assert.Contains("public static global::InterBus.IInterBusBuilder AddConsumer<", generated);
+        Assert.Contains("where TConsumer : class, global::InterBus.IConsumer", generated);
+        // The method uses per-module TryGetDispatch lookups.
+        Assert.Contains("TryGetDispatch(", generated);
+        Assert.Contains("typeof(TConsumer), out var m0, out var d0", generated);
+        // The method returns the builder for fluent chaining.
+        Assert.Contains("return builder.AddConsumer<TConsumer>(m0, d0);", generated);
+    }
+
+    [Fact]
+    public void Generator_SingleConsumer_GeneratesDispatchTable()
+    {
+        const string source = """
+                              using System.Threading;
+                              using System.Threading.Tasks;
+                              using InterBus;
+
+                              namespace MyApp
+                              {
+                                  public record OrderPlaced(System.Guid OrderId);
+
+                                  public sealed class OrderPlacedConsumer : IConsumer<OrderPlaced>
+                                  {
+                                      public Task Consume(OrderPlaced message, IConsumeContext context, CancellationToken cancellationToken = default)
+                                          => Task.CompletedTask;
+                                  }
+                              }
+                              """;
+
+        var result = RunGenerator(source);
+
+        Assert.Single(result.GeneratedTrees);
+        var generated = result.GeneratedTrees[0].ToString();
+
+        // A static dispatch table keyed by consumer Type is generated.
+        Assert.Contains("_dispatches", generated);
+        Assert.Contains("[typeof(global::MyApp.OrderPlacedConsumer)]", generated);
+        Assert.Contains("typeof(global::MyApp.OrderPlaced)", generated);
+        // The dispatch table contains the generated dispatch logic.
+        Assert.Contains("InterBusHeaders.MessageType", generated);
+        Assert.Contains("\"MyApp.OrderPlaced\"", generated);
+        // No named Add{ConsumerName}() methods - all registration goes through AddConsumer<T>().
+        Assert.DoesNotContain("AddOrderPlacedConsumer", generated);
     }
 
     [Fact]
@@ -89,9 +160,16 @@ public sealed class ConsumerRegistrationGeneratorTests
         var generated = result.GeneratedTrees[0].ToString();
         Assert.Contains("global::MyApp.OrderPlacedConsumer", generated);
         Assert.Contains("global::MyApp.AuditConsumer", generated);
-        // Two separate AddConsumer calls, one per consumer class.
+        // Dispatch table has an entry for each consumer type.
+        Assert.Contains("[typeof(global::MyApp.OrderPlacedConsumer)]", generated);
+        Assert.Contains("[typeof(global::MyApp.AuditConsumer)]", generated);
+        // Register() calls builder.AddConsumer<T> for each consumer (with dispatch args).
         Assert.Contains("builder.AddConsumer<global::MyApp.OrderPlacedConsumer>(", generated);
         Assert.Contains("builder.AddConsumer<global::MyApp.AuditConsumer>(", generated);
+        // Only one generic AddConsumer<TConsumer>() extension method is generated (not one per consumer).
+        var addConsumerMethodCount = System.Text.RegularExpressions.Regex
+            .Matches(generated, @"public static global::InterBus\.IInterBusBuilder AddConsumer<").Count;
+        Assert.Equal(1, addConsumerMethodCount);
     }
 
     [Fact]
@@ -125,18 +203,20 @@ public sealed class ConsumerRegistrationGeneratorTests
 
         var generated = result.GeneratedTrees[0].ToString();
 
-        // One AddConsumer call for the consumer class (not one per message type).
-        Assert.Contains("builder.AddConsumer<global::MyApp.MultiConsumer>(", generated);
-        // Both message types appear in the Type[] array.
+        // One dispatch table entry for the consumer class (not one per message type).
+        Assert.Contains("[typeof(global::MyApp.MultiConsumer)]", generated);
+        // Both message types appear in the Type[] array inside the dispatch table entry.
         Assert.Contains("typeof(global::MyApp.OrderPlaced)", generated);
         Assert.Contains("typeof(global::MyApp.OrderShipped)", generated);
         // Dispatch switches on message type header for each handled type.
         Assert.Contains("\"MyApp.OrderPlaced\"", generated);
         Assert.Contains("\"MyApp.OrderShipped\"", generated);
-        // Only ONE AddConsumer call exists (not two).
-        var addConsumerCount = System.Text.RegularExpressions.Regex
-            .Matches(generated, @"builder\.AddConsumer<").Count;
-        Assert.Equal(1, addConsumerCount);
+        // Register() calls builder.AddConsumer<MultiConsumer> exactly once.
+        Assert.Contains("builder.AddConsumer<global::MyApp.MultiConsumer>(", generated);
+        var addConsumerBulkCount = System.Text.RegularExpressions.Regex
+            .Matches(generated, @"builder\.AddConsumer<global::")
+            .Count;
+        Assert.Equal(1, addConsumerBulkCount);
     }
 
     // -------------------------------------------------------------------------
@@ -281,6 +361,8 @@ public sealed class ConsumerRegistrationGeneratorTests
         var generated = result.GeneratedTrees[0].ToString();
 
         Assert.Contains("namespace InterBus.Generated", generated);
+        // A public per-assembly dispatch module is generated alongside the internal aggregating class.
+        Assert.Contains("public static class InterBusConsumerRegistrations_TestAssembly", generated);
         Assert.Contains("internal static class InterBusConsumerRegistrations", generated);
     }
 
@@ -321,6 +403,166 @@ public sealed class ConsumerRegistrationGeneratorTests
     }
 
     // -------------------------------------------------------------------------
+    // Cross-assembly consumer discovery
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void Generator_ConsumerInReferencedAssembly_IsDiscoveredAndRegistered()
+    {
+        // Build a "components" assembly that defines a consumer, then run the generator on it
+        // so it produces the InterBusConsumerRegistrations_Components dispatch module.
+        // This mirrors the real build process: every library is compiled with the generator,
+        // making its dispatch module available to downstream projects.
+        const string componentSource = """
+                                       using System.Threading;
+                                       using System.Threading.Tasks;
+                                       using InterBus;
+
+                                       namespace Components
+                                       {
+                                           public record OrderPlaced(System.Guid OrderId);
+
+                                           public sealed class OrderPlacedConsumer : IConsumer<OrderPlaced>
+                                           {
+                                               public Task Consume(OrderPlaced message, IConsumeContext context, CancellationToken ct = default)
+                                                   => Task.CompletedTask;
+                                           }
+                                       }
+                                       """;
+
+        var componentCompilation = CreateCompilationWithInterBus(componentSource, assemblyName: "Components");
+
+        // Run the generator on the component assembly to produce InterBusConsumerRegistrations_Components.
+        CSharpGeneratorDriver
+            .Create(new ConsumerRegistrationGenerator())
+            .RunGeneratorsAndUpdateCompilation(
+                componentCompilation,
+                out var componentWithGenerated,
+                out _,
+                TestContext.Current.CancellationToken);
+
+        // Build a "host" compilation that has NO consumers of its own but references the
+        // generated component assembly.
+        const string hostSource = """
+                                  namespace Host
+                                  {
+                                      public class Startup { }
+                                  }
+                                  """;
+
+        var hostCompilation = CreateCompilationWithInterBus(
+            hostSource,
+            assemblyName: "Host",
+            extraReferences: [componentWithGenerated.ToMetadataReference()]);
+
+        var driver = CSharpGeneratorDriver
+            .Create(new ConsumerRegistrationGenerator())
+            .RunGeneratorsAndUpdateCompilation(hostCompilation, out _, out _, TestContext.Current.CancellationToken);
+
+        var result = driver.GetRunResult();
+
+        // The host generator discovered InterBusConsumerRegistrations_Components from the reference
+        // and generated an aggregating class with access to it.
+        Assert.Single(result.GeneratedTrees);
+        var generated = result.GeneratedTrees[0].ToString();
+
+        // AddConsumers() only registers the host's own consumers.
+        // The host has no consumers, so it should NOT call the component module's Register().
+        Assert.DoesNotContain("InterBusConsumerRegistrations_Components.Register(builder)", generated);
+        // The aggregating AddConsumer<T>() uses TryGetDispatch on the component module,
+        // allowing individual cross-assembly consumer registration.
+        Assert.Contains("InterBusConsumerRegistrations_Components.TryGetDispatch(", generated);
+        // No per-assembly dispatch module is generated for the host (it has no consumers).
+        Assert.DoesNotContain("InterBusConsumerRegistrations_Host", generated);
+    }
+
+    [Fact]
+    public void Generator_ConsumersSpreadAcrossMultipleReferencedAssemblies_AllDiscovered()
+    {
+        // Assembly A: defines GreetingConsumer
+        const string assemblyASource = """
+                                       using System.Threading;
+                                       using System.Threading.Tasks;
+                                       using InterBus;
+
+                                       namespace AssemblyA
+                                       {
+                                           public record Greeting(string Text);
+
+                                           public sealed class GreetingConsumer : IConsumer<Greeting>
+                                           {
+                                               public Task Consume(Greeting m, IConsumeContext ctx, CancellationToken ct = default)
+                                                   => Task.CompletedTask;
+                                           }
+                                       }
+                                       """;
+
+        // Assembly B: defines AuditConsumer
+        const string assemblyBSource = """
+                                       using System.Threading;
+                                       using System.Threading.Tasks;
+                                       using InterBus;
+                                       using AssemblyA;
+
+                                       namespace AssemblyB
+                                       {
+                                           public sealed class AuditConsumer : IConsumer<Greeting>
+                                           {
+                                               public Task Consume(Greeting m, IConsumeContext ctx, CancellationToken ct = default)
+                                                   => Task.CompletedTask;
+                                           }
+                                       }
+                                       """;
+
+        // Run generator on A → produces InterBusConsumerRegistrations_AssemblyA.
+        var compilationA = CreateCompilationWithInterBus(assemblyASource, assemblyName: "AssemblyA");
+        CSharpGeneratorDriver
+            .Create(new ConsumerRegistrationGenerator())
+            .RunGeneratorsAndUpdateCompilation(
+                compilationA,
+                out var compilationAWithGen,
+                out _,
+                TestContext.Current.CancellationToken);
+        var refA = compilationAWithGen.ToMetadataReference();
+
+        // Run generator on B (which references A) → produces InterBusConsumerRegistrations_AssemblyB.
+        var compilationB = CreateCompilationWithInterBus(assemblyBSource, assemblyName: "AssemblyB", extraReferences: [refA]);
+        CSharpGeneratorDriver
+            .Create(new ConsumerRegistrationGenerator())
+            .RunGeneratorsAndUpdateCompilation(
+                compilationB,
+                out var compilationBWithGen,
+                out _,
+                TestContext.Current.CancellationToken);
+        var refB = compilationBWithGen.ToMetadataReference();
+
+        // Host has no consumers of its own but references both generated assemblies.
+        const string hostSource = "namespace Host { public class Startup { } }";
+        var hostCompilation = CreateCompilationWithInterBus(
+            hostSource,
+            assemblyName: "Host",
+            extraReferences: [refA, refB]);
+
+        var driver = CSharpGeneratorDriver
+            .Create(new ConsumerRegistrationGenerator())
+            .RunGeneratorsAndUpdateCompilation(hostCompilation, out _, out _, TestContext.Current.CancellationToken);
+
+        var result = driver.GetRunResult();
+
+        Assert.Single(result.GeneratedTrees);
+        var generated = result.GeneratedTrees[0].ToString();
+
+        // AddConsumers() only registers the host's own consumers — the host has none, so
+        // neither external module's Register() should be called from AddConsumers().
+        Assert.DoesNotContain("InterBusConsumerRegistrations_AssemblyA.Register(builder)", generated);
+        Assert.DoesNotContain("InterBusConsumerRegistrations_AssemblyB.Register(builder)", generated);
+        // AddConsumer<TConsumer>() still searches both external modules to support
+        // individual cross-assembly consumer registration.
+        Assert.Contains("InterBusConsumerRegistrations_AssemblyA.TryGetDispatch(", generated);
+        Assert.Contains("InterBusConsumerRegistrations_AssemblyB.TryGetDispatch(", generated);
+    }
+
+    // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
 
@@ -337,7 +579,10 @@ public sealed class ConsumerRegistrationGeneratorTests
     /// Creates a minimal <see cref="CSharpCompilation"/> that includes the InterBus assembly
     /// so that <c>InterBus.IConsumer&lt;T&gt;</c> can be resolved by the generator.
     /// </summary>
-    private static CSharpCompilation CreateCompilationWithInterBus(string source)
+    private static CSharpCompilation CreateCompilationWithInterBus(
+        string source,
+        string assemblyName = "TestAssembly",
+        IEnumerable<MetadataReference>? extraReferences = null)
     {
         var dotnetDir = Path.GetDirectoryName(typeof(object).Assembly.Location)!;
 
@@ -357,8 +602,11 @@ public sealed class ConsumerRegistrationGeneratorTests
                 references.Add(MetadataReference.CreateFromFile(path));
         }
 
+        if (extraReferences is not null)
+            references.AddRange(extraReferences);
+
         return CSharpCompilation.Create(
-            "TestAssembly",
+            assemblyName,
             [CSharpSyntaxTree.ParseText(source)],
             references,
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));

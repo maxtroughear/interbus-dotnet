@@ -11,6 +11,11 @@
         <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.*" />
         <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.*" />
     </ItemGroup>
+    <ItemGroup>
+        <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+            <_Parameter1>InterBus.Retry.Tests</_Parameter1>
+        </AssemblyAttribute>
+    </ItemGroup>
     <Target Name="CopyAnalyzer" AfterTargets="Build">
         <MakeDir Directories="$(OutputPath)analyzers/dotnet/cs" />
     </Target>

@@ -191,7 +191,7 @@ public sealed class ConsumerRegistrationGenerator : IIncrementalGenerator
         // Called by the host's aggregating AddConsumers() extension method.
         sb.AppendLine("        /// <summary>Adds all consumers defined in this assembly module.</summary>");
         sb.AppendLine("        public static global::InterBus.IInterBusBuilder AddConsumers(");
-        sb.AppendLine("            this global::InterBus.IInterBusBuilder builder)");
+        sb.AppendLine("            global::InterBus.IInterBusBuilder builder)");
         sb.AppendLine("        {");
 
         for (var i = 0; i < consumers.Count; i++)

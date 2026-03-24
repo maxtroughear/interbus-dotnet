@@ -13,7 +13,7 @@
     </ItemGroup>
     <ItemGroup>
         <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
-            <_Parameter1>InterBus.Retry.Tests</_Parameter1>
+            <_Parameter1>InterBus.Tests</_Parameter1>
         </AssemblyAttribute>
     </ItemGroup>
     <Target Name="CopyAnalyzer" AfterTargets="Build">

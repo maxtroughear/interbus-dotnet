@@ -3,7 +3,7 @@ using InterBus.Retry;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
-namespace InterBus.Retry.Tests;
+namespace InterBus.Tests;
 
 /// <summary>
 /// Unit tests for <see cref="RetryConsumeMiddleware"/>, <see cref="RetryOptions"/>,

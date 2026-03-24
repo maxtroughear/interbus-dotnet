@@ -1,6 +1,6 @@
 using InterBus.Middleware;
 
-namespace InterBus.Retry.Tests;
+namespace InterBus.Tests;
 
 /// <summary>
 /// Helper for creating <see cref="ConsumeContext"/> instances in tests.

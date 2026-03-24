@@ -13,7 +13,9 @@ builder.Services.AddInterBus(bus =>
     // Use source-generated serializer context before registering consumers
     bus.Options.SerializerOptions = SampleAotJsonContext.Default.Options;
 
-    bus.AddConsumers();
+    bus.AddConsumer<GreetingConsumer>();
+    bus.AddConsumer<FarewellConsumer>();
+    bus.AddConsumer<EavesDroppingConsumer>();
 
     bus.AddInMemoryTransport();
 });

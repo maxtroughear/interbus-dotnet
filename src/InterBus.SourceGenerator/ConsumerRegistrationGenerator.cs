@@ -18,7 +18,7 @@ namespace InterBus.SourceGenerator;
 ///   <c>IConsumer&lt;T&gt;</c> implementations, using <c>SyntaxProvider</c> so the step is
 ///   fast and incremental (only re-runs when class declarations change in the current project).
 ///   The generated <c>public static class InterBusConsumerRegistrations_{AssemblyName}</c>
-///   contains the dispatch delegates, a <c>Register()</c> method, and a
+///   contains the dispatch delegates, an <c>AddConsumers()</c> method, and a
 ///   <c>TryGetDispatch()</c> lookup method.</item>
 ///
 ///   <item><b>Aggregating registrations class</b> – emitted in every project that can see one
@@ -118,7 +118,7 @@ public sealed class ConsumerRegistrationGenerator : IIncrementalGenerator
         // AddConsumers() registers only the current project's consumers — each referenced
         // library already has InterBus.SourceGenerator and will generate its own dispatch module,
         // so there is no need to aggregate across assemblies here.
-        string? currentModule = currentConsumers.Count > 0 ? currentModuleName : null;
+        var currentModule = currentConsumers.Count > 0 ? currentModuleName : null;
 
         // AddConsumer<TConsumer>() must be able to find consumers from referenced assemblies,
         // so we still build the full module list for that method.
@@ -172,37 +172,29 @@ public sealed class ConsumerRegistrationGenerator : IIncrementalGenerator
         sb.AppendLine("    {");
 
         // Static dispatch table: consumer Type → (message types, dispatch delegate).
-        sb.AppendLine($"        private static readonly global::System.Collections.Generic.Dictionary<");
-        sb.AppendLine($"            global::System.Type,");
+        sb.AppendLine("        private static readonly global::System.Collections.Generic.Dictionary<");
+        sb.AppendLine("            global::System.Type,");
         sb.AppendLine($"            (global::System.Type[] MessageTypes, {DispatchFuncType} Dispatch)>");
-        sb.AppendLine($"            _dispatches = new()");
+        sb.AppendLine("            _dispatches = new()");
         sb.AppendLine("        {");
 
         foreach (var (consumer, messages) in consumers)
         {
-            var consumerFqn = consumer.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
-            var typeArray = string.Join(", ",
-                messages.Select(m => $"typeof({m.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)})"));
-
-            sb.AppendLine($"            [typeof({consumerFqn})] = (");
-            sb.AppendLine($"                new global::System.Type[] {{ {typeArray} }},");
-            sb.AppendLine($"                static (sp, payload, context, ct) =>");
-            sb.AppendLine("                {");
-            AppendDispatchBody(sb, consumer, messages, "                    ");
-            sb.AppendLine("                }),");
+            AppendDispatchBody(sb, consumer, messages);
+            
         }
 
         sb.AppendLine("        };");
         sb.AppendLine();
 
-        // Register(): statically typed AddConsumer<T> calls.
+        // AddConsumers(): statically typed AddConsumer<T> calls.
         // Called by the host's aggregating AddConsumers() extension method.
-        sb.AppendLine("        /// <summary>Registers all consumers defined in this assembly module.</summary>");
-        sb.AppendLine($"        public static global::InterBus.IInterBusBuilder Register(");
-        sb.AppendLine($"            global::InterBus.IInterBusBuilder builder)");
+        sb.AppendLine("        /// <summary>Adds all consumers defined in this assembly module.</summary>");
+        sb.AppendLine("        public static global::InterBus.IInterBusBuilder AddConsumers(");
+        sb.AppendLine("            this global::InterBus.IInterBusBuilder builder)");
         sb.AppendLine("        {");
 
-        for (int i = 0; i < consumers.Count; i++)
+        for (var i = 0; i < consumers.Count; i++)
         {
             var (consumer, _) = consumers[i];
             var consumerFqn = consumer.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
@@ -218,9 +210,9 @@ public sealed class ConsumerRegistrationGenerator : IIncrementalGenerator
         sb.AppendLine("        /// <summary>");
         sb.AppendLine("        /// Tries to get the source-generated dispatch for a specific consumer type.");
         sb.AppendLine("        /// </summary>");
-        sb.AppendLine($"        public static bool TryGetDispatch(");
-        sb.AppendLine($"            global::System.Type consumerType,");
-        sb.AppendLine($"            out global::System.Type[] messageTypes,");
+        sb.AppendLine("        public static bool TryGetDispatch(");
+        sb.AppendLine("            global::System.Type consumerType,");
+        sb.AppendLine("            out global::System.Type[] messageTypes,");
         sb.AppendLine($"            out {DispatchFuncType} dispatch)");
         sb.AppendLine("        {");
         sb.AppendLine("            if (_dispatches.TryGetValue(consumerType, out var entry))");
@@ -260,12 +252,12 @@ public sealed class ConsumerRegistrationGenerator : IIncrementalGenerator
         sb.AppendLine("        /// Each consumer is registered once with a compile-time dispatch delegate that routes");
         sb.AppendLine("        /// incoming messages using the <c>interbus-message-type</c> header.");
         sb.AppendLine("        /// </summary>");
-        sb.AppendLine($"        public static global::InterBus.IInterBusBuilder AddConsumers(");
-        sb.AppendLine($"            this global::InterBus.IInterBusBuilder builder)");
+        sb.AppendLine("        public static global::InterBus.IInterBusBuilder AddConsumers(");
+        sb.AppendLine("            this global::InterBus.IInterBusBuilder builder)");
         sb.AppendLine("        {");
 
         if (currentModule is not null)
-            sb.AppendLine($"            global::{GeneratedNamespace}.{currentModule}.Register(builder);");
+            sb.AppendLine($"            global::{GeneratedNamespace}.{currentModule}.AddConsumers(builder);");
 
         sb.AppendLine("            return builder;");
         sb.AppendLine("        }");
@@ -290,7 +282,7 @@ public sealed class ConsumerRegistrationGenerator : IIncrementalGenerator
         sb.AppendLine("            where TConsumer : class, global::InterBus.IConsumer");
         sb.AppendLine("        {");
 
-        for (int i = 0; i < allModuleNames.Count; i++)
+        for (var i = 0; i < allModuleNames.Count; i++)
         {
             sb.AppendLine($"            if (global::{GeneratedNamespace}.{allModuleNames[i]}.TryGetDispatch(");
             sb.AppendLine($"                    typeof(TConsumer), out var m{i}, out var d{i}))");
@@ -310,43 +302,50 @@ public sealed class ConsumerRegistrationGenerator : IIncrementalGenerator
     private static void AppendDispatchBody(
         StringBuilder sb,
         INamedTypeSymbol consumer,
-        List<INamedTypeSymbol> messages,
-        string indent)
+        List<INamedTypeSymbol> messages)
     {
         var consumerFqn = consumer.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
 
-        sb.AppendLine($"{indent}if (!context.Headers.TryGetValue(global::InterBus.InterBusHeaders.MessageType, out var msgType))");
-        sb.AppendLine($"{indent}{{");
-        sb.AppendLine($"{indent}    sp.GetService<global::Microsoft.Extensions.Logging.ILoggerFactory>()");
-        sb.AppendLine($"{indent}        ?.CreateLogger(typeof({consumerFqn}).FullName!)");
-        sb.AppendLine($"{indent}        .LogError(");
-        sb.AppendLine($"{indent}            \"InterBus: message received without {{Header}} header for consumer {{Consumer}}\",");
-        sb.AppendLine($"{indent}            global::InterBus.InterBusHeaders.MessageType,");
-        sb.AppendLine($"{indent}            \"{consumer.Name}\");");
-        sb.AppendLine($"{indent}    return global::System.Threading.Tasks.Task.CompletedTask;");
-        sb.AppendLine($"{indent}}}");
-        sb.AppendLine($"{indent}var opts = sp.GetRequiredService<global::InterBus.InterBusOptions>().SerializerOptions;");
-        sb.AppendLine($"{indent}var consumer = sp.GetRequiredService<{consumerFqn}>();");
+        var consumerTypes = string.Join(", ",
+            messages.Select(m => $"typeof({m.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)})"));
+        
+        sb.AppendLine($"            [typeof({consumerFqn})] = (");
+        sb.AppendLine($"                new global::System.Type[] {{ {consumerTypes} }},");
+        sb.AppendLine("                static (sp, payload, context, ct) =>");
+        sb.AppendLine("                {");
+        sb.AppendLine("                    if (!context.Headers.TryGetValue(global::InterBus.InterBusHeaders.MessageType, out var msgType))");
+        sb.AppendLine("                    {");
+        sb.AppendLine("                        sp.GetService<global::Microsoft.Extensions.Logging.ILoggerFactory>()");
+        sb.AppendLine($"                            ?.CreateLogger(typeof({consumerFqn}).FullName!)");
+        sb.AppendLine("                            .LogError(");
+        sb.AppendLine("                                \"InterBus: message received without {{Header}} header for consumer {{Consumer}}\",");
+        sb.AppendLine("                                global::InterBus.InterBusHeaders.MessageType,");
+        sb.AppendLine($"                                \"{consumer.Name}\");");
+        sb.AppendLine("                        return global::System.Threading.Tasks.Task.CompletedTask;");
+        sb.AppendLine("                    }");
+        sb.AppendLine("                    var opts = sp.GetRequiredService<global::InterBus.InterBusOptions>().SerializerOptions;");
+        sb.AppendLine($"                    var consumer = sp.GetRequiredService<{consumerFqn}>();");
 
         foreach (var message in messages)
         {
             var messageFqn = message.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
             var messageFullName = message.ToDisplayString();
 
-            sb.AppendLine($"{indent}if (msgType == \"{messageFullName}\")");
-            sb.AppendLine($"{indent}    return consumer.Consume(");
-            sb.AppendLine($"{indent}        global::System.Text.Json.JsonSerializer.Deserialize(payload,");
-            sb.AppendLine($"{indent}            (global::System.Text.Json.Serialization.Metadata.JsonTypeInfo<{messageFqn}>)");
-            sb.AppendLine($"{indent}            opts.GetTypeInfo(typeof({messageFqn})))!,");
-            sb.AppendLine($"{indent}        context, ct);");
+            sb.AppendLine($"                    if (msgType == \"{messageFullName}\")");
+            sb.AppendLine("                        return consumer.Consume(");
+            sb.AppendLine("                            global::System.Text.Json.JsonSerializer.Deserialize(payload,");
+            sb.AppendLine($"                                (global::System.Text.Json.Serialization.Metadata.JsonTypeInfo<{messageFqn}>)");
+            sb.AppendLine($"                                opts.GetTypeInfo(typeof({messageFqn})))!,");
+            sb.AppendLine("                            context, ct);");
         }
 
-        sb.AppendLine($"{indent}sp.GetService<global::Microsoft.Extensions.Logging.ILoggerFactory>()");
-        sb.AppendLine($"{indent}    ?.CreateLogger(typeof({consumerFqn}).FullName!)");
-        sb.AppendLine($"{indent}    .LogError(");
-        sb.AppendLine($"{indent}        \"InterBus: consumer {{Consumer}} does not handle message type {{MessageType}}; message ignored\",");
-        sb.AppendLine($"{indent}        \"{consumer.Name}\", msgType);");
-        sb.AppendLine($"{indent}return global::System.Threading.Tasks.Task.CompletedTask;");
+        sb.AppendLine("                    sp.GetService<global::Microsoft.Extensions.Logging.ILoggerFactory>()");
+        sb.AppendLine($"                        ?.CreateLogger(typeof({consumerFqn}).FullName!)");
+        sb.AppendLine("                        .LogError(");
+        sb.AppendLine("                            \"InterBus: consumer {{Consumer}} does not handle message type {{MessageType}}; message ignored\",");
+        sb.AppendLine($"                            \"{consumer.Name}\", msgType);");
+        sb.AppendLine("                    return global::System.Threading.Tasks.Task.CompletedTask;");
+        sb.AppendLine("                }),");
     }
 
     // ── Helper: find dispatch modules from referenced assemblies ────────────────────────────
@@ -362,7 +361,7 @@ public sealed class ConsumerRegistrationGenerator : IIncrementalGenerator
         var modules = new List<string>();
 
         // Navigate to InterBus.Generated in the merged global namespace.
-        INamespaceSymbol? ns = compilation.GlobalNamespace;
+        var ns = compilation.GlobalNamespace;
         foreach (var part in GeneratedNamespace.Split('.'))
         {
             ns = ns.GetNamespaceMembers().FirstOrDefault(n => n.Name == part);

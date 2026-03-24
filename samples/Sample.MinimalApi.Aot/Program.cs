@@ -17,7 +17,7 @@ builder.Services.AddInterBus(bus =>
 {
     bus.Options.SerializerOptions.TypeInfoResolverChain.Insert(0, AppJsonSerializerContext.Default);
     bus.AddInMemoryTransport();
-    bus.AddConsumers();
+    bus.AddConsumer<TodoNotifier>();
 });
 
 var app = builder.Build();

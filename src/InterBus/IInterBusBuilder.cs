@@ -14,8 +14,9 @@ public interface IInterBusBuilder
     IServiceCollection Services { get; }
 
     /// <summary>
-    /// The runtime options for this InterBus instance. Configure <see cref="InterBusOptions.SerializerOptions"/>
-    /// here before calling <see cref="AddConsumer{TConsumer}"/> to enable AOT-safe or custom serialization.
+    /// The runtime options for this InterBus instance. Configure <see cref="InterBusOptions.Serializer"/>
+    /// here before calling <see cref="AddConsumer{TConsumer}"/> to use a custom serialiser or to
+    /// enable AOT-safe serialisation.
     /// </summary>
     InterBusOptions Options { get; }
 

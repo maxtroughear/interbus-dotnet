@@ -1,5 +1,3 @@
-using System.Text.Json;
-using System.Text.Json.Serialization.Metadata;
 using InterBus.Middleware;
 
 namespace InterBus.Internal;
@@ -53,8 +51,7 @@ internal sealed class MessagePublisher : IMessagePublisher
             ? customName
             : RoutingConventions.TopicName(typeof(T));
         var enriched = Enrich<T>(headers);
-        var typeInfo = (JsonTypeInfo<T>)_options.SerializerOptions.GetTypeInfo(typeof(T));
-        var payload = JsonSerializer.Serialize(message, typeInfo);
+        var payload = _options.Serializer.Serialize(message);
         var context = new PublishContext(topicName, isTopic: true, payload, enriched);
         return _pipeline(context, cancellationToken);
     }
@@ -70,8 +67,7 @@ internal sealed class MessagePublisher : IMessagePublisher
     {
         var queueName = RoutingConventions.QueueName(typeof(TConsumer));
         var enriched = Enrich<T>(headers);
-        var typeInfo = (JsonTypeInfo<T>)_options.SerializerOptions.GetTypeInfo(typeof(T));
-        var payload = JsonSerializer.Serialize(message, typeInfo);
+        var payload = _options.Serializer.Serialize(message);
         var context = new PublishContext(queueName, isTopic: false, payload, enriched);
         return _pipeline(context, cancellationToken);
     }
@@ -85,8 +81,7 @@ internal sealed class MessagePublisher : IMessagePublisher
         where T : class
     {
         var enriched = Enrich<T>(headers);
-        var typeInfo = (JsonTypeInfo<T>)_options.SerializerOptions.GetTypeInfo(typeof(T));
-        var payload = JsonSerializer.Serialize(message, typeInfo);
+        var payload = _options.Serializer.Serialize(message);
         var context = new PublishContext(queueName, isTopic: false, payload, enriched);
         return _pipeline(context, cancellationToken);
     }

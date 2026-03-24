@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using InterBus;
 using InterBus.Extensions;
@@ -15,7 +16,9 @@ builder.Services.ConfigureHttpJsonOptions(options =>
 
 builder.Services.AddInterBus(bus =>
 {
-    bus.Options.SerializerOptions.TypeInfoResolverChain.Insert(0, AppJsonSerializerContext.Default);
+    var jsonOptions = new JsonSerializerOptions();
+    jsonOptions.TypeInfoResolverChain.Insert(0, AppJsonSerializerContext.Default);
+    bus.Options.Serializer = new SystemTextJsonMessageSerializer(jsonOptions);
     bus.AddInMemoryTransport();
     bus.AddConsumer<TodoNotifier>();
 });

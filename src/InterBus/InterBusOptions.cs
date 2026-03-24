@@ -1,6 +1,4 @@
 using System.Diagnostics.CodeAnalysis;
-using System.Text.Json;
-using System.Text.Json.Serialization.Metadata;
 
 namespace InterBus;
 
@@ -17,29 +15,28 @@ public sealed class InterBusOptions
     public IReadOnlyList<ConsumerDescriptor> Consumers => _consumers;
 
     /// <summary>
-    /// The <see cref="System.Text.Json.JsonSerializerOptions"/> used to serialize and deserialize
-    /// message payloads. To enable trimming and AOT compatibility, configure this with a
-    /// source-generated <see cref="System.Text.Json.Serialization.JsonSerializerContext"/> via
-    /// <see cref="IInterBusBuilder.Options"/> before calling <c>AddConsumers()</c>.
-    /// Defaults to a reflection-based resolver; override for trimmed or AOT applications.
+    /// The <see cref="IMessageSerializer"/> used to serialise and deserialise message payloads.
+    /// Defaults to <see cref="SystemTextJsonMessageSerializer"/> with a reflection-based resolver.
+    /// Override via <see cref="IInterBusBuilder.Options"/> before calling <c>AddConsumers()</c>
+    /// to use a different serialisation format or to supply a source-generated
+    /// <c>JsonSerializerContext</c> for trimmed or Native AOT applications.
     /// </summary>
-    public JsonSerializerOptions SerializerOptions { get; set; }
+    public IMessageSerializer Serializer { get; set; }
 
     /// <summary>
-    /// Initializes a new <see cref="InterBusOptions"/> with a reflection-based JSON resolver as the
-    /// default. Override <see cref="SerializerOptions"/> via <c>bus.Options.SerializerOptions</c>
-    /// with a source-generated <see cref="System.Text.Json.Serialization.JsonSerializerContext"/>
-    /// for trimmed or Native AOT applications.
+    /// Initialises a new <see cref="InterBusOptions"/> with a <see cref="SystemTextJsonMessageSerializer"/>
+    /// backed by a reflection-based JSON resolver. Override <see cref="Serializer"/> via
+    /// <c>bus.Options.Serializer</c> for custom serialisation or for trimmed/AOT applications.
     /// </summary>
     [UnconditionalSuppressMessage("ReflectionAnalysis", "IL2026",
         Justification =
-            "DefaultJsonTypeInfoResolver uses reflection. Override SerializerOptions with a source-generated JsonSerializerContext for AOT/trim applications.")]
+            "SystemTextJsonMessageSerializer defaults to reflection-based JSON. Override Serializer with a SystemTextJsonMessageSerializer(JsonSerializerOptions) or custom IMessageSerializer for AOT/trim applications.")]
     [UnconditionalSuppressMessage("AotAnalysis", "IL3050",
         Justification =
-            "DefaultJsonTypeInfoResolver requires dynamic code. Override SerializerOptions with a source-generated JsonSerializerContext for AOT applications.")]
+            "SystemTextJsonMessageSerializer defaults to reflection-based JSON. Override Serializer with a SystemTextJsonMessageSerializer(JsonSerializerOptions) or custom IMessageSerializer for AOT applications.")]
     public InterBusOptions()
     {
-        SerializerOptions = new JsonSerializerOptions { TypeInfoResolver = new DefaultJsonTypeInfoResolver() };
+        Serializer = new SystemTextJsonMessageSerializer();
     }
 
     internal void AddConsumer(ConsumerDescriptor descriptor) => _consumers.Add(descriptor);

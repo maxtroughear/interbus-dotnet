@@ -15,8 +15,7 @@ builder.Services.ConfigureHttpJsonOptions(options =>
 
 builder.Services.AddInterBus(bus =>
 {
-    bus.Services.AddSingleton<IMessageSerializer>(
-        new SystemTextJsonMessageSerializer(AppJsonSerializerContext.Default.Options));
+    bus.UseSystemTextJsonSerializer(AppJsonSerializerContext.Default.Options);
     bus.AddInMemoryTransport();
     bus.AddConsumer<TodoNotifier>();
 });

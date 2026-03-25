@@ -20,9 +20,11 @@ public sealed class SystemTextJsonMessageSerializer : IMessageSerializer
 
     /// <summary>
     /// Initialises a new instance with a reflection-based JSON resolver.
-    /// Override <see cref="InterBusOptions.Serializer"/> with
-    /// <see cref="SystemTextJsonMessageSerializer(JsonSerializerOptions)"/> for trimmed
-    /// or Native AOT applications.
+    /// Use <see cref="SystemTextJsonMessageSerializer(JsonSerializerOptions)"/> with a
+    /// source-generated <see cref="System.Text.Json.Serialization.JsonSerializerContext"/>
+    /// for trimmed or Native AOT applications, or call
+    /// <c>bus.UseSystemTextJsonSerializer(MyAotJsonContext.Default.Options)</c> inside
+    /// <c>AddInterBus</c>.
     /// </summary>
     [UnconditionalSuppressMessage("ReflectionAnalysis", "IL2026",
         Justification =

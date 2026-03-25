@@ -83,7 +83,7 @@ public class PipelineTests
     /// </summary>
     public sealed class RecordingPublishMiddleware(PublishCallTracker tracker) : IPublishMiddleware
     {
-        public async Task InvokeAsync(PublishContext context, Func<PublishContext, CancellationToken, Task> next,
+        public async Task InvokeAsync<T>(PublishContext<T> context, Func<PublishContext<T>, CancellationToken, Task> next,
             CancellationToken cancellationToken = default)
         {
             tracker.Record("before-" + context.Destination);
@@ -337,7 +337,7 @@ public class PipelineTests
 
     public sealed class FirstPublishMiddleware(ConcurrentQueue<string> log) : IPublishMiddleware
     {
-        public async Task InvokeAsync(PublishContext context, Func<PublishContext, CancellationToken, Task> next,
+        public async Task InvokeAsync<T>(PublishContext<T> context, Func<PublishContext<T>, CancellationToken, Task> next,
             CancellationToken cancellationToken = default)
         {
             log.Enqueue("first-enter");
@@ -348,7 +348,7 @@ public class PipelineTests
 
     public sealed class SecondPublishMiddleware(ConcurrentQueue<string> log) : IPublishMiddleware
     {
-        public async Task InvokeAsync(PublishContext context, Func<PublishContext, CancellationToken, Task> next,
+        public async Task InvokeAsync<T>(PublishContext<T> context, Func<PublishContext<T>, CancellationToken, Task> next,
             CancellationToken cancellationToken = default)
         {
             log.Enqueue("second-enter");

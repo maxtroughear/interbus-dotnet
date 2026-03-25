@@ -15,6 +15,6 @@ public interface IPublishMiddleware
     /// Execute this middleware step.
     /// Call <paramref name="next"/> to pass control to the next step in the pipeline.
     /// </summary>
-    Task InvokeAsync(PublishContext context, Func<PublishContext, CancellationToken, Task> next,
+    Task InvokeAsync<T>(PublishContext<T> context, Func<PublishContext<T>, CancellationToken, Task> next,
         CancellationToken cancellationToken = default);
 }

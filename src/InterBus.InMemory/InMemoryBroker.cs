@@ -41,7 +41,7 @@ public sealed class InMemoryBroker : IInterBusTransport, IDisposable
     }
 
     /// <inheritdoc/>
-    public Task PublishToTopicAsync(string topicName, string payload, MessageHeaders headers,
+    public Task PublishToTopicAsync(string topicName, byte[] payload, MessageHeaders headers,
         CancellationToken cancellationToken)
     {
         if (_topics.TryGetValue(topicName, out var topic))
@@ -51,13 +51,12 @@ public sealed class InMemoryBroker : IInterBusTransport, IDisposable
     }
 
     /// <inheritdoc/>
-    public Task SendToQueueAsync(string queueName, string payload, MessageHeaders headers,
+    public Task SendToQueueAsync(string queueName, byte[] payload, MessageHeaders headers,
         CancellationToken cancellationToken)
     {
-        if (_queues.TryGetValue(queueName, out var queue))
-            return queue.WriteAsync(new InMemoryEnvelope(payload, headers), cancellationToken).AsTask();
-
-        return Task.CompletedTask;
+        return _queues.TryGetValue(queueName, out var queue)
+            ? queue.WriteAsync(new InMemoryEnvelope(payload, headers), cancellationToken).AsTask()
+            : Task.CompletedTask;
     }
 
     /// <summary>Returns all registered queues. Used by the message pump to start consumers.</summary>

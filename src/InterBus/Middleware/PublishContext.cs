@@ -22,7 +22,7 @@ public sealed class PublishContext
     public bool IsTopic { get; }
 
     /// <summary>The serialized message payload. Middleware may replace this value.</summary>
-    public string Payload { get; set; }
+    public byte[] Payload { get; set; }
 
     /// <summary>
     /// The headers attached to the outgoing message.
@@ -30,7 +30,7 @@ public sealed class PublishContext
     /// </summary>
     public MessageHeaders Headers { get; set; }
 
-    internal PublishContext(string destination, bool isTopic, string payload, MessageHeaders headers)
+    internal PublishContext(string destination, bool isTopic, byte[] payload, MessageHeaders headers)
     {
         Destination = destination;
         IsTopic = isTopic;

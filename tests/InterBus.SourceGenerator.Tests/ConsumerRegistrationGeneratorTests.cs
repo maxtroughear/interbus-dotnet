@@ -563,6 +563,46 @@ public sealed class ConsumerRegistrationGeneratorTests
     }
 
     // -------------------------------------------------------------------------
+    // Serializer abstraction
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void Generator_SingleConsumer_UsesSerializerAbstractionForDispatch()
+    {
+        const string source = """
+                              using System.Threading;
+                              using System.Threading.Tasks;
+                              using InterBus;
+
+                              namespace MyApp
+                              {
+                                  public record OrderPlaced(System.Guid OrderId);
+
+                                  public sealed class OrderPlacedConsumer : IConsumer<OrderPlaced>
+                                  {
+                                      public Task Consume(OrderPlaced message, IConsumeContext context, CancellationToken cancellationToken = default)
+                                          => Task.CompletedTask;
+                                  }
+                              }
+                              """;
+
+        var result = RunGenerator(source);
+
+        Assert.Empty(result.Diagnostics);
+        Assert.Single(result.GeneratedTrees);
+
+        var generated = result.GeneratedTrees[0].ToString();
+
+        // Dispatch delegate uses IMessageSerializer.Deserialize<T> — no direct JSON coupling.
+        Assert.Contains("serializer.Deserialize<global::MyApp.OrderPlaced>(payload)", generated);
+        Assert.Contains("GetRequiredService<global::InterBus.IMessageSerializer>()", generated);
+        // No direct System.Text.Json references in the generated dispatch code.
+        Assert.DoesNotContain("System.Text.Json.JsonSerializer", generated);
+        Assert.DoesNotContain("JsonTypeInfo", generated);
+        Assert.DoesNotContain("SerializerOptions", generated);
+    }
+
+    // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
 

@@ -32,13 +32,13 @@ public sealed class ConsumerDescriptor
     /// and invokes the correct <c>Consume</c> overload on the consumer. If the message type is
     /// not handled by this consumer it logs an error and returns without throwing.
     /// </summary>
-    public Func<IServiceProvider, string, IConsumeContext, CancellationToken, Task> Dispatch { get; }
+    public Func<IServiceProvider, byte[], IConsumeContext, CancellationToken, Task> Dispatch { get; }
 
     internal ConsumerDescriptor(
         Type consumerType,
         string queueName,
         IReadOnlyList<Type> messageTypes,
-        Func<IServiceProvider, string, IConsumeContext, CancellationToken, Task> dispatch)
+        Func<IServiceProvider, byte[], IConsumeContext, CancellationToken, Task> dispatch)
     {
         ConsumerType = consumerType;
         QueueName = queueName;

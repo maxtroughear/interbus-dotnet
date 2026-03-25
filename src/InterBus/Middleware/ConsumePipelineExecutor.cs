@@ -30,7 +30,7 @@ public sealed class ConsumePipelineExecutor
     /// </summary>
     public Task ExecuteAsync(
         ConsumerDescriptor descriptor,
-        string payload,
+        byte[] payload,
         MessageHeaders headers,
         CancellationToken cancellationToken = default)
     {

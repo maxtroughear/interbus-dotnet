@@ -12,14 +12,17 @@ namespace InterBus.Internal;
 internal sealed class MessagePublisher : IMessagePublisher
 {
     private readonly InterBusOptions _options;
+    private readonly IMessageSerializer _serializer;
     private readonly Func<PublishContext, CancellationToken, Task> _pipeline;
 
     public MessagePublisher(
         IInterBusTransport transport,
         InterBusOptions options,
+        IMessageSerializer serializer,
         IEnumerable<IPublishMiddleware> middlewares)
     {
         _options = options;
+        _serializer = serializer;
 
         // Build pipeline: first registered middleware is outermost.
         // Iterate in reverse so each new step wraps the already-built inner chain.
@@ -51,7 +54,7 @@ internal sealed class MessagePublisher : IMessagePublisher
             ? customName
             : RoutingConventions.TopicName(typeof(T));
         var enriched = Enrich<T>(headers);
-        var payload = _options.Serializer.Serialize(message);
+        var payload = _serializer.Serialize(message);
         var context = new PublishContext(topicName, isTopic: true, payload, enriched);
         return _pipeline(context, cancellationToken);
     }
@@ -67,7 +70,7 @@ internal sealed class MessagePublisher : IMessagePublisher
     {
         var queueName = RoutingConventions.QueueName(typeof(TConsumer));
         var enriched = Enrich<T>(headers);
-        var payload = _options.Serializer.Serialize(message);
+        var payload = _serializer.Serialize(message);
         var context = new PublishContext(queueName, isTopic: false, payload, enriched);
         return _pipeline(context, cancellationToken);
     }
@@ -81,7 +84,7 @@ internal sealed class MessagePublisher : IMessagePublisher
         where T : class
     {
         var enriched = Enrich<T>(headers);
-        var payload = _options.Serializer.Serialize(message);
+        var payload = _serializer.Serialize(message);
         var context = new PublishContext(queueName, isTopic: false, payload, enriched);
         return _pipeline(context, cancellationToken);
     }

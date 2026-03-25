@@ -295,7 +295,7 @@ public sealed class ConsumerRegistrationGenerator : IIncrementalGenerator
         sb.AppendLine($"                                \"{consumer.Name}\");");
         sb.AppendLine("                        return global::System.Threading.Tasks.Task.CompletedTask;");
         sb.AppendLine("                    }");
-        sb.AppendLine("                    var serializer = sp.GetRequiredService<global::InterBus.InterBusOptions>().Serializer;");
+        sb.AppendLine("                    var serializer = sp.GetRequiredService<global::InterBus.IMessageSerializer>();");
         sb.AppendLine($"                    var consumer = sp.GetRequiredService<{consumerFqn}>();");
 
         foreach (var message in messages)

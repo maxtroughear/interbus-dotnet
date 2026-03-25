@@ -14,9 +14,8 @@ public interface IInterBusBuilder
     IServiceCollection Services { get; }
 
     /// <summary>
-    /// The runtime options for this InterBus instance. Configure <see cref="InterBusOptions.Serializer"/>
-    /// here before calling <see cref="AddConsumer{TConsumer}"/> to use a custom serialiser or to
-    /// enable AOT-safe serialisation.
+    /// The runtime options for this InterBus instance. Configure topic names and consumer
+    /// registration here before the host is built.
     /// </summary>
     InterBusOptions Options { get; }
 
@@ -64,6 +63,16 @@ public interface IInterBusBuilder
         string queueName,
         Func<IServiceProvider, string, IConsumeContext, CancellationToken, Task> dispatch)
         where TConsumer : class, IConsumer;
+
+    /// <summary>
+    /// Register a custom <see cref="IMessageSerializer"/> implementation.
+    /// The type is registered as a singleton in the DI container, replacing the default
+    /// <see cref="SystemTextJsonMessageSerializer"/>.
+    /// </summary>
+    /// <typeparam name="TSerializer">The serialiser type to register.</typeparam>
+    IInterBusBuilder UseSerializer<
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TSerializer>()
+        where TSerializer : class, IMessageSerializer;
 
     /// <summary>
     /// Add a middleware step to the publish pipeline.

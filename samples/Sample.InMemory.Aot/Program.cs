@@ -11,7 +11,8 @@ var builder = Host.CreateApplicationBuilder(args);
 builder.Services.AddInterBus(bus =>
 {
     // Use source-generated serializer context before registering consumers
-    bus.Options.Serializer = new SystemTextJsonMessageSerializer(SampleAotJsonContext.Default.Options);
+    bus.Services.AddSingleton<IMessageSerializer>(
+        new SystemTextJsonMessageSerializer(SampleAotJsonContext.Default.Options));
 
     bus.AddConsumer<GreetingConsumer>();
     bus.AddConsumer<FarewellConsumer>();

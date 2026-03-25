@@ -59,6 +59,16 @@ internal sealed class InterBusBuilder : IInterBusBuilder
     }
 
     /// <inheritdoc/>
+    public IInterBusBuilder UseSerializer<
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
+        TSerializer>()
+        where TSerializer : class, IMessageSerializer
+    {
+        Services.Replace(ServiceDescriptor.Singleton<IMessageSerializer, TSerializer>());
+        return this;
+    }
+
+    /// <inheritdoc/>
     public IInterBusBuilder UsePublishMiddleware<
         [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
         TMiddleware>()

@@ -14,7 +14,7 @@ public sealed class ConsumeContext
     public ConsumerDescriptor Descriptor { get; }
 
     /// <summary>The serialized message payload. Middleware may replace this value.</summary>
-    public string Payload { get; set; }
+    public byte[] Payload { get; set; }
 
     /// <summary>
     /// The headers attached to the incoming message.
@@ -24,7 +24,7 @@ public sealed class ConsumeContext
 
     internal ConsumeContext(
         ConsumerDescriptor descriptor,
-        string payload,
+        byte[] payload,
         MessageHeaders headers)
     {
         Descriptor = descriptor;

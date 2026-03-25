@@ -46,7 +46,7 @@ public sealed class ConsumerRegistrationGenerator : IIncrementalGenerator
     private const string AggregatingClassName = "InterBusConsumerRegistrations";
 
     private const string DispatchFuncType =
-        "global::System.Func<global::System.IServiceProvider, string, global::InterBus.IConsumeContext, global::System.Threading.CancellationToken, global::System.Threading.Tasks.Task>";
+        "global::System.Func<global::System.IServiceProvider, byte[], global::InterBus.IConsumeContext, global::System.Threading.CancellationToken, global::System.Threading.Tasks.Task>";
 
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {

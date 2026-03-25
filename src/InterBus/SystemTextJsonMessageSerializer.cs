@@ -46,10 +46,10 @@ public sealed class SystemTextJsonMessageSerializer : IMessageSerializer
     public SystemTextJsonMessageSerializer(JsonSerializerOptions options) => _options = options;
 
     /// <inheritdoc />
-    public string Serialize<T>(T message) where T : class =>
-        JsonSerializer.Serialize(message, (JsonTypeInfo<T>)_options.GetTypeInfo(typeof(T)));
+    public byte[] Serialize<T>(T message) where T : class =>
+        JsonSerializer.SerializeToUtf8Bytes(message, (JsonTypeInfo<T>)_options.GetTypeInfo(typeof(T)));
 
     /// <inheritdoc />
-    public T? Deserialize<T>(string payload) where T : class =>
+    public T? Deserialize<T>(byte[] payload) where T : class =>
         JsonSerializer.Deserialize(payload, (JsonTypeInfo<T>)_options.GetTypeInfo(typeof(T)));
 }

@@ -8,10 +8,10 @@ namespace InterBus;
 public interface IInterBusTransport
 {
     /// <summary>Publish a serialised payload to the named topic (fan-out to all subscriber queues).</summary>
-    Task PublishToTopicAsync(string topicName, string payload, MessageHeaders headers,
+    Task PublishToTopicAsync(string topicName, byte[] payload, MessageHeaders headers,
         CancellationToken cancellationToken);
 
     /// <summary>Send a serialised payload directly to the named queue (bypassing topic fan-out).</summary>
-    Task SendToQueueAsync(string queueName, string payload, MessageHeaders headers,
+    Task SendToQueueAsync(string queueName, byte[] payload, MessageHeaders headers,
         CancellationToken cancellationToken);
 }

@@ -12,8 +12,8 @@ namespace InterBus;
 public interface IMessageSerializer
 {
     /// <summary>Serialises <paramref name="message"/> to a string payload.</summary>
-    string Serialize<T>(T message) where T : class;
+    byte[] Serialize<T>(T message) where T : class;
 
     /// <summary>Deserialises <paramref name="payload"/> to an instance of <typeparamref name="T"/>.</summary>
-    T? Deserialize<T>(string payload) where T : class;
+    T? Deserialize<T>(byte[] payload) where T : class;
 }

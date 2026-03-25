@@ -22,4 +22,3 @@ public interface IConsumeMiddleware
 /// Delegate representing a step — or the remainder — of the consume pipeline.
 /// </summary>
 public delegate Task ConsumeDelegate(ConsumeContext context, CancellationToken cancellationToken = default);
-

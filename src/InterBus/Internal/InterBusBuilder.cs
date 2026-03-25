@@ -38,7 +38,7 @@ internal sealed class InterBusBuilder : IInterBusBuilder
         Func<IServiceProvider, byte[], IConsumeContext, CancellationToken, Task> dispatch)
         where TConsumer : class, IConsumer =>
         AddConsumer<TConsumer>(messageTypes, RoutingConventions.QueueName(typeof(TConsumer)), dispatch);
-    
+
     /// <inheritdoc/>
     /// <remarks>
     /// Called by source-generated <c>AddConsumers()</c>. The <paramref name="dispatch"/>

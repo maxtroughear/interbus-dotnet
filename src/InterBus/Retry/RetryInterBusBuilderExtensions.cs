@@ -4,7 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 namespace InterBus;
 
 /// <summary>
-/// Extension methods for adding the in-process retry middleware to the InterBus consume pipeline.
+/// Extension methods for adding retry middleware to the InterBus consume pipeline.
 /// </summary>
 public static class RetryInterBusBuilderExtensions
 {

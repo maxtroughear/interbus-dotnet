@@ -14,7 +14,7 @@ public interface IConsumeContext
     /// Returns <c>null</c> if the header is not present.
     /// </summary>
     string? CorrelationId { get; }
-    
+
     /// <summary>
     /// Convenience accessor for the <see cref="InterBusHeaders.MessageType"/> header.
     /// </summary>

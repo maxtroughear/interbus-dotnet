@@ -13,9 +13,7 @@ namespace InterBus.SourceGenerator.Tests;
 /// </summary>
 public sealed class ConsumerRegistrationGeneratorTests
 {
-    // -------------------------------------------------------------------------
-    // Basic discovery
-    // -------------------------------------------------------------------------
+    #region Basic discovery
 
     [Fact]
     public void Generator_SingleConsumer_GeneratesAddConsumers()
@@ -219,9 +217,9 @@ public sealed class ConsumerRegistrationGeneratorTests
         Assert.Equal(1, addConsumerBulkCount);
     }
 
-    // -------------------------------------------------------------------------
-    // Abstract / non-concrete classes are skipped
-    // -------------------------------------------------------------------------
+    #endregion
+
+    #region Abstract / non-concrete classes are skipped
 
     [Fact]
     public void Generator_AbstractConsumer_IsNotRegistered()
@@ -258,9 +256,9 @@ public sealed class ConsumerRegistrationGeneratorTests
         Assert.DoesNotContain("global::MyApp.BaseConsumer", generated);
     }
 
-    // -------------------------------------------------------------------------
-    // No consumers → no output
-    // -------------------------------------------------------------------------
+    #endregion
+
+    #region No consumers -> no output
 
     [Fact]
     public void Generator_NoConsumersInAssembly_ProducesNoOutput()
@@ -302,9 +300,9 @@ public sealed class ConsumerRegistrationGeneratorTests
         Assert.Empty(driver.GetRunResult().GeneratedTrees);
     }
 
-    // -------------------------------------------------------------------------
-    // Generated code structure
-    // -------------------------------------------------------------------------
+    #endregion
+
+    #region Generated code structure
 
     [Fact]
     public void Generator_GeneratedFile_UsesFullyQualifiedNames()
@@ -402,9 +400,9 @@ public sealed class ConsumerRegistrationGeneratorTests
         Assert.Contains("does not handle message type", generated);
     }
 
-    // -------------------------------------------------------------------------
-    // Cross-assembly consumer discovery
-    // -------------------------------------------------------------------------
+    #endregion
+
+    #region Cross-assembly consumer discovery
 
     [Fact]
     public void Generator_ConsumerInReferencedAssembly_IsDiscoveredAndRegistered()
@@ -526,7 +524,8 @@ public sealed class ConsumerRegistrationGeneratorTests
         var refA = compilationAWithGen.ToMetadataReference();
 
         // Run generator on B (which references A) → produces InterBusConsumerRegistrations_AssemblyB.
-        var compilationB = CreateCompilationWithInterBus(assemblyBSource, assemblyName: "AssemblyB", extraReferences: [refA]);
+        var compilationB =
+            CreateCompilationWithInterBus(assemblyBSource, assemblyName: "AssemblyB", extraReferences: [refA]);
         CSharpGeneratorDriver
             .Create(new ConsumerRegistrationGenerator())
             .RunGeneratorsAndUpdateCompilation(
@@ -562,9 +561,9 @@ public sealed class ConsumerRegistrationGeneratorTests
         Assert.Contains("InterBusConsumerRegistrations_AssemblyB.TryGetDispatch(", generated);
     }
 
-    // -------------------------------------------------------------------------
-    // Serializer abstraction
-    // -------------------------------------------------------------------------
+    #endregion
+
+    #region Serializer abstraction
 
     [Fact]
     public void Generator_SingleConsumer_UsesSerializerAbstractionForDispatch()
@@ -602,9 +601,9 @@ public sealed class ConsumerRegistrationGeneratorTests
         Assert.DoesNotContain("SerializerOptions", generated);
     }
 
-    // -------------------------------------------------------------------------
-    // Helpers
-    // -------------------------------------------------------------------------
+    #endregion
+
+    #region Helpers
 
     private static GeneratorDriverRunResult RunGenerator(string source)
     {
@@ -651,4 +650,6 @@ public sealed class ConsumerRegistrationGeneratorTests
             references,
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
     }
+
+    #endregion
 }

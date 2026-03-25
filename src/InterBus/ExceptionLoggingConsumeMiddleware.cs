@@ -25,6 +25,8 @@ public sealed class ExceptionLoggingConsumeMiddleware(ILogger<ExceptionLoggingCo
                 ex,
                 "InterBus: unhandled exception consuming message for consumer {ConsumerType}",
                 context.Descriptor.ConsumerType.Name);
+
+            throw;
         }
     }
 }

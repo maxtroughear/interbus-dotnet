@@ -17,4 +17,3 @@ public class EavesDroppingConsumer : IConsumer<GreetingMessage>, IConsumer<Farew
         return Task.CompletedTask;
     }
 }
-

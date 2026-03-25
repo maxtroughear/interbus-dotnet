@@ -10,4 +10,7 @@ internal static class TestConsumeContextFactory
 {
     public static ConsumeContext Create(ConsumerDescriptor descriptor) =>
         new(descriptor, "{}"u8.ToArray(), new MessageHeaders());
+
+    public static ConsumeContext Create(ConsumerDescriptor descriptor, MessageHeaders headers) =>
+        new(descriptor, "{}"u8.ToArray(), headers);
 }

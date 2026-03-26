@@ -110,7 +110,7 @@ public class PipelineTests
             bus =>
             {
                 bus.AddInMemoryTransport();
-                bus.AddConsumers();
+                bus.AddConsumer<OrderPlacedConsumer>();
                 bus.UsePublishMiddleware<RecordingPublishMiddleware>();
             });
 
@@ -151,7 +151,7 @@ public class PipelineTests
             bus =>
             {
                 bus.AddInMemoryTransport();
-                bus.AddConsumers();
+                bus.AddConsumer<HeaderCapturingConsumer>();
                 bus.UsePublishMiddleware<RecordingPublishMiddleware>();
             });
 
@@ -188,7 +188,7 @@ public class PipelineTests
             bus =>
             {
                 bus.AddInMemoryTransport();
-                bus.AddConsumers();
+                bus.AddConsumer<OrderPlacedConsumer>();
                 bus.UsePublishMiddleware<FirstPublishMiddleware>();
                 bus.UsePublishMiddleware<SecondPublishMiddleware>();
             });
@@ -235,7 +235,7 @@ public class PipelineTests
             bus =>
             {
                 bus.AddInMemoryTransport();
-                bus.AddConsumers();
+                bus.AddConsumer<OrderPlacedConsumer>();
                 bus.UseConsumeMiddleware<RecordingConsumeMiddleware>();
             });
 
@@ -273,7 +273,8 @@ public class PipelineTests
             bus =>
             {
                 bus.AddInMemoryTransport();
-                bus.AddConsumers();
+                bus.AddConsumer<OrderPlacedConsumer>();
+                bus.AddConsumer<FaultingConsumer>();
             });
 
         try

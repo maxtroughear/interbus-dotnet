@@ -132,7 +132,7 @@ public sealed class ExceptionLoggingMiddlewareTests
             bus =>
             {
                 bus.AddInMemoryTransport();
-                bus.AddConsumers();
+                bus.AddConsumer<ExceptionLoggingTestConsumer>();
             });
 
         try
@@ -168,7 +168,7 @@ public sealed class ExceptionLoggingMiddlewareTests
             bus =>
             {
                 bus.AddInMemoryTransport();
-                bus.AddConsumers();
+                bus.AddConsumer<ExceptionLoggingTestConsumer>();
             });
 
         try

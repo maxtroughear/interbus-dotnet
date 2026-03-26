@@ -64,7 +64,7 @@ public class TopicConfigurationTests
             {
                 bus.AddInMemoryTransport();
                 bus.ConfigureTopic<OrderPlaced>("custom.orders.topic");
-                bus.AddConsumers();
+                bus.AddConsumer<OrderPlacedConsumer>();
             });
 
         try
@@ -103,7 +103,8 @@ public class TopicConfigurationTests
             {
                 bus.AddInMemoryTransport();
                 bus.ConfigureTopic<OrderPlaced>("orders");
-                bus.AddConsumers();
+                bus.AddConsumer<OrderPlacedConsumer>();
+                bus.AddConsumer<AuditConsumer>();
             });
 
         try
@@ -140,7 +141,8 @@ public class TopicConfigurationTests
             {
                 bus.AddInMemoryTransport();
                 bus.ConfigureTopic<OrderPlaced>("orders");
-                bus.AddConsumers();
+                bus.AddConsumer<OrderPlacedConsumer>();
+                bus.AddConsumer<AuditConsumer>();
             });
 
         try
@@ -181,7 +183,8 @@ public class TopicConfigurationTests
             bus =>
             {
                 bus.AddInMemoryTransport();
-                bus.AddConsumers();
+                bus.AddConsumer<OrderPlacedConsumer>();
+                bus.AddConsumer<AuditConsumer>();
                 capturedOptions = bus.Options;
             });
 
@@ -228,7 +231,8 @@ public class TopicConfigurationTests
             bus =>
             {
                 bus.AddInMemoryTransport();
-                bus.AddConsumers();
+                bus.AddConsumer<OrderPlacedConsumer>();
+                bus.AddConsumer<AuditConsumer>();
                 capturedOptions = bus.Options;
             });
 

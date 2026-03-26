@@ -1,6 +1,7 @@
 using InterBus.Retry;
 using Microsoft.Extensions.DependencyInjection;
 
+// ReSharper disable once CheckNamespace
 namespace InterBus;
 
 /// <summary>

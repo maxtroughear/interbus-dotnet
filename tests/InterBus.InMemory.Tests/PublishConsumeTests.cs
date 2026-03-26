@@ -73,7 +73,7 @@ public class PublishConsumeTests
             bus =>
             {
                 bus.AddInMemoryTransport();
-                bus.AddConsumers();
+                bus.AddConsumer<OrderPlacedConsumer>();
             });
 
         try
@@ -109,7 +109,8 @@ public class PublishConsumeTests
             bus =>
             {
                 bus.AddInMemoryTransport();
-                bus.AddConsumers();
+                bus.AddConsumer<OrderPlacedConsumer>();
+                bus.AddConsumer<AuditConsumer>();
             });
 
         try
@@ -148,7 +149,8 @@ public class PublishConsumeTests
             bus =>
             {
                 bus.AddInMemoryTransport();
-                bus.AddConsumers();
+                bus.AddConsumer<OrderPlacedConsumer>();
+                bus.AddConsumer<AuditConsumer>();
             });
 
         try
@@ -173,13 +175,12 @@ public class PublishConsumeTests
     }
 
     [Fact]
-    public async Task AddConsumers_RegistersAllDiscoveredConsumers_MessagesDelivered()
+    public async Task AddConsumer_RegistersExplicitConsumers_MessagesDelivered()
     {
         var orderTracker = new OrderPlacedTracker();
         var auditTracker = new AuditTracker();
 
-        // Use AddConsumers() — the source generator discovered OrderPlacedConsumer and
-        // AuditConsumer at compile time and emitted reflection-free dispatch delegates for each.
+        // Register the exact consumers this test needs.
         var (provider, cts) = await StartAsync(
             services =>
             {
@@ -189,7 +190,8 @@ public class PublishConsumeTests
             bus =>
             {
                 bus.AddInMemoryTransport();
-                bus.AddConsumers();
+                bus.AddConsumer<OrderPlacedConsumer>();
+                bus.AddConsumer<AuditConsumer>();
             });
 
         try
@@ -199,7 +201,7 @@ public class PublishConsumeTests
             var msg = new OrderPlaced(Guid.NewGuid(), "generated@test.com", 75m);
             await publisher.Publish(msg, TestContext.Current.CancellationToken);
 
-            // Both consumers are registered via AddConsumers - both should receive.
+            // Both explicitly registered consumers should receive.
             await WaitUntilAsync(() =>
                 orderTracker.Messages.Count == 1 && auditTracker.Messages.Count == 1);
 
@@ -235,7 +237,7 @@ public class PublishConsumeTests
             bus =>
             {
                 bus.AddInMemoryTransport();
-                bus.AddConsumers();
+                bus.AddConsumer<MultiTypeConsumer>();
                 capturedOptions = bus.Options;
             });
 

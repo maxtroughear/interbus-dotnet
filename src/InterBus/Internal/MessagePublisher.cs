@@ -11,9 +11,10 @@ namespace InterBus.Internal;
 /// </summary>
 internal sealed class MessagePublisher : IMessagePublisher
 {
+    private readonly IInterBusTransport _transport;
+    private readonly IList<IPublishMiddleware> _middlewares;
     private readonly InterBusOptions _options;
     private readonly IMessageSerializer _serializer;
-    private readonly Func<PublishContext, CancellationToken, Task> _pipeline;
 
     public MessagePublisher(
         IInterBusTransport transport,
@@ -21,27 +22,35 @@ internal sealed class MessagePublisher : IMessagePublisher
         IMessageSerializer serializer,
         IEnumerable<IPublishMiddleware> middlewares)
     {
+        _transport = transport;
         _options = options;
         _serializer = serializer;
+        _middlewares = middlewares.Reverse().ToList(); // Reverse middleware order for the correct execution order
+    }
 
+    private Func<PublishContext<T>, CancellationToken, Task> BuildMiddlewarePipeline<T>() where T : class
+    {
         // Build pipeline: first registered middleware is outermost.
         // Iterate in reverse so each new step wraps the already-built inner chain.
         var pipeline = TerminalPublishDelegate;
-        foreach (var middleware in middlewares.Reverse())
+        foreach (var middleware in _middlewares)
         {
             var current = middleware;
             var next = pipeline;
             pipeline = (ctx, ct) => current.InvokeAsync(ctx, next, ct);
         }
 
-        _pipeline = pipeline;
-        return;
+        return pipeline;
 
         // Terminal step: forward serialized payload to the transport.
-        Task TerminalPublishDelegate(PublishContext ctx, CancellationToken ct) =>
-            ctx.IsTopic
-                ? transport.PublishToTopicAsync(ctx.Destination, ctx.Payload, ctx.Headers, ct)
-                : transport.SendToQueueAsync(ctx.Destination, ctx.Payload, ctx.Headers, ct);
+        Task TerminalPublishDelegate(PublishContext<T> ctx, CancellationToken ct)
+        {
+            var payload = _serializer.Serialize(ctx.Payload);
+
+            return ctx.IsTopic
+                ? _transport.PublishToTopicAsync(ctx.Destination, payload, ctx.Headers, ct)
+                : _transport.SendToQueueAsync(ctx.Destination, payload, ctx.Headers, ct);
+        }
     }
 
     public Task Publish<T>(T message, CancellationToken cancellationToken = default) where T : class =>
@@ -54,9 +63,10 @@ internal sealed class MessagePublisher : IMessagePublisher
             ? customName
             : RoutingConventions.TopicName(typeof(T));
         var enriched = Enrich<T>(headers);
-        var payload = _serializer.Serialize(message);
-        var context = new PublishContext(topicName, isTopic: true, payload, enriched);
-        return _pipeline(context, cancellationToken);
+        var context = new PublishContext<T>(topicName, isTopic: true, message, enriched);
+        var pipeline = BuildMiddlewarePipeline<T>();
+
+        return pipeline(context, cancellationToken);
     }
 
     public Task Send<TConsumer, T>(T message, CancellationToken cancellationToken = default)
@@ -70,9 +80,10 @@ internal sealed class MessagePublisher : IMessagePublisher
     {
         var queueName = RoutingConventions.QueueName(typeof(TConsumer));
         var enriched = Enrich<T>(headers);
-        var payload = _serializer.Serialize(message);
-        var context = new PublishContext(queueName, isTopic: false, payload, enriched);
-        return _pipeline(context, cancellationToken);
+        var context = new PublishContext<T>(queueName, isTopic: false, message, enriched);
+        var pipeline = BuildMiddlewarePipeline<T>();
+
+        return pipeline(context, cancellationToken);
     }
 
     public Task Send<T>(string queueName, T message, CancellationToken cancellationToken = default)
@@ -84,9 +95,10 @@ internal sealed class MessagePublisher : IMessagePublisher
         where T : class
     {
         var enriched = Enrich<T>(headers);
-        var payload = _serializer.Serialize(message);
-        var context = new PublishContext(queueName, isTopic: false, payload, enriched);
-        return _pipeline(context, cancellationToken);
+        var context = new PublishContext<T>(queueName, isTopic: false, message, enriched);
+        var pipeline = BuildMiddlewarePipeline<T>();
+
+        return pipeline(context, cancellationToken);
     }
 
     /// <summary>

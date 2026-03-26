@@ -64,7 +64,7 @@ public class PipelineTests
         cts.Dispose();
     }
 
-    // ─── Publish middleware ───────────────────────────────────────────────────
+    #region Publish middleware
 
     /// <summary>
     /// Tracks which destinations were seen by publish middleware so tests can
@@ -83,7 +83,8 @@ public class PipelineTests
     /// </summary>
     public sealed class RecordingPublishMiddleware(PublishCallTracker tracker) : IPublishMiddleware
     {
-        public async Task InvokeAsync(PublishContext context, Func<PublishContext, CancellationToken, Task> next,
+        public async Task InvokeAsync<T>(PublishContext<T> context,
+            Func<PublishContext<T>, CancellationToken, Task> next,
             CancellationToken cancellationToken = default)
         {
             tracker.Record("before-" + context.Destination);
@@ -109,7 +110,7 @@ public class PipelineTests
             bus =>
             {
                 bus.AddInMemoryTransport();
-                bus.AddConsumers();
+                bus.AddConsumer<OrderPlacedConsumer>();
                 bus.UsePublishMiddleware<RecordingPublishMiddleware>();
             });
 
@@ -150,7 +151,7 @@ public class PipelineTests
             bus =>
             {
                 bus.AddInMemoryTransport();
-                bus.AddConsumers();
+                bus.AddConsumer<HeaderCapturingConsumer>();
                 bus.UsePublishMiddleware<RecordingPublishMiddleware>();
             });
 
@@ -187,7 +188,7 @@ public class PipelineTests
             bus =>
             {
                 bus.AddInMemoryTransport();
-                bus.AddConsumers();
+                bus.AddConsumer<OrderPlacedConsumer>();
                 bus.UsePublishMiddleware<FirstPublishMiddleware>();
                 bus.UsePublishMiddleware<SecondPublishMiddleware>();
             });
@@ -215,7 +216,9 @@ public class PipelineTests
         }
     }
 
-    // ─── Consume middleware ───────────────────────────────────────────────────
+    #endregion
+
+    #region Consume middleware
 
     [Fact]
     public async Task ConsumeMiddleware_IsInvoked_ForEachMessage()
@@ -232,7 +235,7 @@ public class PipelineTests
             bus =>
             {
                 bus.AddInMemoryTransport();
-                bus.AddConsumers();
+                bus.AddConsumer<OrderPlacedConsumer>();
                 bus.UseConsumeMiddleware<RecordingConsumeMiddleware>();
             });
 
@@ -270,7 +273,8 @@ public class PipelineTests
             bus =>
             {
                 bus.AddInMemoryTransport();
-                bus.AddConsumers();
+                bus.AddConsumer<OrderPlacedConsumer>();
+                bus.AddConsumer<FaultingConsumer>();
             });
 
         try
@@ -300,7 +304,9 @@ public class PipelineTests
         }
     }
 
-    // ─── Support types ────────────────────────────────────────────────────────
+    #endregion
+
+    #region Support types
 
     public sealed class HeaderCapturingTracker
     {
@@ -337,7 +343,8 @@ public class PipelineTests
 
     public sealed class FirstPublishMiddleware(ConcurrentQueue<string> log) : IPublishMiddleware
     {
-        public async Task InvokeAsync(PublishContext context, Func<PublishContext, CancellationToken, Task> next,
+        public async Task InvokeAsync<T>(PublishContext<T> context,
+            Func<PublishContext<T>, CancellationToken, Task> next,
             CancellationToken cancellationToken = default)
         {
             log.Enqueue("first-enter");
@@ -348,7 +355,8 @@ public class PipelineTests
 
     public sealed class SecondPublishMiddleware(ConcurrentQueue<string> log) : IPublishMiddleware
     {
-        public async Task InvokeAsync(PublishContext context, Func<PublishContext, CancellationToken, Task> next,
+        public async Task InvokeAsync<T>(PublishContext<T> context,
+            Func<PublishContext<T>, CancellationToken, Task> next,
             CancellationToken cancellationToken = default)
         {
             log.Enqueue("second-enter");
@@ -372,4 +380,6 @@ public class PipelineTests
             throw new InvalidOperationException("Intentional test exception from FaultingConsumer");
         }
     }
+
+    #endregion
 }

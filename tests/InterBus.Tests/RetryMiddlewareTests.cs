@@ -11,7 +11,7 @@ namespace InterBus.Tests;
 /// </summary>
 public sealed class RetryMiddlewareTests
 {
-    // ─── Helpers ─────────────────────────────────────────────────────────────
+    #region Helpers
 
     /// <summary>
     /// Builds a minimal <see cref="ConsumeContext"/> using a no-op dispatch descriptor.
@@ -32,7 +32,9 @@ public sealed class RetryMiddlewareTests
     private static RetryConsumeMiddleware CreateMiddleware(RetryOptions options) =>
         new(options, NullLogger<RetryConsumeMiddleware>.Instance);
 
-    // ─── Retry count ─────────────────────────────────────────────────────────
+    #endregion
+
+    #region Retry count
 
     [Fact]
     public async Task DoesNotRetry_WhenNextSucceeds()
@@ -85,7 +87,9 @@ public sealed class RetryMiddlewareTests
         Assert.Equal(3, callCount);
     }
 
-    // ─── OperationCanceledException ──────────────────────────────────────────
+    #endregion
+
+    #region OperationCanceledException
 
     [Fact]
     public async Task DoesNotRetry_OnOperationCanceledException_WhenTokenCancelled()
@@ -126,8 +130,8 @@ public sealed class RetryMiddlewareTests
     [Fact]
     public async Task Retries_OnOperationCanceledException_FromInternalToken()
     {
-        // Consumer uses its own internal CancellationToken (not the middleware's token).
-        // The middleware's token is NOT cancelled, so the exception should be retried.
+        // Consumer uses its own internal CancellationToken (not the middleware's token)
+        // The middleware's token is NOT cancelled, so the exception should be retried
         const int retryCount = 2;
         var callCount = 0;
         var middleware = CreateMiddleware(new RetryOptions { RetryCount = retryCount });
@@ -141,11 +145,13 @@ public sealed class RetryMiddlewareTests
                 throw new OperationCanceledException(internalCts.Token);
             }, TestContext.Current.CancellationToken));
 
-        // Initial attempt + retryCount retries.
+        // Initial attempt + retryCount retries
         Assert.Equal(retryCount + 1, callCount);
     }
 
-    // ─── RetryOptions.RetryCount validation ──────────────────────────────────
+    #endregion
+
+    #region RetryOptions.RetryCount validation
 
     [Fact]
     public void RetryOptions_RetryCount_ThrowsOnZero()
@@ -161,7 +167,9 @@ public sealed class RetryMiddlewareTests
         Assert.Throws<ArgumentOutOfRangeException>(() => opts.RetryCount = -1);
     }
 
-    // ─── Exception filtering ─────────────────────────────────────────────────
+    #endregion
+
+    #region Exception filtering
 
     [Fact]
     public async Task ShouldRetry_Predicate_BlocksRetryForNonMatchingException()
@@ -208,7 +216,9 @@ public sealed class RetryMiddlewareTests
         Assert.Equal(3, callCount);
     }
 
-    // ─── Delay strategies ────────────────────────────────────────────────────
+    #endregion
+
+    #region Delay strategies
 
     [Fact]
     public void RetryDelays_None_ReturnsZero()
@@ -250,8 +260,8 @@ public sealed class RetryMiddlewareTests
 
         Assert.Equal(TimeSpan.FromMilliseconds(100), factory(1)); // 100 ≤ 300
         Assert.Equal(TimeSpan.FromMilliseconds(200), factory(2)); // 200 ≤ 300
-        Assert.Equal(maxDelay, factory(3));                       // 400 capped to 300
-        Assert.Equal(maxDelay, factory(10));                      // all further attempts capped
+        Assert.Equal(maxDelay, factory(3)); // 400 capped to 300
+        Assert.Equal(maxDelay, factory(10)); // all further attempts capped
     }
 
     [Fact]
@@ -263,7 +273,9 @@ public sealed class RetryMiddlewareTests
         Assert.True(result > TimeSpan.Zero);
     }
 
-    // ─── Delay is applied ────────────────────────────────────────────────────
+    #endregion
+
+    #region Delay is applied
 
     [Fact]
     public async Task Constant_Delay_IsAppliedBetweenRetries()
@@ -294,7 +306,9 @@ public sealed class RetryMiddlewareTests
         Assert.Equal(3, callCount);
     }
 
-    // ─── Support types ────────────────────────────────────────────────────────
+    #endregion
+
+    #region Support types
 
     private sealed record TestMessage(Guid Id);
 
@@ -304,4 +318,6 @@ public sealed class RetryMiddlewareTests
             CancellationToken cancellationToken = default)
             => Task.CompletedTask;
     }
+
+    #endregion
 }

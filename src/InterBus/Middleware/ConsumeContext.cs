@@ -22,7 +22,7 @@ public sealed class ConsumeContext
     /// </summary>
     public MessageHeaders Headers { get; set; }
 
-    internal ConsumeContext(
+    public ConsumeContext(
         ConsumerDescriptor descriptor,
         byte[] payload,
         MessageHeaders headers)

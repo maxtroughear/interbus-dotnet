@@ -49,7 +49,26 @@ internal sealed class InMemoryMessagePump : BackgroundService
 
         await foreach (var envelope in queue.ReadAllAsync(stoppingToken))
         {
-            await DispatchAsync(queue.Descriptor, envelope, stoppingToken);
+            try
+            {
+                await DispatchAsync(queue.Descriptor, envelope, stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(
+                    ex,
+                    "InterBus InMemory: consumer {ConsumerType} failed for queue {QueueName}; releasing message back to queue for redelivery",
+                    queue.Descriptor.ConsumerType.Name,
+                    queue.Descriptor.QueueName);
+
+                // In-memory transport simulates broker behaviour by re-enqueueing the same
+                // envelope when processing fails (no ACK semantics)
+                await queue.WriteAsync(envelope, stoppingToken);
+            }
         }
 
         _logger.LogDebug(

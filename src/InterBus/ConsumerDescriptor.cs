@@ -20,7 +20,7 @@ public sealed class ConsumerDescriptor
     /// Each consumer class has exactly one queue.
     /// </summary>
     public string QueueName { get; }
-    
+
     /// <summary>
     /// The message types this consumer handles
     /// </summary>
@@ -34,7 +34,7 @@ public sealed class ConsumerDescriptor
     /// </summary>
     public Func<IServiceProvider, byte[], IConsumeContext, CancellationToken, Task> Dispatch { get; }
 
-    internal ConsumerDescriptor(
+    public ConsumerDescriptor(
         Type consumerType,
         string queueName,
         IReadOnlyList<Type> messageTypes,

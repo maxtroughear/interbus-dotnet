@@ -7,8 +7,8 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\Sample.Components\Sample.Components.csproj" />
-      <ProjectReference Include="..\..\src\InterBus\InterBus.csproj" />
+        <ProjectReference Include="..\Sample.Components\Sample.Components.csproj"/>
+        <ProjectReference Include="..\..\src\InterBus\InterBus.csproj"/>
         <ProjectReference Include="..\..\src\InterBus.SourceGenerator\InterBus.SourceGenerator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false"/>
     </ItemGroup>
 

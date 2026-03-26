@@ -53,7 +53,7 @@ public class HeadersTests
             await Task.Delay(intervalMs);
     }
 
-    // ---- helpers ----
+    #region Helpers
 
     /// <summary>Captures headers seen by the consumer during Consume.</summary>
     public sealed class HeaderCapture
@@ -83,7 +83,7 @@ public class HeadersTests
         }
     }
 
-    // ---- tests ----
+    #endregion
 
     [Fact]
     public async Task Publish_WithHeaders_ConsumerReceivesHeaders()
@@ -91,14 +91,11 @@ public class HeadersTests
         var headerCapture = new HeaderCapture();
 
         var (provider, cts) = await StartAsync(
-            services =>
-            {
-                services.AddSingleton(headerCapture);
-            },
+            services => { services.AddSingleton(headerCapture); },
             bus =>
             {
                 bus.AddInMemoryTransport();
-                bus.AddConsumers();
+                bus.AddConsumer<HeaderAwareConsumer>();
             });
 
         try
@@ -129,14 +126,11 @@ public class HeadersTests
         var headerCapture = new HeaderCapture();
 
         var (provider, cts) = await StartAsync(
-            services =>
-            {
-                services.AddSingleton(headerCapture);
-            },
+            services => { services.AddSingleton(headerCapture); },
             bus =>
             {
                 bus.AddInMemoryTransport();
-                bus.AddConsumers();
+                bus.AddConsumer<HeaderAwareConsumer>();
             });
 
         try
@@ -165,14 +159,11 @@ public class HeadersTests
         var headerCapture = new HeaderCapture();
 
         var (provider, cts) = await StartAsync(
-            services =>
-            {
-                services.AddSingleton(headerCapture);
-            },
+            services => { services.AddSingleton(headerCapture); },
             bus =>
             {
                 bus.AddInMemoryTransport();
-                bus.AddConsumers();
+                bus.AddConsumer<HeaderAwareConsumer>();
             });
 
         try
@@ -214,14 +205,11 @@ public class HeadersTests
         var correlationIds = new ConcurrentBag<string?>();
 
         var (provider, cts) = await StartAsync(
-            services =>
-            {
-                services.AddSingleton(correlationIds);
-            },
+            services => { services.AddSingleton(correlationIds); },
             bus =>
             {
                 bus.AddInMemoryTransport();
-                bus.AddConsumers();
+                bus.AddConsumer<CorrelationIdCapturingConsumer>();
             });
 
         try

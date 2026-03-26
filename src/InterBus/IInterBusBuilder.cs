@@ -39,11 +39,12 @@ public interface IInterBusBuilder
     /// </para>
     /// </summary>
     IInterBusBuilder AddConsumer<
-        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TConsumer>(
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
+        TConsumer>(
         Type[] messageTypes,
         Func<IServiceProvider, byte[], IConsumeContext, CancellationToken, Task> dispatch)
         where TConsumer : class, IConsumer;
-    
+
     /// <summary>
     /// Register a consumer with a source-generated dispatch delegate.
     /// This is the only registration path; call it via the source-generated
@@ -58,7 +59,8 @@ public interface IInterBusBuilder
     /// </para>
     /// </summary>
     IInterBusBuilder AddConsumer<
-        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TConsumer>(
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
+        TConsumer>(
         Type[] messageTypes,
         string queueName,
         Func<IServiceProvider, byte[], IConsumeContext, CancellationToken, Task> dispatch)
@@ -71,7 +73,8 @@ public interface IInterBusBuilder
     /// </summary>
     /// <typeparam name="TSerializer">The serialiser type to register.</typeparam>
     IInterBusBuilder UseSerializer<
-        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TSerializer>()
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
+        TSerializer>()
         where TSerializer : class, IMessageSerializer;
 
     /// <summary>
@@ -80,7 +83,8 @@ public interface IInterBusBuilder
     /// and runs first. The terminal step calls the configured <see cref="IInterBusTransport"/>.
     /// </summary>
     IInterBusBuilder UsePublishMiddleware<
-        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TMiddleware>()
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
+        TMiddleware>()
         where TMiddleware : class, IPublishMiddleware;
 
     /// <summary>
@@ -93,6 +97,7 @@ public interface IInterBusBuilder
     /// step before any user-defined steps.
     /// </remarks>
     IInterBusBuilder UseConsumeMiddleware<
-        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TMiddleware>()
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
+        TMiddleware>()
         where TMiddleware : class, IConsumeMiddleware;
 }

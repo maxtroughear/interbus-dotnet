@@ -21,14 +21,14 @@ public sealed class InMemoryBroker : IInterBusTransport, IDisposable
             _queues[descriptor.QueueName] = queue;
 
             // Subscribe the queue to every topic the consumer handles
-            
+
             foreach (var type in descriptor.MessageTypes)
             {
                 // Resolve topics from descriptor types
                 var topicName = options.TryGetTopicName(type, out var custom)
                     ? custom
                     : RoutingConventions.TopicName(type);
-                
+
                 if (!_topics.TryGetValue(topicName, out var topic))
                 {
                     topic = new InMemoryTopic(topicName);

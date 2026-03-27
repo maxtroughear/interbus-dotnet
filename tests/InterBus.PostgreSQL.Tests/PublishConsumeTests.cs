@@ -401,8 +401,8 @@ public sealed class PublishConsumeTests : IAsyncLifetime
     [Fact]
     public async Task ShareTransactionWithConsumer_ConsumerReceivesTransaction()
     {
-        // Verifies that when ShareTransactionWithConsumer = true, the consumer's
-        // PostgreSqlConsumeContext is populated with the active transaction.
+        // Verifies that the consumer's PostgreSqlConsumeContext is always populated with the
+        // active transaction, allowing consumers to optionally use it.
         var tracker = new OrderPlacedTracker();
         var txTracker = new TransactionContextTracker();
 
@@ -414,11 +414,7 @@ public sealed class PublishConsumeTests : IAsyncLifetime
             },
             bus =>
             {
-                bus.AddPostgreSqlTransport(o =>
-                {
-                    o.ConnectionString = _pgContainer.GetConnectionString();
-                    o.ShareTransactionWithConsumer = true;
-                });
+                bus.AddPostgreSqlTransport(o => o.ConnectionString = _pgContainer.GetConnectionString());
                 bus.AddConsumer<TransactionAwareConsumer>(
                     [typeof(OrderPlaced)],
                     BuildDispatch<TransactionAwareConsumer, OrderPlaced>());

@@ -31,21 +31,4 @@ public sealed class PostgreSqlTransportOptions
     /// tables must exist before the application starts.
     /// </summary>
     public bool RunSchemaMigrations { get; set; } = true;
-
-    /// <summary>
-    /// Whether to share the message-processing database transaction with the consumer.
-    /// Defaults to <c>false</c>.
-    /// <para>
-    /// When <c>true</c>, the <see cref="PostgreSqlConsumeContext"/> scoped service is populated
-    /// with the active <see cref="Npgsql.NpgsqlTransaction"/> and
-    /// <see cref="Npgsql.NpgsqlConnection"/> before the consumer is invoked. Consumers that
-    /// inject <see cref="PostgreSqlConsumeContext"/> can enlist their own database operations in
-    /// the same transaction, making message processing and side-effects atomic without an outbox.
-    /// </para>
-    /// <para>
-    /// The pump owns the transaction lifecycle: consumers must not commit or roll back the
-    /// transaction; the pump commits on success and rolls back on failure.
-    /// </para>
-    /// </summary>
-    public bool ShareTransactionWithConsumer { get; set; } = false;
 }

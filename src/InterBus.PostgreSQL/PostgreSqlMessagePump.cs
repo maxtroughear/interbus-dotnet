@@ -189,12 +189,7 @@ internal sealed class PostgreSqlMessagePump : BackgroundService
 
         try
         {
-            // When ShareTransactionWithConsumer is true, pass the open transaction so that
-            // the consumer can enlist its own DB operations in the same unit of work.
-            await DispatchAsync(
-                descriptor, payload, headers,
-                _options.ShareTransactionWithConsumer ? (conn, tx) : default,
-                stoppingToken);
+            await DispatchAsync(descriptor, payload, headers, conn, tx, stoppingToken);
 
             // Delete the row on successful dispatch.
             await using var deleteCmd = conn.CreateCommand();
@@ -233,19 +228,17 @@ internal sealed class PostgreSqlMessagePump : BackgroundService
         ConsumerDescriptor descriptor,
         byte[] payload,
         MessageHeaders headers,
-        (NpgsqlConnection Connection, NpgsqlTransaction Transaction)? sharedContext,
+        NpgsqlConnection conn,
+        NpgsqlTransaction tx,
         CancellationToken ct)
     {
         await using var scope = _scopeFactory.CreateAsyncScope();
 
-        if (sharedContext is { } ctx)
-        {
-            // Populate the scoped holder so consumers can inject PostgreSqlConsumeContext
-            // and enlist their own operations in the same transaction.
-            var consumeCtx = scope.ServiceProvider.GetRequiredService<PostgreSqlConsumeContext>();
-            consumeCtx.Connection = ctx.Connection;
-            consumeCtx.Transaction = ctx.Transaction;
-        }
+        // Always populate the scoped PostgreSqlConsumeContext so consumers can optionally
+        // inject it to enlist their own operations in the same transaction.
+        var consumeCtx = scope.ServiceProvider.GetRequiredService<PostgreSqlConsumeContext>();
+        consumeCtx.Connection = conn;
+        consumeCtx.Transaction = tx;
 
         var executor = scope.ServiceProvider.GetRequiredService<ConsumePipelineExecutor>();
         await executor.ExecuteAsync(descriptor, payload, headers, ct);

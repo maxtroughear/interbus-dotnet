@@ -3,8 +3,7 @@ using Npgsql;
 namespace InterBus.PostgreSQL;
 
 /// <summary>
-/// Scoped service that exposes the active PostgreSQL connection and transaction to consumers
-/// when <see cref="PostgreSqlTransportOptions.ShareTransactionWithConsumer"/> is <c>true</c>.
+/// Scoped service that exposes the active PostgreSQL connection and transaction to consumers.
 /// <para>
 /// Inject this service in your consumer to participate in the same database transaction that
 /// the message pump uses to lock, process, and delete the message. All operations enlisted in
@@ -15,22 +14,16 @@ namespace InterBus.PostgreSQL;
 /// <strong>Important:</strong> do not commit or roll back <see cref="Transaction"/> yourself;
 /// the message pump owns the transaction lifecycle.
 /// </para>
-/// <para>
-/// Both properties are <c>null</c> when <see cref="PostgreSqlTransportOptions.ShareTransactionWithConsumer"/>
-/// is <c>false</c> (the default).
-/// </para>
 /// </summary>
 public sealed class PostgreSqlConsumeContext
 {
     /// <summary>
-    /// The database connection for the current message-processing scope, or <c>null</c> when
-    /// transaction sharing is disabled.
+    /// The database connection for the current message-processing scope.
     /// </summary>
     public NpgsqlConnection? Connection { get; internal set; }
 
     /// <summary>
-    /// The active database transaction for the current message-processing scope, or <c>null</c>
-    /// when transaction sharing is disabled.
+    /// The active database transaction for the current message-processing scope.
     /// </summary>
     public NpgsqlTransaction? Transaction { get; internal set; }
 }

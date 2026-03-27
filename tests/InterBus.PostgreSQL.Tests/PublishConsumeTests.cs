@@ -225,9 +225,61 @@ public sealed class PublishConsumeTests : IAsyncLifetime
             await using var cmd = conn.CreateCommand();
             cmd.CommandText =
                 "SELECT COUNT(*) FROM information_schema.tables " +
-                "WHERE table_schema = 'interbus' AND table_name = 'messages'";
+                "WHERE table_schema = 'interbus' AND table_name IN ('messages', 'subscriptions')";
             var count = (long)(await cmd.ExecuteScalarAsync(TestContext.Current.CancellationToken))!;
-            Assert.Equal(1L, count);
+            Assert.Equal(2L, count);
+        }
+        finally
+        {
+            await StopAsync(provider, cts);
+        }
+    }
+
+    [Fact]
+    public async Task SchemaMigration_OptOut_DoesNotRunMigration()
+    {
+        // Pre-create the schema and tables manually (simulating an external migration tool).
+        await using var setupDataSource = Npgsql.NpgsqlDataSource.Create(_pgContainer.GetConnectionString());
+        await using var setupConn = await setupDataSource.OpenConnectionAsync(TestContext.Current.CancellationToken);
+        await using var setupCmd = setupConn.CreateCommand();
+        setupCmd.CommandText =
+            "CREATE SCHEMA IF NOT EXISTS interbus;\n" +
+            "CREATE TABLE IF NOT EXISTS interbus.messages (\n" +
+            "    id         BIGSERIAL PRIMARY KEY,\n" +
+            "    queue_name TEXT        NOT NULL,\n" +
+            "    payload    BYTEA       NOT NULL,\n" +
+            "    headers    TEXT        NOT NULL,\n" +
+            "    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()\n" +
+            ");\n" +
+            "CREATE INDEX IF NOT EXISTS ix_messages_queue_pending\n" +
+            "    ON interbus.messages (queue_name, id);\n" +
+            "CREATE TABLE IF NOT EXISTS interbus.subscriptions (\n" +
+            "    queue_name TEXT NOT NULL,\n" +
+            "    topic_name TEXT NOT NULL,\n" +
+            "    PRIMARY KEY (queue_name, topic_name)\n" +
+            ");";
+        await setupCmd.ExecuteNonQueryAsync(TestContext.Current.CancellationToken);
+
+        // Start the bus with schema migrations disabled — should not throw.
+        var (provider, cts) = await StartAsync(
+            _ => { },
+            bus => bus.AddPostgreSqlTransport(o =>
+            {
+                o.ConnectionString = _pgContainer.GetConnectionString();
+                o.RunSchemaMigrations = false;
+            }));
+
+        try
+        {
+            // Schema still exists because we created it manually above.
+            await using var dataSource = Npgsql.NpgsqlDataSource.Create(_pgContainer.GetConnectionString());
+            await using var conn = await dataSource.OpenConnectionAsync(TestContext.Current.CancellationToken);
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText =
+                "SELECT COUNT(*) FROM information_schema.tables " +
+                "WHERE table_schema = 'interbus' AND table_name IN ('messages', 'subscriptions')";
+            var count = (long)(await cmd.ExecuteScalarAsync(TestContext.Current.CancellationToken))!;
+            Assert.Equal(2L, count);
         }
         finally
         {

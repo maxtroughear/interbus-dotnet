@@ -10,8 +10,10 @@ public static class PostgreSqlTransportBuilderExtensions
     /// <summary>
     /// Use a PostgreSQL-backed transport with <c>LISTEN</c>/<c>NOTIFY</c> for efficient message consumption.
     /// <para>
-    /// The InterBus schema (table and indexes) is created automatically at application startup
-    /// if it does not already exist.
+    /// By default the InterBus schema (tables and indexes) is created automatically at application
+    /// startup if it does not already exist. Set
+    /// <see cref="PostgreSqlTransportOptions.RunSchemaMigrations"/> to <c>false</c> to manage
+    /// the schema yourself via an external migration tool.
     /// </para>
     /// </summary>
     /// <param name="builder">The InterBus builder.</param>
@@ -35,14 +37,10 @@ public static class PostgreSqlTransportBuilderExtensions
 
         builder.Services.AddSingleton(options);
         builder.Services.AddSingleton(NpgsqlDataSource.Create(options.ConnectionString));
-        builder.Services.AddSingleton<PostgreSqlSchemaManager>();
         builder.Services.AddSingleton<PostgreSqlTransport>();
         builder.Services.AddSingleton<IInterBusTransport>(sp => sp.GetRequiredService<PostgreSqlTransport>());
 
-        // Schema initializer must start before the message pump so the table exists before
-        // the pump tries to SELECT from it. Hosted services start in registration order.
-        builder.Services.AddHostedService<PostgreSqlSchemaInitializer>();
-        builder.Services.AddHostedService<PostgreSqlMessagePump>();
+        RegisterCommonServices(builder, options);
 
         return builder;
     }
@@ -50,6 +48,12 @@ public static class PostgreSqlTransportBuilderExtensions
     /// <summary>
     /// Use a PostgreSQL-backed transport with an existing <see cref="NpgsqlDataSource"/>.
     /// Useful when the application already manages an <c>NpgsqlDataSource</c> in the DI container.
+    /// <para>
+    /// By default the InterBus schema (tables and indexes) is created automatically at application
+    /// startup if it does not already exist. Set
+    /// <see cref="PostgreSqlTransportOptions.RunSchemaMigrations"/> to <c>false</c> to manage
+    /// the schema yourself via an external migration tool.
+    /// </para>
     /// </summary>
     /// <param name="builder">The InterBus builder.</param>
     /// <param name="dataSource">The Npgsql data source to use for all database operations.</param>
@@ -71,13 +75,30 @@ public static class PostgreSqlTransportBuilderExtensions
 
         builder.Services.AddSingleton(options);
         builder.Services.AddSingleton(dataSource);
-        builder.Services.AddSingleton<PostgreSqlSchemaManager>();
         builder.Services.AddSingleton<PostgreSqlTransport>();
         builder.Services.AddSingleton<IInterBusTransport>(sp => sp.GetRequiredService<PostgreSqlTransport>());
 
-        builder.Services.AddHostedService<PostgreSqlSchemaInitializer>();
-        builder.Services.AddHostedService<PostgreSqlMessagePump>();
+        RegisterCommonServices(builder, options);
 
         return builder;
+    }
+
+    /// <summary>
+    /// Registers services that are common to both overloads: the optional schema initializer
+    /// (controlled by <see cref="PostgreSqlTransportOptions.RunSchemaMigrations"/>) and the
+    /// message pump. Hosted services start in registration order, so the schema initializer is
+    /// always registered before the pump.
+    /// </summary>
+    private static void RegisterCommonServices(IInterBusBuilder builder, PostgreSqlTransportOptions options)
+    {
+        if (options.RunSchemaMigrations)
+        {
+            builder.Services.AddSingleton<PostgreSqlSchemaManager>();
+            // Schema initializer must start before the message pump so the tables exist before
+            // the pump tries to SELECT from them.
+            builder.Services.AddHostedService<PostgreSqlSchemaInitializer>();
+        }
+
+        builder.Services.AddHostedService<PostgreSqlMessagePump>();
     }
 }

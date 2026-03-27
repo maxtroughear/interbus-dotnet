@@ -342,8 +342,8 @@ public sealed class PublishConsumeTests : IAsyncLifetime
     [Fact]
     public async Task EnqueueInTransaction_MessageIsDelivered()
     {
-        // Verifies that EnqueueInTransactionAsync inserts and notifies atomically within a
-        // caller-owned transaction — the consumer receives the message after the transaction commits.
+        // Verifies that publishing within a caller-owned transaction keeps the message invisible
+        // until commit, then the consumer receives it after the transaction commits.
         var tracker = new OrderPlacedTracker();
 
         var (provider, cts) = await StartAsync(
@@ -358,28 +358,23 @@ public sealed class PublishConsumeTests : IAsyncLifetime
 
         try
         {
-            var transport = provider.GetRequiredService<PostgreSqlTransport>();
-            var serializer = provider.GetRequiredService<IMessageSerializer>();
             var msg = new OrderPlaced(Guid.NewGuid(), "tx@enqueue.test", 77m);
-            var payload = serializer.Serialize(msg);
-            var headers = new MessageHeaders { [InterBusHeaders.MessageType] = typeof(OrderPlaced).FullName! };
 
             await using var dataSource = Npgsql.NpgsqlDataSource.Create(_pgContainer.GetConnectionString());
             await using var conn = await dataSource.OpenConnectionAsync(TestContext.Current.CancellationToken);
             await using var tx = await conn.BeginTransactionAsync(TestContext.Current.CancellationToken);
 
-            var queueName = provider.GetRequiredService<InterBusOptions>()
-                .Consumers.Single(c => c.ConsumerType == typeof(OrderPlacedConsumer)).QueueName;
-
-            await transport.EnqueueInTransactionAsync(queueName, payload, headers, tx,
-                TestContext.Current.CancellationToken);
+            using var scope = provider.CreateScope();
+            var publisher = scope.ServiceProvider.GetRequiredService<IPostgreSqlMessagePublisher>();
+            await publisher.Publish(msg, tx, TestContext.Current.CancellationToken);
 
             // Before commit, the row should be invisible to other connections (READ COMMITTED).
             await using var checkDataSource = Npgsql.NpgsqlDataSource.Create(_pgContainer.GetConnectionString());
             await using var checkConn = await checkDataSource.OpenConnectionAsync(TestContext.Current.CancellationToken);
             await using var checkCmd = checkConn.CreateCommand();
-            checkCmd.CommandText =
-                $"SELECT COUNT(*) FROM interbus.messages WHERE queue_name = $1";
+            var queueName = provider.GetRequiredService<InterBusOptions>()
+                .Consumers.Single(c => c.ConsumerType == typeof(OrderPlacedConsumer)).QueueName;
+            checkCmd.CommandText = "SELECT COUNT(*) FROM interbus.messages WHERE queue_name = $1";
             checkCmd.Parameters.Add(new Npgsql.NpgsqlParameter<string> { TypedValue = queueName });
             var rowsBefore = (long)(await checkCmd.ExecuteScalarAsync(TestContext.Current.CancellationToken))!;
             Assert.Equal(0L, rowsBefore);

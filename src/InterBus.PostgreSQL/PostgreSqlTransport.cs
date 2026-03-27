@@ -9,62 +9,35 @@ namespace InterBus.PostgreSQL;
 /// <summary>
 /// PostgreSQL-backed <see cref="IInterBusTransport"/>.
 /// <para>
-/// Each <see cref="PublishToTopicAsync"/> call fans out the serialised payload to every queue
-/// subscribed to the topic, inserting a row in the <c>messages</c> table and issuing a
-/// <c>NOTIFY</c> on the queue's channel so that the <see cref="PostgreSqlMessagePump"/> wakes
-/// up immediately. <see cref="SendToQueueAsync"/> inserts directly into the target queue.
+/// <see cref="PublishToTopicAsync"/> looks up subscriber queues from the
+/// <c>subscriptions</c> table (populated by each consumer service at startup),
+/// then inserts one row per subscriber queue in the <c>messages</c> table and issues a
+/// <c>NOTIFY</c> on each queue's channel. This decouples the publisher from consumer
+/// registrations: publishers do not need to know which consumers exist.
 /// </para>
 /// <para>
-/// Topic-to-queue routing is computed at construction time from <see cref="InterBusOptions"/>
-/// (respecting any <see cref="InterBusOptions.TryGetTopicName"/> overrides) and held in memory
-/// for the lifetime of the application — identical to the InMemory transport design.
+/// <see cref="SendToQueueAsync"/> inserts directly into the named queue, bypassing
+/// topic routing entirely.
 /// </para>
 /// </summary>
 public sealed class PostgreSqlTransport : IInterBusTransport
 {
     private readonly NpgsqlDataSource _dataSource;
     private readonly string _schema;
-    private readonly Dictionary<string, List<string>> _topicQueues;
 
-    internal IReadOnlyDictionary<string, List<string>> TopicQueues => _topicQueues;
-
-    public PostgreSqlTransport(
-        NpgsqlDataSource dataSource,
-        PostgreSqlTransportOptions options,
-        InterBusOptions busOptions)
+    public PostgreSqlTransport(NpgsqlDataSource dataSource, PostgreSqlTransportOptions options)
     {
         _dataSource = dataSource;
         _schema = options.SchemaName;
-
-        // Build topic → subscriber-queue mapping from consumer registrations.
-        _topicQueues = new Dictionary<string, List<string>>(StringComparer.Ordinal);
-        foreach (var descriptor in busOptions.Consumers)
-        {
-            foreach (var type in descriptor.MessageTypes)
-            {
-                var topicName = busOptions.TryGetTopicName(type, out var custom)
-                    ? custom
-                    : RoutingConventions.TopicName(type);
-
-                if (!_topicQueues.TryGetValue(topicName, out var queues))
-                {
-                    queues = [];
-                    _topicQueues[topicName] = queues;
-                }
-
-                if (!queues.Contains(descriptor.QueueName))
-                    queues.Add(descriptor.QueueName);
-            }
-        }
     }
 
     /// <inheritdoc/>
     public async Task PublishToTopicAsync(string topicName, byte[] payload, MessageHeaders headers,
         CancellationToken cancellationToken)
     {
-        if (!_topicQueues.TryGetValue(topicName, out var queues))
-            return;
-
+        // Read subscriber queues from the DB — this decouples publishers from consumers and
+        // supports consumers deployed in separate services/processes.
+        var queues = await GetSubscriberQueuesAsync(topicName, cancellationToken);
         foreach (var queueName in queues)
             await SendToQueueAsync(queueName, payload, headers, cancellationToken);
     }
@@ -97,6 +70,27 @@ public sealed class PostgreSqlTransport : IInterBusTransport
         await notifyCmd.ExecuteNonQueryAsync(cancellationToken);
 
         await tx.CommitAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Reads the list of queue names subscribed to <paramref name="topicName"/> from the
+    /// <c>subscriptions</c> table.
+    /// </summary>
+    private async Task<List<string>> GetSubscriberQueuesAsync(string topicName,
+        CancellationToken cancellationToken)
+    {
+        await using var conn = await _dataSource.OpenConnectionAsync(cancellationToken);
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText =
+            $"SELECT queue_name FROM \"{EscapeIdentifier(_schema)}\".subscriptions " +
+            "WHERE topic_name = $1";
+        cmd.Parameters.Add(new NpgsqlParameter<string> { TypedValue = topicName });
+
+        var queues = new List<string>();
+        await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+            queues.Add(reader.GetString(0));
+        return queues;
     }
 
     /// <summary>

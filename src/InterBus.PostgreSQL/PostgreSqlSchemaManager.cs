@@ -18,7 +18,7 @@ internal sealed class PostgreSqlSchemaManager
         _schema = options.SchemaName;
     }
 
-    /// <summary>Ensures the schema, table and index exist. Idempotent.</summary>
+    /// <summary>Ensures the schema, tables and indexes exist. Idempotent.</summary>
     public async Task MigrateAsync(CancellationToken cancellationToken = default)
     {
         var schema = QuoteIdentifier(_schema);
@@ -35,7 +35,12 @@ internal sealed class PostgreSqlSchemaManager
             "    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()\n" +
             ");\n" +
             $"CREATE INDEX IF NOT EXISTS ix_messages_queue_pending\n" +
-            $"    ON {schema}.messages (queue_name, id);";
+            $"    ON {schema}.messages (queue_name, id);\n" +
+            $"CREATE TABLE IF NOT EXISTS {schema}.subscriptions (\n" +
+            "    queue_name TEXT NOT NULL,\n" +
+            "    topic_name TEXT NOT NULL,\n" +
+            "    PRIMARY KEY (queue_name, topic_name)\n" +
+            ");";
         await cmd.ExecuteNonQueryAsync(cancellationToken);
     }
 

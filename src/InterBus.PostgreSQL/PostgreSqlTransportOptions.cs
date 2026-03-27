@@ -22,4 +22,13 @@ public sealed class PostgreSqlTransportOptions
     /// failures at the cost of more frequent database queries.
     /// </summary>
     public TimeSpan FallbackPollInterval { get; set; } = TimeSpan.FromSeconds(30);
+
+    /// <summary>
+    /// Whether to run schema migrations automatically at startup.
+    /// Defaults to <c>true</c>. Set to <c>false</c> if you manage the database schema
+    /// through an external migration tool (e.g. Flyway, Liquibase, or a custom deployment
+    /// pipeline). When disabled the <c>interbus.messages</c> and <c>interbus.subscriptions</c>
+    /// tables must exist before the application starts.
+    /// </summary>
+    public bool RunSchemaMigrations { get; set; } = true;
 }

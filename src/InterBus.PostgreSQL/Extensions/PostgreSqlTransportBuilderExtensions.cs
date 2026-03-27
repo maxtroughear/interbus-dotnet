@@ -91,6 +91,10 @@ public static class PostgreSqlTransportBuilderExtensions
     /// </summary>
     private static void RegisterCommonServices(IInterBusBuilder builder, PostgreSqlTransportOptions options)
     {
+        // Always registered so consumers can inject it regardless of the option value.
+        // The properties are null when ShareTransactionWithConsumer is false (the default).
+        builder.Services.AddScoped<PostgreSqlConsumeContext>();
+
         if (options.RunSchemaMigrations)
         {
             builder.Services.AddSingleton<PostgreSqlSchemaManager>();

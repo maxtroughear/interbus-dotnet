@@ -14,7 +14,7 @@ namespace InterBus.PostgreSQL.Tests;
 [Collection("PostgreSQL")]
 public sealed class PublishConsumeTests : IAsyncLifetime
 {
-    private readonly PostgreSqlContainer _pgContainer = new PostgreSqlBuilder("postgres:16-alpine")
+    private readonly PostgreSqlContainer _pgContainer = new PostgreSqlBuilder("postgres:18-alpine")
         .Build();
 
     public ValueTask InitializeAsync() => new(_pgContainer.StartAsync());
@@ -332,6 +332,110 @@ public sealed class PublishConsumeTests : IAsyncLifetime
             Assert.Single(tracker.Messages);
             Assert.Equal(msg.OrderId, tracker.Messages.Single().OrderId);
             Assert.True(callCount >= 2, $"Expected at least 2 dispatch attempts, got {callCount}");
+        }
+        finally
+        {
+            await StopAsync(provider, cts);
+        }
+    }
+
+    [Fact]
+    public async Task EnqueueInTransaction_MessageIsDelivered()
+    {
+        // Verifies that EnqueueInTransactionAsync inserts and notifies atomically within a
+        // caller-owned transaction — the consumer receives the message after the transaction commits.
+        var tracker = new OrderPlacedTracker();
+
+        var (provider, cts) = await StartAsync(
+            services => services.AddSingleton(tracker),
+            bus =>
+            {
+                bus.AddPostgreSqlTransport(o => o.ConnectionString = _pgContainer.GetConnectionString());
+                bus.AddConsumer<OrderPlacedConsumer>(
+                    [typeof(OrderPlaced)],
+                    BuildDispatch<OrderPlacedConsumer, OrderPlaced>());
+            });
+
+        try
+        {
+            var transport = provider.GetRequiredService<PostgreSqlTransport>();
+            var serializer = provider.GetRequiredService<IMessageSerializer>();
+            var msg = new OrderPlaced(Guid.NewGuid(), "tx@enqueue.test", 77m);
+            var payload = serializer.Serialize(msg);
+            var headers = new MessageHeaders { [InterBusHeaders.MessageType] = typeof(OrderPlaced).FullName! };
+
+            await using var dataSource = Npgsql.NpgsqlDataSource.Create(_pgContainer.GetConnectionString());
+            await using var conn = await dataSource.OpenConnectionAsync(TestContext.Current.CancellationToken);
+            await using var tx = await conn.BeginTransactionAsync(TestContext.Current.CancellationToken);
+
+            var queueName = provider.GetRequiredService<InterBusOptions>()
+                .Consumers.Single(c => c.ConsumerType == typeof(OrderPlacedConsumer)).QueueName;
+
+            await transport.EnqueueInTransactionAsync(queueName, payload, headers, tx,
+                TestContext.Current.CancellationToken);
+
+            // Before commit, the row should be invisible to other connections (READ COMMITTED).
+            await using var checkDataSource = Npgsql.NpgsqlDataSource.Create(_pgContainer.GetConnectionString());
+            await using var checkConn = await checkDataSource.OpenConnectionAsync(TestContext.Current.CancellationToken);
+            await using var checkCmd = checkConn.CreateCommand();
+            checkCmd.CommandText =
+                $"SELECT COUNT(*) FROM interbus.messages WHERE queue_name = $1";
+            checkCmd.Parameters.Add(new Npgsql.NpgsqlParameter<string> { TypedValue = queueName });
+            var rowsBefore = (long)(await checkCmd.ExecuteScalarAsync(TestContext.Current.CancellationToken))!;
+            Assert.Equal(0L, rowsBefore);
+
+            // Commit — now the message becomes visible and triggers the NOTIFY.
+            await tx.CommitAsync(TestContext.Current.CancellationToken);
+
+            await WaitUntilAsync(() => tracker.Messages.Count == 1);
+
+            Assert.Single(tracker.Messages);
+            Assert.Equal(msg.OrderId, tracker.Messages.Single().OrderId);
+        }
+        finally
+        {
+            await StopAsync(provider, cts);
+        }
+    }
+
+    [Fact]
+    public async Task ShareTransactionWithConsumer_ConsumerReceivesTransaction()
+    {
+        // Verifies that when ShareTransactionWithConsumer = true, the consumer's
+        // PostgreSqlConsumeContext is populated with the active transaction.
+        var tracker = new OrderPlacedTracker();
+        var txTracker = new TransactionContextTracker();
+
+        var (provider, cts) = await StartAsync(
+            services =>
+            {
+                services.AddSingleton(tracker);
+                services.AddSingleton(txTracker);
+            },
+            bus =>
+            {
+                bus.AddPostgreSqlTransport(o =>
+                {
+                    o.ConnectionString = _pgContainer.GetConnectionString();
+                    o.ShareTransactionWithConsumer = true;
+                });
+                bus.AddConsumer<TransactionAwareConsumer>(
+                    [typeof(OrderPlaced)],
+                    BuildDispatch<TransactionAwareConsumer, OrderPlaced>());
+            });
+
+        try
+        {
+            using var scope = provider.CreateScope();
+            var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
+            var msg = new OrderPlaced(Guid.NewGuid(), "shared-tx@test.com", 42m);
+            await publisher.Publish(msg, TestContext.Current.CancellationToken);
+
+            await WaitUntilAsync(() => tracker.Messages.Count == 1);
+
+            Assert.Single(tracker.Messages);
+            Assert.Equal(msg.OrderId, tracker.Messages.Single().OrderId);
+            Assert.True(txTracker.ReceivedTransaction, "Consumer should have received a non-null transaction");
         }
         finally
         {

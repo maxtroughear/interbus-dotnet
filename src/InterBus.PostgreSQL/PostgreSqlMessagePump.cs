@@ -120,6 +120,7 @@ internal sealed class PostgreSqlMessagePump : BackgroundService
                 using var pollCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
                 pollCts.CancelAfter(_options.FallbackPollInterval);
 
+                var isFallbackPoll = false;
                 try
                 {
                     await listenConn.WaitAsync(pollCts.Token);
@@ -127,9 +128,15 @@ internal sealed class PostgreSqlMessagePump : BackgroundService
                 catch (OperationCanceledException) when (!stoppingToken.IsCancellationRequested)
                 {
                     // Fallback poll interval elapsed — check for pending messages.
+                    isFallbackPoll = true;
                 }
 
                 await ProcessPendingAsync(descriptor, stoppingToken);
+
+                // On fallback polls, also clean up any orphaned payload rows that may have
+                // been left behind by concurrent fan-out processing.
+                if (isFallbackPoll)
+                    await CleanupOrphanedPayloadsAsync(stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -164,12 +171,15 @@ internal sealed class PostgreSqlMessagePump : BackgroundService
         await using var conn = await _dataSource.OpenConnectionAsync(stoppingToken);
         await using var tx = await conn.BeginTransactionAsync(stoppingToken);
 
-        // Lock one pending message; SKIP LOCKED ensures competing pump instances don't clash.
+        // Lock one pending message routing row (FOR UPDATE OF m SKIP LOCKED) without locking
+        // the shared payload row so concurrent pumps on different queues don't block each other.
         await using var selectCmd = conn.CreateCommand();
         selectCmd.Transaction = tx;
         selectCmd.CommandText =
-            $"SELECT id, payload, headers FROM \"{EscapeIdentifier(_options.SchemaName)}\".messages " +
-            "WHERE queue_name = $1 ORDER BY id FOR UPDATE SKIP LOCKED LIMIT 1";
+            $"SELECT m.id, mp.payload, mp.headers, m.payload_id " +
+            $"FROM \"{EscapeIdentifier(_options.SchemaName)}\".messages m " +
+            $"JOIN \"{EscapeIdentifier(_options.SchemaName)}\".message_payloads mp ON mp.id = m.payload_id " +
+            "WHERE m.queue_name = $1 ORDER BY m.id FOR UPDATE OF m SKIP LOCKED LIMIT 1";
         selectCmd.Parameters.Add(new NpgsqlParameter<string> { TypedValue = descriptor.QueueName });
 
         await using var reader = await selectCmd.ExecuteReaderAsync(stoppingToken);
@@ -183,6 +193,7 @@ internal sealed class PostgreSqlMessagePump : BackgroundService
         var id = reader.GetInt64(0);
         var payload = (byte[])reader.GetValue(1);
         var headersJson = reader.GetString(2);
+        var payloadId = reader.GetInt64(3);
         await reader.CloseAsync();
 
         var headers = PostgreSqlTransport.DeserializeHeaders(headersJson);
@@ -191,13 +202,26 @@ internal sealed class PostgreSqlMessagePump : BackgroundService
         {
             await DispatchAsync(descriptor, payload, headers, stoppingToken);
 
-            // Delete the row on successful dispatch.
+            // Delete this queue's routing row on successful dispatch.
             await using var deleteCmd = conn.CreateCommand();
             deleteCmd.Transaction = tx;
             deleteCmd.CommandText =
                 $"DELETE FROM \"{EscapeIdentifier(_options.SchemaName)}\".messages WHERE id = $1";
             deleteCmd.Parameters.Add(new NpgsqlParameter<long> { TypedValue = id });
             await deleteCmd.ExecuteNonQueryAsync(stoppingToken);
+
+            // Delete the shared payload row only when no other queue routing row references it.
+            // Concurrent pump instances processing different queues for the same fan-out message
+            // each delete their own routing row; the last one also deletes the payload.
+            await using var cleanupCmd = conn.CreateCommand();
+            cleanupCmd.Transaction = tx;
+            cleanupCmd.CommandText =
+                $"DELETE FROM \"{EscapeIdentifier(_options.SchemaName)}\".message_payloads " +
+                "WHERE id = $1 AND NOT EXISTS (" +
+                $"  SELECT 1 FROM \"{EscapeIdentifier(_options.SchemaName)}\".messages WHERE payload_id = $1" +
+                ")";
+            cleanupCmd.Parameters.Add(new NpgsqlParameter<long> { TypedValue = payloadId });
+            await cleanupCmd.ExecuteNonQueryAsync(stoppingToken);
 
             await tx.CommitAsync(stoppingToken);
             return true;
@@ -222,6 +246,25 @@ internal sealed class PostgreSqlMessagePump : BackgroundService
             // on the next NOTIFY or on the next fallback poll.
             return false;
         }
+    }
+
+    /// <summary>
+    /// Deletes any <c>message_payloads</c> rows that are no longer referenced by any
+    /// <c>messages</c> routing row. This handles the rare race where two concurrent pump
+    /// instances both skipped the inline cleanup because they each saw the other's routing
+    /// row as still committed at the time of their <c>NOT EXISTS</c> check.
+    /// </summary>
+    private async Task CleanupOrphanedPayloadsAsync(CancellationToken cancellationToken)
+    {
+        await using var conn = await _dataSource.OpenConnectionAsync(cancellationToken);
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText =
+            $"DELETE FROM \"{EscapeIdentifier(_options.SchemaName)}\".message_payloads " +
+            $"WHERE NOT EXISTS (" +
+            $"  SELECT 1 FROM \"{EscapeIdentifier(_options.SchemaName)}\".messages " +
+            $"  WHERE payload_id = message_payloads.id" +
+            $")";
+        await cmd.ExecuteNonQueryAsync(cancellationToken);
     }
 
     private async Task DispatchAsync(

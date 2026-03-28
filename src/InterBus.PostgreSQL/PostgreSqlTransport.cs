@@ -40,28 +40,34 @@ public sealed class PostgreSqlTransport : IInterBusTransport
         var queues = await GetSubscriberQueuesAsync(topicName, cancellationToken);
         if (queues.Count == 0) return;
 
-        // Insert all queue rows and issue all NOTIFYs in a single transaction so the payload
-        // bytes are sent to the DB once per publish (not once per subscriber queue).
         var headersJson = SerializeHeaders(headers);
 
         await using var conn = await _dataSource.OpenConnectionAsync(cancellationToken);
         await using var tx = await conn.BeginTransactionAsync(cancellationToken);
 
-        // Prepare the INSERT command once and reuse it for each queue.
+        // Store the payload exactly once, regardless of how many subscriber queues there are.
+        await using var payloadCmd = conn.CreateCommand();
+        payloadCmd.Transaction = tx;
+        payloadCmd.CommandText =
+            $"INSERT INTO \"{EscapeIdentifier(_schema)}\".message_payloads (payload, headers) " +
+            "VALUES ($1, $2) RETURNING id";
+        payloadCmd.Parameters.Add(new NpgsqlParameter<byte[]> { TypedValue = payload, NpgsqlDbType = NpgsqlDbType.Bytea });
+        payloadCmd.Parameters.Add(new NpgsqlParameter<string> { TypedValue = headersJson });
+        var payloadId = (long)(await payloadCmd.ExecuteScalarAsync(cancellationToken))!;
+
+        // Insert one routing row per subscriber queue and NOTIFY each queue.
+        // The payload bytes are not duplicated — each row carries only a FK reference.
         await using var insertCmd = conn.CreateCommand();
         insertCmd.Transaction = tx;
         insertCmd.CommandText =
-            $"INSERT INTO \"{EscapeIdentifier(_schema)}\".messages (queue_name, payload, headers) " +
-            "VALUES ($1, $2, $3)";
+            $"INSERT INTO \"{EscapeIdentifier(_schema)}\".messages (queue_name, payload_id) " +
+            "VALUES ($1, $2)";
         var pQueue = new NpgsqlParameter<string>();
-        var pPayload = new NpgsqlParameter<byte[]> { NpgsqlDbType = NpgsqlDbType.Bytea };
-        var pHeaders = new NpgsqlParameter<string>();
+        var pPayloadId = new NpgsqlParameter<long>();
         insertCmd.Parameters.Add(pQueue);
-        insertCmd.Parameters.Add(pPayload);
-        insertCmd.Parameters.Add(pHeaders);
+        insertCmd.Parameters.Add(pPayloadId);
         await insertCmd.PrepareAsync(cancellationToken);
 
-        // Prepare the NOTIFY command once; the channel placeholder is replaced per queue.
         // Channel names are SHA-256 hashes (hex chars + "ib_" prefix) and are double-quoted,
         // so there is no SQL-injection risk from interpolation here.
         await using var notifyCmd = conn.CreateCommand();
@@ -70,8 +76,7 @@ public sealed class PostgreSqlTransport : IInterBusTransport
         foreach (var queueName in queues)
         {
             pQueue.TypedValue = queueName;
-            pPayload.TypedValue = payload;
-            pHeaders.TypedValue = headersJson;
+            pPayloadId.TypedValue = payloadId;
             await insertCmd.ExecuteNonQueryAsync(cancellationToken);
 
             var channel = ChannelName(queueName);
@@ -92,14 +97,21 @@ public sealed class PostgreSqlTransport : IInterBusTransport
         await using var conn = await _dataSource.OpenConnectionAsync(cancellationToken);
         await using var tx = await conn.BeginTransactionAsync(cancellationToken);
 
+        await using var payloadCmd = conn.CreateCommand();
+        payloadCmd.Transaction = tx;
+        payloadCmd.CommandText =
+            $"INSERT INTO \"{EscapeIdentifier(_schema)}\".message_payloads (payload, headers) " +
+            "VALUES ($1, $2) RETURNING id";
+        payloadCmd.Parameters.Add(new NpgsqlParameter<byte[]> { TypedValue = payload, NpgsqlDbType = NpgsqlDbType.Bytea });
+        payloadCmd.Parameters.Add(new NpgsqlParameter<string> { TypedValue = headersJson });
+        var payloadId = (long)(await payloadCmd.ExecuteScalarAsync(cancellationToken))!;
+
         await using var insertCmd = conn.CreateCommand();
         insertCmd.Transaction = tx;
         insertCmd.CommandText =
-            $"INSERT INTO \"{EscapeIdentifier(_schema)}\".messages (queue_name, payload, headers) " +
-            "VALUES ($1, $2, $3)";
+            $"INSERT INTO \"{EscapeIdentifier(_schema)}\".messages (queue_name, payload_id) VALUES ($1, $2)";
         insertCmd.Parameters.Add(new NpgsqlParameter<string> { TypedValue = queueName });
-        insertCmd.Parameters.Add(new NpgsqlParameter<byte[]> { TypedValue = payload, NpgsqlDbType = NpgsqlDbType.Bytea });
-        insertCmd.Parameters.Add(new NpgsqlParameter<string> { TypedValue = headersJson });
+        insertCmd.Parameters.Add(new NpgsqlParameter<long> { TypedValue = payloadId });
         await insertCmd.ExecuteNonQueryAsync(cancellationToken);
 
         // NOTIFY is committed atomically with the INSERT: the notification is only sent to

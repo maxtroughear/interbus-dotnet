@@ -27,11 +27,17 @@ internal sealed class PostgreSqlSchemaManager
         await using var cmd = conn.CreateCommand();
         cmd.CommandText =
             $"CREATE SCHEMA IF NOT EXISTS {schema};\n" +
+            // Payload stored once; queue routing rows reference it via FK.
+            $"CREATE TABLE IF NOT EXISTS {schema}.message_payloads (\n" +
+            "    id         BIGSERIAL PRIMARY KEY,\n" +
+            "    payload    BYTEA       NOT NULL,\n" +
+            "    headers    TEXT        NOT NULL,\n" +
+            "    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()\n" +
+            ");\n" +
             $"CREATE TABLE IF NOT EXISTS {schema}.messages (\n" +
             "    id         BIGSERIAL PRIMARY KEY,\n" +
             "    queue_name TEXT        NOT NULL,\n" +
-            "    payload    BYTEA       NOT NULL,\n" +
-            "    headers    TEXT        NOT NULL,\n" +
+            $"    payload_id BIGINT      NOT NULL REFERENCES {schema}.message_payloads(id),\n" +
             "    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()\n" +
             ");\n" +
             $"CREATE INDEX IF NOT EXISTS ix_messages_queue_pending\n" +

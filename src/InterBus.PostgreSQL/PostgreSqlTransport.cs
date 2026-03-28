@@ -19,11 +19,6 @@ namespace InterBus.PostgreSQL;
 /// <see cref="SendToQueueAsync"/> inserts directly into the named queue, bypassing
 /// topic routing entirely.
 /// </para>
-/// <para>
-/// <see cref="EnqueueInTransactionAsync"/> and <see cref="PublishInTransactionAsync"/>
-/// are non-interface overloads that accept a caller-owned <see cref="NpgsqlTransaction"/>,
-/// enabling atomic publish-with-business-logic without an outbox pattern.
-/// </para>
 /// </summary>
 public sealed class PostgreSqlTransport : IInterBusTransport
 {
@@ -57,52 +52,24 @@ public sealed class PostgreSqlTransport : IInterBusTransport
         await using var conn = await _dataSource.OpenConnectionAsync(cancellationToken);
         await using var tx = await conn.BeginTransactionAsync(cancellationToken);
 
-        await InsertMessageAsync(conn, tx, queueName, payload, headersJson, channel, cancellationToken);
+        await using var insertCmd = conn.CreateCommand();
+        insertCmd.Transaction = tx;
+        insertCmd.CommandText =
+            $"INSERT INTO \"{EscapeIdentifier(_schema)}\".messages (queue_name, payload, headers) " +
+            "VALUES ($1, $2, $3)";
+        insertCmd.Parameters.Add(new NpgsqlParameter<string> { TypedValue = queueName });
+        insertCmd.Parameters.Add(new NpgsqlParameter<byte[]> { TypedValue = payload, NpgsqlDbType = NpgsqlDbType.Bytea });
+        insertCmd.Parameters.Add(new NpgsqlParameter<string> { TypedValue = headersJson });
+        await insertCmd.ExecuteNonQueryAsync(cancellationToken);
+
+        // NOTIFY is committed atomically with the INSERT: the notification is only sent to
+        // listeners when this transaction commits, guaranteeing at-least-once delivery.
+        await using var notifyCmd = conn.CreateCommand();
+        notifyCmd.Transaction = tx;
+        notifyCmd.CommandText = $"NOTIFY \"{channel}\"";
+        await notifyCmd.ExecuteNonQueryAsync(cancellationToken);
 
         await tx.CommitAsync(cancellationToken);
-    }
-
-    /// <summary>
-    /// Publishes a message to all queues subscribed to <paramref name="topicName"/>, enlisting
-    /// the INSERT and NOTIFY operations in the caller-supplied <paramref name="transaction"/>.
-    /// The caller is responsible for committing or rolling back the transaction.
-    /// </summary>
-    /// <remarks>
-    /// Use this overload to publish atomically alongside other database operations in the same
-    /// transaction, avoiding the need for an outbox pattern. Subscriber queue lookup uses a
-    /// separate connection so that it is not affected by the transaction isolation level of the
-    /// caller's connection.
-    /// </remarks>
-    public async Task PublishInTransactionAsync(string topicName, byte[] payload, MessageHeaders headers,
-        NpgsqlTransaction transaction, CancellationToken cancellationToken)
-    {
-        ArgumentNullException.ThrowIfNull(transaction);
-        var queues = await GetSubscriberQueuesAsync(topicName, cancellationToken);
-        foreach (var queueName in queues)
-            await EnqueueInTransactionAsync(queueName, payload, headers, transaction, cancellationToken);
-    }
-
-    /// <summary>
-    /// Inserts a message row and issues a NOTIFY for <paramref name="queueName"/>, enlisting
-    /// both operations in the caller-supplied <paramref name="transaction"/>.
-    /// The caller is responsible for committing or rolling back the transaction.
-    /// </summary>
-    /// <remarks>
-    /// Use this overload to enqueue atomically alongside other database operations in the same
-    /// transaction, avoiding the need for an outbox pattern.
-    /// </remarks>
-    public async Task EnqueueInTransactionAsync(string queueName, byte[] payload, MessageHeaders headers,
-        NpgsqlTransaction transaction, CancellationToken cancellationToken)
-    {
-        ArgumentNullException.ThrowIfNull(transaction);
-        var headersJson = SerializeHeaders(headers);
-        var channel = ChannelName(queueName);
-        var conn = transaction.Connection
-                   ?? throw new InvalidOperationException(
-                       "The supplied NpgsqlTransaction has no associated connection. " +
-                       "Ensure the transaction is open and not disposed before calling this method.");
-
-        await InsertMessageAsync(conn, transaction, queueName, payload, headersJson, channel, cancellationToken);
     }
 
     /// <summary>
@@ -124,37 +91,6 @@ public sealed class PostgreSqlTransport : IInterBusTransport
         while (await reader.ReadAsync(cancellationToken))
             queues.Add(reader.GetString(0));
         return queues;
-    }
-
-    /// <summary>
-    /// Executes the INSERT into <c>messages</c> and the NOTIFY using the supplied connection
-    /// and transaction. Does not commit.
-    /// </summary>
-    private async Task InsertMessageAsync(
-        NpgsqlConnection conn,
-        NpgsqlTransaction tx,
-        string queueName,
-        byte[] payload,
-        string headersJson,
-        string channel,
-        CancellationToken cancellationToken)
-    {
-        await using var insertCmd = conn.CreateCommand();
-        insertCmd.Transaction = tx;
-        insertCmd.CommandText =
-            $"INSERT INTO \"{EscapeIdentifier(_schema)}\".messages (queue_name, payload, headers) " +
-            "VALUES ($1, $2, $3)";
-        insertCmd.Parameters.Add(new NpgsqlParameter<string> { TypedValue = queueName });
-        insertCmd.Parameters.Add(new NpgsqlParameter<byte[]> { TypedValue = payload, NpgsqlDbType = NpgsqlDbType.Bytea });
-        insertCmd.Parameters.Add(new NpgsqlParameter<string> { TypedValue = headersJson });
-        await insertCmd.ExecuteNonQueryAsync(cancellationToken);
-
-        // NOTIFY is committed atomically with the INSERT: the notification is only sent to
-        // listeners when this transaction commits, guaranteeing at-least-once delivery.
-        await using var notifyCmd = conn.CreateCommand();
-        notifyCmd.Transaction = tx;
-        notifyCmd.CommandText = $"NOTIFY \"{channel}\"";
-        await notifyCmd.ExecuteNonQueryAsync(cancellationToken);
     }
 
     /// <summary>

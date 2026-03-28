@@ -189,7 +189,7 @@ internal sealed class PostgreSqlMessagePump : BackgroundService
 
         try
         {
-            await DispatchAsync(descriptor, payload, headers, conn, tx, stoppingToken);
+            await DispatchAsync(descriptor, payload, headers, stoppingToken);
 
             // Delete the row on successful dispatch.
             await using var deleteCmd = conn.CreateCommand();
@@ -228,18 +228,9 @@ internal sealed class PostgreSqlMessagePump : BackgroundService
         ConsumerDescriptor descriptor,
         byte[] payload,
         MessageHeaders headers,
-        NpgsqlConnection conn,
-        NpgsqlTransaction tx,
         CancellationToken ct)
     {
         await using var scope = _scopeFactory.CreateAsyncScope();
-
-        // Always populate the scoped PostgreSqlConsumeContext so consumers can optionally
-        // inject it to enlist their own operations in the same transaction.
-        var consumeCtx = scope.ServiceProvider.GetRequiredService<PostgreSqlConsumeContext>();
-        consumeCtx.Connection = conn;
-        consumeCtx.Transaction = tx;
-
         var executor = scope.ServiceProvider.GetRequiredService<ConsumePipelineExecutor>();
         await executor.ExecuteAsync(descriptor, payload, headers, ct);
     }

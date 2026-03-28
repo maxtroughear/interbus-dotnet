@@ -42,24 +42,3 @@ public sealed class OrderShippedConsumer(OrderShippedTracker tracker) : IConsume
         return Task.CompletedTask;
     }
 }
-
-/// <summary>
-/// Tracks whether the consumer received a non-null <see cref="PostgreSqlConsumeContext.Transaction"/>.
-/// </summary>
-public sealed class TransactionContextTracker
-{
-    public bool ReceivedTransaction { get; set; }
-}
-
-public sealed class TransactionAwareConsumer(
-    OrderPlacedTracker tracker,
-    TransactionContextTracker txTracker,
-    PostgreSqlConsumeContext consumeCtx) : IConsumer<OrderPlaced>
-{
-    public Task Consume(OrderPlaced message, IConsumeContext context, CancellationToken cancellationToken = default)
-    {
-        tracker.Track(message);
-        txTracker.ReceivedTransaction = consumeCtx.Transaction is not null;
-        return Task.CompletedTask;
-    }
-}

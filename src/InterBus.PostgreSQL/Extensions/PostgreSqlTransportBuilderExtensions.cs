@@ -91,14 +91,6 @@ public static class PostgreSqlTransportBuilderExtensions
     /// </summary>
     private static void RegisterCommonServices(IInterBusBuilder builder, PostgreSqlTransportOptions options)
     {
-        // Always registered so consumers can optionally inject it to share the pump's transaction.
-        builder.Services.AddScoped<PostgreSqlConsumeContext>();
-
-        // Register the PostgreSQL-specific publisher that exposes transaction overloads.
-        // Users who need atomic publish-with-business-logic inject IPostgreSqlMessagePublisher;
-        // users who don't can continue injecting IMessagePublisher.
-        builder.Services.AddScoped<IPostgreSqlMessagePublisher, PostgreSqlMessagePublisher>();
-
         if (options.RunSchemaMigrations)
         {
             builder.Services.AddSingleton<PostgreSqlSchemaManager>();

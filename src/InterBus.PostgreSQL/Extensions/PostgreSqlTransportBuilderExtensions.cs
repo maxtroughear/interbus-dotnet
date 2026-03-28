@@ -37,8 +37,7 @@ public static class PostgreSqlTransportBuilderExtensions
 
         builder.Services.AddSingleton(options);
         builder.Services.AddSingleton(NpgsqlDataSource.Create(options.ConnectionString));
-        builder.Services.AddSingleton<PostgreSqlTransport>();
-        builder.Services.AddSingleton<IInterBusTransport>(sp => sp.GetRequiredService<PostgreSqlTransport>());
+        builder.Services.AddSingleton<IInterBusTransport, PostgreSqlTransport>();
 
         RegisterCommonServices(builder, options);
 
@@ -75,8 +74,7 @@ public static class PostgreSqlTransportBuilderExtensions
 
         builder.Services.AddSingleton(options);
         builder.Services.AddSingleton(dataSource);
-        builder.Services.AddSingleton<PostgreSqlTransport>();
-        builder.Services.AddSingleton<IInterBusTransport>(sp => sp.GetRequiredService<PostgreSqlTransport>());
+        builder.Services.AddSingleton<IInterBusTransport, PostgreSqlTransport>();
 
         RegisterCommonServices(builder, options);
 

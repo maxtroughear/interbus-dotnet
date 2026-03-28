@@ -38,8 +38,48 @@ public sealed class PostgreSqlTransport : IInterBusTransport
         // Read subscriber queues from the DB — this decouples publishers from consumers and
         // supports consumers deployed in separate services/processes.
         var queues = await GetSubscriberQueuesAsync(topicName, cancellationToken);
+        if (queues.Count == 0) return;
+
+        // Insert all queue rows and issue all NOTIFYs in a single transaction so the payload
+        // bytes are sent to the DB once per publish (not once per subscriber queue).
+        var headersJson = SerializeHeaders(headers);
+
+        await using var conn = await _dataSource.OpenConnectionAsync(cancellationToken);
+        await using var tx = await conn.BeginTransactionAsync(cancellationToken);
+
+        // Prepare the INSERT command once and reuse it for each queue.
+        await using var insertCmd = conn.CreateCommand();
+        insertCmd.Transaction = tx;
+        insertCmd.CommandText =
+            $"INSERT INTO \"{EscapeIdentifier(_schema)}\".messages (queue_name, payload, headers) " +
+            "VALUES ($1, $2, $3)";
+        var pQueue = new NpgsqlParameter<string>();
+        var pPayload = new NpgsqlParameter<byte[]> { NpgsqlDbType = NpgsqlDbType.Bytea };
+        var pHeaders = new NpgsqlParameter<string>();
+        insertCmd.Parameters.Add(pQueue);
+        insertCmd.Parameters.Add(pPayload);
+        insertCmd.Parameters.Add(pHeaders);
+        await insertCmd.PrepareAsync(cancellationToken);
+
+        // Prepare the NOTIFY command once; the channel placeholder is replaced per queue.
+        // Channel names are SHA-256 hashes (hex chars + "ib_" prefix) and are double-quoted,
+        // so there is no SQL-injection risk from interpolation here.
+        await using var notifyCmd = conn.CreateCommand();
+        notifyCmd.Transaction = tx;
+
         foreach (var queueName in queues)
-            await SendToQueueAsync(queueName, payload, headers, cancellationToken);
+        {
+            pQueue.TypedValue = queueName;
+            pPayload.TypedValue = payload;
+            pHeaders.TypedValue = headersJson;
+            await insertCmd.ExecuteNonQueryAsync(cancellationToken);
+
+            var channel = ChannelName(queueName);
+            notifyCmd.CommandText = $"NOTIFY \"{channel}\"";
+            await notifyCmd.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await tx.CommitAsync(cancellationToken);
     }
 
     /// <inheritdoc/>

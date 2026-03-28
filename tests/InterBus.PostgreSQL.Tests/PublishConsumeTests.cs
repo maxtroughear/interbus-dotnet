@@ -225,9 +225,9 @@ public sealed class PublishConsumeTests : IAsyncLifetime
             await using var cmd = conn.CreateCommand();
             cmd.CommandText =
                 "SELECT COUNT(*) FROM information_schema.tables " +
-                "WHERE table_schema = 'interbus' AND table_name IN ('messages', 'message_payloads', 'subscriptions')";
+                "WHERE table_schema = 'interbus' AND table_name IN ('messages', 'message_payloads', 'subscriptions', 'queues')";
             var count = (long)(await cmd.ExecuteScalarAsync(TestContext.Current.CancellationToken))!;
-            Assert.Equal(3L, count);
+            Assert.Equal(4L, count);
         }
         finally
         {
@@ -244,6 +244,10 @@ public sealed class PublishConsumeTests : IAsyncLifetime
         await using var setupCmd = setupConn.CreateCommand();
         setupCmd.CommandText =
             "CREATE SCHEMA IF NOT EXISTS interbus;\n" +
+            "CREATE TABLE IF NOT EXISTS interbus.queues (\n" +
+            "    id         BIGSERIAL PRIMARY KEY,\n" +
+            "    queue_name TEXT      NOT NULL UNIQUE\n" +
+            ");\n" +
             "CREATE TABLE IF NOT EXISTS interbus.message_payloads (\n" +
             "    id         BIGSERIAL PRIMARY KEY,\n" +
             "    payload    BYTEA       NOT NULL,\n" +
@@ -282,9 +286,9 @@ public sealed class PublishConsumeTests : IAsyncLifetime
             await using var cmd = conn.CreateCommand();
             cmd.CommandText =
                 "SELECT COUNT(*) FROM information_schema.tables " +
-                "WHERE table_schema = 'interbus' AND table_name IN ('messages', 'message_payloads', 'subscriptions')";
+                "WHERE table_schema = 'interbus' AND table_name IN ('messages', 'message_payloads', 'subscriptions', 'queues')";
             var count = (long)(await cmd.ExecuteScalarAsync(TestContext.Current.CancellationToken))!;
-            Assert.Equal(3L, count);
+            Assert.Equal(4L, count);
         }
         finally
         {

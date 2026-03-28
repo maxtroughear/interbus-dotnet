@@ -1,5 +1,3 @@
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
 using Npgsql;
 using NpgsqlTypes;
@@ -35,8 +33,8 @@ public sealed class PostgreSqlTransport : IInterBusTransport
     public async Task PublishToTopicAsync(string topicName, byte[] payload, MessageHeaders headers,
         CancellationToken cancellationToken)
     {
-        // Read subscriber queues from the DB — this decouples publishers from consumers and
-        // supports consumers deployed in separate services/processes.
+        // Read subscriber queues and their numeric IDs from the DB — this decouples publishers
+        // from consumers and supports consumers deployed in separate services/processes.
         var queues = await GetSubscriberQueuesAsync(topicName, cancellationToken);
         if (queues.Count == 0) return;
 
@@ -55,7 +53,7 @@ public sealed class PostgreSqlTransport : IInterBusTransport
         payloadCmd.Parameters.Add(new NpgsqlParameter<string> { TypedValue = headersJson });
         var payloadId = (long)(await payloadCmd.ExecuteScalarAsync(cancellationToken))!;
 
-        // Insert one routing row per subscriber queue and NOTIFY each queue.
+        // Insert one routing row per subscriber queue and NOTIFY each queue's channel.
         // The payload bytes are not duplicated — each row carries only a FK reference.
         await using var insertCmd = conn.CreateCommand();
         insertCmd.Transaction = tx;
@@ -68,19 +66,18 @@ public sealed class PostgreSqlTransport : IInterBusTransport
         insertCmd.Parameters.Add(pPayloadId);
         await insertCmd.PrepareAsync(cancellationToken);
 
-        // Channel names are SHA-256 hashes (hex chars + "ib_" prefix) and are double-quoted,
-        // so there is no SQL-injection risk from interpolation here.
         await using var notifyCmd = conn.CreateCommand();
         notifyCmd.Transaction = tx;
 
-        foreach (var queueName in queues)
+        foreach (var (queueName, queueId) in queues)
         {
             pQueue.TypedValue = queueName;
             pPayloadId.TypedValue = payloadId;
             await insertCmd.ExecuteNonQueryAsync(cancellationToken);
 
-            var channel = ChannelName(queueName);
-            notifyCmd.CommandText = $"NOTIFY \"{channel}\"";
+            // Channel names are "ib_<queue_id>" — stable, DB-assigned identifiers that are
+            // always valid PostgreSQL identifiers and safely under the 63-byte limit.
+            notifyCmd.CommandText = $"NOTIFY \"ib_{queueId}\"";
             await notifyCmd.ExecuteNonQueryAsync(cancellationToken);
         }
 
@@ -92,10 +89,18 @@ public sealed class PostgreSqlTransport : IInterBusTransport
         CancellationToken cancellationToken)
     {
         var headersJson = SerializeHeaders(headers);
-        var channel = ChannelName(queueName);
 
         await using var conn = await _dataSource.OpenConnectionAsync(cancellationToken);
         await using var tx = await conn.BeginTransactionAsync(cancellationToken);
+
+        // Ensure the queue row exists and obtain its stable numeric channel ID.
+        await using var queueCmd = conn.CreateCommand();
+        queueCmd.Transaction = tx;
+        queueCmd.CommandText =
+            $"INSERT INTO \"{EscapeIdentifier(_schema)}\".queues (queue_name) VALUES ($1) " +
+            "ON CONFLICT (queue_name) DO UPDATE SET queue_name = EXCLUDED.queue_name RETURNING id";
+        queueCmd.Parameters.Add(new NpgsqlParameter<string> { TypedValue = queueName });
+        var queueId = (long)(await queueCmd.ExecuteScalarAsync(cancellationToken))!;
 
         await using var payloadCmd = conn.CreateCommand();
         payloadCmd.Transaction = tx;
@@ -118,43 +123,33 @@ public sealed class PostgreSqlTransport : IInterBusTransport
         // listeners when this transaction commits, guaranteeing at-least-once delivery.
         await using var notifyCmd = conn.CreateCommand();
         notifyCmd.Transaction = tx;
-        notifyCmd.CommandText = $"NOTIFY \"{channel}\"";
+        notifyCmd.CommandText = $"NOTIFY \"ib_{queueId}\"";
         await notifyCmd.ExecuteNonQueryAsync(cancellationToken);
 
         await tx.CommitAsync(cancellationToken);
     }
 
     /// <summary>
-    /// Reads the list of queue names subscribed to <paramref name="topicName"/> from the
-    /// <c>subscriptions</c> table.
+    /// Reads the list of subscriber queue names and their numeric channel IDs for the given
+    /// topic from the <c>subscriptions</c> and <c>queues</c> tables.
     /// </summary>
-    private async Task<List<string>> GetSubscriberQueuesAsync(string topicName,
-        CancellationToken cancellationToken)
+    private async Task<List<(string QueueName, long QueueId)>> GetSubscriberQueuesAsync(
+        string topicName, CancellationToken cancellationToken)
     {
         await using var conn = await _dataSource.OpenConnectionAsync(cancellationToken);
         await using var cmd = conn.CreateCommand();
         cmd.CommandText =
-            $"SELECT queue_name FROM \"{EscapeIdentifier(_schema)}\".subscriptions " +
-            "WHERE topic_name = $1";
+            $"SELECT s.queue_name, q.id " +
+            $"FROM \"{EscapeIdentifier(_schema)}\".subscriptions s " +
+            $"JOIN \"{EscapeIdentifier(_schema)}\".queues q ON q.queue_name = s.queue_name " +
+            "WHERE s.topic_name = $1";
         cmd.Parameters.Add(new NpgsqlParameter<string> { TypedValue = topicName });
 
-        var queues = new List<string>();
+        var queues = new List<(string, long)>();
         await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
-            queues.Add(reader.GetString(0));
+            queues.Add((reader.GetString(0), reader.GetInt64(1)));
         return queues;
-    }
-
-    /// <summary>
-    /// Derives a stable PostgreSQL NOTIFY/LISTEN channel identifier from a queue name.
-    /// Channel names are limited to 63 bytes in PostgreSQL, so the queue name is SHA-256
-    /// hashed to produce a short, collision-resistant, lowercase-alphanumeric identifier.
-    /// </summary>
-    internal static string ChannelName(string queueName)
-    {
-        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(queueName));
-        // "ib_" prefix (3) + 58 hex digits = 61 chars, safely under the 63-byte limit.
-        return "ib_" + Convert.ToHexString(hash)[..58].ToLowerInvariant();
     }
 
     internal static string SerializeHeaders(MessageHeaders headers) =>

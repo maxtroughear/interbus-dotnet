@@ -56,43 +56,74 @@ internal sealed class PostgreSqlMessagePump : BackgroundService
 
         // Register this service's topic subscriptions in the DB so that publishers in other
         // processes can route messages to this service's queues without knowing about them.
-        await RegisterSubscriptionsAsync(stoppingToken);
+        // Returns the stable numeric queue IDs used as LISTEN/NOTIFY channel names.
+        var queueIds = await RegisterSubscriptionsAsync(stoppingToken);
 
         // Start one listener per consumer queue; all run concurrently.
-        var tasks = consumers.Select(d => ListenForQueueAsync(d, stoppingToken));
+        var tasks = consumers.Select(d => ListenForQueueAsync(d, queueIds[d.QueueName], stoppingToken));
         await Task.WhenAll(tasks);
     }
 
     /// <summary>
-    /// Upserts (queue_name, topic_name) rows into the <c>subscriptions</c> table for every
-    /// consumer registered in this service. Safe to call on every startup (idempotent).
+    /// Upserts (queue_name, topic_name) rows into the <c>subscriptions</c> table and
+    /// ensures each queue has a row in the <c>queues</c> table, which provides the stable
+    /// numeric ID used as the LISTEN/NOTIFY channel name. Idempotent: safe to call on every
+    /// startup.
     /// </summary>
-    private async Task RegisterSubscriptionsAsync(CancellationToken cancellationToken)
+    /// <returns>A map of queue name → numeric queue ID.</returns>
+    private async Task<Dictionary<string, long>> RegisterSubscriptionsAsync(CancellationToken cancellationToken)
     {
+        var queueIds = new Dictionary<string, long>(StringComparer.Ordinal);
+
+        await using var conn = await _dataSource.OpenConnectionAsync(cancellationToken);
+
+        await using var queueCmd = conn.CreateCommand();
+        queueCmd.CommandText =
+            $"INSERT INTO \"{EscapeIdentifier(_options.SchemaName)}\".queues (queue_name) VALUES ($1) " +
+            "ON CONFLICT (queue_name) DO UPDATE SET queue_name = EXCLUDED.queue_name RETURNING id";
+        var pQueueName = new NpgsqlParameter<string>();
+        queueCmd.Parameters.Add(pQueueName);
+        await queueCmd.PrepareAsync(cancellationToken);
+
+        await using var subCmd = conn.CreateCommand();
+        subCmd.CommandText =
+            $"INSERT INTO \"{EscapeIdentifier(_options.SchemaName)}\".subscriptions " +
+            "(queue_name, topic_name) VALUES ($1, $2) " +
+            "ON CONFLICT (queue_name, topic_name) DO NOTHING";
+        var pSubQueue = new NpgsqlParameter<string>();
+        var pSubTopic = new NpgsqlParameter<string>();
+        subCmd.Parameters.Add(pSubQueue);
+        subCmd.Parameters.Add(pSubTopic);
+        await subCmd.PrepareAsync(cancellationToken);
+
         foreach (var descriptor in _busOptions.Consumers)
         {
+            // Ensure the queue exists and get its stable numeric ID (once per unique queue name).
+            if (!queueIds.ContainsKey(descriptor.QueueName))
+            {
+                pQueueName.TypedValue = descriptor.QueueName;
+                var queueId = (long)(await queueCmd.ExecuteScalarAsync(cancellationToken))!;
+                queueIds[descriptor.QueueName] = queueId;
+            }
+
             foreach (var messageType in descriptor.MessageTypes)
             {
                 var topicName = _busOptions.TryGetTopicName(messageType, out var custom)
                     ? custom
                     : RoutingConventions.TopicName(messageType);
 
-                await using var conn = await _dataSource.OpenConnectionAsync(cancellationToken);
-                await using var cmd = conn.CreateCommand();
-                cmd.CommandText =
-                    $"INSERT INTO \"{EscapeIdentifier(_options.SchemaName)}\".subscriptions " +
-                    "(queue_name, topic_name) VALUES ($1, $2) " +
-                    "ON CONFLICT (queue_name, topic_name) DO NOTHING";
-                cmd.Parameters.Add(new NpgsqlParameter<string> { TypedValue = descriptor.QueueName });
-                cmd.Parameters.Add(new NpgsqlParameter<string> { TypedValue = topicName });
-                await cmd.ExecuteNonQueryAsync(cancellationToken);
+                pSubQueue.TypedValue = descriptor.QueueName;
+                pSubTopic.TypedValue = topicName;
+                await subCmd.ExecuteNonQueryAsync(cancellationToken);
             }
         }
+
+        return queueIds;
     }
 
-    private async Task ListenForQueueAsync(ConsumerDescriptor descriptor, CancellationToken stoppingToken)
+    private async Task ListenForQueueAsync(ConsumerDescriptor descriptor, long queueId, CancellationToken stoppingToken)
     {
-        var channelName = PostgreSqlTransport.ChannelName(descriptor.QueueName);
+        var channelName = $"ib_{queueId}";
 
         _logger.LogDebug(
             "InterBus PostgreSQL: starting pump for queue {QueueName}",

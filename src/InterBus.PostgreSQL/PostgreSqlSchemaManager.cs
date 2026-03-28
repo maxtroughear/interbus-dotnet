@@ -27,6 +27,11 @@ internal sealed class PostgreSqlSchemaManager
         await using var cmd = conn.CreateCommand();
         cmd.CommandText =
             $"CREATE SCHEMA IF NOT EXISTS {schema};\n" +
+            // Each distinct queue is assigned a stable numeric ID used as the NOTIFY/LISTEN channel.
+            $"CREATE TABLE IF NOT EXISTS {schema}.queues (\n" +
+            "    id         BIGSERIAL PRIMARY KEY,\n" +
+            "    queue_name TEXT      NOT NULL UNIQUE\n" +
+            ");\n" +
             // Payload stored once; queue routing rows reference it via FK.
             $"CREATE TABLE IF NOT EXISTS {schema}.message_payloads (\n" +
             "    id         BIGSERIAL PRIMARY KEY,\n" +

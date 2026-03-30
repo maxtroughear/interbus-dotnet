@@ -11,16 +11,17 @@ namespace InterBus.PostgreSQL;
 /// task per registered consumer queue and delivers messages to consumers using PostgreSQL's
 /// <c>LISTEN</c>/<c>NOTIFY</c> mechanism for push-based, low-latency consumption.
 /// <para>
-/// At startup the pump registers its topic subscriptions in the <c>subscriptions</c> table so
-/// that publishers — which may be running in a separate service — can discover which queues
-/// should receive messages for each topic without needing compile-time knowledge of consumers.
+/// At startup the pump registers its topic subscriptions via the <c>ensure_queue</c> and
+/// <c>ensure_subscription</c> stored functions so that publishers in other processes can
+/// discover which queues should receive messages for each topic.
 /// </para>
 /// <para>
 /// Each queue maintains a dedicated long-lived connection for <c>LISTEN</c>. When a
 /// <c>NOTIFY</c> is received, the pump drains all pending messages from the database using
-/// <c>SELECT … FOR UPDATE SKIP LOCKED</c> inside a transaction. On successful dispatch the row
-/// is deleted; on failure the transaction is rolled back so the message remains available for
-/// redelivery on the next notification or fallback poll.
+/// <c>consume_next</c> (which issues <c>SELECT … FOR UPDATE SKIP LOCKED</c>) inside an
+/// explicit transaction. On successful dispatch <c>ack_message</c> deletes the routing row
+/// and the payload (when no other queue still references it) in a single round trip. On
+/// failure the transaction is rolled back so the message remains available for redelivery.
 /// </para>
 /// </summary>
 internal sealed class PostgreSqlMessagePump : BackgroundService
@@ -65,10 +66,9 @@ internal sealed class PostgreSqlMessagePump : BackgroundService
     }
 
     /// <summary>
-    /// Upserts (queue_name, topic_name) rows into the <c>subscriptions</c> table and
-    /// ensures each queue has a row in the <c>queues</c> table, which provides the stable
-    /// numeric ID used as the LISTEN/NOTIFY channel name. Idempotent: safe to call on every
-    /// startup.
+    /// Ensures each consumer queue and its topic subscriptions exist in the database using
+    /// the <c>ensure_queue</c> and <c>ensure_subscription</c> stored functions. Uses a
+    /// SELECT-first strategy inside each function so concurrent pump startups do not conflict.
     /// </summary>
     /// <returns>A map of queue name → numeric queue ID.</returns>
     private async Task<Dictionary<string, long>> RegisterSubscriptionsAsync(CancellationToken cancellationToken)
@@ -77,24 +77,21 @@ internal sealed class PostgreSqlMessagePump : BackgroundService
 
         await using var conn = await _dataSource.OpenConnectionAsync(cancellationToken);
 
-        await using var queueCmd = conn.CreateCommand();
-        queueCmd.CommandText =
-            $"INSERT INTO \"{EscapeIdentifier(_options.SchemaName)}\".queues (queue_name) VALUES ($1) " +
-            "ON CONFLICT (queue_name) DO UPDATE SET queue_name = EXCLUDED.queue_name RETURNING id";
+        await using var ensureQueueCmd = conn.CreateCommand();
+        ensureQueueCmd.CommandText =
+            $"SELECT \"{EscapeIdentifier(_options.SchemaName)}\".ensure_queue($1)";
         var pQueueName = new NpgsqlParameter<string>();
-        queueCmd.Parameters.Add(pQueueName);
-        await queueCmd.PrepareAsync(cancellationToken);
+        ensureQueueCmd.Parameters.Add(pQueueName);
+        await ensureQueueCmd.PrepareAsync(cancellationToken);
 
-        await using var subCmd = conn.CreateCommand();
-        subCmd.CommandText =
-            $"INSERT INTO \"{EscapeIdentifier(_options.SchemaName)}\".subscriptions " +
-            "(queue_name, topic_name) VALUES ($1, $2) " +
-            "ON CONFLICT (queue_name, topic_name) DO NOTHING";
-        var pSubQueue = new NpgsqlParameter<string>();
-        var pSubTopic = new NpgsqlParameter<string>();
-        subCmd.Parameters.Add(pSubQueue);
-        subCmd.Parameters.Add(pSubTopic);
-        await subCmd.PrepareAsync(cancellationToken);
+        await using var ensureSubCmd = conn.CreateCommand();
+        ensureSubCmd.CommandText =
+            $"SELECT \"{EscapeIdentifier(_options.SchemaName)}\".ensure_subscription($1, $2)";
+        var pQueueId = new NpgsqlParameter<long>();
+        var pTopicName = new NpgsqlParameter<string>();
+        ensureSubCmd.Parameters.Add(pQueueId);
+        ensureSubCmd.Parameters.Add(pTopicName);
+        await ensureSubCmd.PrepareAsync(cancellationToken);
 
         foreach (var descriptor in _busOptions.Consumers)
         {
@@ -102,19 +99,20 @@ internal sealed class PostgreSqlMessagePump : BackgroundService
             if (!queueIds.ContainsKey(descriptor.QueueName))
             {
                 pQueueName.TypedValue = descriptor.QueueName;
-                var queueId = (long)(await queueCmd.ExecuteScalarAsync(cancellationToken))!;
+                var queueId = (long)(await ensureQueueCmd.ExecuteScalarAsync(cancellationToken))!;
                 queueIds[descriptor.QueueName] = queueId;
             }
 
+            var currentQueueId = queueIds[descriptor.QueueName];
             foreach (var messageType in descriptor.MessageTypes)
             {
                 var topicName = _busOptions.TryGetTopicName(messageType, out var custom)
                     ? custom
                     : RoutingConventions.TopicName(messageType);
 
-                pSubQueue.TypedValue = descriptor.QueueName;
-                pSubTopic.TypedValue = topicName;
-                await subCmd.ExecuteNonQueryAsync(cancellationToken);
+                pQueueId.TypedValue = currentQueueId;
+                pTopicName.TypedValue = topicName;
+                await ensureSubCmd.ExecuteNonQueryAsync(cancellationToken);
             }
         }
 
@@ -139,7 +137,7 @@ internal sealed class PostgreSqlMessagePump : BackgroundService
         }
 
         // Drain any messages that arrived before we started listening (e.g. after a restart).
-        await ProcessPendingAsync(descriptor, stoppingToken);
+        await ProcessPendingAsync(descriptor, queueId, stoppingToken);
 
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -162,7 +160,7 @@ internal sealed class PostgreSqlMessagePump : BackgroundService
                     isFallbackPoll = true;
                 }
 
-                await ProcessPendingAsync(descriptor, stoppingToken);
+                await ProcessPendingAsync(descriptor, queueId, stoppingToken);
 
                 // On fallback polls, also clean up any orphaned payload rows that may have
                 // been left behind by concurrent fan-out processing.
@@ -184,34 +182,35 @@ internal sealed class PostgreSqlMessagePump : BackgroundService
     /// Processes all pending messages for <paramref name="descriptor"/> in a tight loop until
     /// no more unprocessed rows remain.
     /// </summary>
-    private async Task ProcessPendingAsync(ConsumerDescriptor descriptor, CancellationToken stoppingToken)
+    private async Task ProcessPendingAsync(ConsumerDescriptor descriptor, long queueId, CancellationToken stoppingToken)
     {
         while (!stoppingToken.IsCancellationRequested)
         {
-            var processed = await TryProcessNextAsync(descriptor, stoppingToken);
+            var processed = await TryProcessNextAsync(descriptor, queueId, stoppingToken);
             if (!processed) break;
         }
     }
 
     /// <summary>
     /// Attempts to fetch and dispatch the next pending message for <paramref name="descriptor"/>.
+    /// Uses <c>consume_next</c> (SELECT FOR UPDATE SKIP LOCKED) inside an explicit transaction
+    /// so the row lock persists until the consumer succeeds or the transaction is rolled back.
+    /// On success, <c>ack_message</c> deletes the routing row and conditionally the payload in
+    /// a single round trip.
     /// </summary>
     /// <returns><c>true</c> if a message was dispatched; <c>false</c> if the queue was empty.</returns>
-    private async Task<bool> TryProcessNextAsync(ConsumerDescriptor descriptor, CancellationToken stoppingToken)
+    private async Task<bool> TryProcessNextAsync(ConsumerDescriptor descriptor, long queueId, CancellationToken stoppingToken)
     {
         await using var conn = await _dataSource.OpenConnectionAsync(stoppingToken);
         await using var tx = await conn.BeginTransactionAsync(stoppingToken);
 
-        // Lock one pending message routing row (FOR UPDATE OF m SKIP LOCKED) without locking
-        // the shared payload row so concurrent pumps on different queues don't block each other.
+        // Lock one pending message routing row without locking the shared payload row so
+        // concurrent pumps on different queues don't block each other.
         await using var selectCmd = conn.CreateCommand();
         selectCmd.Transaction = tx;
         selectCmd.CommandText =
-            $"SELECT m.id, mp.payload, mp.headers, m.payload_id " +
-            $"FROM \"{EscapeIdentifier(_options.SchemaName)}\".messages m " +
-            $"JOIN \"{EscapeIdentifier(_options.SchemaName)}\".message_payloads mp ON mp.id = m.payload_id " +
-            "WHERE m.queue_name = $1 ORDER BY m.id FOR UPDATE OF m SKIP LOCKED LIMIT 1";
-        selectCmd.Parameters.Add(new NpgsqlParameter<string> { TypedValue = descriptor.QueueName });
+            $"SELECT * FROM \"{EscapeIdentifier(_options.SchemaName)}\".consume_next($1)";
+        selectCmd.Parameters.Add(new NpgsqlParameter<long> { TypedValue = queueId });
 
         await using var reader = await selectCmd.ExecuteReaderAsync(stoppingToken);
         if (!await reader.ReadAsync(stoppingToken))
@@ -233,26 +232,14 @@ internal sealed class PostgreSqlMessagePump : BackgroundService
         {
             await DispatchAsync(descriptor, payload, headers, stoppingToken);
 
-            // Delete this queue's routing row on successful dispatch.
-            await using var deleteCmd = conn.CreateCommand();
-            deleteCmd.Transaction = tx;
-            deleteCmd.CommandText =
-                $"DELETE FROM \"{EscapeIdentifier(_options.SchemaName)}\".messages WHERE id = $1";
-            deleteCmd.Parameters.Add(new NpgsqlParameter<long> { TypedValue = id });
-            await deleteCmd.ExecuteNonQueryAsync(stoppingToken);
-
-            // Delete the shared payload row only when no other queue routing row references it.
-            // Concurrent pump instances processing different queues for the same fan-out message
-            // each delete their own routing row; the last one also deletes the payload.
-            await using var cleanupCmd = conn.CreateCommand();
-            cleanupCmd.Transaction = tx;
-            cleanupCmd.CommandText =
-                $"DELETE FROM \"{EscapeIdentifier(_options.SchemaName)}\".message_payloads " +
-                "WHERE id = $1 AND NOT EXISTS (" +
-                $"  SELECT 1 FROM \"{EscapeIdentifier(_options.SchemaName)}\".messages WHERE payload_id = $1" +
-                ")";
-            cleanupCmd.Parameters.Add(new NpgsqlParameter<long> { TypedValue = payloadId });
-            await cleanupCmd.ExecuteNonQueryAsync(stoppingToken);
+            // Delete the routing row and (when unreferenced) the shared payload in one round trip.
+            await using var ackCmd = conn.CreateCommand();
+            ackCmd.Transaction = tx;
+            ackCmd.CommandText =
+                $"SELECT \"{EscapeIdentifier(_options.SchemaName)}\".ack_message($1, $2)";
+            ackCmd.Parameters.Add(new NpgsqlParameter<long> { TypedValue = id });
+            ackCmd.Parameters.Add(new NpgsqlParameter<long> { TypedValue = payloadId });
+            await ackCmd.ExecuteNonQueryAsync(stoppingToken);
 
             await tx.CommitAsync(stoppingToken);
             return true;
@@ -280,21 +267,16 @@ internal sealed class PostgreSqlMessagePump : BackgroundService
     }
 
     /// <summary>
-    /// Deletes any <c>message_payloads</c> rows that are no longer referenced by any
-    /// <c>messages</c> routing row. This handles the rare race where two concurrent pump
-    /// instances both skipped the inline cleanup because they each saw the other's routing
-    /// row as still committed at the time of their <c>NOT EXISTS</c> check.
+    /// Deletes any <c>message_payloads</c> rows that are no longer referenced by any routing
+    /// row. This handles the rare race where two concurrent pump instances both skipped the
+    /// inline cleanup in <c>ack_message</c> because they each saw the other's routing row as
+    /// still committed at the time of the <c>NOT EXISTS</c> check.
     /// </summary>
     private async Task CleanupOrphanedPayloadsAsync(CancellationToken cancellationToken)
     {
-        await using var conn = await _dataSource.OpenConnectionAsync(cancellationToken);
-        await using var cmd = conn.CreateCommand();
+        await using var cmd = _dataSource.CreateCommand();
         cmd.CommandText =
-            $"DELETE FROM \"{EscapeIdentifier(_options.SchemaName)}\".message_payloads " +
-            $"WHERE NOT EXISTS (" +
-            $"  SELECT 1 FROM \"{EscapeIdentifier(_options.SchemaName)}\".messages " +
-            $"  WHERE payload_id = message_payloads.id" +
-            $")";
+            $"SELECT \"{EscapeIdentifier(_options.SchemaName)}\".cleanup_orphaned_payloads()";
         await cmd.ExecuteNonQueryAsync(cancellationToken);
     }
 

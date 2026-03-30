@@ -225,9 +225,9 @@ public sealed class PublishConsumeTests : IAsyncLifetime
             await using var cmd = conn.CreateCommand();
             cmd.CommandText =
                 "SELECT COUNT(*) FROM information_schema.tables " +
-                "WHERE table_schema = 'interbus' AND table_name IN ('messages', 'message_payloads', 'subscriptions', 'queues')";
+                "WHERE table_schema = 'interbus' AND table_name IN ('messages', 'message_payloads', 'subscriptions', 'queues', 'topics')";
             var count = (long)(await cmd.ExecuteScalarAsync(TestContext.Current.CancellationToken))!;
-            Assert.Equal(4L, count);
+            Assert.Equal(5L, count);
         }
         finally
         {
@@ -238,7 +238,7 @@ public sealed class PublishConsumeTests : IAsyncLifetime
     [Fact]
     public async Task SchemaMigration_OptOut_DoesNotRunMigration()
     {
-        // Pre-create the schema and tables manually (simulating an external migration tool).
+        // Pre-create the normalised schema and tables manually (simulating an external migration tool).
         await using var setupDataSource = Npgsql.NpgsqlDataSource.Create(_pgContainer.GetConnectionString());
         await using var setupConn = await setupDataSource.OpenConnectionAsync(TestContext.Current.CancellationToken);
         await using var setupCmd = setupConn.CreateCommand();
@@ -248,6 +248,10 @@ public sealed class PublishConsumeTests : IAsyncLifetime
             "    id         BIGSERIAL PRIMARY KEY,\n" +
             "    queue_name TEXT      NOT NULL UNIQUE\n" +
             ");\n" +
+            "CREATE TABLE IF NOT EXISTS interbus.topics (\n" +
+            "    id         BIGSERIAL PRIMARY KEY,\n" +
+            "    topic_name TEXT      NOT NULL UNIQUE\n" +
+            ");\n" +
             "CREATE TABLE IF NOT EXISTS interbus.message_payloads (\n" +
             "    id         BIGSERIAL PRIMARY KEY,\n" +
             "    payload    BYTEA       NOT NULL,\n" +
@@ -256,16 +260,16 @@ public sealed class PublishConsumeTests : IAsyncLifetime
             ");\n" +
             "CREATE TABLE IF NOT EXISTS interbus.messages (\n" +
             "    id         BIGSERIAL PRIMARY KEY,\n" +
-            "    queue_name TEXT        NOT NULL,\n" +
+            "    queue_id   BIGINT      NOT NULL REFERENCES interbus.queues(id),\n" +
             "    payload_id BIGINT      NOT NULL REFERENCES interbus.message_payloads(id),\n" +
             "    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()\n" +
             ");\n" +
             "CREATE INDEX IF NOT EXISTS ix_messages_queue_pending\n" +
-            "    ON interbus.messages (queue_name, id);\n" +
+            "    ON interbus.messages (queue_id, id);\n" +
             "CREATE TABLE IF NOT EXISTS interbus.subscriptions (\n" +
-            "    queue_name TEXT NOT NULL,\n" +
-            "    topic_name TEXT NOT NULL,\n" +
-            "    PRIMARY KEY (queue_name, topic_name)\n" +
+            "    queue_id   BIGINT NOT NULL REFERENCES interbus.queues(id),\n" +
+            "    topic_id   BIGINT NOT NULL REFERENCES interbus.topics(id),\n" +
+            "    PRIMARY KEY (queue_id, topic_id)\n" +
             ");";
         await setupCmd.ExecuteNonQueryAsync(TestContext.Current.CancellationToken);
 
@@ -286,9 +290,9 @@ public sealed class PublishConsumeTests : IAsyncLifetime
             await using var cmd = conn.CreateCommand();
             cmd.CommandText =
                 "SELECT COUNT(*) FROM information_schema.tables " +
-                "WHERE table_schema = 'interbus' AND table_name IN ('messages', 'message_payloads', 'subscriptions', 'queues')";
+                "WHERE table_schema = 'interbus' AND table_name IN ('messages', 'message_payloads', 'subscriptions', 'queues', 'topics')";
             var count = (long)(await cmd.ExecuteScalarAsync(TestContext.Current.CancellationToken))!;
-            Assert.Equal(4L, count);
+            Assert.Equal(5L, count);
         }
         finally
         {

@@ -28,9 +28,7 @@ public sealed class RedeliveryRetryMiddlewareTests
         RedeliveryRetryOptions options,
         TestTransport transport,
         IMessageSchedulingProvider? scheduler = null) =>
-        new(options, transport,
-            scheduler is null ? [] : [scheduler],
-            NullLogger<RedeliveryRetryConsumeMiddleware>.Instance);
+        new(options, transport, scheduler, NullLogger<RedeliveryRetryConsumeMiddleware>.Instance);
 
     #endregion
 

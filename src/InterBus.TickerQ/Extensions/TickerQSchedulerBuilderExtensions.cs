@@ -1,4 +1,4 @@
-using InterBus.Internal;
+using InterBus.Extensions;
 using InterBus.TickerQ.Internal;
 using Microsoft.Extensions.DependencyInjection;
 using TickerQ.Utilities;
@@ -17,6 +17,10 @@ public static class TickerQSchedulerBuilderExtensions
     /// This method:
     /// <list type="bullet">
     ///   <item><description>
+    ///     Calls <see cref="InterBusBuilderExtensions.AddScheduling"/> to register the core
+    ///     <see cref="IMessageScheduler"/> infrastructure.
+    ///   </description></item>
+    ///   <item><description>
     ///     Registers the InterBus delivery functions (<c>interbus-publish</c> and
     ///     <c>interbus-send</c>) and their request types with <c>TickerFunctionProvider</c>.
     ///   </description></item>
@@ -27,10 +31,6 @@ public static class TickerQSchedulerBuilderExtensions
     ///   <item><description>
     ///     Registers <see cref="TickerQMessageScheduler"/> as the
     ///     <see cref="IMessageSchedulingProvider"/>.
-    ///   </description></item>
-    ///   <item><description>
-    ///     Registers <see cref="SchedulingMessagePublisher"/> as the
-    ///     <see cref="IMessageScheduler"/>.
     ///   </description></item>
     /// </list>
     /// </para>
@@ -43,6 +43,9 @@ public static class TickerQSchedulerBuilderExtensions
     public static IInterBusBuilder AddTickerQScheduler(this IInterBusBuilder builder)
     {
         ArgumentNullException.ThrowIfNull(builder);
+
+        // Register the core IMessageScheduler infrastructure.
+        builder.AddScheduling();
 
         // Register the interbus-publish and interbus-send functions with TickerQ before the host starts.
         // TickerFunctionProvider is a static registry; calling RegisterFunctions multiple times
@@ -88,11 +91,9 @@ public static class TickerQSchedulerBuilderExtensions
         builder.Services.AddTransient<TickerQPublishFunction>();
         builder.Services.AddTransient<TickerQSendFunction>();
 
-        // Register the scheduling provider and the scheduling publisher.
+        // Register the TickerQ scheduling provider.
         builder.Services.AddSingleton<IMessageSchedulingProvider, TickerQMessageScheduler>();
-        builder.Services.AddScoped<IMessageScheduler, SchedulingMessagePublisher>();
 
         return builder;
     }
 }
-

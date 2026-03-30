@@ -1,12 +1,11 @@
 using InterBus.Extensions;
-using InterBus.Internal;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
 namespace InterBus.Tests;
 
 /// <summary>
-/// Unit tests for the <see cref="SchedulingMessagePublisher"/> implementation of
+/// Unit tests for the <see cref="MessageScheduler"/> implementation of
 /// <see cref="IMessageScheduler"/>.
 /// </summary>
 public sealed class SchedulingTests
@@ -23,7 +22,7 @@ public sealed class SchedulingTests
         {
             bus.Services.AddSingleton<IInterBusTransport, NoOpTransport>();
             bus.Services.AddSingleton<IMessageSchedulingProvider>(schedulingProvider);
-            bus.Services.AddScoped<IMessageScheduler, SchedulingMessagePublisher>();
+            bus.AddScheduling();
             configureBus?.Invoke(bus);
         });
 

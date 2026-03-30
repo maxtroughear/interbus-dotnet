@@ -7,14 +7,14 @@ namespace InterBus.Internal;
 /// through the configured <see cref="IPublishMiddleware"/> pipeline, and forwards to the
 /// registered <see cref="IMessageSchedulingProvider"/> for deferred delivery.
 /// </summary>
-internal sealed class SchedulingMessagePublisher : IMessageScheduler
+internal sealed class MessageScheduler : IMessageScheduler
 {
     private readonly IMessageSchedulingProvider _schedulingProvider;
     private readonly IList<IPublishMiddleware> _middlewares;
     private readonly InterBusOptions _options;
     private readonly IMessageSerializer _serializer;
 
-    public SchedulingMessagePublisher(
+    public MessageScheduler(
         IMessageSchedulingProvider schedulingProvider,
         InterBusOptions options,
         IMessageSerializer serializer,

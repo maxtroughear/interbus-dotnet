@@ -4,7 +4,7 @@ namespace InterBus;
 /// Schedules messages for deferred delivery. Implemented by transports or dedicated scheduler
 /// packages (e.g. <c>InterBus.TickerQ</c>) and registered in DI.
 /// <para>
-/// Users typically interact with scheduling via the <see cref="ISchedulingMessagePublisher"/>
+/// Users typically interact with scheduling via the <see cref="IMessageScheduler"/>
 /// scheduling methods, which resolve this interface to perform the actual scheduling.
 /// </para>
 /// </summary>

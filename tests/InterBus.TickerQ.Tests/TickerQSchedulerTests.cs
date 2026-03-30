@@ -167,7 +167,7 @@ public sealed class TickerQSchedulerTests
     }
 
     [Fact]
-    public void AddTickerQScheduler_RegistersSchedulingMessagePublisher_AsIMessageScheduler()
+    public void AddTickerQScheduler_RegistersMessageScheduler_AsIMessageScheduler()
     {
         var services = new ServiceCollection();
         services.AddLogging();
@@ -183,7 +183,7 @@ public sealed class TickerQSchedulerTests
         var publisher = scope.ServiceProvider.GetService<IMessageScheduler>();
 
         Assert.NotNull(publisher);
-        Assert.IsType<SchedulingMessagePublisher>(publisher);
+        Assert.IsType<MessageScheduler>(publisher);
     }
 
     #endregion

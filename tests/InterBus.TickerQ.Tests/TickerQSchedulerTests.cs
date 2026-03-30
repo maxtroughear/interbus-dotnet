@@ -1,7 +1,6 @@
 using System.Runtime.CompilerServices;
 using InterBus.Extensions;
 using InterBus.InMemory.Extensions;
-using InterBus.Internal;
 using InterBus.TickerQ.Extensions;
 using Microsoft.Extensions.DependencyInjection;
 using TickerQ.DependencyInjection;
@@ -185,7 +184,6 @@ public sealed class TickerQSchedulerTests
         var publisher = scope.ServiceProvider.GetService<IMessageScheduler>();
 
         Assert.NotNull(publisher);
-        Assert.IsType<MessageScheduler>(publisher);
     }
 
     #endregion

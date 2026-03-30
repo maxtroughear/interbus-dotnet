@@ -3,65 +3,28 @@ using InterBus.Middleware;
 namespace InterBus.Internal;
 
 /// <summary>
-/// Scoped <see cref="ISchedulingMessagePublisher"/> implementation. Delegates standard
-/// <see cref="IMessagePublisher"/> methods to the underlying <see cref="MessagePublisher"/>
-/// and adds deferred-delivery scheduling via <see cref="IMessageSchedulingProvider"/>.
+/// Scoped <see cref="IMessageScheduler"/> implementation. Serializes each message, runs it
+/// through the configured <see cref="IPublishMiddleware"/> pipeline, and forwards to the
+/// registered <see cref="IMessageSchedulingProvider"/> for deferred delivery.
 /// </summary>
-internal sealed class SchedulingMessagePublisher : ISchedulingMessagePublisher
+internal sealed class SchedulingMessagePublisher : IMessageScheduler
 {
-    private readonly IMessagePublisher _publisher;
     private readonly IMessageSchedulingProvider _schedulingProvider;
     private readonly IList<IPublishMiddleware> _middlewares;
     private readonly InterBusOptions _options;
     private readonly IMessageSerializer _serializer;
 
     public SchedulingMessagePublisher(
-        IMessagePublisher publisher,
         IMessageSchedulingProvider schedulingProvider,
         InterBusOptions options,
         IMessageSerializer serializer,
         IEnumerable<IPublishMiddleware> middlewares)
     {
-        _publisher = publisher;
         _schedulingProvider = schedulingProvider;
         _options = options;
         _serializer = serializer;
         _middlewares = middlewares.Reverse().ToList();
     }
-
-    // -------------------------------------------------------------------------
-    // Delegate IMessagePublisher methods to the inner publisher
-    // -------------------------------------------------------------------------
-
-    public Task Publish<T>(T message, CancellationToken cancellationToken = default) where T : class =>
-        _publisher.Publish(message, cancellationToken);
-
-    public Task Publish<T>(T message, MessageHeaders headers, CancellationToken cancellationToken = default)
-        where T : class =>
-        _publisher.Publish(message, headers, cancellationToken);
-
-    public Task Send<TConsumer, T>(T message, CancellationToken cancellationToken = default)
-        where TConsumer : IConsumer<T>
-        where T : class =>
-        _publisher.Send<TConsumer, T>(message, cancellationToken);
-
-    public Task Send<TConsumer, T>(T message, MessageHeaders headers, CancellationToken cancellationToken = default)
-        where TConsumer : IConsumer<T>
-        where T : class =>
-        _publisher.Send<TConsumer, T>(message, headers, cancellationToken);
-
-    public Task Send<T>(string queueName, T message, CancellationToken cancellationToken = default)
-        where T : class =>
-        _publisher.Send(queueName, message, cancellationToken);
-
-    public Task Send<T>(string queueName, T message, MessageHeaders headers,
-        CancellationToken cancellationToken = default)
-        where T : class =>
-        _publisher.Send(queueName, message, headers, cancellationToken);
-
-    // -------------------------------------------------------------------------
-    // Scheduling implementation
-    // -------------------------------------------------------------------------
 
     public Task SchedulePublish<T>(T message, DateTimeOffset scheduledAt,
         CancellationToken cancellationToken = default) where T : class =>

@@ -145,7 +145,7 @@ public sealed class TickerQSchedulerTests
 
     #endregion
 
-    #region DI integration: AddTickerQScheduler registers IMessageSchedulingProvider and ISchedulingMessagePublisher
+    #region DI integration: AddTickerQScheduler registers IMessageSchedulingProvider and IMessageScheduler
 
     [Fact]
     public void AddTickerQScheduler_RegistersTickerQMessageScheduler_AsIMessageSchedulingProvider()
@@ -167,7 +167,7 @@ public sealed class TickerQSchedulerTests
     }
 
     [Fact]
-    public void AddTickerQScheduler_RegistersSchedulingMessagePublisher_AsISchedulingMessagePublisher()
+    public void AddTickerQScheduler_RegistersSchedulingMessagePublisher_AsIMessageScheduler()
     {
         var services = new ServiceCollection();
         services.AddLogging();
@@ -180,7 +180,7 @@ public sealed class TickerQSchedulerTests
 
         var provider = services.BuildServiceProvider();
         using var scope = provider.CreateScope();
-        var publisher = scope.ServiceProvider.GetService<ISchedulingMessagePublisher>();
+        var publisher = scope.ServiceProvider.GetService<IMessageScheduler>();
 
         Assert.NotNull(publisher);
         Assert.IsType<SchedulingMessagePublisher>(publisher);

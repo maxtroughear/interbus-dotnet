@@ -30,7 +30,7 @@ public static class TickerQSchedulerBuilderExtensions
     ///   </description></item>
     ///   <item><description>
     ///     Registers <see cref="SchedulingMessagePublisher"/> as the
-    ///     <see cref="ISchedulingMessagePublisher"/>.
+    ///     <see cref="IMessageScheduler"/>.
     ///   </description></item>
     /// </list>
     /// </para>
@@ -90,7 +90,7 @@ public static class TickerQSchedulerBuilderExtensions
 
         // Register the scheduling provider and the scheduling publisher.
         builder.Services.AddSingleton<IMessageSchedulingProvider, TickerQMessageScheduler>();
-        builder.Services.AddScoped<ISchedulingMessagePublisher, SchedulingMessagePublisher>();
+        builder.Services.AddScoped<IMessageScheduler, SchedulingMessagePublisher>();
 
         return builder;
     }

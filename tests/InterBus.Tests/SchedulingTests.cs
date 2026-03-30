@@ -7,13 +7,13 @@ namespace InterBus.Tests;
 
 /// <summary>
 /// Unit tests for the <see cref="SchedulingMessagePublisher"/> implementation of
-/// <see cref="ISchedulingMessagePublisher"/>.
+/// <see cref="IMessageScheduler"/>.
 /// </summary>
 public sealed class SchedulingTests
 {
     #region Helpers
 
-    private static (ISchedulingMessagePublisher Publisher, TestSchedulingProvider Provider) BuildPublisher(
+    private static (IMessageScheduler Publisher, TestSchedulingProvider Provider) BuildPublisher(
         Action<IInterBusBuilder>? configureBus = null)
     {
         var schedulingProvider = new TestSchedulingProvider();
@@ -23,13 +23,13 @@ public sealed class SchedulingTests
         {
             bus.Services.AddSingleton<IInterBusTransport, NoOpTransport>();
             bus.Services.AddSingleton<IMessageSchedulingProvider>(schedulingProvider);
-            bus.Services.AddScoped<ISchedulingMessagePublisher, SchedulingMessagePublisher>();
+            bus.Services.AddScoped<IMessageScheduler, SchedulingMessagePublisher>();
             configureBus?.Invoke(bus);
         });
 
         var provider = services.BuildServiceProvider();
         using var scope = provider.CreateScope();
-        var publisher = scope.ServiceProvider.GetRequiredService<ISchedulingMessagePublisher>();
+        var publisher = scope.ServiceProvider.GetRequiredService<IMessageScheduler>();
         return (publisher, schedulingProvider);
     }
 
@@ -170,10 +170,10 @@ public sealed class SchedulingTests
 
     #endregion
 
-    #region ISchedulingMessagePublisher is separate from IMessagePublisher
+    #region IMessageScheduler is separate from IMessagePublisher
 
     [Fact]
-    public void ISchedulingMessagePublisher_IsNotRegistered_WhenNotConfigured()
+    public void IMessageScheduler_IsNotRegistered_WhenNotConfigured()
     {
         var services = new ServiceCollection();
         services.AddLogging();
@@ -183,7 +183,7 @@ public sealed class SchedulingTests
         });
 
         var provider = services.BuildServiceProvider();
-        var schedulingPublisher = provider.GetService<ISchedulingMessagePublisher>();
+        var schedulingPublisher = provider.GetService<IMessageScheduler>();
 
         Assert.Null(schedulingPublisher);
     }

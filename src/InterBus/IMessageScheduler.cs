@@ -1,11 +1,12 @@
 namespace InterBus;
 
 /// <summary>
-/// Extends <see cref="IMessagePublisher"/> with deferred-delivery scheduling methods.
+/// Deferred-delivery message scheduler. Injects into application services to schedule messages
+/// for future delivery via the configured <see cref="IMessageSchedulingProvider"/>.
 /// Requires an <see cref="IMessageSchedulingProvider"/> to be registered in DI
 /// (e.g. via the <c>InterBus.TickerQ</c> package).
 /// </summary>
-public interface ISchedulingMessagePublisher : IMessagePublisher
+public interface IMessageScheduler
 {
     // -------------------------------------------------------------------------
     // Scheduling: publish to topic at a future point in time

@@ -26,8 +26,11 @@ public sealed class RedeliveryRetryMiddlewareTests
 
     private static RedeliveryRetryConsumeMiddleware CreateMiddleware(
         RedeliveryRetryOptions options,
-        TestTransport transport) =>
-        new(options, transport, NullLogger<RedeliveryRetryConsumeMiddleware>.Instance);
+        TestTransport transport,
+        IMessageSchedulingProvider? scheduler = null) =>
+        new(options, transport,
+            scheduler is null ? [] : [scheduler],
+            NullLogger<RedeliveryRetryConsumeMiddleware>.Instance);
 
     #endregion
 
@@ -95,9 +98,34 @@ public sealed class RedeliveryRetryMiddlewareTests
     }
 
     [Fact]
-    public async Task AppliesDelay_BeforeSchedulingRedelivery()
+    public async Task UsesScheduler_WhenDelayIsNonZeroAndSchedulerRegistered()
     {
-        var delay = TimeSpan.FromMilliseconds(50);
+        var delay = TimeSpan.FromMinutes(5);
+        var options = new RedeliveryRetryOptions
+        {
+            RetryCount = 2,
+            DelayProvider = RetryDelays.Constant(delay)
+        };
+        var transport = new TestTransport();
+        var scheduler = new TestScheduler();
+        var middleware = CreateMiddleware(options, transport, scheduler);
+
+        await middleware.InvokeAsync(BuildContext(), (_, _) =>
+                throw new InvalidOperationException("boom"),
+            TestContext.Current.CancellationToken);
+
+        Assert.Empty(transport.Sent);
+        var scheduled = Assert.Single(scheduler.Scheduled);
+        Assert.Equal("test-queue", scheduled.QueueName);
+        Assert.NotEmpty(scheduled.Payload);
+        Assert.Equal("1", scheduled.Headers[RedeliveryRetryConsumeMiddleware.RetryCountHeader]);
+        Assert.True(scheduled.ScheduledAt > DateTimeOffset.UtcNow, "ScheduledAt should be in the future");
+    }
+
+    [Fact]
+    public async Task FallsBackToImmediateRedelivery_WhenDelayIsNonZeroButNoSchedulerRegistered()
+    {
+        var delay = TimeSpan.FromMinutes(5);
         var options = new RedeliveryRetryOptions
         {
             RetryCount = 2,
@@ -105,17 +133,35 @@ public sealed class RedeliveryRetryMiddlewareTests
         };
         var transport = new TestTransport();
         var middleware = CreateMiddleware(options, transport);
-        var sw = System.Diagnostics.Stopwatch.StartNew();
 
         await middleware.InvokeAsync(BuildContext(), (_, _) =>
                 throw new InvalidOperationException("boom"),
             TestContext.Current.CancellationToken);
 
-        sw.Stop();
+        var sent = Assert.Single(transport.Sent);
+        Assert.Equal("test-queue", sent.QueueName);
+        Assert.Equal("1", sent.Headers[RedeliveryRetryConsumeMiddleware.RetryCountHeader]);
+    }
 
-        Assert.True(sw.ElapsedMilliseconds >= 40,
-            $"Expected at least 40ms elapsed, got {sw.ElapsedMilliseconds}ms");
-        Assert.Single(transport.Sent);
+    [Fact]
+    public async Task SendsToTransport_WhenDelayIsZeroEvenIfSchedulerRegistered()
+    {
+        var options = new RedeliveryRetryOptions
+        {
+            RetryCount = 2,
+            DelayProvider = RetryDelays.None
+        };
+        var transport = new TestTransport();
+        var scheduler = new TestScheduler();
+        var middleware = CreateMiddleware(options, transport, scheduler);
+
+        await middleware.InvokeAsync(BuildContext(), (_, _) =>
+                throw new InvalidOperationException("boom"),
+            TestContext.Current.CancellationToken);
+
+        var sent = Assert.Single(transport.Sent);
+        Assert.Equal("test-queue", sent.QueueName);
+        Assert.Empty(scheduler.Scheduled);
     }
 
     [Fact]
@@ -187,7 +233,26 @@ public sealed class RedeliveryRetryMiddlewareTests
         }
     }
 
+    private sealed class TestScheduler : IMessageSchedulingProvider
+    {
+        public List<ScheduledMessage> Scheduled { get; } = [];
+
+        public Task SchedulePublishToTopicAsync(string topicName, byte[] payload, MessageHeaders headers,
+            DateTimeOffset scheduledAt, CancellationToken cancellationToken) =>
+            Task.CompletedTask;
+
+        public Task ScheduleSendToQueueAsync(string queueName, byte[] payload, MessageHeaders headers,
+            DateTimeOffset scheduledAt, CancellationToken cancellationToken)
+        {
+            Scheduled.Add(new ScheduledMessage(queueName, payload, headers, scheduledAt));
+            return Task.CompletedTask;
+        }
+    }
+
     private sealed record SentMessage(string QueueName, byte[] Payload, MessageHeaders Headers);
+
+    private sealed record ScheduledMessage(
+        string QueueName, byte[] Payload, MessageHeaders Headers, DateTimeOffset ScheduledAt);
 
     #endregion
 }

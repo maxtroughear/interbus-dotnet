@@ -16,8 +16,11 @@ namespace InterBus.Retry;
 public sealed class RedeliveryRetryConsumeMiddleware(
     RedeliveryRetryOptions options,
     IInterBusTransport transport,
+    IEnumerable<IMessageSchedulingProvider> schedulingProviders,
     ILogger<RedeliveryRetryConsumeMiddleware> logger) : IConsumeMiddleware
 {
+    private readonly IMessageSchedulingProvider? _schedulingProvider = schedulingProviders.FirstOrDefault();
+
     /// <summary>
     /// Header key storing the number of redelivery retries already scheduled for a message.
     /// </summary>
@@ -48,19 +51,29 @@ public sealed class RedeliveryRetryConsumeMiddleware(
                 context.Descriptor.QueueName);
 
             var delay = options.DelayProvider(nextAttempt);
-            if (delay > TimeSpan.Zero)
-                await Task.Delay(delay, cancellationToken);
 
             var redeliveryHeaders = new MessageHeaders(context.Headers)
             {
                 [RetryCountHeader] = nextAttempt.ToString(CultureInfo.InvariantCulture)
             };
 
-            await transport.SendToQueueAsync(
-                context.Descriptor.QueueName,
-                context.Payload,
-                redeliveryHeaders,
-                cancellationToken);
+            if (delay > TimeSpan.Zero && _schedulingProvider != null)
+            {
+                await _schedulingProvider.ScheduleSendToQueueAsync(
+                    context.Descriptor.QueueName,
+                    context.Payload,
+                    redeliveryHeaders,
+                    DateTimeOffset.UtcNow + delay,
+                    cancellationToken);
+            }
+            else
+            {
+                await transport.SendToQueueAsync(
+                    context.Descriptor.QueueName,
+                    context.Payload,
+                    redeliveryHeaders,
+                    cancellationToken);
+            }
 
             // Swallow to signal the current delivery has been handled by scheduling redelivery.
         }

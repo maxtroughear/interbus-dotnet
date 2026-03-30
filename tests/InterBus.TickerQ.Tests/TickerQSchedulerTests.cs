@@ -1,8 +1,10 @@
 using System.Runtime.CompilerServices;
 using InterBus.Extensions;
 using InterBus.InMemory.Extensions;
+using InterBus.Internal;
 using InterBus.TickerQ.Extensions;
 using Microsoft.Extensions.DependencyInjection;
+using TickerQ.DependencyInjection;
 using TickerQ.Utilities;
 using TickerQ.Utilities.Entities;
 using TickerQ.Utilities.Interfaces;
@@ -13,20 +15,20 @@ using Xunit;
 namespace InterBus.TickerQ.Tests;
 
 /// <summary>
-/// Unit tests for <see cref="TickerQMessageScheduler"/> and <see cref="ScheduledMessageRequest"/>.
+/// Unit tests for <see cref="TickerQMessageScheduler"/>, <see cref="ScheduledPublishRequest"/>,
+/// and <see cref="ScheduledSendRequest"/>.
 /// </summary>
 public sealed class TickerQSchedulerTests
 {
-    #region ScheduledMessageRequest round-trip
+    #region ScheduledPublishRequest round-trip
 
     [Fact]
-    public void ScheduledMessageRequest_RoundTrip_PreservesAllFields()
+    public void ScheduledPublishRequest_RoundTrip_PreservesAllFields()
     {
         var payload = new byte[] { 1, 2, 3, 4, 5 };
-        var original = new ScheduledMessageRequest
+        var original = new ScheduledPublishRequest
         {
-            Destination = "my-topic",
-            IsTopic = true,
+            TopicName = "my-topic",
             Payload = payload,
             Headers = new Dictionary<string, string>
             {
@@ -36,38 +38,43 @@ public sealed class TickerQSchedulerTests
         };
 
         var bytes = TickerHelper.CreateTickerRequest(original);
-        var restored = TickerHelper.ReadTickerRequest<ScheduledMessageRequest>(bytes);
+        var restored = TickerHelper.ReadTickerRequest<ScheduledPublishRequest>(bytes);
 
-        Assert.Equal("my-topic", restored.Destination);
-        Assert.True(restored.IsTopic);
+        Assert.Equal("my-topic", restored.TopicName);
         Assert.Equal(payload, restored.Payload);
         Assert.Equal("test", restored.Headers["x-trace"]);
         Assert.Equal("MyMessage", restored.Headers[InterBusHeaders.MessageType]);
     }
 
+    #endregion
+
+    #region ScheduledSendRequest round-trip
+
     [Fact]
-    public void ScheduledMessageRequest_Queue_RoundTrip_PreservesIsTopic()
+    public void ScheduledSendRequest_RoundTrip_PreservesAllFields()
     {
-        var original = new ScheduledMessageRequest
+        var payload = new byte[] { 42, 43, 44 };
+        var original = new ScheduledSendRequest
         {
-            Destination = "my-queue",
-            IsTopic = false,
-            Payload = [42]
+            QueueName = "my-queue",
+            Payload = payload,
+            Headers = new Dictionary<string, string> { ["x-custom"] = "val" }
         };
 
         var bytes = TickerHelper.CreateTickerRequest(original);
-        var restored = TickerHelper.ReadTickerRequest<ScheduledMessageRequest>(bytes);
+        var restored = TickerHelper.ReadTickerRequest<ScheduledSendRequest>(bytes);
 
-        Assert.Equal("my-queue", restored.Destination);
-        Assert.False(restored.IsTopic);
+        Assert.Equal("my-queue", restored.QueueName);
+        Assert.Equal(payload, restored.Payload);
+        Assert.Equal("val", restored.Headers["x-custom"]);
     }
 
     #endregion
 
-    #region TickerQMessageScheduler
+    #region TickerQMessageScheduler — separate function names
 
     [Fact]
-    public async Task ScheduleSendToQueueAsync_CreatesTimeTicker_WithCorrectFunctionAndTime()
+    public async Task ScheduleSendToQueueAsync_CreatesTimeTicker_WithSendFunctionName()
     {
         var manager = new StubTimeTickerManager();
         var scheduler = new TickerQMessageScheduler(manager, new NoOpHostScheduler());
@@ -78,17 +85,16 @@ public sealed class TickerQSchedulerTests
             TestContext.Current.CancellationToken);
 
         var ticker = Assert.Single(manager.Added);
-        Assert.Equal("interbus-deliver", ticker.Function);
+        Assert.Equal("interbus-send", ticker.Function);
         Assert.Equal(scheduledAt.UtcDateTime, ticker.ExecutionTime);
         Assert.NotNull(ticker.Request);
 
-        var request = TickerHelper.ReadTickerRequest<ScheduledMessageRequest>(ticker.Request!);
-        Assert.Equal("my-queue", request.Destination);
-        Assert.False(request.IsTopic);
+        var request = TickerHelper.ReadTickerRequest<ScheduledSendRequest>(ticker.Request!);
+        Assert.Equal("my-queue", request.QueueName);
     }
 
     [Fact]
-    public async Task SchedulePublishToTopicAsync_Request_ContainsTopicAndPayload()
+    public async Task SchedulePublishToTopicAsync_CreatesTimeTicker_WithPublishFunctionName()
     {
         var manager = new StubTimeTickerManager();
         var scheduler = new TickerQMessageScheduler(manager, new NoOpHostScheduler());
@@ -100,9 +106,11 @@ public sealed class TickerQSchedulerTests
             TestContext.Current.CancellationToken);
 
         var ticker = Assert.Single(manager.Added);
-        var request = TickerHelper.ReadTickerRequest<ScheduledMessageRequest>(ticker.Request!);
-        Assert.Equal("orders", request.Destination);
-        Assert.True(request.IsTopic);
+        Assert.Equal("interbus-publish", ticker.Function);
+        Assert.Equal(scheduledAt.UtcDateTime, ticker.ExecutionTime);
+
+        var request = TickerHelper.ReadTickerRequest<ScheduledPublishRequest>(ticker.Request!);
+        Assert.Equal("orders", request.TopicName);
         Assert.Equal(payload, request.Payload);
     }
 
@@ -117,7 +125,7 @@ public sealed class TickerQSchedulerTests
             DateTimeOffset.UtcNow.AddSeconds(10), TestContext.Current.CancellationToken);
 
         var ticker = Assert.Single(manager.Added);
-        var request = TickerHelper.ReadTickerRequest<ScheduledMessageRequest>(ticker.Request!);
+        var request = TickerHelper.ReadTickerRequest<ScheduledPublishRequest>(ticker.Request!);
         Assert.Equal("MyEvent", request.Headers[InterBusHeaders.MessageType]);
     }
 
@@ -137,24 +145,45 @@ public sealed class TickerQSchedulerTests
 
     #endregion
 
-    #region DI integration: AddTickerQScheduler registers IMessageScheduler
+    #region DI integration: AddTickerQScheduler registers IMessageSchedulingProvider and ISchedulingMessagePublisher
 
     [Fact]
-    public void AddTickerQScheduler_RegistersTickerQMessageScheduler_AsIMessageScheduler()
+    public void AddTickerQScheduler_RegistersTickerQMessageScheduler_AsIMessageSchedulingProvider()
     {
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddInterBus(bus =>
         {
             bus.AddInMemoryTransport();
-            bus.AddTickerQScheduler(options => options.DisableBackgroundServices());
+            bus.AddTickerQScheduler();
         });
+        services.AddTickerQ(options => options.DisableBackgroundServices());
 
         var provider = services.BuildServiceProvider();
-        var scheduler = provider.GetService<IMessageScheduler>();
+        var schedulingProvider = provider.GetService<IMessageSchedulingProvider>();
 
-        Assert.NotNull(scheduler);
-        Assert.IsType<TickerQMessageScheduler>(scheduler);
+        Assert.NotNull(schedulingProvider);
+        Assert.IsType<TickerQMessageScheduler>(schedulingProvider);
+    }
+
+    [Fact]
+    public void AddTickerQScheduler_RegistersSchedulingMessagePublisher_AsISchedulingMessagePublisher()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddInterBus(bus =>
+        {
+            bus.AddInMemoryTransport();
+            bus.AddTickerQScheduler();
+        });
+        services.AddTickerQ(options => options.DisableBackgroundServices());
+
+        var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+        var publisher = scope.ServiceProvider.GetService<ISchedulingMessagePublisher>();
+
+        Assert.NotNull(publisher);
+        Assert.IsType<SchedulingMessagePublisher>(publisher);
     }
 
     #endregion

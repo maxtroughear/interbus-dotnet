@@ -1,7 +1,8 @@
+using InterBus.Internal;
 using InterBus.TickerQ.Internal;
 using Microsoft.Extensions.DependencyInjection;
-using TickerQ.DependencyInjection;
 using TickerQ.Utilities;
+using TickerQ.Utilities.Base;
 using TickerQ.Utilities.Entities;
 using TickerQ.Utilities.Enums;
 
@@ -11,53 +12,87 @@ namespace InterBus.TickerQ.Extensions;
 public static class TickerQSchedulerBuilderExtensions
 {
     /// <summary>
-    /// Register the TickerQ scheduler integration and configure TickerQ with the provided
-    /// <paramref name="configureTickerQ"/> delegate.
+    /// Register the TickerQ scheduler integration for InterBus.
     /// <para>
     /// This method:
     /// <list type="bullet">
-    ///   <item><description>Registers the InterBus delivery function with <c>TickerFunctionProvider</c>.</description></item>
-    ///   <item><description>Calls <c>AddTickerQ</c> on the service collection with the provided options.</description></item>
-    ///   <item><description>Registers <see cref="TickerQMessageScheduler"/> as the <see cref="IMessageScheduler"/>.</description></item>
+    ///   <item><description>
+    ///     Registers the InterBus delivery functions (<c>interbus-publish</c> and
+    ///     <c>interbus-send</c>) and their request types with <c>TickerFunctionProvider</c>.
+    ///   </description></item>
+    ///   <item><description>
+    ///     Registers <see cref="TickerQPublishFunction"/> and <see cref="TickerQSendFunction"/>
+    ///     in the service collection for DI constructor injection.
+    ///   </description></item>
+    ///   <item><description>
+    ///     Registers <see cref="TickerQMessageScheduler"/> as the
+    ///     <see cref="IMessageSchedulingProvider"/>.
+    ///   </description></item>
+    ///   <item><description>
+    ///     Registers <see cref="SchedulingMessagePublisher"/> as the
+    ///     <see cref="ISchedulingMessagePublisher"/>.
+    ///   </description></item>
     /// </list>
     /// </para>
     /// <para>
-    /// TickerQ defaults to an in-memory persistence provider when no operational store is
-    /// configured. For durable scheduling across application restarts, chain
-    /// <c>.AddOperationalStore(...)</c> on the <paramref name="configureTickerQ"/> builder.
+    /// <strong>Note:</strong> TickerQ itself (<c>AddTickerQ</c>) must be registered separately
+    /// in application startup code before building the host.
     /// </para>
     /// </summary>
     /// <param name="builder">The InterBus builder.</param>
-    /// <param name="configureTickerQ">
-    /// Optional delegate to further configure TickerQ (e.g. call <c>AddOperationalStore</c> to
-    /// enable EF Core persistence, or <c>ConfigureScheduler</c> to tune polling intervals).
-    /// </param>
-    public static IInterBusBuilder AddTickerQScheduler(
-        this IInterBusBuilder builder,
-        Action<TickerOptionsBuilder<TimeTickerEntity, CronTickerEntity>>? configureTickerQ = null)
+    public static IInterBusBuilder AddTickerQScheduler(this IInterBusBuilder builder)
     {
         ArgumentNullException.ThrowIfNull(builder);
 
-        // Register the interbus-deliver function with TickerQ before the host starts.
+        // Register the interbus-publish and interbus-send functions with TickerQ before the host starts.
         // TickerFunctionProvider is a static registry; calling RegisterFunctions multiple times
         // is safe — later registrations with the same key overwrite earlier ones.
         TickerFunctionProvider.RegisterFunctions(
             new Dictionary<string, (string, TickerTaskPriority, TickerFunctionDelegate, int)>
             {
-                [TickerQDeliverFunction.FunctionName] = (
-                    TickerQDeliverFunction.FunctionName,
+                [TickerQPublishFunction.FunctionName] = (
+                    TickerQPublishFunction.FunctionName,
                     TickerTaskPriority.Normal,
-                    TickerQDeliverFunction.InvokeAsync,
+                    async (ct, sp, ctx) =>
+                    {
+                        var typedCtx = (TickerFunctionContext<ScheduledPublishRequest>)ctx;
+                        var func = sp.GetRequiredService<TickerQPublishFunction>();
+                        await func.InvokeAsync(typedCtx, ct);
+                    },
+                    0),
+
+                [TickerQSendFunction.FunctionName] = (
+                    TickerQSendFunction.FunctionName,
+                    TickerTaskPriority.Normal,
+                    async (ct, sp, ctx) =>
+                    {
+                        var typedCtx = (TickerFunctionContext<ScheduledSendRequest>)ctx;
+                        var func = sp.GetRequiredService<TickerQSendFunction>();
+                        await func.InvokeAsync(typedCtx, ct);
+                    },
                     0)
             });
 
-        builder.Services.AddTickerQ(options =>
-        {
-            configureTickerQ?.Invoke(options);
-        });
+        // Register request types so TickerQ deserializes the request bytes and populates
+        // the typed TickerFunctionContext<T>.Request before calling the delegate.
+        TickerFunctionProvider.RegisterRequestType(
+            new Dictionary<string, (string, Type)>
+            {
+                [TickerQPublishFunction.FunctionName] = (
+                    TickerQPublishFunction.FunctionName, typeof(ScheduledPublishRequest)),
+                [TickerQSendFunction.FunctionName] = (
+                    TickerQSendFunction.FunctionName, typeof(ScheduledSendRequest))
+            });
 
-        builder.Services.AddSingleton<IMessageScheduler, TickerQMessageScheduler>();
+        // Register the function handler classes for DI constructor injection.
+        builder.Services.AddTransient<TickerQPublishFunction>();
+        builder.Services.AddTransient<TickerQSendFunction>();
+
+        // Register the scheduling provider and the scheduling publisher.
+        builder.Services.AddSingleton<IMessageSchedulingProvider, TickerQMessageScheduler>();
+        builder.Services.AddScoped<ISchedulingMessagePublisher, SchedulingMessagePublisher>();
 
         return builder;
     }
 }
+

@@ -1,5 +1,7 @@
+using InterBus.Middleware;
 using InterBus.Retry;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 // ReSharper disable once CheckNamespace
 namespace InterBus;
@@ -27,6 +29,11 @@ public static class RedeliveryRetryInterBusBuilderExtensions
         configure?.Invoke(options);
 
         builder.Services.AddSingleton(options);
-        return builder.UseConsumeMiddleware<RedeliveryRetryConsumeMiddleware>();
+        builder.Services.AddScoped<IConsumeMiddleware>(sp => new RedeliveryRetryConsumeMiddleware(
+            sp.GetRequiredService<RedeliveryRetryOptions>(),
+            sp.GetRequiredService<IInterBusTransport>(),
+            sp.GetService<IMessageSchedulingProvider>(),
+            sp.GetRequiredService<ILogger<RedeliveryRetryConsumeMiddleware>>()));
+        return builder;
     }
 }

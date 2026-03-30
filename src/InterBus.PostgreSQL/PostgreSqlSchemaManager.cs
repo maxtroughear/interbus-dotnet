@@ -86,16 +86,16 @@ internal sealed class PostgreSqlSchemaManager
         // ensure_queue: returns the queue ID, creating the row only on a miss.
         $"CREATE OR REPLACE FUNCTION {s}.ensure_queue(p_queue_name TEXT)\n" +
         "RETURNS BIGINT LANGUAGE plpgsql AS $$\n" +
-        "DECLARE v_id BIGINT;\n" +
+        "DECLARE v_queue_id BIGINT;\n" +
         "BEGIN\n" +
-        $"    SELECT id INTO v_id FROM {s}.queues WHERE queue_name = p_queue_name;\n" +
-        "    IF FOUND THEN RETURN v_id; END IF;\n" +
+        $"    SELECT id INTO v_queue_id FROM {s}.queues WHERE queue_name = p_queue_name;\n" +
+        "    IF FOUND THEN RETURN v_queue_id; END IF;\n" +
         $"    INSERT INTO {s}.queues (queue_name) VALUES (p_queue_name)\n" +
-        "        ON CONFLICT (queue_name) DO NOTHING RETURNING id INTO v_id;\n" +
+        "        ON CONFLICT (queue_name) DO NOTHING RETURNING id INTO v_queue_id;\n" +
         "    IF NOT FOUND THEN\n" +
-        $"        SELECT id INTO v_id FROM {s}.queues WHERE queue_name = p_queue_name;\n" +
+        $"        SELECT id INTO v_queue_id FROM {s}.queues WHERE queue_name = p_queue_name;\n" +
         "    END IF;\n" +
-        "    RETURN v_id;\n" +
+        "    RETURN v_queue_id;\n" +
         "END;\n" +
         "$$;\n\n" +
 

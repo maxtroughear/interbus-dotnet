@@ -48,14 +48,23 @@ internal sealed class PostgreSqlSchemaManager
                 "    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()\n" +
                 ");\n" +
                 // One routing row per destination queue; queue_id FK replaces the old queue_name text column.
+                // visible_at gates consumption: messages with visible_at > NOW() are invisible to consumers,
+                // enabling future delayed-redelivery without schema changes.
                 $"CREATE TABLE IF NOT EXISTS {s}.messages (\n" +
-                "    id         BIGSERIAL PRIMARY KEY,\n" +
+                "    id         BIGSERIAL   PRIMARY KEY,\n" +
                 $"    queue_id   BIGINT      NOT NULL REFERENCES {s}.queues(id),\n" +
                 $"    payload_id BIGINT      NOT NULL REFERENCES {s}.message_payloads(id),\n" +
+                "    visible_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),\n" +
                 "    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()\n" +
                 ");\n" +
+                // (queue_id, visible_at, id): supports the consume_next filter (queue_id + visible_at <= NOW())
+                // and stable ordering by id within the visible window.
                 $"CREATE INDEX IF NOT EXISTS ix_messages_queue_pending\n" +
-                $"    ON {s}.messages (queue_id, id);\n" +
+                $"    ON {s}.messages (queue_id, visible_at, id);\n" +
+                // payload_id index: required for the NOT EXISTS subqueries in ack_message and
+                // cleanup_orphaned_payloads that check whether any routing row still references a payload.
+                $"CREATE INDEX IF NOT EXISTS ix_messages_payload_id\n" +
+                $"    ON {s}.messages (payload_id);\n" +
                 // Subscriptions now reference queues and topics by their numeric IDs.
                 $"CREATE TABLE IF NOT EXISTS {s}.subscriptions (\n" +
                 $"    queue_id   BIGINT NOT NULL REFERENCES {s}.queues(id),\n" +
@@ -165,7 +174,8 @@ internal sealed class PostgreSqlSchemaManager
         "END;\n" +
         "$$;\n\n" +
 
-        // consume_next: locks and returns the next pending message for a queue.
+        // consume_next: locks and returns the next visible pending message for a queue.
+        // Messages with visible_at > NOW() are skipped, enabling future delayed redelivery.
         // Must be called inside an explicit transaction; the FOR UPDATE lock is held by the
         // caller's transaction (not released when the function returns).
         $"CREATE OR REPLACE FUNCTION {s}.consume_next(p_queue_id BIGINT)\n" +
@@ -177,6 +187,7 @@ internal sealed class PostgreSqlSchemaManager
         $"    FROM {s}.messages m\n" +
         $"    JOIN {s}.message_payloads mp ON mp.id = m.payload_id\n" +
         "    WHERE m.queue_id = p_queue_id\n" +
+        "      AND m.visible_at <= NOW()\n" +
         "    ORDER BY m.id\n" +
         "    FOR UPDATE OF m SKIP LOCKED\n" +
         "    LIMIT 1;\n" +

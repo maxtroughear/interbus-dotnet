@@ -259,13 +259,16 @@ public sealed class PublishConsumeTests : IAsyncLifetime
             "    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()\n" +
             ");\n" +
             "CREATE TABLE IF NOT EXISTS interbus.messages (\n" +
-            "    id         BIGSERIAL PRIMARY KEY,\n" +
+            "    id         BIGSERIAL   PRIMARY KEY,\n" +
             "    queue_id   BIGINT      NOT NULL REFERENCES interbus.queues(id),\n" +
             "    payload_id BIGINT      NOT NULL REFERENCES interbus.message_payloads(id),\n" +
+            "    visible_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),\n" +
             "    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()\n" +
             ");\n" +
             "CREATE INDEX IF NOT EXISTS ix_messages_queue_pending\n" +
-            "    ON interbus.messages (queue_id, id);\n" +
+            "    ON interbus.messages (queue_id, visible_at, id);\n" +
+            "CREATE INDEX IF NOT EXISTS ix_messages_payload_id\n" +
+            "    ON interbus.messages (payload_id);\n" +
             "CREATE TABLE IF NOT EXISTS interbus.subscriptions (\n" +
             "    queue_id   BIGINT NOT NULL REFERENCES interbus.queues(id),\n" +
             "    topic_id   BIGINT NOT NULL REFERENCES interbus.topics(id),\n" +

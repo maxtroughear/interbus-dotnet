@@ -14,4 +14,14 @@ public interface IInterBusTransport
     /// <summary>Send a serialised payload directly to the named queue (bypassing topic fan-out).</summary>
     Task SendToQueueAsync(string queueName, byte[] payload, MessageHeaders headers,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Send a serialised payload directly to the named queue with an optional delivery delay.
+    /// Transports that support delayed or scheduled delivery should honour <paramref name="delay"/>.
+    /// Transports that do not support delayed delivery should ignore the delay and deliver immediately
+    /// without dropping the message.
+    /// </summary>
+    virtual Task SendToQueueAsync(string queueName, byte[] payload, MessageHeaders headers,
+        TimeSpan delay, CancellationToken cancellationToken)
+        => SendToQueueAsync(queueName, payload, headers, cancellationToken);
 }

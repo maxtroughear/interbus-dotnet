@@ -95,9 +95,9 @@ public sealed class RedeliveryRetryMiddlewareTests
     }
 
     [Fact]
-    public async Task AppliesDelay_BeforeSchedulingRedelivery()
+    public async Task PassesDelay_ToTransport_WhenSchedulingRedelivery()
     {
-        var delay = TimeSpan.FromMilliseconds(50);
+        var delay = TimeSpan.FromSeconds(30);
         var options = new RedeliveryRetryOptions
         {
             RetryCount = 2,
@@ -105,17 +105,13 @@ public sealed class RedeliveryRetryMiddlewareTests
         };
         var transport = new TestTransport();
         var middleware = CreateMiddleware(options, transport);
-        var sw = System.Diagnostics.Stopwatch.StartNew();
 
         await middleware.InvokeAsync(BuildContext(), (_, _) =>
                 throw new InvalidOperationException("boom"),
             TestContext.Current.CancellationToken);
 
-        sw.Stop();
-
-        Assert.True(sw.ElapsedMilliseconds >= 40,
-            $"Expected at least 40ms elapsed, got {sw.ElapsedMilliseconds}ms");
-        Assert.Single(transport.Sent);
+        var sent = Assert.Single(transport.Sent);
+        Assert.Equal(delay, sent.Delay);
     }
 
     [Fact]
@@ -182,12 +178,19 @@ public sealed class RedeliveryRetryMiddlewareTests
         public Task SendToQueueAsync(string queueName, byte[] payload, MessageHeaders headers,
             CancellationToken cancellationToken)
         {
-            Sent.Add(new SentMessage(queueName, payload, headers));
+            Sent.Add(new SentMessage(queueName, payload, headers, TimeSpan.Zero));
+            return Task.CompletedTask;
+        }
+
+        public Task SendToQueueAsync(string queueName, byte[] payload, MessageHeaders headers,
+            TimeSpan delay, CancellationToken cancellationToken)
+        {
+            Sent.Add(new SentMessage(queueName, payload, headers, delay));
             return Task.CompletedTask;
         }
     }
 
-    private sealed record SentMessage(string QueueName, byte[] Payload, MessageHeaders Headers);
+    private sealed record SentMessage(string QueueName, byte[] Payload, MessageHeaders Headers, TimeSpan Delay);
 
     #endregion
 }

@@ -48,8 +48,6 @@ public sealed class RedeliveryRetryConsumeMiddleware(
                 context.Descriptor.QueueName);
 
             var delay = options.DelayProvider(nextAttempt);
-            if (delay > TimeSpan.Zero)
-                await Task.Delay(delay, cancellationToken);
 
             var redeliveryHeaders = new MessageHeaders(context.Headers)
             {
@@ -60,6 +58,7 @@ public sealed class RedeliveryRetryConsumeMiddleware(
                 context.Descriptor.QueueName,
                 context.Payload,
                 redeliveryHeaders,
+                delay,
                 cancellationToken);
 
             // Swallow to signal the current delivery has been handled by scheduling redelivery.

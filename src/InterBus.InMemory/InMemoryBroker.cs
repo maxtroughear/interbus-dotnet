@@ -59,6 +59,16 @@ public sealed class InMemoryBroker : IInterBusTransport, IDisposable
             : Task.CompletedTask;
     }
 
+    /// <inheritdoc/>
+    public async Task SendToQueueAsync(string queueName, byte[] payload, MessageHeaders headers,
+        TimeSpan delay, CancellationToken cancellationToken)
+    {
+        if (delay > TimeSpan.Zero)
+            await Task.Delay(delay, cancellationToken);
+
+        await SendToQueueAsync(queueName, payload, headers, cancellationToken);
+    }
+
     /// <summary>Returns all registered queues. Used by the message pump to start consumers.</summary>
     internal IReadOnlyCollection<InMemoryQueue> GetAllQueues() => _queues.Values;
 

@@ -1,4 +1,3 @@
-using InterBus.Extensions;
 using InterBus.TickerQ.Internal;
 using Microsoft.Extensions.DependencyInjection;
 using TickerQ.Utilities;
@@ -14,12 +13,8 @@ public static class TickerQSchedulerBuilderExtensions
     /// <summary>
     /// Register the TickerQ scheduler integration for InterBus.
     /// <para>
-    /// This method:
+    /// This method registers only the TickerQ-specific scheduling infrastructure:
     /// <list type="bullet">
-    ///   <item><description>
-    ///     Calls <see cref="InterBusBuilderExtensions.AddScheduling"/> to register the core
-    ///     <see cref="IMessageScheduler"/> infrastructure.
-    ///   </description></item>
     ///   <item><description>
     ///     Registers the InterBus delivery functions (<c>interbus-publish</c> and
     ///     <c>interbus-send</c>) and their request types with <c>TickerFunctionProvider</c>.
@@ -35,17 +30,15 @@ public static class TickerQSchedulerBuilderExtensions
     /// </list>
     /// </para>
     /// <para>
-    /// <strong>Note:</strong> TickerQ itself (<c>AddTickerQ</c>) must be registered separately
-    /// in application startup code before building the host.
+    /// <strong>Note:</strong> Call <c>bus.AddScheduling()</c> from the core InterBus library
+    /// before calling this method to register the <see cref="IMessageScheduler"/> infrastructure.
+    /// TickerQ itself (<c>AddTickerQ</c>) must also be registered separately in application startup code.
     /// </para>
     /// </summary>
     /// <param name="builder">The InterBus builder.</param>
     public static IInterBusBuilder AddTickerQScheduler(this IInterBusBuilder builder)
     {
         ArgumentNullException.ThrowIfNull(builder);
-
-        // Register the core IMessageScheduler infrastructure.
-        builder.AddScheduling();
 
         // Register the interbus-publish and interbus-send functions with TickerQ before the host starts.
         // TickerFunctionProvider is a static registry; calling RegisterFunctions multiple times

@@ -114,3 +114,4 @@ internal sealed class MessagePublisher : IMessagePublisher
         return enriched;
     }
 }
+

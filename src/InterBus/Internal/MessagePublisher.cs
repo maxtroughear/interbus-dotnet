@@ -12,6 +12,7 @@ namespace InterBus.Internal;
 internal sealed class MessagePublisher : IMessagePublisher
 {
     private readonly IInterBusTransport _transport;
+    private readonly IMessageScheduler? _scheduler;
     private readonly IList<IPublishMiddleware> _middlewares;
     private readonly InterBusOptions _options;
     private readonly IMessageSerializer _serializer;
@@ -20,12 +21,14 @@ internal sealed class MessagePublisher : IMessagePublisher
         IInterBusTransport transport,
         InterBusOptions options,
         IMessageSerializer serializer,
-        IEnumerable<IPublishMiddleware> middlewares)
+        IEnumerable<IPublishMiddleware> middlewares,
+        IEnumerable<IMessageScheduler> schedulers)
     {
         _transport = transport;
         _options = options;
         _serializer = serializer;
         _middlewares = middlewares.Reverse().ToList(); // Reverse middleware order for the correct execution order
+        _scheduler = schedulers.FirstOrDefault();
     }
 
     private Func<PublishContext<T>, CancellationToken, Task> BuildMiddlewarePipeline<T>() where T : class
@@ -50,6 +53,35 @@ internal sealed class MessagePublisher : IMessagePublisher
             return ctx.IsTopic
                 ? _transport.PublishToTopicAsync(ctx.Destination, payload, ctx.Headers, ct)
                 : _transport.SendToQueueAsync(ctx.Destination, payload, ctx.Headers, ct);
+        }
+    }
+
+    private Func<PublishContext<T>, CancellationToken, Task> BuildScheduledMiddlewarePipeline<T>(
+        DateTimeOffset scheduledAt) where T : class
+    {
+        var pipeline = TerminalScheduleDelegate;
+        foreach (var middleware in _middlewares)
+        {
+            var current = middleware;
+            var next = pipeline;
+            pipeline = (ctx, ct) => current.InvokeAsync(ctx, next, ct);
+        }
+
+        return pipeline;
+
+        // Terminal step: forward serialized payload to the scheduler.
+        Task TerminalScheduleDelegate(PublishContext<T> ctx, CancellationToken ct)
+        {
+            if (_scheduler is null)
+                throw new InvalidOperationException(
+                    "No IMessageScheduler is registered. Register a scheduler implementation such as " +
+                    "TickerQMessageScheduler via AddTickerQScheduler().");
+
+            var payload = _serializer.Serialize(ctx.Payload);
+
+            return ctx.IsTopic
+                ? _scheduler.SchedulePublishToTopicAsync(ctx.Destination, payload, ctx.Headers, scheduledAt, ct)
+                : _scheduler.ScheduleSendToQueueAsync(ctx.Destination, payload, ctx.Headers, scheduledAt, ct);
         }
     }
 
@@ -97,6 +129,56 @@ internal sealed class MessagePublisher : IMessagePublisher
         var enriched = Enrich<T>(headers);
         var context = new PublishContext<T>(queueName, isTopic: false, message, enriched);
         var pipeline = BuildMiddlewarePipeline<T>();
+
+        return pipeline(context, cancellationToken);
+    }
+
+    public Task SchedulePublish<T>(T message, DateTimeOffset scheduledAt,
+        CancellationToken cancellationToken = default) where T : class =>
+        SchedulePublish(message, [], scheduledAt, cancellationToken);
+
+    public Task SchedulePublish<T>(T message, MessageHeaders headers, DateTimeOffset scheduledAt,
+        CancellationToken cancellationToken = default) where T : class
+    {
+        var topicName = _options.TryGetTopicName(typeof(T), out var customName)
+            ? customName
+            : RoutingConventions.TopicName(typeof(T));
+        var enriched = Enrich<T>(headers);
+        var context = new PublishContext<T>(topicName, isTopic: true, message, enriched);
+        var pipeline = BuildScheduledMiddlewarePipeline<T>(scheduledAt);
+
+        return pipeline(context, cancellationToken);
+    }
+
+    public Task ScheduleSend<TConsumer, T>(T message, DateTimeOffset scheduledAt,
+        CancellationToken cancellationToken = default)
+        where TConsumer : IConsumer<T>
+        where T : class =>
+        ScheduleSend<TConsumer, T>(message, [], scheduledAt, cancellationToken);
+
+    public Task ScheduleSend<TConsumer, T>(T message, MessageHeaders headers, DateTimeOffset scheduledAt,
+        CancellationToken cancellationToken = default)
+        where TConsumer : IConsumer<T>
+        where T : class
+    {
+        var queueName = RoutingConventions.QueueName(typeof(TConsumer));
+        var enriched = Enrich<T>(headers);
+        var context = new PublishContext<T>(queueName, isTopic: false, message, enriched);
+        var pipeline = BuildScheduledMiddlewarePipeline<T>(scheduledAt);
+
+        return pipeline(context, cancellationToken);
+    }
+
+    public Task ScheduleSend<T>(string queueName, T message, DateTimeOffset scheduledAt,
+        CancellationToken cancellationToken = default) where T : class =>
+        ScheduleSend(queueName, message, [], scheduledAt, cancellationToken);
+
+    public Task ScheduleSend<T>(string queueName, T message, MessageHeaders headers, DateTimeOffset scheduledAt,
+        CancellationToken cancellationToken = default) where T : class
+    {
+        var enriched = Enrich<T>(headers);
+        var context = new PublishContext<T>(queueName, isTopic: false, message, enriched);
+        var pipeline = BuildScheduledMiddlewarePipeline<T>(scheduledAt);
 
         return pipeline(context, cancellationToken);
     }

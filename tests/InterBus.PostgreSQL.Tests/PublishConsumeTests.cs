@@ -1,4 +1,5 @@
 using InterBus.Extensions;
+using InterBus.Middleware;
 using InterBus.PostgreSQL.Extensions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -42,17 +43,19 @@ public sealed class PublishConsumeTests : IAsyncLifetime
     /// Builds a minimal dispatch delegate that deserialises a payload into
     /// <typeparamref name="T"/> and calls <see cref="IConsumer{T}.Consume"/>.
     /// </summary>
-    private static Func<IServiceProvider, byte[], IConsumeContext, CancellationToken, Task>
+    private static Func<DispatchContext, IServiceProvider, CancellationToken, Task>
         BuildDispatch<TConsumer, T>()
         where TConsumer : class, IConsumer<T>
         where T : class
     {
-        return static (sp, payload, context, ct) =>
+        return static (ctx, sp, ct) =>
         {
             var serializer = sp.GetRequiredService<IMessageSerializer>();
             var consumer = sp.GetRequiredService<TConsumer>();
-            var message = serializer.Deserialize<T>(payload)!;
-            return consumer.Consume(message, context, ct);
+            var message = serializer.Deserialize<T>(ctx.Payload)!;
+            var consumePipeline = sp.GetRequiredService<ConsumePipelineExecutor>();
+            var consumeContext = new ConsumeContext<T>(ctx.Descriptor, message, ctx.Headers);
+            return consumePipeline.ExecuteAsync(consumeContext, consumer.Consume, ct);
         };
     }
 
@@ -321,7 +324,7 @@ public sealed class PublishConsumeTests : IAsyncLifetime
                 });
                 bus.AddConsumer<OrderPlacedConsumer>(
                     [typeof(OrderPlaced)],
-                    (sp, payload, context, ct) =>
+                    (ctx, sp, ct) =>
                     {
                         Interlocked.Increment(ref callCount);
                         if (callCount < 2)
@@ -330,8 +333,10 @@ public sealed class PublishConsumeTests : IAsyncLifetime
                         // Second attempt succeeds.
                         var serializer = sp.GetRequiredService<IMessageSerializer>();
                         var consumer = sp.GetRequiredService<OrderPlacedConsumer>();
-                        var message = serializer.Deserialize<OrderPlaced>(payload)!;
-                        return consumer.Consume(message, context, ct);
+                        var message = serializer.Deserialize<OrderPlaced>(ctx.Payload)!;
+                        var consumePipeline = sp.GetRequiredService<ConsumePipelineExecutor>();
+                        var consumeContext = new ConsumeContext<OrderPlaced>(ctx.Descriptor, message, ctx.Headers);
+                        return consumePipeline.ExecuteAsync(consumeContext, consumer.Consume, ct);
                     });
             });
 

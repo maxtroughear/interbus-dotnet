@@ -287,8 +287,9 @@ internal sealed class PostgreSqlMessagePump : BackgroundService
         CancellationToken ct)
     {
         await using var scope = _scopeFactory.CreateAsyncScope();
-        var executor = scope.ServiceProvider.GetRequiredService<ConsumePipelineExecutor>();
-        await executor.ExecuteAsync(descriptor, payload, headers, ct);
+        var executor = scope.ServiceProvider.GetRequiredService<DispatchPipelineExecutor>();
+        var context = new DispatchContext(descriptor, payload, headers);
+        await executor.ExecuteAsync(context, ct);
     }
 
     private static string EscapeIdentifier(string name) =>

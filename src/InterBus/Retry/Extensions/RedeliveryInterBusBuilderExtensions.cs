@@ -36,7 +36,7 @@ public static class RedeliveryInterBusBuilderExtensions
 
         return builder;
     }
-    
+
     /// <summary>
     /// Adds <see cref="RedeliverySchedulingConsumeMiddleware"/> to the consume pipeline using the supplied
     /// <paramref name="configure"/> delegate to customise <see cref="RedeliveryOptions"/>

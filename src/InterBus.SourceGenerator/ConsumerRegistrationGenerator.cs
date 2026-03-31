@@ -24,7 +24,7 @@ namespace InterBus.SourceGenerator;
 ///   <item><b>Aggregating registrations class</b> – emitted in every project that can see one
 ///   or more dispatch modules (either from the current project or from referenced assemblies).
 ///   This step scans <em>only</em> the <c>InterBus.Generated</c> namespace for
-///   <c>InterBusConsumerRegistrations_*</c> types — a targeted, cheap scan rather than walking
+///   <c>InterBusConsumerRegistrations_*</c> types - a targeted, cheap scan rather than walking
 ///   all types in the global namespace.  The generated <c>internal static class
 ///   InterBusConsumerRegistrations</c> exposes <c>AddConsumers()</c> and
 ///   <c>AddConsumer&lt;TConsumer&gt;()</c> extension methods that cover all discovered
@@ -159,7 +159,7 @@ public sealed class ConsumerRegistrationGenerator : IIncrementalGenerator
         sb.AppendLine($"    public static class {moduleName}");
         sb.AppendLine("    {");
 
-        // Static dispatch table: consumer Type → (message types, dispatch delegate).
+        // Static dispatch table: consumer Type -> (message types, dispatch delegate).
         sb.AppendLine("        private static readonly global::System.Collections.Generic.Dictionary<");
         sb.AppendLine("            global::System.Type,");
         sb.AppendLine($"            (global::System.Type[] MessageTypes, {DispatchFuncType} Dispatch)>");
@@ -295,7 +295,7 @@ public sealed class ConsumerRegistrationGenerator : IIncrementalGenerator
             sb.AppendLine("                            ct);");
             sb.AppendLine("                    }");
         }
-        
+
         sb.AppendLine("                    throw new global::System.InvalidOperationException(");
         sb.AppendLine($"                        $\"InterBus: consumer {consumer.Name} does not handle message type {{msgType}}\");");
         sb.AppendLine("                }),");

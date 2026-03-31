@@ -8,25 +8,17 @@ namespace InterBus.Middleware;
 /// (e.g. to implement the Claim Check pattern) before the terminal step invokes
 /// the consumer's dispatch delegate.
 /// </summary>
-public sealed class ConsumeContext<T>
+public sealed class ConsumeContext<T>(ConsumerDescriptor descriptor, T payload, MessageHeaders headers)
 {
     /// <summary>The descriptor for the consumer that will handle this message.</summary>
-    public ConsumerDescriptor Descriptor { get; }
+    public ConsumerDescriptor Descriptor { get; } = descriptor;
 
     /// <summary>The serialized message payload. Middleware may replace this value.</summary>
-    public T Payload { get; set; }
+    public T Payload { get; set; } = payload;
 
     /// <summary>
     /// The headers attached to the incoming message.
     /// Middleware may add, remove, or modify entries.
     /// </summary>
-    public MessageHeaders Headers { get; set; }
-
-    // TODO: Possible make internal?
-    public ConsumeContext(ConsumerDescriptor descriptor, T payload, MessageHeaders headers)
-    {
-        Descriptor = descriptor;
-        Payload = payload;
-        Headers = headers;
-    }
+    public MessageHeaders Headers { get; set; } = headers;
 }

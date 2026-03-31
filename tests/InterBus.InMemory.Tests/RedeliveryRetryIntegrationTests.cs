@@ -63,10 +63,7 @@ public sealed class RedeliveryRetryIntegrationTests
         var tracker = new RedeliveryTracker();
 
         var (provider, cts) = await StartAsync(
-            services =>
-            {
-                services.AddSingleton(tracker);
-            },
+            services => { services.AddSingleton(tracker); },
             bus =>
             {
                 bus.AddInMemoryTransport();

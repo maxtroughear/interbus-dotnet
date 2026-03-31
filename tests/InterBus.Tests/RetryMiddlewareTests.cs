@@ -282,11 +282,12 @@ public sealed class RetryMiddlewareTests
         Assert.Equal(TimeSpan.FromMilliseconds(200), factory(2));
         Assert.Equal(TimeSpan.FromMilliseconds(300), factory(3));
     }
-    
+
     [Fact]
     public void RetryDelays_Intervals_ReturnsSpecifiedIntervals()
     {
-        var intervals = new[] { TimeSpan.FromMilliseconds(100), TimeSpan.FromMilliseconds(200), TimeSpan.FromMilliseconds(300) };
+        var intervals = new[]
+            { TimeSpan.FromMilliseconds(100), TimeSpan.FromMilliseconds(200), TimeSpan.FromMilliseconds(300) };
         var factory = RetryDelays.Intervals(intervals);
         Assert.Equal(TimeSpan.FromMilliseconds(100), factory(1));
         Assert.Equal(TimeSpan.FromMilliseconds(200), factory(2));
@@ -296,7 +297,8 @@ public sealed class RetryMiddlewareTests
     [Fact]
     public void RetryDelays_Intervals_ReturnsMaximumInterval_WhenAttemptCountExceedsIntervals()
     {
-        var intervals = new[] { TimeSpan.FromMilliseconds(100), TimeSpan.FromMilliseconds(200), TimeSpan.FromMilliseconds(300) };
+        var intervals = new[]
+            { TimeSpan.FromMilliseconds(100), TimeSpan.FromMilliseconds(200), TimeSpan.FromMilliseconds(300) };
         var factory = RetryDelays.Intervals(intervals);
         Assert.Equal(TimeSpan.FromMilliseconds(300), factory(4));
     }
@@ -342,7 +344,6 @@ public sealed class RetryMiddlewareTests
     {
         public TestMessage() : this(Guid.NewGuid())
         {
-            
         }
     };
 

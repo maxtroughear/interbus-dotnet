@@ -49,7 +49,7 @@ public static class ServiceCollectionExtensions
         // Register the default serialiser if the user has not supplied one via UseSerializer<T>()
         // or a direct services.AddSingleton<IMessageSerializer>(...) call inside configure
         services.TryAddSingleton<IMessageSerializer, SystemTextJsonMessageSerializer>();
-        
+
         services.AddScoped<DispatchPipelineExecutor>();
         services.AddScoped<ConsumePipelineExecutor>();
 

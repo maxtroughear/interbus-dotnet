@@ -10,8 +10,9 @@ public sealed class RedeliveryImmediateConsumeMiddleware(
     ILogger<RedeliveryImmediateConsumeMiddleware> logger) : IConsumeMiddleware
 {
     public const string RetryCountHeader = "interbus-redelivery-immediate-retry-count";
-    
-    public async Task InvokeAsync<T>(ConsumeContext<T> context, Func<ConsumeContext<T>, CancellationToken, Task> next, CancellationToken cancellationToken = default) where T : class
+
+    public async Task InvokeAsync<T>(ConsumeContext<T> context, Func<ConsumeContext<T>, CancellationToken, Task> next,
+        CancellationToken cancellationToken = default) where T : class
     {
         try
         {
@@ -30,12 +31,12 @@ public sealed class RedeliveryImmediateConsumeMiddleware(
                 options.RetryCount,
                 context.Descriptor.ConsumerType.Name,
                 context.Descriptor.QueueName);
-            
+
             var redeliveryHeaders = new MessageHeaders(context.Headers)
             {
                 [RetryCountHeader] = nextAttempt.ToString(CultureInfo.InvariantCulture)
             };
-            
+
             await publisher.Send(
                 context.Descriptor.QueueName,
                 context.Payload,

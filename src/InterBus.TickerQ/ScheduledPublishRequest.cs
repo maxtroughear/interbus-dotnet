@@ -16,7 +16,9 @@ public sealed class ScheduledPublishRequest
     public Dictionary<string, string> Headers { get; init; } = [];
 
     /// <summary>Parameterless constructor required for JSON deserialization.</summary>
-    public ScheduledPublishRequest() { }
+    public ScheduledPublishRequest()
+    {
+    }
 
     internal ScheduledPublishRequest(string topicName, byte[] payload, MessageHeaders headers)
     {

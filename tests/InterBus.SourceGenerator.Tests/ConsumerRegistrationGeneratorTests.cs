@@ -512,7 +512,7 @@ public sealed class ConsumerRegistrationGeneratorTests
                                        }
                                        """;
 
-        // Run generator on A → produces InterBusConsumerRegistrations_AssemblyA.
+        // Run generator on A -> produces InterBusConsumerRegistrations_AssemblyA.
         var compilationA = CreateCompilationWithInterBus(assemblyASource, assemblyName: "AssemblyA");
         CSharpGeneratorDriver
             .Create(new ConsumerRegistrationGenerator())
@@ -523,7 +523,7 @@ public sealed class ConsumerRegistrationGeneratorTests
                 TestContext.Current.CancellationToken);
         var refA = compilationAWithGen.ToMetadataReference();
 
-        // Run generator on B (which references A) → produces InterBusConsumerRegistrations_AssemblyB.
+        // Run generator on B (which references A) -> produces InterBusConsumerRegistrations_AssemblyB.
         var compilationB =
             CreateCompilationWithInterBus(assemblyBSource, assemblyName: "AssemblyB", extraReferences: [refA]);
         CSharpGeneratorDriver
@@ -551,7 +551,7 @@ public sealed class ConsumerRegistrationGeneratorTests
         Assert.Single(result.GeneratedTrees);
         var generated = result.GeneratedTrees[0].ToString();
 
-        // AddConsumers() only registers the host's own consumers — the host has none, so
+        // AddConsumers() only registers the host's own consumers - the host has none, so
         // neither external module's Register() should be called from AddConsumers().
         Assert.DoesNotContain("InterBusConsumerRegistrations_AssemblyA.Register(builder)", generated);
         Assert.DoesNotContain("InterBusConsumerRegistrations_AssemblyB.Register(builder)", generated);
@@ -591,7 +591,7 @@ public sealed class ConsumerRegistrationGeneratorTests
         Assert.Single(result.GeneratedTrees);
 
         var generated = result.GeneratedTrees[0].ToString();
-        
+
         Assert.Contains("serializer.Deserialize<global::MyApp.OrderPlaced>(context.Payload)", generated);
         Assert.Contains("GetRequiredService<global::InterBus.IMessageSerializer>()", generated);
         // No direct System.Text.Json references in the generated dispatch code.

@@ -42,7 +42,7 @@ public static class TickerQSchedulerBuilderExtensions
 
         // Register the interbus-publish and interbus-send functions with TickerQ before the host starts.
         // TickerFunctionProvider is a static registry; calling RegisterFunctions multiple times
-        // is safe — later registrations with the same key overwrite earlier ones.
+        // is safe - later registrations with the same key overwrite earlier ones.
         TickerFunctionProvider.RegisterFunctions(
             new Dictionary<string, (string, TickerTaskPriority, TickerFunctionDelegate, int)>
             {

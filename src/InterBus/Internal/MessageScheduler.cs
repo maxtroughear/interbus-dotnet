@@ -7,24 +7,14 @@ namespace InterBus.Internal;
 /// through the configured <see cref="IPublishMiddleware"/> pipeline, and forwards to the
 /// registered <see cref="IMessageSchedulingProvider"/> for deferred delivery.
 /// </summary>
-internal sealed class MessageScheduler : IMessageScheduler
+internal sealed class MessageScheduler(
+    IMessageSchedulingProvider schedulingProvider,
+    InterBusOptions options,
+    IMessageSerializer serializer,
+    IEnumerable<IPublishMiddleware> middlewares)
+    : IMessageScheduler
 {
-    private readonly IMessageSchedulingProvider _schedulingProvider;
-    private readonly IList<IPublishMiddleware> _middlewares;
-    private readonly InterBusOptions _options;
-    private readonly IMessageSerializer _serializer;
-
-    public MessageScheduler(
-        IMessageSchedulingProvider schedulingProvider,
-        InterBusOptions options,
-        IMessageSerializer serializer,
-        IEnumerable<IPublishMiddleware> middlewares)
-    {
-        _schedulingProvider = schedulingProvider;
-        _options = options;
-        _serializer = serializer;
-        _middlewares = middlewares.Reverse().ToList();
-    }
+    private readonly IList<IPublishMiddleware> _middlewares = middlewares.Reverse().ToList();
 
     public Task SchedulePublish<T>(T message, DateTimeOffset scheduledAt,
         CancellationToken cancellationToken = default) where T : class =>
@@ -33,7 +23,7 @@ internal sealed class MessageScheduler : IMessageScheduler
     public Task SchedulePublish<T>(T message, MessageHeaders headers, DateTimeOffset scheduledAt,
         CancellationToken cancellationToken = default) where T : class
     {
-        var topicName = _options.TryGetTopicName(typeof(T), out var customName)
+        var topicName = options.TryGetTopicName(typeof(T), out var customName)
             ? customName
             : RoutingConventions.TopicName(typeof(T));
         var enriched = Enrich<T>(headers);
@@ -92,12 +82,12 @@ internal sealed class MessageScheduler : IMessageScheduler
         // Terminal step: serialize and forward to the scheduling provider.
         Task TerminalScheduleDelegate(PublishContext<T> ctx, CancellationToken ct)
         {
-            var payload = _serializer.Serialize(ctx.Payload);
+            var payload = serializer.Serialize(ctx.Payload);
 
             return ctx.IsTopic
-                ? _schedulingProvider.SchedulePublishToTopicAsync(
+                ? schedulingProvider.SchedulePublishToTopicAsync(
                     ctx.Destination, payload, ctx.Headers, scheduledAt, ct)
-                : _schedulingProvider.ScheduleSendToQueueAsync(
+                : schedulingProvider.ScheduleSendToQueueAsync(
                     ctx.Destination, payload, ctx.Headers, scheduledAt, ct);
         }
     }

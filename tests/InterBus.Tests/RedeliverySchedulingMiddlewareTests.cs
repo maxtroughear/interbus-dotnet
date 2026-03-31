@@ -38,7 +38,7 @@ public sealed class RedeliverySchedulingMiddlewareTests
     {
         var publisher = new TestPublisher();
         var scheduler = new TestScheduler();
-        var middleware = CreateMiddleware(new RedeliveryOptions { RetryCount = 3 },  scheduler, publisher);
+        var middleware = CreateMiddleware(new RedeliveryOptions { RetryCount = 3 }, scheduler, publisher);
         var callCount = 0;
 
         await middleware.InvokeAsync(BuildContext(), (_, _) =>
@@ -204,7 +204,7 @@ public sealed class RedeliverySchedulingMiddlewareTests
     private sealed class TestPublisher : IMessagePublisher
     {
         public List<SentMessage<object>> Sent { get; } = [];
-        
+
         public Task Publish<T>(T message, CancellationToken cancellationToken = default) where T : class
             => Task.CompletedTask;
 
@@ -223,7 +223,8 @@ public sealed class RedeliverySchedulingMiddlewareTests
         public Task Send<T>(string queueName, T message, CancellationToken cancellationToken = default) where T : class
             => Task.CompletedTask;
 
-        public Task Send<T>(string queueName, T message, MessageHeaders headers, CancellationToken cancellationToken = default) where T : class
+        public Task Send<T>(string queueName, T message, MessageHeaders headers,
+            CancellationToken cancellationToken = default) where T : class
         {
             Sent.Add(new SentMessage<object>(queueName, message, headers));
             return Task.CompletedTask;
@@ -233,7 +234,7 @@ public sealed class RedeliverySchedulingMiddlewareTests
     private sealed class TestScheduler : IMessageScheduler
     {
         public List<ScheduledMessage<object>> Scheduled { get; } = [];
-        
+
         public Task SchedulePublish<T>(T message, DateTimeOffset scheduledAt,
             CancellationToken cancellationToken = default) where T : class => Task.CompletedTask;
 

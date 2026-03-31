@@ -17,9 +17,9 @@ public sealed class DispatchPipelineExecutor(
             var next = pipeline;
             pipeline = (ctx, ct) => current.InvokeAsync(ctx, next, ct);
         }
-        
+
         return pipeline(context, cancellationToken);
-            
+
         Task TerminalDispatchDelegate(DispatchContext ctx, CancellationToken ct)
         {
             return context.Descriptor.Dispatch(context, serviceProvider, cancellationToken);

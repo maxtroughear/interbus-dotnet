@@ -17,9 +17,3 @@ public interface IConsumeMiddleware
     Task InvokeAsync<T>(ConsumeContext<T> context, Func<ConsumeContext<T>, CancellationToken, Task> next,
         CancellationToken cancellationToken = default) where T : class;
 }
-
-// TODO: Delete
-/// <summary>
-/// Delegate representing a step — or the remainder — of the consume pipeline.
-/// </summary>
-public delegate Task ConsumeDelegate<T>(ConsumeContext<T> context, CancellationToken cancellationToken = default);

@@ -12,21 +12,25 @@ namespace InterBus;
 /// is performed during message dispatch.
 /// </para>
 /// </summary>
-public sealed class ConsumerDescriptor
+public sealed class ConsumerDescriptor(
+    Type consumerType,
+    string queueName,
+    IReadOnlyList<Type> messageTypes,
+    Func<DispatchContext, IServiceProvider, CancellationToken, Task> dispatch)
 {
     /// <summary>The concrete consumer type.</summary>
-    public Type ConsumerType { get; }
+    public Type ConsumerType { get; } = consumerType;
 
     /// <summary>
     /// The queue name for this consumer (derived from the consumer type by convention).
     /// Each consumer class has exactly one queue.
     /// </summary>
-    public string QueueName { get; }
+    public string QueueName { get; } = queueName;
 
     /// <summary>
     /// The message types this consumer handles
     /// </summary>
-    public IReadOnlyList<Type> MessageTypes { get; }
+    public IReadOnlyList<Type> MessageTypes { get; } = messageTypes;
 
     /// <summary>
     /// Dispatch delegate. Reads the <see cref="InterBusHeaders.MessageType"/> header from the
@@ -34,17 +38,5 @@ public sealed class ConsumerDescriptor
     /// and invokes the correct <c>Consume</c> overload on the consumer. If the message type is
     /// not handled by this consumer it logs an error and returns without throwing.
     /// </summary>
-    public Func<DispatchContext, IServiceProvider, CancellationToken, Task> Dispatch { get; }
-
-    public ConsumerDescriptor(
-        Type consumerType,
-        string queueName,
-        IReadOnlyList<Type> messageTypes,
-        Func<DispatchContext, IServiceProvider, CancellationToken, Task> dispatch)
-    {
-        ConsumerType = consumerType;
-        QueueName = queueName;
-        MessageTypes = messageTypes;
-        Dispatch = dispatch;
-    }
+    public Func<DispatchContext, IServiceProvider, CancellationToken, Task> Dispatch { get; } = dispatch;
 }

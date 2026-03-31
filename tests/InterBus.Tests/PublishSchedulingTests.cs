@@ -5,7 +5,7 @@ using Xunit;
 namespace InterBus.Tests;
 
 /// <summary>
-/// Unit tests for <see cref="PublishMessageScheduler"/> — the publish-based
+/// Unit tests for <see cref="PublishMessageScheduler"/> - the publish-based
 /// <see cref="IMessageScheduler"/> implementation registered via
 /// <see cref="InterBusBuilderExtensions.AddPublishScheduling"/>.
 /// </summary>
@@ -35,7 +35,7 @@ public sealed class PublishSchedulingTests
 
     #endregion
 
-    #region AddPublishScheduling — registration
+    #region AddPublishScheduling - registration
 
     [Fact]
     public void AddPublishScheduling_RegistersIMessageScheduler()
@@ -60,10 +60,7 @@ public sealed class PublishSchedulingTests
     {
         var services = new ServiceCollection();
         services.AddLogging();
-        services.AddInterBus(bus =>
-        {
-            bus.Services.AddSingleton<IInterBusTransport, NoOpTransport>();
-        });
+        services.AddInterBus(bus => { bus.Services.AddSingleton<IInterBusTransport, NoOpTransport>(); });
 
         var provider = services.BuildServiceProvider();
         var scheduler = provider.GetService<IMessageScheduler>();
@@ -73,7 +70,7 @@ public sealed class PublishSchedulingTests
 
     #endregion
 
-    #region SchedulePublish — forwards command to scheduling consumer queue
+    #region SchedulePublish - forwards command to scheduling consumer queue
 
     [Fact]
     public async Task SchedulePublish_SendsCommandToSchedulingConsumerQueue()
@@ -114,7 +111,7 @@ public sealed class PublishSchedulingTests
 
     #endregion
 
-    #region ScheduleSend — forwards command to scheduling consumer queue
+    #region ScheduleSend - forwards command to scheduling consumer queue
 
     [Fact]
     public async Task ScheduleSend_ByConsumerType_SendsCommandToSchedulingConsumerQueue()
@@ -143,7 +140,7 @@ public sealed class PublishSchedulingTests
 
     #endregion
 
-    #region AddSchedulingConsumer — consumer is registered with the transport
+    #region AddSchedulingConsumer - consumer is registered with the transport
 
     [Fact]
     public void AddSchedulingConsumer_RegistersConsumer()

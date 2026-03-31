@@ -12,7 +12,7 @@ namespace InterBus.Middleware;
 public sealed class ConsumePipelineExecutor(IEnumerable<IConsumeMiddleware> middlewares)
 {
     private readonly IList<IConsumeMiddleware> _middlewares = middlewares.Reverse().ToList();
-    
+
     /// <summary>
     /// Builds and runs the consume pipeline for the given <paramref name="context"/> and
     /// <paramref name="finalDelegate"/>

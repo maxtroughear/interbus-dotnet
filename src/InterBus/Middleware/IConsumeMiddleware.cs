@@ -14,11 +14,6 @@ public interface IConsumeMiddleware
     /// Execute this middleware step.
     /// Call <paramref name="next"/> to pass control to the next step in the pipeline.
     /// </summary>
-    Task InvokeAsync(ConsumeContext context, Func<ConsumeContext, CancellationToken, Task> next,
-        CancellationToken cancellationToken = default);
+    Task InvokeAsync<T>(ConsumeContext<T> context, Func<ConsumeContext<T>, CancellationToken, Task> next,
+        CancellationToken cancellationToken = default) where T : class;
 }
-
-/// <summary>
-/// Delegate representing a step — or the remainder — of the consume pipeline.
-/// </summary>
-public delegate Task ConsumeDelegate(ConsumeContext context, CancellationToken cancellationToken = default);

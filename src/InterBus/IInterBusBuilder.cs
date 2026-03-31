@@ -35,14 +35,14 @@ public interface IInterBusBuilder
     /// The <paramref name="messageTypes"/> array is used to resolve topic names (respecting any
     /// <see cref="ConfigureTopic{T}"/> overrides) and to subscribe the consumer's queue to each topic.
     /// The <paramref name="dispatch"/> delegate reads the <see cref="InterBusHeaders.MessageType"/>
-    /// header and routes to the appropriate <c>Consume</c> overload — no runtime reflection.
+    /// header and routes to the appropriate <c>Consume</c> overload - no runtime reflection.
     /// </para>
     /// </summary>
     IInterBusBuilder AddConsumer<
         [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
         TConsumer>(
         Type[] messageTypes,
-        Func<IServiceProvider, byte[], IConsumeContext, CancellationToken, Task> dispatch)
+        Func<DispatchContext, IServiceProvider, CancellationToken, Task> dispatch)
         where TConsumer : class, IConsumer;
 
     /// <summary>
@@ -55,7 +55,7 @@ public interface IInterBusBuilder
     /// The <paramref name="queueName"/> is used to override the default queue name derived from the
     /// consumer type's fully qualified name
     /// The <paramref name="dispatch"/> delegate reads the <see cref="InterBusHeaders.MessageType"/>
-    /// header and routes to the appropriate <c>Consume</c> overload — no runtime reflection.
+    /// header and routes to the appropriate <c>Consume</c> overload - no runtime reflection.
     /// </para>
     /// </summary>
     IInterBusBuilder AddConsumer<
@@ -63,7 +63,7 @@ public interface IInterBusBuilder
         TConsumer>(
         Type[] messageTypes,
         string queueName,
-        Func<IServiceProvider, byte[], IConsumeContext, CancellationToken, Task> dispatch)
+        Func<DispatchContext, IServiceProvider, CancellationToken, Task> dispatch)
         where TConsumer : class, IConsumer;
 
     /// <summary>
@@ -79,7 +79,7 @@ public interface IInterBusBuilder
 
     /// <summary>
     /// Add a middleware step to the publish pipeline.
-    /// Steps are executed in registration order — the first registered step is outermost
+    /// Steps are executed in registration order - the first registered step is outermost
     /// and runs first. The terminal step calls the configured <see cref="IInterBusTransport"/>.
     /// </summary>
     IInterBusBuilder UsePublishMiddleware<
@@ -89,7 +89,7 @@ public interface IInterBusBuilder
 
     /// <summary>
     /// Add a middleware step to the consume pipeline.
-    /// Steps are executed in registration order — the first registered step is outermost
+    /// Steps are executed in registration order - the first registered step is outermost
     /// and runs first. The terminal step invokes the consumer's dispatch delegate.
     /// </summary>
     /// <remarks>

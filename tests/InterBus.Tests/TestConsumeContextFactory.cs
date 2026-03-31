@@ -8,9 +8,9 @@ namespace InterBus.Tests;
 /// </summary>
 internal static class TestConsumeContextFactory
 {
-    public static ConsumeContext Create(ConsumerDescriptor descriptor) =>
-        new(descriptor, "{}"u8.ToArray(), new MessageHeaders());
+    public static ConsumeContext<T> Create<T>(ConsumerDescriptor descriptor) where T : new() =>
+        new(descriptor, new T(), new MessageHeaders());
 
-    public static ConsumeContext Create(ConsumerDescriptor descriptor, MessageHeaders headers) =>
-        new(descriptor, "{}"u8.ToArray(), headers);
+    public static ConsumeContext<T> Create<T>(ConsumerDescriptor descriptor, MessageHeaders headers) where T : new() =>
+        new(descriptor, new T(), headers);
 }

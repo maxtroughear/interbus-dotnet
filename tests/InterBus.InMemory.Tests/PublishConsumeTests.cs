@@ -219,7 +219,7 @@ public class PublishConsumeTests
     /// <summary>
     /// Verifies the one-queue-per-consumer design: a consumer implementing two <c>IConsumer&lt;T&gt;</c>
     /// interfaces shares a single queue. Both message types are dispatched to the correct
-    /// <c>Consume</c> overload via the source-generated delegate — no runtime reflection.
+    /// <c>Consume</c> overload via the source-generated delegate - no runtime reflection.
     /// </summary>
     [Fact]
     public async Task MultiTypeConsumer_SingleQueue_ReceivesBothMessageTypes()

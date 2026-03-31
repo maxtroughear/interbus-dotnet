@@ -79,7 +79,8 @@ internal sealed class InMemoryMessagePump : BackgroundService
     private async Task DispatchAsync(ConsumerDescriptor descriptor, InMemoryEnvelope envelope, CancellationToken ct)
     {
         await using var scope = _scopeFactory.CreateAsyncScope();
-        var executor = scope.ServiceProvider.GetRequiredService<ConsumePipelineExecutor>();
-        await executor.ExecuteAsync(descriptor, envelope.Payload, envelope.Headers, ct);
+        var executor = scope.ServiceProvider.GetRequiredService<DispatchPipelineExecutor>();
+        var context = new DispatchContext(descriptor, envelope.Payload, envelope.Headers);
+        await executor.ExecuteAsync(context, ct);
     }
 }

@@ -5,19 +5,19 @@ using Microsoft.Extensions.Logging;
 namespace InterBus.Retry;
 
 /// <summary>
-/// Consume middleware that schedules retry attempts by redelivering the failed message
-/// back to the same transport queue.
+/// Consume middleware that retries by scheduling the failed message for redelivery back to the same transport queue
+/// with configurable delay and retry count
 /// </summary>
 /// <remarks>
 /// Configure via <see cref="IInterBusBuilder"/> using <c>UseRedeliveryRetryMiddleware</c>
-/// and supply <see cref="RedeliveryRetryOptions"/> to control retry count, delay strategy,
+/// and supply <see cref="RedeliveryOptions"/> to control retry count, delay strategy,
 /// and exception filtering.
 /// </remarks>
-public sealed class RedeliveryRetryConsumeMiddleware(
-    RedeliveryRetryOptions options,
-    IInterBusTransport transport,
-    IMessageSchedulingProvider? schedulingProvider,
-    ILogger<RedeliveryRetryConsumeMiddleware> logger) : IConsumeMiddleware
+public sealed class RedeliverySchedulingConsumeMiddleware(
+    RedeliveryOptions options,
+    IMessageScheduler scheduler,
+    IMessagePublisher publisher,
+    ILogger<RedeliverySchedulingConsumeMiddleware> logger) : IConsumeMiddleware
 {
     /// <summary>
     /// Header key storing the number of redelivery retries already scheduled for a message.
@@ -25,10 +25,10 @@ public sealed class RedeliveryRetryConsumeMiddleware(
     public const string RetryCountHeader = "interbus-redelivery-retry-count";
 
     /// <inheritdoc />
-    public async Task InvokeAsync(
-        ConsumeContext context,
-        Func<ConsumeContext, CancellationToken, Task> next,
-        CancellationToken cancellationToken = default)
+    public async Task InvokeAsync<T>(
+        ConsumeContext<T> context,
+        Func<ConsumeContext<T>, CancellationToken, Task> next,
+        CancellationToken cancellationToken = default) where T : class
     {
         try
         {
@@ -55,18 +55,22 @@ public sealed class RedeliveryRetryConsumeMiddleware(
                 [RetryCountHeader] = nextAttempt.ToString(CultureInfo.InvariantCulture)
             };
 
-            if (delay > TimeSpan.Zero && schedulingProvider != null)
+            // replace scheduling provider with a factory to pull either
+            // 1. standard delay provider (sets a delay on the message send that is handled by a transport directly)
+            // 2. 
+
+            if (delay > TimeSpan.Zero)
             {
-                await schedulingProvider.ScheduleSendToQueueAsync(
+                await scheduler.ScheduleSend(
                     context.Descriptor.QueueName,
                     context.Payload,
                     redeliveryHeaders,
-                    DateTimeOffset.UtcNow + delay,
+                    delay,
                     cancellationToken);
             }
             else
             {
-                await transport.SendToQueueAsync(
+                await publisher.Send(
                     context.Descriptor.QueueName,
                     context.Payload,
                     redeliveryHeaders,

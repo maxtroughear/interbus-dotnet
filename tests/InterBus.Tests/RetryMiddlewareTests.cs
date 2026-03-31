@@ -16,15 +16,15 @@ public sealed class RetryMiddlewareTests
     /// <summary>
     /// Builds a minimal <see cref="ConsumeContext"/> using a no-op dispatch descriptor.
     /// </summary>
-    private static ConsumeContext BuildContext() =>
-        BuildContext(new ConsumerDescriptor(
+    private static ConsumeContext<TestMessage> BuildContext() =>
+        BuildContext<TestMessage>(new ConsumerDescriptor(
             typeof(NoOpConsumer),
             "test-queue",
             [typeof(TestMessage)],
-            (_, _, _, _) => Task.CompletedTask));
+            (_, _, _) => Task.CompletedTask));
 
-    private static ConsumeContext BuildContext(ConsumerDescriptor descriptor) =>
-        TestConsumeContextFactory.Create(descriptor);
+    private static ConsumeContext<T> BuildContext<T>(ConsumerDescriptor descriptor) where T : new() =>
+        TestConsumeContextFactory.Create<T>(descriptor);
 
     /// <summary>
     /// Creates a <see cref="RetryConsumeMiddleware"/> using the given options.
@@ -273,6 +273,34 @@ public sealed class RetryMiddlewareTests
         Assert.True(result > TimeSpan.Zero);
     }
 
+    [Fact]
+    public void RetryDelays_Linear_ReturnsLinearlyIncreasingDelay()
+    {
+        var baseDelay = TimeSpan.FromMilliseconds(100);
+        var factory = RetryDelays.Linear(baseDelay);
+        Assert.Equal(TimeSpan.FromMilliseconds(100), factory(1));
+        Assert.Equal(TimeSpan.FromMilliseconds(200), factory(2));
+        Assert.Equal(TimeSpan.FromMilliseconds(300), factory(3));
+    }
+    
+    [Fact]
+    public void RetryDelays_Intervals_ReturnsSpecifiedIntervals()
+    {
+        var intervals = new[] { TimeSpan.FromMilliseconds(100), TimeSpan.FromMilliseconds(200), TimeSpan.FromMilliseconds(300) };
+        var factory = RetryDelays.Intervals(intervals);
+        Assert.Equal(TimeSpan.FromMilliseconds(100), factory(1));
+        Assert.Equal(TimeSpan.FromMilliseconds(200), factory(2));
+        Assert.Equal(TimeSpan.FromMilliseconds(300), factory(3));
+    }
+
+    [Fact]
+    public void RetryDelays_Intervals_ReturnsMaximumInterval_WhenAttemptCountExceedsIntervals()
+    {
+        var intervals = new[] { TimeSpan.FromMilliseconds(100), TimeSpan.FromMilliseconds(200), TimeSpan.FromMilliseconds(300) };
+        var factory = RetryDelays.Intervals(intervals);
+        Assert.Equal(TimeSpan.FromMilliseconds(300), factory(4));
+    }
+
     #endregion
 
     #region Delay is applied
@@ -310,7 +338,13 @@ public sealed class RetryMiddlewareTests
 
     #region Support types
 
-    private sealed record TestMessage(Guid Id);
+    private sealed record TestMessage(Guid Id)
+    {
+        public TestMessage() : this(Guid.NewGuid())
+        {
+            
+        }
+    };
 
     private sealed class NoOpConsumer : IConsumer<TestMessage>
     {

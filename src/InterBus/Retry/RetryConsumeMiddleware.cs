@@ -24,10 +24,10 @@ public sealed class RetryConsumeMiddleware(
     ILogger<RetryConsumeMiddleware> logger) : IConsumeMiddleware
 {
     /// <inheritdoc/>
-    public async Task InvokeAsync(
-        ConsumeContext context,
-        Func<ConsumeContext, CancellationToken, Task> next,
-        CancellationToken cancellationToken = default)
+    public async Task InvokeAsync<T>(
+        ConsumeContext<T> context,
+        Func<ConsumeContext<T>, CancellationToken, Task> next,
+        CancellationToken cancellationToken = default) where T : class
     {
         var attempt = 0;
 

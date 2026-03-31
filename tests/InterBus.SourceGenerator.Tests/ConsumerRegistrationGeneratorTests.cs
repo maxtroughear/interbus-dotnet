@@ -591,9 +591,8 @@ public sealed class ConsumerRegistrationGeneratorTests
         Assert.Single(result.GeneratedTrees);
 
         var generated = result.GeneratedTrees[0].ToString();
-
-        // Dispatch delegate uses IMessageSerializer.Deserialize<T> — no direct JSON coupling.
-        Assert.Contains("serializer.Deserialize<global::MyApp.OrderPlaced>(payload)", generated);
+        
+        Assert.Contains("serializer.Deserialize<global::MyApp.OrderPlaced>(context.Payload)", generated);
         Assert.Contains("GetRequiredService<global::InterBus.IMessageSerializer>()", generated);
         // No direct System.Text.Json references in the generated dispatch code.
         Assert.DoesNotContain("System.Text.Json.JsonSerializer", generated);

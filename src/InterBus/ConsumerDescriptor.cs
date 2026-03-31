@@ -1,3 +1,5 @@
+using InterBus.Middleware;
+
 namespace InterBus;
 
 /// <summary>
@@ -32,13 +34,13 @@ public sealed class ConsumerDescriptor
     /// and invokes the correct <c>Consume</c> overload on the consumer. If the message type is
     /// not handled by this consumer it logs an error and returns without throwing.
     /// </summary>
-    public Func<IServiceProvider, byte[], IConsumeContext, CancellationToken, Task> Dispatch { get; }
+    public Func<DispatchContext, IServiceProvider, CancellationToken, Task> Dispatch { get; }
 
     public ConsumerDescriptor(
         Type consumerType,
         string queueName,
         IReadOnlyList<Type> messageTypes,
-        Func<IServiceProvider, byte[], IConsumeContext, CancellationToken, Task> dispatch)
+        Func<DispatchContext, IServiceProvider, CancellationToken, Task> dispatch)
     {
         ConsumerType = consumerType;
         QueueName = queueName;

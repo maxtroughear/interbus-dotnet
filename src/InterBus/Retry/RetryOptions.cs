@@ -3,10 +3,8 @@ namespace InterBus.Retry;
 /// <summary>
 /// Configures in-process message retry behaviour for <see cref="RetryConsumeMiddleware"/>.
 /// </summary>
-public sealed class RetryOptions
+public class RetryOptions
 {
-    private int _retryCount = 3;
-
     /// <summary>
     /// The number of times to retry after the initial attempt fails.
     /// Must be greater than zero. Defaults to <c>3</c>.
@@ -14,14 +12,14 @@ public sealed class RetryOptions
     /// <exception cref="ArgumentOutOfRangeException">Thrown when the value is less than 1.</exception>
     public int RetryCount
     {
-        get => _retryCount;
+        get;
         set
         {
             if (value < 1)
                 throw new ArgumentOutOfRangeException(nameof(value), value, "RetryCount must be at least 1.");
-            _retryCount = value;
+            field = value;
         }
-    }
+    } = 3;
 
     /// <summary>
     /// Computes the delay to wait before a specific retry attempt.

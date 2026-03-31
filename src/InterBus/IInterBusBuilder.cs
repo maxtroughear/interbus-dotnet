@@ -42,7 +42,7 @@ public interface IInterBusBuilder
         [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
         TConsumer>(
         Type[] messageTypes,
-        Func<IServiceProvider, byte[], IConsumeContext, CancellationToken, Task> dispatch)
+        Func<DispatchContext, IServiceProvider, CancellationToken, Task> dispatch)
         where TConsumer : class, IConsumer;
 
     /// <summary>
@@ -63,7 +63,7 @@ public interface IInterBusBuilder
         TConsumer>(
         Type[] messageTypes,
         string queueName,
-        Func<IServiceProvider, byte[], IConsumeContext, CancellationToken, Task> dispatch)
+        Func<DispatchContext, IServiceProvider, CancellationToken, Task> dispatch)
         where TConsumer : class, IConsumer;
 
     /// <summary>

@@ -9,37 +9,21 @@ namespace InterBus.Middleware;
 /// Transport packages should resolve this service from the message scope and call
 /// <see cref="ExecuteAsync"/> instead of invoking the consumer dispatch delegate directly.
 /// </summary>
-public sealed class ConsumePipelineExecutor
+public sealed class ConsumePipelineExecutor(IEnumerable<IConsumeMiddleware> middlewares)
 {
-    private readonly IEnumerable<IConsumeMiddleware> _middlewares;
-    private readonly IServiceProvider _serviceProvider;
-
+    private readonly IList<IConsumeMiddleware> _middlewares = middlewares.Reverse().ToList();
+    
     /// <summary>
-    /// Initializes the executor. Both parameters are resolved from the per-message scope.
+    /// Builds and runs the consume pipeline for the given <paramref name="context"/> and
+    /// <paramref name="finalDelegate"/>
     /// </summary>
-    public ConsumePipelineExecutor(
-        IEnumerable<IConsumeMiddleware> middlewares,
-        IServiceProvider serviceProvider)
+    public Task ExecuteAsync<T>(
+        ConsumeContext<T> context,
+        Func<T, IConsumeContext, CancellationToken, Task> finalDelegate,
+        CancellationToken cancellationToken = default) where T : class
     {
-        _middlewares = middlewares;
-        _serviceProvider = serviceProvider;
-    }
-
-    /// <summary>
-    /// Builds and runs the consume pipeline for the given <paramref name="descriptor"/>.
-    /// </summary>
-    public Task ExecuteAsync(
-        ConsumerDescriptor descriptor,
-        byte[] payload,
-        MessageHeaders headers,
-        CancellationToken cancellationToken = default)
-    {
-        var context = new ConsumeContext(descriptor, payload, headers);
-
-        // Build pipeline: first registered middleware is outermost.
-        // Iterate in reverse so each new step wraps the already-built inner chain.
         var pipeline = TerminalConsumeDelegate;
-        foreach (var middleware in _middlewares.Reverse())
+        foreach (var middleware in _middlewares)
         {
             var current = middleware;
             var next = pipeline;
@@ -48,10 +32,10 @@ public sealed class ConsumePipelineExecutor
 
         return pipeline(context, cancellationToken);
 
-        Task TerminalConsumeDelegate(ConsumeContext ctx, CancellationToken ct)
+        Task TerminalConsumeDelegate(ConsumeContext<T> ctx, CancellationToken ct)
         {
-            var consumeContext = new Internal.ConsumeContext(headers);
-            return ctx.Descriptor.Dispatch(_serviceProvider, ctx.Payload, consumeContext, ct);
+            var consumeContext = new ConsumeContext(ctx.Headers);
+            return finalDelegate(ctx.Payload, consumeContext, ct);
         }
     }
 }

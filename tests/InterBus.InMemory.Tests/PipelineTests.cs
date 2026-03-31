@@ -85,7 +85,7 @@ public class PipelineTests
     {
         public async Task InvokeAsync<T>(PublishContext<T> context,
             Func<PublishContext<T>, CancellationToken, Task> next,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default) where T : class
         {
             tracker.Record("before-" + context.Destination);
             // Demonstrate header mutation (claim-check-like interception point).
@@ -333,8 +333,8 @@ public class PipelineTests
 
     public sealed class RecordingConsumeMiddleware(ConsumeMiddlewareCallTracker tracker) : IConsumeMiddleware
     {
-        public async Task InvokeAsync(ConsumeContext context, Func<ConsumeContext, CancellationToken, Task> next,
-            CancellationToken cancellationToken = default)
+        public async Task InvokeAsync<T>(ConsumeContext<T> context, Func<ConsumeContext<T>, CancellationToken, Task> next,
+            CancellationToken cancellationToken = default) where T : class
         {
             tracker.Increment();
             await next(context, cancellationToken);
@@ -345,7 +345,7 @@ public class PipelineTests
     {
         public async Task InvokeAsync<T>(PublishContext<T> context,
             Func<PublishContext<T>, CancellationToken, Task> next,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default) where T : class
         {
             log.Enqueue("first-enter");
             await next(context, cancellationToken);
@@ -357,7 +357,7 @@ public class PipelineTests
     {
         public async Task InvokeAsync<T>(PublishContext<T> context,
             Func<PublishContext<T>, CancellationToken, Task> next,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default) where T : class
         {
             log.Enqueue("second-enter");
             await next(context, cancellationToken);

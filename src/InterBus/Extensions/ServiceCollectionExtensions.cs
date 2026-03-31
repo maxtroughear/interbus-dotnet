@@ -47,10 +47,10 @@ public static class ServiceCollectionExtensions
         services.AddSingleton(options);
 
         // Register the default serialiser if the user has not supplied one via UseSerializer<T>()
-        // or a direct services.AddSingleton<IMessageSerializer>(...) call inside configure.
+        // or a direct services.AddSingleton<IMessageSerializer>(...) call inside configure
         services.TryAddSingleton<IMessageSerializer, SystemTextJsonMessageSerializer>();
-
-        // Register the consume pipeline executor (scoped: one per message dispatch scope).
+        
+        services.AddScoped<DispatchPipelineExecutor>();
         services.AddScoped<ConsumePipelineExecutor>();
 
         // Register the scoped publisher.

@@ -7,7 +7,7 @@ namespace InterBus.InMemory;
 /// Each registered consumer gets exactly one <see cref="InMemoryQueue"/>.
 /// Routing to the correct <c>Consume</c> overload is handled by the consumer's
 /// <see cref="ConsumerDescriptor.Dispatch"/> delegate using the
-/// <see cref="InterBusHeaders.MessageType"/> header — no topic-name lookup required here.
+/// <see cref="InterBusHeaders.MessageType"/> header - no topic-name lookup required here.
 /// </summary>
 internal sealed class InMemoryQueue
 {

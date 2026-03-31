@@ -47,4 +47,3 @@ public interface IMessagePublisher
     Task Send<T>(string queueName, T message, MessageHeaders headers, CancellationToken cancellationToken = default)
         where T : class;
 }
-

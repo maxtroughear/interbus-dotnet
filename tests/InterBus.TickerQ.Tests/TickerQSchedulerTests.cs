@@ -70,7 +70,7 @@ public sealed class TickerQSchedulerTests
 
     #endregion
 
-    #region TickerQMessageScheduler — separate function names
+    #region TickerQMessageScheduler - separate function names
 
     [Fact]
     public async Task ScheduleSendToQueueAsync_CreatesTimeTicker_WithSendFunctionName()
@@ -228,9 +228,13 @@ public sealed class TickerQSchedulerTests
 
         public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
-        public void RestartIfNeeded(DateTime? dateTime) { }
+        public void RestartIfNeeded(DateTime? dateTime)
+        {
+        }
 
-        public void Restart() { }
+        public void Restart()
+        {
+        }
     }
 
     private sealed class TrackingHostScheduler : ITickerQHostScheduler
@@ -245,7 +249,9 @@ public sealed class TickerQSchedulerTests
 
         public void RestartIfNeeded(DateTime? dateTime) => RestartIfNeededCallCount++;
 
-        public void Restart() { }
+        public void Restart()
+        {
+        }
     }
 
     #endregion

@@ -63,12 +63,13 @@ public sealed class RedeliveryRetryIntegrationTests
         var tracker = new RedeliveryTracker();
 
         var (provider, cts) = await StartAsync(
-            services => services.AddSingleton(tracker),
+            services => { services.AddSingleton(tracker); },
             bus =>
             {
                 bus.AddInMemoryTransport();
                 bus.AddConsumer<RedeliveryTestConsumer>();
-                bus.UseRedeliveryRetryMiddleware(options => options.RetryCount = 3);
+                bus.AddScheduling();
+                bus.UseRedeliveryImmediateMiddleware(options => options.RetryCount = 3);
             });
 
         try
@@ -116,7 +117,7 @@ public sealed class RedeliveryTracker
 
     public void RecordRetryHeader(IReadOnlyDictionary<string, string> headers)
     {
-        headers.TryGetValue(RedeliveryRetryConsumeMiddleware.RetryCountHeader, out var value);
+        headers.TryGetValue(RedeliveryImmediateConsumeMiddleware.RetryCountHeader, out var value);
         _seenRetryHeaders.Add(value);
     }
 }

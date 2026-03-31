@@ -1,5 +1,6 @@
 using System.Text.Json;
 using InterBus.Internal;
+using InterBus.Middleware;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
@@ -58,28 +59,31 @@ public static class InterBusBuilderExtensions
         ArgumentNullException.ThrowIfNull(builder);
 
         var publishCommandTypeName = typeof(SchedulePublishCommand).FullName
-                                     ?? typeof(SchedulePublishCommand).Name;
+                                     ?? nameof(SchedulePublishCommand);
         var sendCommandTypeName = typeof(ScheduleSendCommand).FullName
-                                  ?? typeof(ScheduleSendCommand).Name;
+                                  ?? nameof(ScheduleSendCommand);
 
         builder.AddConsumer<SchedulingConsumer>(
             [typeof(SchedulePublishCommand), typeof(ScheduleSendCommand)],
-            (sp, payload, ctx, ct) =>
+            (ctx, sp, ct) =>
             {
                 var consumer = sp.GetRequiredService<SchedulingConsumer>();
                 var serializer = sp.GetRequiredService<IMessageSerializer>();
-                var messageType = ctx.MessageType;
+                var consumePipeline = sp.GetRequiredService<ConsumePipelineExecutor>();
+                var messageType = ctx.Headers[InterBusHeaders.MessageType];
 
                 if (messageType == publishCommandTypeName)
                 {
-                    var cmd = serializer.Deserialize<SchedulePublishCommand>(payload)!;
-                    return consumer.Consume(cmd, ctx, ct);
+                    var cmd = serializer.Deserialize<SchedulePublishCommand>(ctx.Payload)!;
+                    var consumeContext = new ConsumeContext<SchedulePublishCommand>(ctx.Descriptor, cmd, ctx.Headers);
+                    return consumePipeline.ExecuteAsync(consumeContext, consumer.Consume, ct);
                 }
 
                 if (messageType == sendCommandTypeName)
                 {
-                    var cmd = serializer.Deserialize<ScheduleSendCommand>(payload)!;
-                    return consumer.Consume(cmd, ctx, ct);
+                    var cmd = serializer.Deserialize<ScheduleSendCommand>(ctx.Payload)!;
+                    var consumeContext = new ConsumeContext<ScheduleSendCommand>(ctx.Descriptor, cmd, ctx.Headers);
+                    return consumePipeline.ExecuteAsync(consumeContext, consumer.Consume, ct);
                 }
 
                 return Task.CompletedTask;

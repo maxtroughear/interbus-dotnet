@@ -9,24 +9,14 @@ namespace InterBus.Internal;
 /// Always stamps the <see cref="InterBusHeaders.MessageType"/> header so consumer dispatch
 /// delegates can identify the message type without runtime reflection.
 /// </summary>
-internal sealed class MessagePublisher : IMessagePublisher
+internal sealed class MessagePublisher(
+    IInterBusTransport transport,
+    InterBusOptions options,
+    IMessageSerializer serializer,
+    IEnumerable<IPublishMiddleware> middlewares)
+    : IMessagePublisher
 {
-    private readonly IInterBusTransport _transport;
-    private readonly IList<IPublishMiddleware> _middlewares;
-    private readonly InterBusOptions _options;
-    private readonly IMessageSerializer _serializer;
-
-    public MessagePublisher(
-        IInterBusTransport transport,
-        InterBusOptions options,
-        IMessageSerializer serializer,
-        IEnumerable<IPublishMiddleware> middlewares)
-    {
-        _transport = transport;
-        _options = options;
-        _serializer = serializer;
-        _middlewares = middlewares.Reverse().ToList(); // Reverse middleware order for the correct execution order
-    }
+    private readonly IList<IPublishMiddleware> _middlewares = middlewares.Reverse().ToList(); // Reverse middleware order for the correct execution order
 
     private Func<PublishContext<T>, CancellationToken, Task> BuildMiddlewarePipeline<T>() where T : class
     {
@@ -45,11 +35,11 @@ internal sealed class MessagePublisher : IMessagePublisher
         // Terminal step: forward serialized payload to the transport.
         Task TerminalPublishDelegate(PublishContext<T> ctx, CancellationToken ct)
         {
-            var payload = _serializer.Serialize(ctx.Payload);
+            var payload = serializer.Serialize(ctx.Payload);
 
             return ctx.IsTopic
-                ? _transport.PublishToTopicAsync(ctx.Destination, payload, ctx.Headers, ct)
-                : _transport.SendToQueueAsync(ctx.Destination, payload, ctx.Headers, ct);
+                ? transport.PublishToTopicAsync(ctx.Destination, payload, ctx.Headers, ct)
+                : transport.SendToQueueAsync(ctx.Destination, payload, ctx.Headers, ct);
         }
     }
 
@@ -59,7 +49,7 @@ internal sealed class MessagePublisher : IMessagePublisher
     public Task Publish<T>(T message, MessageHeaders headers, CancellationToken cancellationToken = default)
         where T : class
     {
-        var topicName = _options.TryGetTopicName(typeof(T), out var customName)
+        var topicName = options.TryGetTopicName(typeof(T), out var customName)
             ? customName
             : RoutingConventions.TopicName(typeof(T));
         var enriched = Enrich<T>(headers);
@@ -114,4 +104,3 @@ internal sealed class MessagePublisher : IMessagePublisher
         return enriched;
     }
 }
-

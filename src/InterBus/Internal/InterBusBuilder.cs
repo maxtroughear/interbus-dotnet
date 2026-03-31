@@ -35,7 +35,7 @@ internal sealed class InterBusBuilder : IInterBusBuilder
         [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
         TConsumer>(
         Type[] messageTypes,
-        Func<IServiceProvider, byte[], IConsumeContext, CancellationToken, Task> dispatch)
+        Func<DispatchContext, IServiceProvider, CancellationToken, Task> dispatch)
         where TConsumer : class, IConsumer =>
         AddConsumer<TConsumer>(messageTypes, RoutingConventions.QueueName(typeof(TConsumer)), dispatch);
 
@@ -50,7 +50,7 @@ internal sealed class InterBusBuilder : IInterBusBuilder
         TConsumer>(
         Type[] messageTypes,
         string queueName,
-        Func<IServiceProvider, byte[], IConsumeContext, CancellationToken, Task> dispatch)
+        Func<DispatchContext, IServiceProvider, CancellationToken, Task> dispatch)
         where TConsumer : class, IConsumer
     {
         _options.AddConsumer(new ConsumerDescriptor(typeof(TConsumer), queueName, messageTypes, dispatch));

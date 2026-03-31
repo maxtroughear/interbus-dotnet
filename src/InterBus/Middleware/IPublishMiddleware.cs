@@ -16,5 +16,5 @@ public interface IPublishMiddleware
     /// Call <paramref name="next"/> to pass control to the next step in the pipeline.
     /// </summary>
     Task InvokeAsync<T>(PublishContext<T> context, Func<PublishContext<T>, CancellationToken, Task> next,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default) where T : class;
 }

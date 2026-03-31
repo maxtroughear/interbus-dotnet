@@ -1,33 +1,18 @@
-using System.Globalization;
+﻿using System.Globalization;
 using InterBus.Middleware;
 using Microsoft.Extensions.Logging;
 
 namespace InterBus.Retry;
 
-/// <summary>
-/// Consume middleware that schedules retry attempts by redelivering the failed message
-/// back to the same transport queue.
-/// </summary>
-/// <remarks>
-/// Configure via <see cref="IInterBusBuilder"/> using <c>UseRedeliveryRetryMiddleware</c>
-/// and supply <see cref="RedeliveryRetryOptions"/> to control retry count, delay strategy,
-/// and exception filtering.
-/// </remarks>
-public sealed class RedeliveryRetryConsumeMiddleware(
-    RedeliveryRetryOptions options,
-    IInterBusTransport transport,
-    ILogger<RedeliveryRetryConsumeMiddleware> logger) : IConsumeMiddleware
+public sealed class RedeliveryImmediateConsumeMiddleware(
+    RedeliveryOptions options,
+    IMessagePublisher publisher,
+    ILogger<RedeliveryImmediateConsumeMiddleware> logger) : IConsumeMiddleware
 {
-    /// <summary>
-    /// Header key storing the number of redelivery retries already scheduled for a message.
-    /// </summary>
-    public const string RetryCountHeader = "interbus-redelivery-retry-count";
+    public const string RetryCountHeader = "interbus-redelivery-immediate-retry-count";
 
-    /// <inheritdoc />
-    public async Task InvokeAsync(
-        ConsumeContext context,
-        Func<ConsumeContext, CancellationToken, Task> next,
-        CancellationToken cancellationToken = default)
+    public async Task InvokeAsync<T>(ConsumeContext<T> context, Func<ConsumeContext<T>, CancellationToken, Task> next,
+        CancellationToken cancellationToken = default) where T : class
     {
         try
         {
@@ -41,22 +26,18 @@ public sealed class RedeliveryRetryConsumeMiddleware(
         {
             logger.LogWarning(
                 ex,
-                "InterBus: scheduling transport redelivery attempt {Attempt}/{MaxAttempts} for consumer {ConsumerType} on queue {QueueName}",
+                "InterBus: redelivery attempt {Attempt}/{MaxAttempts} for consumer {ConsumerType} on queue {QueueName}",
                 nextAttempt,
                 options.RetryCount,
                 context.Descriptor.ConsumerType.Name,
                 context.Descriptor.QueueName);
-
-            var delay = options.DelayProvider(nextAttempt);
-            if (delay > TimeSpan.Zero)
-                await Task.Delay(delay, cancellationToken);
 
             var redeliveryHeaders = new MessageHeaders(context.Headers)
             {
                 [RetryCountHeader] = nextAttempt.ToString(CultureInfo.InvariantCulture)
             };
 
-            await transport.SendToQueueAsync(
+            await publisher.Send(
                 context.Descriptor.QueueName,
                 context.Payload,
                 redeliveryHeaders,

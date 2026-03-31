@@ -17,4 +17,30 @@ public static class InterBusHeaders
     /// <c>Consume</c> overload without runtime reflection.
     /// </summary>
     public const string MessageType = "interbus-message-type";
+
+    /// <summary>
+    /// Header key for the message identifier. Set automatically by <see cref="IMessagePublisher"/>
+    /// on every published and sent message
+    /// </summary>
+    public const string MessageId = "interbus-message-id";
+
+    /// <summary>
+    /// Header key for the scheduled delivery time. Set by InterBus when a message is scheduled for future delivery,
+    /// and read by InterBus when the message is delivered to determine if the message should be processed now or
+    /// redelivered to the queue for later processing. The value is a UTC timestamp in ISO 8601 format
+    /// (e.g. <c>2024-06-01T12:00:00Z</c>).
+    /// </summary>
+    /// /// <remarks>
+    /// The value is a UTC timestamp in ISO 8601 format (e.g. <c>2024-06-01T12:00:00Z</c>)
+    /// </remarks>
+    public const string ScheduledDeliveryTime = "interbus-scheduled-delivery-time";
+
+    /// <summary>
+    /// Header key indicating the expiration time of a message.
+    /// Specifies the time limit after which the message will no longer be considered valid.
+    /// </summary>
+    /// <remarks>
+    /// The value is a UTC timestamp in ISO 8601 format (e.g. <c>2024-06-01T12:00:00Z</c>)
+    /// </remarks>
+    public const string ExpirationTime = "interbus-expiration-time";
 }

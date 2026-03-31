@@ -34,7 +34,7 @@ public sealed class SchedulingTests
 
     #endregion
 
-    #region SchedulePublish — DateTimeOffset overload
+    #region SchedulePublish - DateTimeOffset overload
 
     [Fact]
     public async Task SchedulePublish_WithDateTimeOffset_CallsSchedulingProviderForTopic()
@@ -67,7 +67,7 @@ public sealed class SchedulingTests
 
     #endregion
 
-    #region SchedulePublish — TimeSpan overload (default interface impl)
+    #region SchedulePublish - TimeSpan overload (default interface impl)
 
     [Fact]
     public async Task SchedulePublish_WithTimeSpan_ComputesScheduledAtFromNow()
@@ -87,7 +87,7 @@ public sealed class SchedulingTests
 
     #endregion
 
-    #region ScheduleSend<TConsumer,T> — DateTimeOffset overload
+    #region ScheduleSend<TConsumer,T> - DateTimeOffset overload
 
     [Fact]
     public async Task ScheduleSend_ByConsumerType_CallsProviderForQueue()
@@ -120,7 +120,7 @@ public sealed class SchedulingTests
 
     #endregion
 
-    #region ScheduleSend<T>(queueName) — DateTimeOffset overload
+    #region ScheduleSend<T>(queueName) - DateTimeOffset overload
 
     [Fact]
     public async Task ScheduleSend_ByQueueName_CallsProviderForNamedQueue()
@@ -176,10 +176,7 @@ public sealed class SchedulingTests
     {
         var services = new ServiceCollection();
         services.AddLogging();
-        services.AddInterBus(bus =>
-        {
-            bus.Services.AddSingleton<IInterBusTransport, NoOpTransport>();
-        });
+        services.AddInterBus(bus => { bus.Services.AddSingleton<IInterBusTransport, NoOpTransport>(); });
 
         var provider = services.BuildServiceProvider();
         var schedulingPublisher = provider.GetService<IMessageScheduler>();
@@ -192,10 +189,7 @@ public sealed class SchedulingTests
     {
         var services = new ServiceCollection();
         services.AddLogging();
-        services.AddInterBus(bus =>
-        {
-            bus.Services.AddSingleton<IInterBusTransport, NoOpTransport>();
-        });
+        services.AddInterBus(bus => { bus.Services.AddSingleton<IInterBusTransport, NoOpTransport>(); });
 
         var provider = services.BuildServiceProvider();
         using var scope = provider.CreateScope();

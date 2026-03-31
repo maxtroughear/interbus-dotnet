@@ -62,4 +62,3 @@ public sealed class TickerQMessageScheduler : IMessageSchedulingProvider
         _hostScheduler.RestartIfNeeded(ticker.ExecutionTime);
     }
 }
-

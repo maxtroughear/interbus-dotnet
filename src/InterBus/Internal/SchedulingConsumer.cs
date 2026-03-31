@@ -10,20 +10,13 @@ namespace InterBus.Internal;
 /// <see cref="IMessageSchedulingProvider"/> (e.g. via <c>AddTickerQScheduler()</c>).
 /// </para>
 /// </summary>
-internal sealed class SchedulingConsumer :
+internal sealed class SchedulingConsumer(IMessageSchedulingProvider provider) :
     IConsumer<SchedulePublishCommand>,
     IConsumer<ScheduleSendCommand>
 {
-    private readonly IMessageSchedulingProvider _provider;
-
-    public SchedulingConsumer(IMessageSchedulingProvider provider)
-    {
-        _provider = provider;
-    }
-
     public Task Consume(SchedulePublishCommand message, IConsumeContext context,
         CancellationToken cancellationToken = default) =>
-        _provider.SchedulePublishToTopicAsync(
+        provider.SchedulePublishToTopicAsync(
             message.TopicName,
             message.Payload,
             new MessageHeaders(message.Headers),
@@ -32,7 +25,7 @@ internal sealed class SchedulingConsumer :
 
     public Task Consume(ScheduleSendCommand message, IConsumeContext context,
         CancellationToken cancellationToken = default) =>
-        _provider.ScheduleSendToQueueAsync(
+        provider.ScheduleSendToQueueAsync(
             message.QueueName,
             message.Payload,
             new MessageHeaders(message.Headers),

@@ -5,12 +5,13 @@ namespace InterBus.Internal;
 /// <summary>
 /// Scoped <see cref="IMessagePublisher"/> implementation. Serializes each message and routes it
 /// through the configured <see cref="IPublishMiddleware"/> pipeline. The terminal pipeline step
-/// forwards the message to the registered <see cref="IInterBusTransport"/>.
+/// resolves the correct <see cref="IInterBusTransport"/> by the destination URI scheme via
+/// <see cref="IInterBusTransportFactory"/> and forwards the message.
 /// Always stamps the <see cref="InterBusHeaders.MessageType"/> header so consumer dispatch
 /// delegates can identify the message type without runtime reflection.
 /// </summary>
 internal sealed class MessagePublisher(
-    IInterBusTransport transport,
+    IInterBusTransportFactory transportFactory,
     InterBusOptions options,
     IMessageSerializer serializer,
     IEnumerable<IPublishMiddleware> middlewares)
@@ -32,10 +33,11 @@ internal sealed class MessagePublisher(
 
         return pipeline;
 
-        // Terminal step: forward serialized payload to the transport.
+        // Terminal step: resolve the transport by destination URI scheme and forward.
         Task TerminalPublishDelegate(PublishContext<T> ctx, CancellationToken ct)
         {
             var payload = serializer.Serialize(ctx.Payload);
+            var transport = transportFactory.Resolve(ctx.Destination);
             return transport.SendAsync(ctx.Destination, payload, ctx.Headers, ct);
         }
     }

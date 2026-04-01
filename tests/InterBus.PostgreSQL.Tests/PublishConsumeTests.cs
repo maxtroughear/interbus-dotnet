@@ -9,21 +9,31 @@ using Xunit;
 namespace InterBus.PostgreSQL.Tests;
 
 /// <summary>
-/// Integration tests for the PostgreSQL transport. Each test class instance shares
-/// a single PostgreSQL container spun up via Testcontainers.
+/// Integration tests for the PostgreSQL transport.
+/// Each theory row spins up a fresh container for the specified Postgres image so that
+/// the same suite is validated against every supported major version.
 /// </summary>
-[Collection("PostgreSQL")]
-public sealed class PublishConsumeTests : IAsyncLifetime
+public sealed class PublishConsumeTests
 {
-    private readonly PostgreSqlContainer _pgContainer = new PostgreSqlBuilder("postgres:18-alpine")
-        .Build();
-
-    public ValueTask InitializeAsync() => new(_pgContainer.StartAsync());
-    public ValueTask DisposeAsync() => _pgContainer.DisposeAsync();
+    /// <summary>Postgres images exercised by every theory test.</summary>
+    public static TheoryData<string> PostgresImages => new()
+    {
+        "postgres:15-alpine",
+        "postgres:16-alpine",
+        "postgres:17-alpine",
+        "postgres:18-alpine",
+    };
 
     // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
+
+    private static async Task<PostgreSqlContainer> StartContainerAsync(string image)
+    {
+        var container = new PostgreSqlBuilder(image).Build();
+        await container.StartAsync();
+        return container;
+    }
 
     /// <summary>
     /// Polls <paramref name="condition"/> up to <paramref name="timeoutMs"/> milliseconds,
@@ -59,7 +69,8 @@ public sealed class PublishConsumeTests : IAsyncLifetime
         };
     }
 
-    private async Task<(ServiceProvider Provider, CancellationTokenSource Cts)> StartAsync(
+    private static async Task<(ServiceProvider Provider, CancellationTokenSource Cts)> StartAsync(
+        string connectionString,
         Action<IServiceCollection> registerSingletons,
         Action<IInterBusBuilder> configureBus)
     {
@@ -94,16 +105,19 @@ public sealed class PublishConsumeTests : IAsyncLifetime
     // Tests
     // -------------------------------------------------------------------------
 
-    [Fact]
-    public async Task Publish_SingleConsumer_MessageIsDelivered()
+    [Theory]
+    [MemberData(nameof(PostgresImages))]
+    public async Task Publish_SingleConsumer_MessageIsDelivered(string pgImage)
     {
+        await using var pg = await StartContainerAsync(pgImage);
         var tracker = new OrderPlacedTracker();
 
         var (provider, cts) = await StartAsync(
+            pg.GetConnectionString(),
             services => services.AddSingleton(tracker),
             bus =>
             {
-                bus.AddPostgreSqlTransport(o => o.ConnectionString = _pgContainer.GetConnectionString());
+                bus.AddPostgreSqlTransport(o => o.ConnectionString = pg.GetConnectionString());
                 bus.AddConsumer<OrderPlacedConsumer>(
                     [typeof(OrderPlaced)],
                     BuildDispatch<OrderPlacedConsumer, OrderPlaced>());
@@ -127,13 +141,16 @@ public sealed class PublishConsumeTests : IAsyncLifetime
         }
     }
 
-    [Fact]
-    public async Task Publish_MultipleConsumers_AllReceiveMessage()
+    [Theory]
+    [MemberData(nameof(PostgresImages))]
+    public async Task Publish_MultipleConsumers_AllReceiveMessage(string pgImage)
     {
+        await using var pg = await StartContainerAsync(pgImage);
         var orderTracker = new OrderPlacedTracker();
         var auditTracker = new AuditTracker();
 
         var (provider, cts) = await StartAsync(
+            pg.GetConnectionString(),
             services =>
             {
                 services.AddSingleton(orderTracker);
@@ -141,7 +158,7 @@ public sealed class PublishConsumeTests : IAsyncLifetime
             },
             bus =>
             {
-                bus.AddPostgreSqlTransport(o => o.ConnectionString = _pgContainer.GetConnectionString());
+                bus.AddPostgreSqlTransport(o => o.ConnectionString = pg.GetConnectionString());
                 bus.AddConsumer<OrderPlacedConsumer>(
                     [typeof(OrderPlaced)],
                     BuildDispatch<OrderPlacedConsumer, OrderPlaced>());
@@ -170,13 +187,16 @@ public sealed class PublishConsumeTests : IAsyncLifetime
         }
     }
 
-    [Fact]
-    public async Task Send_DirectToQueue_OnlyTargetConsumerReceives()
+    [Theory]
+    [MemberData(nameof(PostgresImages))]
+    public async Task Send_DirectToQueue_OnlyTargetConsumerReceives(string pgImage)
     {
+        await using var pg = await StartContainerAsync(pgImage);
         var orderTracker = new OrderPlacedTracker();
         var auditTracker = new AuditTracker();
 
         var (provider, cts) = await StartAsync(
+            pg.GetConnectionString(),
             services =>
             {
                 services.AddSingleton(orderTracker);
@@ -184,7 +204,7 @@ public sealed class PublishConsumeTests : IAsyncLifetime
             },
             bus =>
             {
-                bus.AddPostgreSqlTransport(o => o.ConnectionString = _pgContainer.GetConnectionString());
+                bus.AddPostgreSqlTransport(o => o.ConnectionString = pg.GetConnectionString());
                 bus.AddConsumer<OrderPlacedConsumer>(
                     [typeof(OrderPlaced)],
                     BuildDispatch<OrderPlacedConsumer, OrderPlaced>());
@@ -214,16 +234,20 @@ public sealed class PublishConsumeTests : IAsyncLifetime
         }
     }
 
-    [Fact]
-    public async Task SchemaIsCreatedAutomatically()
+    [Theory]
+    [MemberData(nameof(PostgresImages))]
+    public async Task SchemaIsCreatedAutomatically(string pgImage)
     {
+        await using var pg = await StartContainerAsync(pgImage);
+
         var (provider, cts) = await StartAsync(
+            pg.GetConnectionString(),
             _ => { },
-            bus => bus.AddPostgreSqlTransport(o => o.ConnectionString = _pgContainer.GetConnectionString()));
+            bus => bus.AddPostgreSqlTransport(o => o.ConnectionString = pg.GetConnectionString()));
 
         try
         {
-            await using var dataSource = Npgsql.NpgsqlDataSource.Create(_pgContainer.GetConnectionString());
+            await using var dataSource = Npgsql.NpgsqlDataSource.Create(pg.GetConnectionString());
             await using var conn = await dataSource.OpenConnectionAsync(TestContext.Current.CancellationToken);
             await using var cmd = conn.CreateCommand();
             cmd.CommandText =
@@ -238,11 +262,14 @@ public sealed class PublishConsumeTests : IAsyncLifetime
         }
     }
 
-    [Fact]
-    public async Task SchemaMigration_OptOut_DoesNotRunMigration()
+    [Theory]
+    [MemberData(nameof(PostgresImages))]
+    public async Task SchemaMigration_OptOut_DoesNotRunMigration(string pgImage)
     {
+        await using var pg = await StartContainerAsync(pgImage);
+
         // Pre-create the normalised schema and tables manually (simulating an external migration tool).
-        await using var setupDataSource = Npgsql.NpgsqlDataSource.Create(_pgContainer.GetConnectionString());
+        await using var setupDataSource = Npgsql.NpgsqlDataSource.Create(pg.GetConnectionString());
         await using var setupConn = await setupDataSource.OpenConnectionAsync(TestContext.Current.CancellationToken);
         await using var setupCmd = setupConn.CreateCommand();
         setupCmd.CommandText =
@@ -281,17 +308,18 @@ public sealed class PublishConsumeTests : IAsyncLifetime
 
         // Start the bus with schema migrations disabled — should not throw.
         var (provider, cts) = await StartAsync(
+            pg.GetConnectionString(),
             _ => { },
             bus => bus.AddPostgreSqlTransport(o =>
             {
-                o.ConnectionString = _pgContainer.GetConnectionString();
+                o.ConnectionString = pg.GetConnectionString();
                 o.RunSchemaMigrations = false;
             }));
 
         try
         {
             // Schema still exists because we created it manually above.
-            await using var dataSource = Npgsql.NpgsqlDataSource.Create(_pgContainer.GetConnectionString());
+            await using var dataSource = Npgsql.NpgsqlDataSource.Create(pg.GetConnectionString());
             await using var conn = await dataSource.OpenConnectionAsync(TestContext.Current.CancellationToken);
             await using var cmd = conn.CreateCommand();
             cmd.CommandText =
@@ -306,19 +334,22 @@ public sealed class PublishConsumeTests : IAsyncLifetime
         }
     }
 
-    [Fact]
-    public async Task FailedConsumer_MessageIsRetried()
+    [Theory]
+    [MemberData(nameof(PostgresImages))]
+    public async Task FailedConsumer_MessageIsRetried(string pgImage)
     {
+        await using var pg = await StartContainerAsync(pgImage);
         var tracker = new OrderPlacedTracker();
         var callCount = 0;
 
         var (provider, cts) = await StartAsync(
+            pg.GetConnectionString(),
             services => services.AddSingleton(tracker),
             bus =>
             {
                 bus.AddPostgreSqlTransport(o =>
                 {
-                    o.ConnectionString = _pgContainer.GetConnectionString();
+                    o.ConnectionString = pg.GetConnectionString();
                     // Short fallback interval so the retry fires quickly in this test.
                     o.FallbackPollInterval = TimeSpan.FromSeconds(2);
                 });

@@ -8,7 +8,6 @@ using Testcontainers.PostgreSql;
 namespace InterBus.PostgreSQL.Tests;
 
 [TestFixtureSource(typeof(PostgreSqlVersions), nameof(PostgreSqlVersions.All))]
-[Parallelizable(ParallelScope.Fixtures)]
 public class PublishSubscribeMultipleConsumersTests(string imageTag)
 {
     private PostgreSqlContainer _container = new PostgreSqlBuilder(imageTag).Build();

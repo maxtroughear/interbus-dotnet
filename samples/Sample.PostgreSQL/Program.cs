@@ -1,4 +1,5 @@
-﻿using InterBus;
+﻿using System.Text.Json.Serialization;
+using InterBus;
 using InterBus.Extensions;
 using InterBus.Generated;
 using InterBus.PostgreSQL.Extensions;
@@ -22,6 +23,9 @@ var connectionString = builder.Configuration["ConnectionStrings:InterBus"]
 // The transport automatically creates the required schema and tables on first run.
 builder.Services.AddInterBus(bus =>
 {
+    // Use source-generated serializer context for Native AOT compatibility.
+    bus.UseSystemTextJsonSerializer(SamplePostgreSqlJsonContext.Default.Options);
+
     bus.AddPostgreSqlTransport(o => o.ConnectionString = connectionString);
 
     bus.AddConsumer<GreetingConsumer>();
@@ -49,3 +53,14 @@ using (var scope = host.Services.CreateScope())
 await Task.Delay(2000);
 
 await host.StopAsync();
+
+/// <summary>
+/// Source-generated serialization context. Every message type used in this application
+/// must have a corresponding [JsonSerializable] attribute, so the AOT compiler can emit
+/// the required metadata without runtime reflection.
+/// </summary>
+[JsonSerializable(typeof(GreetingMessage))]
+[JsonSerializable(typeof(FarewellMessage))]
+internal partial class SamplePostgreSqlJsonContext : JsonSerializerContext
+{
+}

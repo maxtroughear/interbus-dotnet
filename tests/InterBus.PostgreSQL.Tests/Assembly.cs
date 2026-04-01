@@ -1,1 +1,1 @@
-﻿[assembly: Parallelizable(ParallelScope.Fixtures)]
+﻿

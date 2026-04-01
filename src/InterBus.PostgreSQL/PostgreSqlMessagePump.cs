@@ -32,6 +32,11 @@ internal sealed class PostgreSqlMessagePump : BackgroundService
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<PostgreSqlMessagePump> _logger;
 
+    // Populated in StartAsync (before base.StartAsync) so topic subscriptions are in the DB
+    // before StartAsync returns. BackgroundService guarantees ExecuteAsync runs only after
+    // StartAsync completes, so ExecuteAsync can read this field without synchronization.
+    private Dictionary<string, long>? _queueIds;
+
     public PostgreSqlMessagePump(
         NpgsqlDataSource dataSource,
         PostgreSqlTransportOptions options,
@@ -46,6 +51,26 @@ internal sealed class PostgreSqlMessagePump : BackgroundService
         _logger = logger;
     }
 
+    /// <summary>
+    /// Registers queue/topic subscriptions in the DB before the background loop starts.
+    /// This ensures that publishers can route messages to this service's queues as soon as
+    /// <see cref="StartAsync"/> returns, without risking a race where a publish happens
+    /// before the subscriptions exist and is silently dropped by <c>publish_to_topic</c>.
+    /// </summary>
+    public override async Task StartAsync(CancellationToken cancellationToken)
+    {
+        if (_busOptions.Consumers.Count > 0)
+        {
+            _queueIds = await PostgreSqlConnectionRetry.ExecuteAsync(
+                RegisterSubscriptionsAsync,
+                _options,
+                _logger,
+                cancellationToken);
+        }
+
+        await base.StartAsync(cancellationToken);
+    }
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var consumers = _busOptions.Consumers;
@@ -55,19 +80,12 @@ internal sealed class PostgreSqlMessagePump : BackgroundService
             return;
         }
 
-        // Register this service's topic subscriptions in the DB so that publishers in other
-        // processes can route messages to this service's queues without knowing about them.
-        // Returns the stable numeric queue IDs used as LISTEN/NOTIFY channel names.
-        var queueIds = await PostgreSqlConnectionRetry.ExecuteAsync(
-            RegisterSubscriptionsAsync,
-            _options,
-            _logger,
-            stoppingToken);
-
+        // _queueIds is guaranteed non-null: StartAsync populates it whenever consumers.Count > 0
+        // and BackgroundService calls ExecuteAsync only after StartAsync completes.
         // Start one listener per consumer queue; all run concurrently.
         var tasks = consumers.Select(d =>
             PostgreSqlConnectionRetry.ExecuteAsync(ct =>
-                ListenForQueueAsync(d, queueIds[d.QueueName], ct), _options, _logger, stoppingToken));
+                ListenForQueueAsync(d, _queueIds![d.QueueName], ct), _options, _logger, stoppingToken));
         await Task.WhenAll(tasks);
     }
 

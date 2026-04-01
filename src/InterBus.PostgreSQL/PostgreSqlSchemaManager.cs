@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using Npgsql;
 
 namespace InterBus.PostgreSQL;
@@ -10,16 +11,30 @@ namespace InterBus.PostgreSQL;
 internal sealed class PostgreSqlSchemaManager
 {
     private readonly NpgsqlDataSource _dataSource;
+    private readonly PostgreSqlTransportOptions _options;
     private readonly string _schema;
+    private readonly ILogger<PostgreSqlSchemaManager> _logger;
 
-    public PostgreSqlSchemaManager(NpgsqlDataSource dataSource, PostgreSqlTransportOptions options)
+    public PostgreSqlSchemaManager(
+        NpgsqlDataSource dataSource,
+        PostgreSqlTransportOptions options,
+        ILogger<PostgreSqlSchemaManager> logger)
     {
         _dataSource = dataSource;
+        _options = options;
         _schema = options.SchemaName;
+        _logger = logger;
     }
 
     /// <summary>Ensures the schema, tables, indexes and stored functions exist. Idempotent.</summary>
-    public async Task MigrateAsync(CancellationToken cancellationToken = default)
+    public Task MigrateAsync(CancellationToken cancellationToken = default) =>
+        PostgreSqlConnectionRetry.ExecuteAsync(
+            MigrateCoreAsync,
+            _options,
+            _logger,
+            cancellationToken);
+
+    private async Task MigrateCoreAsync(CancellationToken cancellationToken)
     {
         var s = QuoteIdentifier(_schema);
 

@@ -58,10 +58,16 @@ internal sealed class PostgreSqlMessagePump : BackgroundService
         // Register this service's topic subscriptions in the DB so that publishers in other
         // processes can route messages to this service's queues without knowing about them.
         // Returns the stable numeric queue IDs used as LISTEN/NOTIFY channel names.
-        var queueIds = await RegisterSubscriptionsAsync(stoppingToken);
+        var queueIds = await PostgreSqlConnectionRetry.ExecuteAsync(
+            RegisterSubscriptionsAsync,
+            _options,
+            _logger,
+            stoppingToken);
 
         // Start one listener per consumer queue; all run concurrently.
-        var tasks = consumers.Select(d => ListenForQueueAsync(d, queueIds[d.QueueName], stoppingToken));
+        var tasks = consumers.Select(d =>
+            PostgreSqlConnectionRetry.ExecuteAsync(ct =>
+                ListenForQueueAsync(d, queueIds[d.QueueName], ct), _options, _logger, stoppingToken));
         await Task.WhenAll(tasks);
     }
 

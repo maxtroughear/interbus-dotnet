@@ -1,5 +1,4 @@
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
 using Npgsql;
 
 namespace InterBus.PostgreSQL.Extensions;
@@ -14,6 +13,11 @@ public static class PostgreSqlTransportBuilderExtensions
     /// startup if it does not already exist. Set
     /// <see cref="PostgreSqlTransportOptions.RunSchemaMigrations"/> to <c>false</c> to manage
     /// the schema yourself via an external migration tool.
+    /// </para>
+    /// <para>
+    /// Connection-related PostgreSQL failures during schema startup and message-pump listener setup
+    /// are retried automatically using the defaults on
+    /// <see cref="PostgreSqlTransportOptions.ConnectionRetry"/>.
     /// </para>
     /// </summary>
     /// <param name="builder">The InterBus builder.</param>
@@ -52,6 +56,11 @@ public static class PostgreSqlTransportBuilderExtensions
     /// startup if it does not already exist. Set
     /// <see cref="PostgreSqlTransportOptions.RunSchemaMigrations"/> to <c>false</c> to manage
     /// the schema yourself via an external migration tool.
+    /// </para>
+    /// <para>
+    /// Connection-related PostgreSQL failures during schema startup and message-pump listener setup
+    /// are retried automatically using the defaults on
+    /// <see cref="PostgreSqlTransportOptions.ConnectionRetry"/>.
     /// </para>
     /// </summary>
     /// <param name="builder">The InterBus builder.</param>

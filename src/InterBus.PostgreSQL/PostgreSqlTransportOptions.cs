@@ -1,3 +1,5 @@
+using InterBus.Retry;
+
 namespace InterBus.PostgreSQL;
 
 /// <summary>
@@ -22,6 +24,20 @@ public sealed class PostgreSqlTransportOptions
     /// failures at the cost of more frequent database queries.
     /// </summary>
     public TimeSpan FallbackPollInterval { get; set; } = TimeSpan.FromSeconds(5);
+
+    /// <summary>
+    /// Configures retry behavior for PostgreSQL connection-related failures in hosted services
+    /// such as schema migration and the message pump.
+    /// <para>
+    /// Defaults to effectively unbounded retries with exponential backoff from 1 second up to
+    /// 30 seconds. Only PostgreSQL connection-related exceptions are eligible for retry.
+    /// </para>
+    /// </summary>
+    public RetryOptions ConnectionRetry { get; set; } = new()
+    {
+        RetryCount = int.MaxValue,
+        DelayProvider = RetryDelays.Exponential(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(30)),
+    };
 
     /// <summary>
     /// Whether to run schema migrations automatically at startup.

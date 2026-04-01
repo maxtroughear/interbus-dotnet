@@ -18,10 +18,10 @@ public sealed class PostgreSqlTransportOptions
     /// <summary>
     /// Interval at which the message pump polls for pending messages as a fallback.
     /// This catches messages that were not processed due to consumer failures or missed
-    /// notifications. Defaults to 30 seconds. Lower values increase responsiveness to
+    /// notifications. Defaults to 5 seconds. Lower values increase responsiveness to
     /// failures at the cost of more frequent database queries.
     /// </summary>
-    public TimeSpan FallbackPollInterval { get; set; } = TimeSpan.FromSeconds(30);
+    public TimeSpan FallbackPollInterval { get; set; } = TimeSpan.FromSeconds(5);
 
     /// <summary>
     /// Whether to run schema migrations automatically at startup.

@@ -26,8 +26,9 @@ internal sealed class MessageScheduler(
         var topicName = options.TryGetTopicName(typeof(T), out var customName)
             ? customName
             : RoutingConventions.TopicName(typeof(T));
+        var destination = RoutingConventions.TopicUri(options.TopicUriScheme, topicName);
         var enriched = Enrich<T>(headers);
-        var context = new PublishContext<T>(topicName, isTopic: true, message, enriched);
+        var context = new PublishContext<T>(destination, message, enriched);
         var pipeline = BuildScheduledMiddlewarePipeline<T>(scheduledAt);
 
         return pipeline(context, cancellationToken);
@@ -44,9 +45,9 @@ internal sealed class MessageScheduler(
         where TConsumer : IConsumer<T>
         where T : class
     {
-        var queueName = RoutingConventions.QueueName(typeof(TConsumer));
+        var destination = RoutingConventions.QueueUri(options.QueueUriScheme, typeof(TConsumer));
         var enriched = Enrich<T>(headers);
-        var context = new PublishContext<T>(queueName, isTopic: false, message, enriched);
+        var context = new PublishContext<T>(destination, message, enriched);
         var pipeline = BuildScheduledMiddlewarePipeline<T>(scheduledAt);
 
         return pipeline(context, cancellationToken);
@@ -59,8 +60,9 @@ internal sealed class MessageScheduler(
     public Task ScheduleSend<T>(string queueName, T message, MessageHeaders headers, DateTimeOffset scheduledAt,
         CancellationToken cancellationToken = default) where T : class
     {
+        var destination = RoutingConventions.QueueUri(options.QueueUriScheme, queueName);
         var enriched = Enrich<T>(headers);
-        var context = new PublishContext<T>(queueName, isTopic: false, message, enriched);
+        var context = new PublishContext<T>(destination, message, enriched);
         var pipeline = BuildScheduledMiddlewarePipeline<T>(scheduledAt);
 
         return pipeline(context, cancellationToken);
@@ -83,12 +85,7 @@ internal sealed class MessageScheduler(
         Task TerminalScheduleDelegate(PublishContext<T> ctx, CancellationToken ct)
         {
             var payload = serializer.Serialize(ctx.Payload);
-
-            return ctx.IsTopic
-                ? schedulingProvider.SchedulePublishToTopicAsync(
-                    ctx.Destination, payload, ctx.Headers, scheduledAt, ct)
-                : schedulingProvider.ScheduleSendToQueueAsync(
-                    ctx.Destination, payload, ctx.Headers, scheduledAt, ct);
+            return schedulingProvider.ScheduleAsync(ctx.Destination, payload, ctx.Headers, scheduledAt, ct);
         }
     }
 

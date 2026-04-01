@@ -36,10 +36,7 @@ internal sealed class MessagePublisher(
         Task TerminalPublishDelegate(PublishContext<T> ctx, CancellationToken ct)
         {
             var payload = serializer.Serialize(ctx.Payload);
-
-            return ctx.IsTopic
-                ? transport.PublishToTopicAsync(ctx.Destination, payload, ctx.Headers, ct)
-                : transport.SendToQueueAsync(ctx.Destination, payload, ctx.Headers, ct);
+            return transport.SendAsync(ctx.Destination, payload, ctx.Headers, ct);
         }
     }
 
@@ -52,8 +49,9 @@ internal sealed class MessagePublisher(
         var topicName = options.TryGetTopicName(typeof(T), out var customName)
             ? customName
             : RoutingConventions.TopicName(typeof(T));
+        var destination = RoutingConventions.TopicUri(options.TopicUriScheme, topicName);
         var enriched = Enrich<T>(headers);
-        var context = new PublishContext<T>(topicName, isTopic: true, message, enriched);
+        var context = new PublishContext<T>(destination, message, enriched);
         var pipeline = BuildMiddlewarePipeline<T>();
 
         return pipeline(context, cancellationToken);
@@ -68,9 +66,9 @@ internal sealed class MessagePublisher(
         where TConsumer : IConsumer<T>
         where T : class
     {
-        var queueName = RoutingConventions.QueueName(typeof(TConsumer));
+        var destination = RoutingConventions.QueueUri(options.QueueUriScheme, typeof(TConsumer));
         var enriched = Enrich<T>(headers);
-        var context = new PublishContext<T>(queueName, isTopic: false, message, enriched);
+        var context = new PublishContext<T>(destination, message, enriched);
         var pipeline = BuildMiddlewarePipeline<T>();
 
         return pipeline(context, cancellationToken);
@@ -84,8 +82,9 @@ internal sealed class MessagePublisher(
         CancellationToken cancellationToken = default)
         where T : class
     {
+        var destination = RoutingConventions.QueueUri(options.QueueUriScheme, queueName);
         var enriched = Enrich<T>(headers);
-        var context = new PublishContext<T>(queueName, isTopic: false, message, enriched);
+        var context = new PublishContext<T>(destination, message, enriched);
         var pipeline = BuildMiddlewarePipeline<T>();
 
         return pipeline(context, cancellationToken);

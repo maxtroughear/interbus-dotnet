@@ -2,12 +2,17 @@ namespace InterBus.TickerQ;
 
 /// <summary>
 /// Serializable payload stored in TickerQ's <c>TimeTickerEntity.Request</c> field for each
-/// scheduled publish (topic fan-out) InterBus message.
+/// scheduled InterBus message (both topic fan-out and point-to-point queue send).
+/// The <see cref="Destination"/> URI encodes the transport type and routing semantics.
 /// </summary>
-public sealed class ScheduledPublishRequest
+public sealed class ScheduledDeliveryRequest
 {
-    /// <summary>The topic name to publish to (fan-out to all subscriber queues).</summary>
-    public string TopicName { get; init; } = string.Empty;
+    /// <summary>
+    /// The destination URI (e.g. <c>memorytopic://interbus/my-topic</c> or
+    /// <c>memoryqueue://interbus/my-queue</c>). Passed directly to
+    /// <see cref="IInterBusTransport.SendAsync"/> when the scheduled job fires.
+    /// </summary>
+    public string Destination { get; init; } = string.Empty;
 
     /// <summary>The serialized message payload bytes.</summary>
     public byte[] Payload { get; init; } = [];
@@ -16,13 +21,13 @@ public sealed class ScheduledPublishRequest
     public Dictionary<string, string> Headers { get; init; } = [];
 
     /// <summary>Parameterless constructor required for JSON deserialization.</summary>
-    public ScheduledPublishRequest()
+    public ScheduledDeliveryRequest()
     {
     }
 
-    internal ScheduledPublishRequest(string topicName, byte[] payload, MessageHeaders headers)
+    internal ScheduledDeliveryRequest(Uri destination, byte[] payload, MessageHeaders headers)
     {
-        TopicName = topicName;
+        Destination = destination.ToString();
         Payload = payload;
         Headers = new Dictionary<string, string>(headers);
     }

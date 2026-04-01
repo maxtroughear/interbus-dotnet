@@ -1,14 +1,19 @@
 namespace InterBus.Internal;
 
 /// <summary>
-/// Internal command message published to the bus to request that a topic-publish message be
-/// scheduled via the configured <see cref="IMessageSchedulingProvider"/>.
+/// Internal command message published to the bus to request that a message be scheduled
+/// for deferred delivery via the configured <see cref="IMessageSchedulingProvider"/>.
 /// Consumed by <see cref="SchedulingConsumer"/>.
+/// The <see cref="Destination"/> URI encodes both the transport type and whether the message
+/// should be published to a topic (fan-out) or sent to a queue (point-to-point).
 /// </summary>
-internal sealed class SchedulePublishCommand
+internal sealed class ScheduleDeliveryCommand
 {
-    /// <summary>The topic name to publish to (fan-out to all subscriber queues).</summary>
-    public string TopicName { get; init; } = string.Empty;
+    /// <summary>
+    /// The destination URI (e.g. <c>memorytopic://interbus/my-topic</c> or
+    /// <c>memoryqueue://interbus/my-queue</c>).
+    /// </summary>
+    public string Destination { get; init; } = string.Empty;
 
     /// <summary>The serialized original message payload.</summary>
     public byte[] Payload { get; init; } = [];

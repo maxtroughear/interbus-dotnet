@@ -39,6 +39,7 @@ public static class PostgreSqlTransportBuilderExtensions
             throw new InvalidOperationException(
                 "PostgreSqlTransportOptions.ConnectionString must be set before calling AddPostgreSqlTransport.");
 
+        builder.Options.SetTransportUriSchemes(PostgreSqlTransport.TopicScheme, PostgreSqlTransport.QueueScheme);
         builder.Services.AddSingleton(options);
         builder.Services.AddSingleton(NpgsqlDataSource.Create(options.ConnectionString));
         builder.Services.AddSingleton<IInterBusTransport, PostgreSqlTransport>();
@@ -81,6 +82,7 @@ public static class PostgreSqlTransportBuilderExtensions
         var options = new PostgreSqlTransportOptions();
         configure?.Invoke(options);
 
+        builder.Options.SetTransportUriSchemes(PostgreSqlTransport.TopicScheme, PostgreSqlTransport.QueueScheme);
         builder.Services.AddSingleton(options);
         builder.Services.AddSingleton(dataSource);
         builder.Services.AddSingleton<IInterBusTransport, PostgreSqlTransport>();

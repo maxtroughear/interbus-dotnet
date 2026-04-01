@@ -10,16 +10,12 @@ namespace InterBus.Middleware;
 public sealed class PublishContext<T>
 {
     /// <summary>
-    /// The destination name: a topic name when <see cref="IsTopic"/> is <c>true</c>,
-    /// or a queue name when <see cref="IsTopic"/> is <c>false</c>.
+    /// The destination URI for this message. The scheme encodes the transport and
+    /// destination type (e.g. <c>memorytopic://interbus/my-topic</c> for a topic
+    /// fan-out, <c>memoryqueue://interbus/my-queue</c> for a point-to-point send).
+    /// Use <see cref="RoutingConventions.GetDestinationName"/> to extract the name.
     /// </summary>
-    public string Destination { get; }
-
-    /// <summary>
-    /// <c>true</c> if the message is being published to a topic (fan-out);
-    /// <c>false</c> if it is being sent directly to a queue (point-to-point).
-    /// </summary>
-    public bool IsTopic { get; }
+    public Uri Destination { get; }
 
     /// <summary>The serialized message payload. Middleware may replace this value.</summary>
     public T Payload { get; set; }
@@ -30,10 +26,9 @@ public sealed class PublishContext<T>
     /// </summary>
     public MessageHeaders Headers { get; set; }
 
-    internal PublishContext(string destination, bool isTopic, T payload, MessageHeaders headers)
+    internal PublishContext(Uri destination, T payload, MessageHeaders headers)
     {
         Destination = destination;
-        IsTopic = isTopic;
         Payload = payload;
         Headers = headers;
     }

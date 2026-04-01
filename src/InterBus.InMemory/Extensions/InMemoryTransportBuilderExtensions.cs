@@ -8,9 +8,17 @@ public static class InMemoryTransportBuilderExtensions
     /// <summary>
     /// Use the in-memory <see cref="System.Threading.Channels"/>-backed transport.
     /// Suitable for testing and single-process applications.
+    /// <para>
+    /// Registers <c><see cref="InMemoryBroker.TopicScheme">memorytopic</see>://</c> and
+    /// <c><see cref="InMemoryBroker.QueueScheme">memoryqueue</see>://</c> as the destination
+    /// URI schemes for topic and queue messages respectively.
+    /// </para>
     /// </summary>
     public static IInterBusBuilder AddInMemoryTransport(this IInterBusBuilder builder)
     {
+        // Register the URI schemes so MessagePublisher constructs the correct destination URIs.
+        builder.Options.SetTransportUriSchemes(InMemoryBroker.TopicScheme, InMemoryBroker.QueueScheme);
+
         // Broker is singleton: owns all topics and queues for the lifetime of the application.
         builder.Services.AddSingleton<InMemoryBroker>();
         builder.Services.AddSingleton<IInterBusTransport>(sp => sp.GetRequiredService<InMemoryBroker>());

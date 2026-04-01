@@ -30,19 +30,11 @@ public sealed class TickerQMessageScheduler : IMessageSchedulingProvider
     }
 
     /// <inheritdoc/>
-    public Task SchedulePublishToTopicAsync(string topicName, byte[] payload, MessageHeaders headers,
+    public Task ScheduleAsync(Uri destination, byte[] payload, MessageHeaders headers,
         DateTimeOffset scheduledAt, CancellationToken cancellationToken)
     {
-        var request = new ScheduledPublishRequest(topicName, payload, headers);
-        return ScheduleAsync(TickerQPublishFunction.FunctionName, request, scheduledAt, cancellationToken);
-    }
-
-    /// <inheritdoc/>
-    public Task ScheduleSendToQueueAsync(string queueName, byte[] payload, MessageHeaders headers,
-        DateTimeOffset scheduledAt, CancellationToken cancellationToken)
-    {
-        var request = new ScheduledSendRequest(queueName, payload, headers);
-        return ScheduleAsync(TickerQSendFunction.FunctionName, request, scheduledAt, cancellationToken);
+        var request = new ScheduledDeliveryRequest(destination, payload, headers);
+        return ScheduleAsync(TickerQDeliverFunction.FunctionName, request, scheduledAt, cancellationToken);
     }
 
     private async Task ScheduleAsync<TRequest>(string functionName, TRequest request,

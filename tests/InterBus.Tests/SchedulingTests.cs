@@ -46,7 +46,7 @@ public sealed class SchedulingTests
         await publisher.SchedulePublish(msg, scheduledAt, TestContext.Current.CancellationToken);
 
         var call = Assert.Single(schedulingProvider.Calls);
-        Assert.True(call.IsTopic);
+        Assert.Equal("topic", call.Destination.Scheme);
         Assert.Equal(scheduledAt, call.ScheduledAt);
         Assert.Contains(InterBusHeaders.MessageType, call.Headers.Keys);
     }
@@ -99,9 +99,10 @@ public sealed class SchedulingTests
             new TestMessage(Guid.NewGuid()), scheduledAt, TestContext.Current.CancellationToken);
 
         var call = Assert.Single(schedulingProvider.Calls);
-        Assert.False(call.IsTopic);
+        Assert.Equal("queue", call.Destination.Scheme);
         Assert.Equal(scheduledAt, call.ScheduledAt);
-        Assert.Equal(RoutingConventions.QueueName(typeof(TestConsumer)), call.Destination);
+        Assert.Equal(RoutingConventions.QueueName(typeof(TestConsumer)),
+            RoutingConventions.GetDestinationName(call.Destination));
     }
 
     [Fact]
@@ -132,8 +133,8 @@ public sealed class SchedulingTests
             TestContext.Current.CancellationToken);
 
         var call = Assert.Single(schedulingProvider.Calls);
-        Assert.False(call.IsTopic);
-        Assert.Equal("my-queue", call.Destination);
+        Assert.Equal("queue", call.Destination.Scheme);
+        Assert.Equal("my-queue", RoutingConventions.GetDestinationName(call.Destination));
         Assert.Equal(scheduledAt, call.ScheduledAt);
     }
 
@@ -212,10 +213,7 @@ public sealed class SchedulingTests
 
     private sealed class NoOpTransport : IInterBusTransport
     {
-        public Task PublishToTopicAsync(string topicName, byte[] payload, MessageHeaders headers,
-            CancellationToken cancellationToken) => Task.CompletedTask;
-
-        public Task SendToQueueAsync(string queueName, byte[] payload, MessageHeaders headers,
+        public Task SendAsync(Uri destination, byte[] payload, MessageHeaders headers,
             CancellationToken cancellationToken) => Task.CompletedTask;
     }
 
@@ -223,24 +221,16 @@ public sealed class SchedulingTests
     {
         public List<SchedulingCall> Calls { get; } = [];
 
-        public Task SchedulePublishToTopicAsync(string topicName, byte[] payload, MessageHeaders headers,
+        public Task ScheduleAsync(Uri destination, byte[] payload, MessageHeaders headers,
             DateTimeOffset scheduledAt, CancellationToken cancellationToken)
         {
-            Calls.Add(new SchedulingCall(topicName, true, payload, headers, scheduledAt));
-            return Task.CompletedTask;
-        }
-
-        public Task ScheduleSendToQueueAsync(string queueName, byte[] payload, MessageHeaders headers,
-            DateTimeOffset scheduledAt, CancellationToken cancellationToken)
-        {
-            Calls.Add(new SchedulingCall(queueName, false, payload, headers, scheduledAt));
+            Calls.Add(new SchedulingCall(destination, payload, headers, scheduledAt));
             return Task.CompletedTask;
         }
     }
 
     private sealed record SchedulingCall(
-        string Destination,
-        bool IsTopic,
+        Uri Destination,
         byte[] Payload,
         MessageHeaders Headers,
         DateTimeOffset ScheduledAt);

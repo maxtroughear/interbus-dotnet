@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Text.Json;
 using Npgsql;
 using NpgsqlTypes;
@@ -56,11 +57,11 @@ public sealed class PostgreSqlTransport : IInterBusTransport
     }
 
     internal static string SerializeHeaders(MessageHeaders headers) =>
-        JsonSerializer.Serialize<Dictionary<string, string>>(headers);
+        JsonSerializer.Serialize(headers, PostgreSqlJsonContext.Default.DictionaryStringString);
 
     internal static MessageHeaders DeserializeHeaders(string json)
     {
-        var dict = JsonSerializer.Deserialize<Dictionary<string, string>>(json)
+        var dict = JsonSerializer.Deserialize(json, PostgreSqlJsonContext.Default.DictionaryStringString)
                    ?? new Dictionary<string, string>();
         return new MessageHeaders(dict);
     }

@@ -1,3 +1,4 @@
+using InterBus.Middleware;
 using TickerQ.Utilities.Base;
 
 namespace InterBus.TickerQ.Internal;
@@ -7,7 +8,7 @@ namespace InterBus.TickerQ.Internal;
 /// point-to-point queue send). Resolved from DI via constructor injection; called by TickerQ
 /// when the scheduled job fires.
 /// </summary>
-internal sealed class TickerQDeliverFunction(IInterBusTransportFactory transportFactory)
+internal sealed class TickerQDeliverFunction(SchedulePipelineExecutor schedulePipeline)
 {
     /// <summary>
     /// TickerQ function name registered for all scheduled InterBus message delivery.
@@ -17,9 +18,9 @@ internal sealed class TickerQDeliverFunction(IInterBusTransportFactory transport
     /// <summary>
     /// Called by TickerQ when a scheduled delivery job fires. The typed context carries
     /// the <see cref="ScheduledDeliveryRequest"/> deserialized from the persisted request bytes.
-    /// The correct transport is resolved from the destination URI scheme via
-    /// <see cref="IInterBusTransportFactory"/>, matching the same factory used by
-    /// <c>MessagePublisher</c> at publish time.
+    /// The message is passed through the <see cref="SchedulePipelineExecutor"/> so that any
+    /// registered <see cref="IScheduleMiddleware"/> steps run before the message is forwarded
+    /// to the correct <see cref="IInterBusTransport"/> via <see cref="IInterBusTransportFactory"/>.
     /// </summary>
     public Task InvokeAsync(TickerFunctionContext<ScheduledDeliveryRequest> context,
         CancellationToken cancellationToken)
@@ -27,8 +28,7 @@ internal sealed class TickerQDeliverFunction(IInterBusTransportFactory transport
         var request = context.Request;
         var destination = new Uri(request.Destination);
         var headers = new MessageHeaders(request.Headers);
-        var transport = transportFactory.Resolve(destination);
-        var sendContext = new TransportSendContext(destination, request.Payload, headers, delay: null);
-        return transport.SendAsync(sendContext, cancellationToken);
+        var scheduleContext = new ScheduleContext(destination, request.Payload, headers);
+        return schedulePipeline.ExecuteAsync(scheduleContext, cancellationToken);
     }
 }

@@ -6,177 +6,128 @@ using Xunit;
 namespace InterBus.Tests;
 
 /// <summary>
-/// Unit tests for the <see cref="IScheduleMiddleware"/> pipeline wired into
-/// <see cref="MessageScheduler"/> via <see cref="IInterBusBuilder.UseScheduleMiddleware{TMiddleware}"/>.
+/// Unit tests for the <see cref="IScheduleMiddleware"/> pipeline executed by
+/// <see cref="SchedulePipelineExecutor"/> at message delivery time.
 /// </summary>
 public sealed class ScheduleMiddlewareTests
 {
-    #region Helpers
+    #region SchedulePipelineExecutor tests
 
-    private static (IMessageScheduler Scheduler, TestSchedulingProvider Provider, RecordingScheduleMiddleware Middleware)
-        BuildScheduler(Action<IInterBusBuilder>? configureBus = null)
+    [Fact]
+    public async Task SchedulePipelineExecutor_InvokesMiddleware_BeforeTransport()
     {
-        var schedulingProvider = new TestSchedulingProvider();
+        var transport = new RecordingTransport();
         var middleware = new RecordingScheduleMiddleware();
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddInterBus(bus =>
         {
-            bus.Services.AddSingleton<IInterBusTransport, NoOpTransport>();
-            bus.Services.AddSingleton<IMessageSchedulingProvider>(schedulingProvider);
-            // Register the middleware instance directly so the same instance is injected.
+            bus.Services.AddSingleton<IInterBusTransport>(transport);
             bus.Services.AddScoped<IScheduleMiddleware>(_ => middleware);
-            bus.AddScheduling();
-            configureBus?.Invoke(bus);
         });
 
         var provider = services.BuildServiceProvider();
         using var scope = provider.CreateScope();
-        var scheduler = scope.ServiceProvider.GetRequiredService<IMessageScheduler>();
-        return (scheduler, schedulingProvider, middleware);
-    }
+        var executor = scope.ServiceProvider.GetRequiredService<SchedulePipelineExecutor>();
+        var destination = new Uri("topic://interbus/test-topic");
+        var ctx = new ScheduleContext(destination, [1, 2, 3], new MessageHeaders());
 
-    #endregion
-
-    [Fact]
-    public async Task ScheduleMiddleware_IsInvoked_OnSchedulePublish()
-    {
-        var (scheduler, _, middleware) = BuildScheduler();
-        var scheduledAt = DateTimeOffset.UtcNow.AddMinutes(5);
-
-        await scheduler.SchedulePublish(new TestMessage(Guid.NewGuid()), scheduledAt,
-            TestContext.Current.CancellationToken);
+        await executor.ExecuteAsync(ctx, TestContext.Current.CancellationToken);
 
         Assert.Single(middleware.Contexts);
-        Assert.Equal(scheduledAt, middleware.Contexts[0].ScheduledAt);
+        Assert.Single(transport.Sent);
     }
 
     [Fact]
-    public async Task ScheduleMiddleware_IsInvoked_OnScheduleSend_ByConsumerType()
+    public async Task SchedulePipelineExecutor_ForwardsToTransport_WhenNoMiddleware()
     {
-        var (scheduler, _, middleware) = BuildScheduler();
-        var scheduledAt = DateTimeOffset.UtcNow.AddMinutes(5);
+        var transport = new RecordingTransport();
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddInterBus(bus =>
+        {
+            bus.Services.AddSingleton<IInterBusTransport>(transport);
+        });
 
-        await scheduler.ScheduleSend<TestConsumer, TestMessage>(new TestMessage(Guid.NewGuid()), scheduledAt,
-            TestContext.Current.CancellationToken);
+        var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+        var executor = scope.ServiceProvider.GetRequiredService<SchedulePipelineExecutor>();
+        var destination = new Uri("topic://interbus/test-topic");
+        var ctx = new ScheduleContext(destination, [1, 2, 3], new MessageHeaders());
 
-        Assert.Single(middleware.Contexts);
-        Assert.Equal("queue", middleware.Contexts[0].Destination.Scheme);
-        Assert.Equal(scheduledAt, middleware.Contexts[0].ScheduledAt);
+        await executor.ExecuteAsync(ctx, TestContext.Current.CancellationToken);
+
+        Assert.Single(transport.Sent);
+        Assert.Equal([1, 2, 3], transport.Sent[0].Payload);
     }
 
     [Fact]
-    public async Task ScheduleMiddleware_IsInvoked_OnScheduleSend_ByQueueName()
+    public async Task SchedulePipelineExecutor_CanMutatePayload_AndTransportReceivesMutated()
     {
-        var (scheduler, _, middleware) = BuildScheduler();
-        var scheduledAt = DateTimeOffset.UtcNow.AddMinutes(1);
-
-        await scheduler.ScheduleSend("my-queue", new TestMessage(Guid.NewGuid()), scheduledAt,
-            TestContext.Current.CancellationToken);
-
-        Assert.Single(middleware.Contexts);
-        Assert.Equal("my-queue", RoutingConventions.GetDestinationName(middleware.Contexts[0].Destination));
-        Assert.Equal(scheduledAt, middleware.Contexts[0].ScheduledAt);
-    }
-
-    [Fact]
-    public async Task ScheduleMiddleware_ReceivesSerializedPayload()
-    {
-        var (scheduler, _, middleware) = BuildScheduler();
-
-        await scheduler.SchedulePublish(new TestMessage(Guid.NewGuid()), DateTimeOffset.UtcNow.AddSeconds(30),
-            TestContext.Current.CancellationToken);
-
-        var ctx = Assert.Single(middleware.Contexts);
-        Assert.NotEmpty(ctx.Payload);
-    }
-
-    [Fact]
-    public async Task ScheduleMiddleware_ReceivesMessageTypeHeader()
-    {
-        var (scheduler, _, middleware) = BuildScheduler();
-
-        await scheduler.SchedulePublish(new TestMessage(Guid.NewGuid()), DateTimeOffset.UtcNow.AddSeconds(10),
-            TestContext.Current.CancellationToken);
-
-        var ctx = Assert.Single(middleware.Contexts);
-        Assert.True(ctx.Headers.ContainsKey(InterBusHeaders.MessageType));
-    }
-
-    [Fact]
-    public async Task ScheduleMiddleware_CanMutatePayload_AndProviderReceivesMutated()
-    {
-        var schedulingProvider = new TestSchedulingProvider();
+        var transport = new RecordingTransport();
         var replacedPayload = new byte[] { 0xFF, 0xFE };
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddInterBus(bus =>
         {
-            bus.Services.AddSingleton<IInterBusTransport, NoOpTransport>();
-            bus.Services.AddSingleton<IMessageSchedulingProvider>(schedulingProvider);
+            bus.Services.AddSingleton<IInterBusTransport>(transport);
             bus.Services.AddScoped<IScheduleMiddleware>(_ => new PayloadReplacingScheduleMiddleware(replacedPayload));
-            bus.AddScheduling();
         });
 
         var provider = services.BuildServiceProvider();
         using var scope = provider.CreateScope();
-        var scheduler = scope.ServiceProvider.GetRequiredService<IMessageScheduler>();
+        var executor = scope.ServiceProvider.GetRequiredService<SchedulePipelineExecutor>();
+        var ctx = new ScheduleContext(new Uri("queue://interbus/my-queue"), [1, 2, 3], new MessageHeaders());
 
-        await scheduler.SchedulePublish(new TestMessage(Guid.NewGuid()), DateTimeOffset.UtcNow.AddMinutes(1),
-            TestContext.Current.CancellationToken);
+        await executor.ExecuteAsync(ctx, TestContext.Current.CancellationToken);
 
-        var call = Assert.Single(schedulingProvider.Calls);
-        Assert.Equal(replacedPayload, call.Payload);
+        Assert.Single(transport.Sent);
+        Assert.Equal(replacedPayload, transport.Sent[0].Payload);
     }
 
     [Fact]
-    public async Task ScheduleMiddleware_CanMutateHeaders_AndProviderReceivesMutated()
+    public async Task SchedulePipelineExecutor_CanMutateHeaders_AndTransportReceivesMutated()
     {
-        var schedulingProvider = new TestSchedulingProvider();
+        var transport = new RecordingTransport();
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddInterBus(bus =>
         {
-            bus.Services.AddSingleton<IInterBusTransport, NoOpTransport>();
-            bus.Services.AddSingleton<IMessageSchedulingProvider>(schedulingProvider);
+            bus.Services.AddSingleton<IInterBusTransport>(transport);
             bus.Services.AddScoped<IScheduleMiddleware, HeaderAddingScheduleMiddleware>();
-            bus.AddScheduling();
         });
 
         var provider = services.BuildServiceProvider();
         using var scope = provider.CreateScope();
-        var scheduler = scope.ServiceProvider.GetRequiredService<IMessageScheduler>();
+        var executor = scope.ServiceProvider.GetRequiredService<SchedulePipelineExecutor>();
+        var ctx = new ScheduleContext(new Uri("queue://interbus/my-queue"), [1], new MessageHeaders());
 
-        await scheduler.SchedulePublish(new TestMessage(Guid.NewGuid()), DateTimeOffset.UtcNow.AddMinutes(1),
-            TestContext.Current.CancellationToken);
+        await executor.ExecuteAsync(ctx, TestContext.Current.CancellationToken);
 
-        var call = Assert.Single(schedulingProvider.Calls);
-        Assert.True(call.Headers.ContainsKey("x-added-by-middleware"));
+        Assert.Single(transport.Sent);
+        Assert.True(transport.Sent[0].Headers.ContainsKey("x-added-by-middleware"));
     }
 
     [Fact]
-    public async Task MultipleScheduleMiddlewares_ExecuteInRegistrationOrder()
+    public async Task SchedulePipelineExecutor_MultipleMiddlewares_ExecuteInRegistrationOrder()
     {
         var order = new List<string>();
-        var schedulingProvider = new TestSchedulingProvider();
+        var transport = new RecordingTransport();
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddInterBus(bus =>
         {
-            bus.Services.AddSingleton<IInterBusTransport, NoOpTransport>();
-            bus.Services.AddSingleton<IMessageSchedulingProvider>(schedulingProvider);
-            // Register two middlewares in order; use factories to capture the shared list.
+            bus.Services.AddSingleton<IInterBusTransport>(transport);
             bus.Services.AddScoped<IScheduleMiddleware>(_ => new OrderTrackingScheduleMiddleware("first", order));
             bus.Services.AddScoped<IScheduleMiddleware>(_ => new OrderTrackingScheduleMiddleware("second", order));
-            bus.AddScheduling();
         });
 
         var provider = services.BuildServiceProvider();
         using var scope = provider.CreateScope();
-        var scheduler = scope.ServiceProvider.GetRequiredService<IMessageScheduler>();
+        var executor = scope.ServiceProvider.GetRequiredService<SchedulePipelineExecutor>();
+        var ctx = new ScheduleContext(new Uri("queue://interbus/my-queue"), [1], new MessageHeaders());
 
-        await scheduler.SchedulePublish(new TestMessage(Guid.NewGuid()), DateTimeOffset.UtcNow.AddMinutes(1),
-            TestContext.Current.CancellationToken);
+        await executor.ExecuteAsync(ctx, TestContext.Current.CancellationToken);
 
         Assert.Equal(["first", "second"], order);
     }
@@ -200,29 +151,12 @@ public sealed class ScheduleMiddlewareTests
         Assert.IsType<HeaderAddingScheduleMiddleware>(middlewares[0]);
     }
 
-    [Fact]
-    public void UseScheduleMiddleware_IsNotRequired_SchedulerStillWorksWithoutIt()
-    {
-        var schedulingProvider = new TestSchedulingProvider();
-        var services = new ServiceCollection();
-        services.AddLogging();
-        services.AddInterBus(bus =>
-        {
-            bus.Services.AddSingleton<IInterBusTransport, NoOpTransport>();
-            bus.Services.AddSingleton<IMessageSchedulingProvider>(schedulingProvider);
-            bus.AddScheduling();
-            // No schedule middleware registered - should work fine
-        });
+    #endregion
 
-        var provider = services.BuildServiceProvider();
-        using var scope = provider.CreateScope();
-        var scheduler = scope.ServiceProvider.GetRequiredService<IMessageScheduler>();
-
-        Assert.NotNull(scheduler);
-    }
+    #region MessageScheduler tests - no middleware at schedule time
 
     [Fact]
-    public async Task ScheduleMiddleware_IsNotInvoked_OnRegularPublish()
+    public async Task MessageScheduler_DoesNotInvokeScheduleMiddleware_AtScheduleTime()
     {
         var schedulingProvider = new TestSchedulingProvider();
         var middleware = new RecordingScheduleMiddleware();
@@ -238,27 +172,66 @@ public sealed class ScheduleMiddlewareTests
 
         var provider = services.BuildServiceProvider();
         using var scope = provider.CreateScope();
-        var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
+        var scheduler = scope.ServiceProvider.GetRequiredService<IMessageScheduler>();
 
-        await publisher.Publish(new TestMessage(Guid.NewGuid()), TestContext.Current.CancellationToken);
+        await scheduler.SchedulePublish(new TestMessage(Guid.NewGuid()), DateTimeOffset.UtcNow.AddMinutes(5),
+            TestContext.Current.CancellationToken);
 
+        // Middleware should NOT have been invoked at schedule time
         Assert.Empty(middleware.Contexts);
+        // But the scheduling provider should have been called
+        Assert.Single(schedulingProvider.Calls);
     }
+
+    [Fact]
+    public async Task MessageScheduler_CallsProviderDirectly_WithSerializedPayload()
+    {
+        var schedulingProvider = new TestSchedulingProvider();
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddInterBus(bus =>
+        {
+            bus.Services.AddSingleton<IInterBusTransport, NoOpTransport>();
+            bus.Services.AddSingleton<IMessageSchedulingProvider>(schedulingProvider);
+            bus.AddScheduling();
+        });
+
+        var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+        var scheduler = scope.ServiceProvider.GetRequiredService<IMessageScheduler>();
+        var scheduledAt = DateTimeOffset.UtcNow.AddMinutes(5);
+
+        await scheduler.SchedulePublish(new TestMessage(Guid.NewGuid()), scheduledAt,
+            TestContext.Current.CancellationToken);
+
+        var call = Assert.Single(schedulingProvider.Calls);
+        Assert.Equal("topic", call.Destination.Scheme);
+        Assert.Equal(scheduledAt, call.ScheduledAt);
+        Assert.NotEmpty(call.Payload);
+        Assert.True(call.Headers.ContainsKey(InterBusHeaders.MessageType));
+    }
+
+    #endregion
 
     #region Support types
 
     private sealed record TestMessage(Guid Id);
 
-    private sealed class TestConsumer : IConsumer<TestMessage>
-    {
-        public Task Consume(TestMessage message, IConsumeContext context,
-            CancellationToken cancellationToken = default) => Task.CompletedTask;
-    }
-
     private sealed class NoOpTransport : IInterBusTransport
     {
         public Task SendAsync(TransportSendContext context, CancellationToken cancellationToken) =>
             Task.CompletedTask;
+    }
+
+    private sealed class RecordingTransport : IInterBusTransport
+    {
+        public List<TransportSendContext> Sent { get; } = [];
+
+        public Task SendAsync(TransportSendContext context, CancellationToken cancellationToken)
+        {
+            Sent.Add(context);
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class TestSchedulingProvider : IMessageSchedulingProvider
@@ -326,4 +299,3 @@ public sealed class ScheduleMiddlewareTests
 
     #endregion
 }
-

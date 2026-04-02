@@ -53,7 +53,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<DispatchPipelineExecutor>();
         services.AddScoped<ConsumePipelineExecutor>();
 
-        // Register the scoped publisher.
+        // Register the transport factory and the scoped publisher.
+        services.AddSingleton<IInterBusTransportFactory, InterBusTransportFactory>();
         services.AddScoped<IMessagePublisher, MessagePublisher>();
 
         return services;

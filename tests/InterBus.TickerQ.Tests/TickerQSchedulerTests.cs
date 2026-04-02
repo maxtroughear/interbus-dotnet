@@ -14,20 +14,20 @@ using Xunit;
 namespace InterBus.TickerQ.Tests;
 
 /// <summary>
-/// Unit tests for <see cref="TickerQMessageScheduler"/>, <see cref="ScheduledPublishRequest"/>,
-/// and <see cref="ScheduledSendRequest"/>.
+/// Unit tests for <see cref="TickerQMessageScheduler"/> and <see cref="ScheduledDeliveryRequest"/>.
 /// </summary>
 public sealed class TickerQSchedulerTests
 {
-    #region ScheduledPublishRequest round-trip
+    #region ScheduledDeliveryRequest round-trip
 
     [Fact]
-    public void ScheduledPublishRequest_RoundTrip_PreservesAllFields()
+    public void ScheduledDeliveryRequest_RoundTrip_PreservesAllFields()
     {
         var payload = new byte[] { 1, 2, 3, 4, 5 };
-        var original = new ScheduledPublishRequest
+        var destination = new Uri("memorytopic://interbus/my-topic");
+        var original = new ScheduledDeliveryRequest
         {
-            TopicName = "my-topic",
+            Destination = destination.ToString(),
             Payload = payload,
             Headers = new Dictionary<string, string>
             {
@@ -37,9 +37,9 @@ public sealed class TickerQSchedulerTests
         };
 
         var bytes = TickerHelper.CreateTickerRequest(original);
-        var restored = TickerHelper.ReadTickerRequest<ScheduledPublishRequest>(bytes);
+        var restored = TickerHelper.ReadTickerRequest<ScheduledDeliveryRequest>(bytes);
 
-        Assert.Equal("my-topic", restored.TopicName);
+        Assert.Equal(destination.ToString(), restored.Destination);
         Assert.Equal(payload, restored.Payload);
         Assert.Equal("test", restored.Headers["x-trace"]);
         Assert.Equal("MyMessage", restored.Headers[InterBusHeaders.MessageType]);
@@ -47,96 +47,77 @@ public sealed class TickerQSchedulerTests
 
     #endregion
 
-    #region ScheduledSendRequest round-trip
+    #region TickerQMessageScheduler - single function name
 
     [Fact]
-    public void ScheduledSendRequest_RoundTrip_PreservesAllFields()
-    {
-        var payload = new byte[] { 42, 43, 44 };
-        var original = new ScheduledSendRequest
-        {
-            QueueName = "my-queue",
-            Payload = payload,
-            Headers = new Dictionary<string, string> { ["x-custom"] = "val" }
-        };
-
-        var bytes = TickerHelper.CreateTickerRequest(original);
-        var restored = TickerHelper.ReadTickerRequest<ScheduledSendRequest>(bytes);
-
-        Assert.Equal("my-queue", restored.QueueName);
-        Assert.Equal(payload, restored.Payload);
-        Assert.Equal("val", restored.Headers["x-custom"]);
-    }
-
-    #endregion
-
-    #region TickerQMessageScheduler - separate function names
-
-    [Fact]
-    public async Task ScheduleSendToQueueAsync_CreatesTimeTicker_WithSendFunctionName()
+    public async Task ScheduleAsync_WithQueueUri_CreatesTimeTicker_WithDeliverFunctionName()
     {
         var manager = new StubTimeTickerManager();
         var scheduler = new TickerQMessageScheduler(manager, new NoOpHostScheduler());
 
         var scheduledAt = DateTimeOffset.UtcNow.AddHours(1);
-        await scheduler.ScheduleSendToQueueAsync(
-            "my-queue", [1, 2], new MessageHeaders(), scheduledAt,
+        var destination = new Uri("memoryqueue://interbus/my-queue");
+        await scheduler.ScheduleAsync(
+            destination, [1, 2], new MessageHeaders(), scheduledAt,
             TestContext.Current.CancellationToken);
 
         var ticker = Assert.Single(manager.Added);
-        Assert.Equal("interbus-send", ticker.Function);
+        Assert.Equal("interbus-deliver", ticker.Function);
         Assert.Equal(scheduledAt.UtcDateTime, ticker.ExecutionTime);
         Assert.NotNull(ticker.Request);
 
-        var request = TickerHelper.ReadTickerRequest<ScheduledSendRequest>(ticker.Request!);
-        Assert.Equal("my-queue", request.QueueName);
+        var request = TickerHelper.ReadTickerRequest<ScheduledDeliveryRequest>(ticker.Request!);
+        Assert.Equal(destination.ToString(), request.Destination);
     }
 
     [Fact]
-    public async Task SchedulePublishToTopicAsync_CreatesTimeTicker_WithPublishFunctionName()
+    public async Task ScheduleAsync_WithTopicUri_CreatesTimeTicker_WithDeliverFunctionName()
     {
         var manager = new StubTimeTickerManager();
         var scheduler = new TickerQMessageScheduler(manager, new NoOpHostScheduler());
 
         var payload = new byte[] { 10, 20, 30 };
         var scheduledAt = DateTimeOffset.UtcNow.AddMinutes(5);
+        var destination = new Uri("memorytopic://interbus/orders");
 
-        await scheduler.SchedulePublishToTopicAsync("orders", payload, new MessageHeaders(), scheduledAt,
+        await scheduler.ScheduleAsync(destination, payload, new MessageHeaders(), scheduledAt,
             TestContext.Current.CancellationToken);
 
         var ticker = Assert.Single(manager.Added);
-        Assert.Equal("interbus-publish", ticker.Function);
+        Assert.Equal("interbus-deliver", ticker.Function);
         Assert.Equal(scheduledAt.UtcDateTime, ticker.ExecutionTime);
 
-        var request = TickerHelper.ReadTickerRequest<ScheduledPublishRequest>(ticker.Request!);
-        Assert.Equal("orders", request.TopicName);
+        var request = TickerHelper.ReadTickerRequest<ScheduledDeliveryRequest>(ticker.Request!);
+        Assert.Equal(destination.ToString(), request.Destination);
         Assert.Equal(payload, request.Payload);
     }
 
     [Fact]
-    public async Task SchedulePublishToTopicAsync_Headers_ArePersisted()
+    public async Task ScheduleAsync_Headers_ArePersisted()
     {
         var manager = new StubTimeTickerManager();
         var scheduler = new TickerQMessageScheduler(manager, new NoOpHostScheduler());
 
         var headers = new MessageHeaders { [InterBusHeaders.MessageType] = "MyEvent" };
-        await scheduler.SchedulePublishToTopicAsync("topic", [1], headers,
+        var destination = new Uri("memorytopic://interbus/topic");
+        await scheduler.ScheduleAsync(destination, [1], headers,
             DateTimeOffset.UtcNow.AddSeconds(10), TestContext.Current.CancellationToken);
 
         var ticker = Assert.Single(manager.Added);
-        var request = TickerHelper.ReadTickerRequest<ScheduledPublishRequest>(ticker.Request!);
+        var request = TickerHelper.ReadTickerRequest<ScheduledDeliveryRequest>(ticker.Request!);
         Assert.Equal("MyEvent", request.Headers[InterBusHeaders.MessageType]);
     }
 
     [Fact]
-    public async Task ScheduleSendToQueueAsync_NotifiesHostScheduler()
+    public async Task ScheduleAsync_NotifiesHostScheduler()
     {
         var manager = new StubTimeTickerManager();
         var hostScheduler = new TrackingHostScheduler();
         var scheduler = new TickerQMessageScheduler(manager, hostScheduler);
 
-        await scheduler.ScheduleSendToQueueAsync(
-            "q", [1], new MessageHeaders(), DateTimeOffset.UtcNow.AddSeconds(30),
+        var destination = new Uri("memoryqueue://interbus/q");
+        await scheduler.ScheduleAsync(
+            destination, [1], new MessageHeaders(), DateTimeOffset.UtcNow.AddSeconds(30),
             TestContext.Current.CancellationToken);
 
         Assert.Equal(1, hostScheduler.RestartIfNeededCallCount);

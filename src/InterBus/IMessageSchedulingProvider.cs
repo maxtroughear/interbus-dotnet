@@ -11,16 +11,21 @@ namespace InterBus;
 public interface IMessageSchedulingProvider
 {
     /// <summary>
-    /// Schedule a serialised payload to be published to the named topic at
-    /// <paramref name="scheduledAt"/> (fan-out to all subscriber queues).
+    /// Schedule a serialised payload to be delivered to <paramref name="destination"/> at
+    /// <paramref name="scheduledAt"/>. The URI scheme determines the transport and whether
+    /// the message is published to a topic (fan-out) or sent directly to a queue
+    /// (point-to-point), mirroring the semantics of
+    /// <see cref="IInterBusTransport.SendAsync"/>.
     /// </summary>
-    Task SchedulePublishToTopicAsync(string topicName, byte[] payload, MessageHeaders headers,
-        DateTimeOffset scheduledAt, CancellationToken cancellationToken);
-
-    /// <summary>
-    /// Schedule a serialised payload to be sent directly to the named queue at
-    /// <paramref name="scheduledAt"/> (bypassing topic fan-out).
-    /// </summary>
-    Task ScheduleSendToQueueAsync(string queueName, byte[] payload, MessageHeaders headers,
+    /// <param name="destination">
+    /// A URI whose scheme encodes the transport and destination type
+    /// (e.g. <c>memorytopic://interbus/my-topic</c> or
+    /// <c>memoryqueue://interbus/my-queue</c>). The path is the destination name.
+    /// </param>
+    /// <param name="payload">The serialised message bytes.</param>
+    /// <param name="headers">The message headers.</param>
+    /// <param name="scheduledAt">The UTC time at which the message should be delivered.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task ScheduleAsync(Uri destination, byte[] payload, MessageHeaders headers,
         DateTimeOffset scheduledAt, CancellationToken cancellationToken);
 }

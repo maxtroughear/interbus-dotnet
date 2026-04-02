@@ -27,16 +27,17 @@ internal sealed class PublishMessageScheduler(
         var topicName = options.TryGetTopicName(typeof(T), out var customName)
             ? customName
             : RoutingConventions.TopicName(typeof(T));
+        var destination = RoutingConventions.TopicUri(options.TopicUriScheme, topicName);
         var payload = serializer.Serialize(message);
         var enriched = Enrich<T>(headers);
-        var command = new SchedulePublishCommand
+        var command = new ScheduleDeliveryCommand
         {
-            TopicName = topicName,
+            Destination = destination.ToString(),
             Payload = payload,
             Headers = new Dictionary<string, string>(enriched),
             ScheduledAt = scheduledAt
         };
-        return publisher.Send<SchedulingConsumer, SchedulePublishCommand>(command, cancellationToken);
+        return publisher.Send<SchedulingConsumer, ScheduleDeliveryCommand>(command, cancellationToken);
     }
 
     public Task ScheduleSend<TConsumer, T>(T message, DateTimeOffset scheduledAt,
@@ -50,17 +51,17 @@ internal sealed class PublishMessageScheduler(
         where TConsumer : IConsumer<T>
         where T : class
     {
-        var queueName = RoutingConventions.QueueName(typeof(TConsumer));
+        var destination = RoutingConventions.QueueUri(options.QueueUriScheme, typeof(TConsumer));
         var payload = serializer.Serialize(message);
         var enriched = Enrich<T>(headers);
-        var command = new ScheduleSendCommand
+        var command = new ScheduleDeliveryCommand
         {
-            QueueName = queueName,
+            Destination = destination.ToString(),
             Payload = payload,
             Headers = new Dictionary<string, string>(enriched),
             ScheduledAt = scheduledAt
         };
-        return publisher.Send<SchedulingConsumer, ScheduleSendCommand>(command, cancellationToken);
+        return publisher.Send<SchedulingConsumer, ScheduleDeliveryCommand>(command, cancellationToken);
     }
 
     public Task ScheduleSend<T>(string queueName, T message, DateTimeOffset scheduledAt,
@@ -70,16 +71,17 @@ internal sealed class PublishMessageScheduler(
     public Task ScheduleSend<T>(string queueName, T message, MessageHeaders headers, DateTimeOffset scheduledAt,
         CancellationToken cancellationToken = default) where T : class
     {
+        var destination = RoutingConventions.QueueUri(options.QueueUriScheme, queueName);
         var payload = serializer.Serialize(message);
         var enriched = Enrich<T>(headers);
-        var command = new ScheduleSendCommand
+        var command = new ScheduleDeliveryCommand
         {
-            QueueName = queueName,
+            Destination = destination.ToString(),
             Payload = payload,
             Headers = new Dictionary<string, string>(enriched),
             ScheduledAt = scheduledAt
         };
-        return publisher.Send<SchedulingConsumer, ScheduleSendCommand>(command, cancellationToken);
+        return publisher.Send<SchedulingConsumer, ScheduleDeliveryCommand>(command, cancellationToken);
     }
 
     private static MessageHeaders Enrich<T>(MessageHeaders headers) where T : class

@@ -39,9 +39,10 @@ public static class PostgreSqlTransportBuilderExtensions
             throw new InvalidOperationException(
                 "PostgreSqlTransportOptions.ConnectionString must be set before calling AddPostgreSqlTransport.");
 
+        builder.Options.SetTransportUriSchemes(PostgreSqlTransport.TopicScheme, PostgreSqlTransport.QueueScheme);
         builder.Services.AddSingleton(options);
         builder.Services.AddSingleton(NpgsqlDataSource.Create(options.ConnectionString));
-        builder.Services.AddSingleton<IInterBusTransport, PostgreSqlTransport>();
+        RegisterTransportServices(builder);
 
         RegisterCommonServices(builder, options);
 
@@ -81,13 +82,34 @@ public static class PostgreSqlTransportBuilderExtensions
         var options = new PostgreSqlTransportOptions();
         configure?.Invoke(options);
 
+        builder.Options.SetTransportUriSchemes(PostgreSqlTransport.TopicScheme, PostgreSqlTransport.QueueScheme);
         builder.Services.AddSingleton(options);
         builder.Services.AddSingleton(dataSource);
-        builder.Services.AddSingleton<IInterBusTransport, PostgreSqlTransport>();
+        RegisterTransportServices(builder);
 
         RegisterCommonServices(builder, options);
 
         return builder;
+    }
+
+    /// <summary>
+    /// Registers <see cref="PostgreSqlTransport"/> as its own concrete type, as a non-keyed
+    /// <see cref="IInterBusTransport"/>, and as a keyed service for each supported URI scheme
+    /// so the transport factory can resolve it by destination scheme.
+    /// </summary>
+    private static void RegisterTransportServices(IInterBusBuilder builder)
+    {
+        // Register the concrete type so keyed registrations can share the same singleton.
+        builder.Services.AddSingleton<PostgreSqlTransport>();
+
+        // Keyed registrations for transport factory scheme-based resolution.
+        builder.Services.AddKeyedSingleton<IInterBusTransport>(PostgreSqlTransport.TopicScheme,
+            (sp, _key) => sp.GetRequiredService<PostgreSqlTransport>());
+        builder.Services.AddKeyedSingleton<IInterBusTransport>(PostgreSqlTransport.QueueScheme,
+            (sp, _key) => sp.GetRequiredService<PostgreSqlTransport>());
+
+        // Keep the non-keyed registration for backward compatibility.
+        builder.Services.AddSingleton<IInterBusTransport>(sp => sp.GetRequiredService<PostgreSqlTransport>());
     }
 
     /// <summary>

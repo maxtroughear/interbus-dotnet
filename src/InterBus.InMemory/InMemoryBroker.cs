@@ -8,6 +8,12 @@ namespace InterBus.InMemory;
 /// </summary>
 public sealed class InMemoryBroker : IInterBusTransport, IDisposable
 {
+    /// <summary>URI scheme for in-memory topic (fan-out) destinations.</summary>
+    public const string TopicScheme = "memorytopic";
+
+    /// <summary>URI scheme for in-memory queue (point-to-point) destinations.</summary>
+    public const string QueueScheme = "memoryqueue";
+
     private readonly Dictionary<string, InMemoryTopic> _topics = new(StringComparer.Ordinal);
     private readonly Dictionary<string, InMemoryQueue> _queues = new(StringComparer.Ordinal);
     private bool _disposed;
@@ -41,22 +47,29 @@ public sealed class InMemoryBroker : IInterBusTransport, IDisposable
     }
 
     /// <inheritdoc/>
-    public Task PublishToTopicAsync(string topicName, byte[] payload, MessageHeaders headers,
+    public Task SendAsync(Uri destination, byte[] payload, MessageHeaders headers,
         CancellationToken cancellationToken)
     {
-        if (_topics.TryGetValue(topicName, out var topic))
-            return topic.FanOutAsync(new InMemoryEnvelope(payload, headers), cancellationToken);
+        var name = RoutingConventions.GetDestinationName(destination);
 
-        return Task.CompletedTask;
-    }
+        if (destination.Scheme == TopicScheme)
+        {
+            if (_topics.TryGetValue(name, out var topic))
+                return topic.FanOutAsync(new InMemoryEnvelope(payload, headers), cancellationToken);
+            return Task.CompletedTask;
+        }
 
-    /// <inheritdoc/>
-    public Task SendToQueueAsync(string queueName, byte[] payload, MessageHeaders headers,
-        CancellationToken cancellationToken)
-    {
-        return _queues.TryGetValue(queueName, out var queue)
-            ? queue.WriteAsync(new InMemoryEnvelope(payload, headers), cancellationToken).AsTask()
-            : Task.CompletedTask;
+        if (destination.Scheme == QueueScheme)
+        {
+            return _queues.TryGetValue(name, out var queue)
+                ? queue.WriteAsync(new InMemoryEnvelope(payload, headers), cancellationToken).AsTask()
+                : Task.CompletedTask;
+        }
+
+        throw new ArgumentException(
+            $"Unsupported destination URI scheme '{destination.Scheme}'. " +
+            $"Expected '{TopicScheme}' or '{QueueScheme}'.",
+            nameof(destination));
     }
 
     /// <summary>Returns all registered queues. Used by the message pump to start consumers.</summary>

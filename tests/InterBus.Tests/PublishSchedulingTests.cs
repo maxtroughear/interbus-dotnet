@@ -82,7 +82,7 @@ public sealed class PublishSchedulingTests
         await scheduler.SchedulePublish(msg, scheduledAt, TestContext.Current.CancellationToken);
 
         var call = Assert.Single(transport.Sends);
-        Assert.Contains("SchedulingConsumer", call.QueueName);
+        Assert.Contains("SchedulingConsumer", call.Destination.AbsolutePath);
     }
 
     [Fact]
@@ -123,7 +123,7 @@ public sealed class PublishSchedulingTests
             TestContext.Current.CancellationToken);
 
         var call = Assert.Single(transport.Sends);
-        Assert.Contains("SchedulingConsumer", call.QueueName);
+        Assert.Contains("SchedulingConsumer", call.Destination.AbsolutePath);
     }
 
     [Fact]
@@ -135,7 +135,7 @@ public sealed class PublishSchedulingTests
             DateTimeOffset.UtcNow.AddHours(1), TestContext.Current.CancellationToken);
 
         var call = Assert.Single(transport.Sends);
-        Assert.Contains("SchedulingConsumer", call.QueueName);
+        Assert.Contains("SchedulingConsumer", call.Destination.AbsolutePath);
     }
 
     #endregion
@@ -158,7 +158,10 @@ public sealed class PublishSchedulingTests
         Assert.NotNull(capturedOptions);
         var consumer = Assert.Single(capturedOptions.Consumers,
             c => c.ConsumerType.Name == "SchedulingConsumer");
-        Assert.Equal(2, consumer.MessageTypes.Count);
+        // SchedulePublishCommand and ScheduleSendCommand were merged into a single
+        // ScheduleDeliveryCommand, so the consumer now handles exactly one message type.
+        Assert.Equal(1, consumer.MessageTypes.Count);
+        Assert.Equal("ScheduleDeliveryCommand", consumer.MessageTypes[0].Name);
     }
 
     #endregion
@@ -175,29 +178,18 @@ public sealed class PublishSchedulingTests
 
     private sealed class NoOpTransport : IInterBusTransport
     {
-        public Task PublishToTopicAsync(string topicName, byte[] payload, MessageHeaders headers,
-            CancellationToken cancellationToken) => Task.CompletedTask;
-
-        public Task SendToQueueAsync(string queueName, byte[] payload, MessageHeaders headers,
+        public Task SendAsync(Uri destination, byte[] payload, MessageHeaders headers,
             CancellationToken cancellationToken) => Task.CompletedTask;
     }
 
     private sealed class CapturingTransport : IInterBusTransport
     {
-        public List<(string TopicName, byte[] Payload, MessageHeaders Headers)> Publishes { get; } = [];
-        public List<(string QueueName, byte[] Payload, MessageHeaders Headers)> Sends { get; } = [];
+        public List<(Uri Destination, byte[] Payload, MessageHeaders Headers)> Sends { get; } = [];
 
-        public Task PublishToTopicAsync(string topicName, byte[] payload, MessageHeaders headers,
+        public Task SendAsync(Uri destination, byte[] payload, MessageHeaders headers,
             CancellationToken cancellationToken)
         {
-            Publishes.Add((topicName, payload, headers));
-            return Task.CompletedTask;
-        }
-
-        public Task SendToQueueAsync(string queueName, byte[] payload, MessageHeaders headers,
-            CancellationToken cancellationToken)
-        {
-            Sends.Add((queueName, payload, headers));
+            Sends.Add((destination, payload, headers));
             return Task.CompletedTask;
         }
     }

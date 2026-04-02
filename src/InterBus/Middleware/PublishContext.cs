@@ -33,6 +33,12 @@ public sealed class PublishContext<T>
     /// </summary>
     public TimeSpan? Delay { get; set; }
 
+    /// <summary>
+    /// Initializes a <see cref="PublishContext{T}"/>.
+    /// The framework creates instances internally, but the constructor is public to allow
+    /// test implementations of <see cref="IMessagePublisher"/> to invoke configure delegates
+    /// (e.g. in unit tests for middleware or redelivery handlers).
+    /// </summary>
     public PublishContext(Uri destination, T payload, MessageHeaders headers)
     {
         Destination = destination;

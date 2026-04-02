@@ -227,9 +227,9 @@ public sealed class RedeliverySchedulingMiddlewareTests
         public Task Send<T>(string queueName, T message, Action<PublishContext<T>> configure,
             CancellationToken cancellationToken = default) where T : class
         {
-            var headers = new MessageHeaders();
-            configure(new PublishContext<T>(new Uri("queue://interbus/" + queueName), message, headers));
-            Sent.Add(new SentMessage<object>(queueName, message, headers));
+            var ctx = new PublishContext<T>(new Uri("queue://interbus/" + queueName), message, new MessageHeaders());
+            configure(ctx);
+            Sent.Add(new SentMessage<object>(queueName, message, ctx.Headers));
             return Task.CompletedTask;
         }
     }

@@ -213,8 +213,8 @@ public sealed class SchedulingTests
 
     private sealed class NoOpTransport : IInterBusTransport
     {
-        public Task SendAsync(Uri destination, byte[] payload, MessageHeaders headers,
-            CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task SendAsync(TransportSendContext context, CancellationToken cancellationToken) =>
+            Task.CompletedTask;
     }
 
     private sealed class TestSchedulingProvider : IMessageSchedulingProvider

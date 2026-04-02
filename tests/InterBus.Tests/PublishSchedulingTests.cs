@@ -178,18 +178,17 @@ public sealed class PublishSchedulingTests
 
     private sealed class NoOpTransport : IInterBusTransport
     {
-        public Task SendAsync(Uri destination, byte[] payload, MessageHeaders headers,
-            CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task SendAsync(TransportSendContext context, CancellationToken cancellationToken) =>
+            Task.CompletedTask;
     }
 
     private sealed class CapturingTransport : IInterBusTransport
     {
         public List<(Uri Destination, byte[] Payload, MessageHeaders Headers)> Sends { get; } = [];
 
-        public Task SendAsync(Uri destination, byte[] payload, MessageHeaders headers,
-            CancellationToken cancellationToken)
+        public Task SendAsync(TransportSendContext context, CancellationToken cancellationToken)
         {
-            Sends.Add((destination, payload, headers));
+            Sends.Add((context.Destination, context.Payload, context.Headers));
             return Task.CompletedTask;
         }
     }

@@ -208,25 +208,28 @@ public sealed class RedeliverySchedulingMiddlewareTests
         public Task Publish<T>(T message, CancellationToken cancellationToken = default) where T : class
             => Task.CompletedTask;
 
-        public Task Publish<T>(T message, MessageHeaders headers, CancellationToken cancellationToken = default)
-            where T : class
+        public Task Publish<T>(T message, Action<PublishContext<T>> configure,
+            CancellationToken cancellationToken = default) where T : class
             => Task.CompletedTask;
 
         public Task Send<TConsumer, T>(T message, CancellationToken cancellationToken = default)
             where TConsumer : IConsumer<T> where T : class
             => Task.CompletedTask;
 
-        public Task Send<TConsumer, T>(T message, MessageHeaders headers, CancellationToken cancellationToken = default)
+        public Task Send<TConsumer, T>(T message, Action<PublishContext<T>> configure,
+            CancellationToken cancellationToken = default)
             where TConsumer : IConsumer<T> where T : class
             => Task.CompletedTask;
 
         public Task Send<T>(string queueName, T message, CancellationToken cancellationToken = default) where T : class
             => Task.CompletedTask;
 
-        public Task Send<T>(string queueName, T message, MessageHeaders headers,
+        public Task Send<T>(string queueName, T message, Action<PublishContext<T>> configure,
             CancellationToken cancellationToken = default) where T : class
         {
-            Sent.Add(new SentMessage<object>(queueName, message, headers));
+            var ctx = new PublishContext<T>(new Uri("queue://interbus/" + queueName), message, new MessageHeaders());
+            configure(ctx);
+            Sent.Add(new SentMessage<object>(queueName, message, ctx.Headers));
             return Task.CompletedTask;
         }
     }

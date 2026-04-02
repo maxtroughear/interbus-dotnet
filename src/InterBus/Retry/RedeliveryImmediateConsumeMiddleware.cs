@@ -40,7 +40,11 @@ public sealed class RedeliveryImmediateConsumeMiddleware(
             await publisher.Send(
                 context.Descriptor.QueueName,
                 context.Payload,
-                redeliveryHeaders,
+                ctx =>
+                {
+                    foreach (var header in redeliveryHeaders)
+                        ctx.Headers[header.Key] = header.Value;
+                },
                 cancellationToken);
 
             // Swallow to signal the current delivery has been handled by scheduling redelivery.

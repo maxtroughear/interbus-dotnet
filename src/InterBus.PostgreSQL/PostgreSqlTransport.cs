@@ -37,33 +37,38 @@ public sealed class PostgreSqlTransport : IInterBusTransport
     }
 
     /// <inheritdoc/>
-    public async Task SendAsync(Uri destination, byte[] payload, MessageHeaders headers,
-        CancellationToken cancellationToken)
+    public async Task SendAsync(TransportSendContext context, CancellationToken cancellationToken)
     {
-        var name = RoutingConventions.GetDestinationName(destination);
-        var headersJson = SerializeHeaders(headers);
+        var name = RoutingConventions.GetDestinationName(context.Destination);
+        var headersJson = SerializeHeaders(context.Headers);
+        var visibleAt = context.Delay.HasValue
+            ? (DateTimeOffset?)DateTimeOffset.UtcNow.Add(context.Delay.Value)
+            : null;
 
         await using var cmd = _dataSource.CreateCommand();
 
-        if (destination.Scheme == TopicScheme)
+        if (context.Destination.Scheme == TopicScheme)
         {
-            cmd.CommandText = $"SELECT \"{EscapeIdentifier(_schema)}\".publish_to_topic($1, $2, $3)";
+            cmd.CommandText = $"SELECT \"{EscapeIdentifier(_schema)}\".publish_to_topic($1, $2, $3, $4)";
         }
-        else if (destination.Scheme == QueueScheme)
+        else if (context.Destination.Scheme == QueueScheme)
         {
-            cmd.CommandText = $"SELECT \"{EscapeIdentifier(_schema)}\".send_to_queue($1, $2, $3)";
+            cmd.CommandText = $"SELECT \"{EscapeIdentifier(_schema)}\".send_to_queue($1, $2, $3, $4)";
         }
         else
         {
             throw new ArgumentException(
-                $"Unsupported destination URI scheme '{destination.Scheme}'. " +
+                $"Unsupported destination URI scheme '{context.Destination.Scheme}'. " +
                 $"Expected '{TopicScheme}' or '{QueueScheme}'.",
-                nameof(destination));
+                nameof(context));
         }
 
         cmd.Parameters.Add(new NpgsqlParameter<string> { TypedValue = name });
-        cmd.Parameters.Add(new NpgsqlParameter<byte[]> { TypedValue = payload, NpgsqlDbType = NpgsqlDbType.Bytea });
+        cmd.Parameters.Add(new NpgsqlParameter<byte[]> { TypedValue = context.Payload, NpgsqlDbType = NpgsqlDbType.Bytea });
         cmd.Parameters.Add(new NpgsqlParameter<string> { TypedValue = headersJson });
+        cmd.Parameters.Add(visibleAt.HasValue
+            ? new NpgsqlParameter<DateTimeOffset> { TypedValue = visibleAt.Value, NpgsqlDbType = NpgsqlDbType.TimestampTz }
+            : new NpgsqlParameter { Value = DBNull.Value, NpgsqlDbType = NpgsqlDbType.TimestampTz });
         await cmd.ExecuteNonQueryAsync(cancellationToken);
     }
 

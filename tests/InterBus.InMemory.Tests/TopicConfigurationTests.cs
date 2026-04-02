@@ -245,9 +245,9 @@ public class TopicConfigurationTests
             using var scope = provider.CreateScope();
             var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
             var msg = new OrderPlaced(Guid.NewGuid(), "hdr@queue.test", 5m);
-            var headers = new MessageHeaders { ["x-source"] = "cross-project" };
 
-            await publisher.Send(queueName, msg, headers, TestContext.Current.CancellationToken);
+            await publisher.Send(queueName, msg, ctx => ctx.Headers["x-source"] = "cross-project",
+                TestContext.Current.CancellationToken);
 
             await WaitUntilAsync(() => orderTracker.Messages.Count == 1);
 

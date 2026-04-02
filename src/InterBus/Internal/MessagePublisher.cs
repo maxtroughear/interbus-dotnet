@@ -38,22 +38,24 @@ internal sealed class MessagePublisher(
         {
             var payload = serializer.Serialize(ctx.Payload);
             var transport = transportFactory.Resolve(ctx.Destination);
-            return transport.SendAsync(ctx.Destination, payload, ctx.Headers, ct);
+            var sendContext = new TransportSendContext(ctx.Destination, payload, ctx.Headers, ctx.Delay);
+            return transport.SendAsync(sendContext, ct);
         }
     }
 
     public Task Publish<T>(T message, CancellationToken cancellationToken = default) where T : class =>
-        Publish(message, [], cancellationToken);
+        Publish(message, _ => { }, cancellationToken);
 
-    public Task Publish<T>(T message, MessageHeaders headers, CancellationToken cancellationToken = default)
+    public Task Publish<T>(T message, Action<PublishContext<T>> configure,
+        CancellationToken cancellationToken = default)
         where T : class
     {
         var topicName = options.TryGetTopicName(typeof(T), out var customName)
             ? customName
             : RoutingConventions.TopicName(typeof(T));
         var destination = RoutingConventions.TopicUri(options.TopicUriScheme, topicName);
-        var enriched = Enrich<T>(headers);
-        var context = new PublishContext<T>(destination, message, enriched);
+        var context = new PublishContext<T>(destination, message, Stamp<T>());
+        configure(context);
         var pipeline = BuildMiddlewarePipeline<T>();
 
         return pipeline(context, cancellationToken);
@@ -62,15 +64,16 @@ internal sealed class MessagePublisher(
     public Task Send<TConsumer, T>(T message, CancellationToken cancellationToken = default)
         where TConsumer : IConsumer<T>
         where T : class =>
-        Send<TConsumer, T>(message, [], cancellationToken);
+        Send<TConsumer, T>(message, _ => { }, cancellationToken);
 
-    public Task Send<TConsumer, T>(T message, MessageHeaders headers, CancellationToken cancellationToken = default)
+    public Task Send<TConsumer, T>(T message, Action<PublishContext<T>> configure,
+        CancellationToken cancellationToken = default)
         where TConsumer : IConsumer<T>
         where T : class
     {
         var destination = RoutingConventions.QueueUri(options.QueueUriScheme, typeof(TConsumer));
-        var enriched = Enrich<T>(headers);
-        var context = new PublishContext<T>(destination, message, enriched);
+        var context = new PublishContext<T>(destination, message, Stamp<T>());
+        configure(context);
         var pipeline = BuildMiddlewarePipeline<T>();
 
         return pipeline(context, cancellationToken);
@@ -78,30 +81,24 @@ internal sealed class MessagePublisher(
 
     public Task Send<T>(string queueName, T message, CancellationToken cancellationToken = default)
         where T : class =>
-        Send(queueName, message, [], cancellationToken);
+        Send(queueName, message, _ => { }, cancellationToken);
 
-    public Task Send<T>(string queueName, T message, MessageHeaders headers,
+    public Task Send<T>(string queueName, T message, Action<PublishContext<T>> configure,
         CancellationToken cancellationToken = default)
         where T : class
     {
         var destination = RoutingConventions.QueueUri(options.QueueUriScheme, queueName);
-        var enriched = Enrich<T>(headers);
-        var context = new PublishContext<T>(destination, message, enriched);
+        var context = new PublishContext<T>(destination, message, Stamp<T>());
+        configure(context);
         var pipeline = BuildMiddlewarePipeline<T>();
 
         return pipeline(context, cancellationToken);
     }
 
     /// <summary>
-    /// Returns a copy of <paramref name="headers"/> with <see cref="InterBusHeaders.MessageType"/>
+    /// Returns a new <see cref="MessageHeaders"/> with <see cref="InterBusHeaders.MessageType"/>
     /// stamped to the fully qualified CLR type name of <typeparamref name="T"/>.
     /// </summary>
-    private static MessageHeaders Enrich<T>(MessageHeaders headers) where T : class
-    {
-        var enriched = new MessageHeaders(headers)
-        {
-            [InterBusHeaders.MessageType] = typeof(T).FullName ?? typeof(T).Name
-        };
-        return enriched;
-    }
+    private static MessageHeaders Stamp<T>() where T : class =>
+        new() { [InterBusHeaders.MessageType] = typeof(T).FullName ?? typeof(T).Name };
 }

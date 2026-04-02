@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Logging;
+
 namespace InterBus.InMemory;
 
 /// <summary>
@@ -16,10 +18,13 @@ public sealed class InMemoryBroker : IInterBusTransport, IDisposable
 
     private readonly Dictionary<string, InMemoryTopic> _topics = new(StringComparer.Ordinal);
     private readonly Dictionary<string, InMemoryQueue> _queues = new(StringComparer.Ordinal);
+    private readonly ILogger<InMemoryBroker> _logger;
     private bool _disposed;
 
-    public InMemoryBroker(InterBusOptions options)
+    public InMemoryBroker(InterBusOptions options, ILogger<InMemoryBroker> logger)
     {
+        _logger = logger;
+
         foreach (var descriptor in options.Consumers)
         {
             // One queue per consumer class.
@@ -47,29 +52,61 @@ public sealed class InMemoryBroker : IInterBusTransport, IDisposable
     }
 
     /// <inheritdoc/>
-    public Task SendAsync(Uri destination, byte[] payload, MessageHeaders headers,
-        CancellationToken cancellationToken)
+    public Task SendAsync(TransportSendContext context, CancellationToken cancellationToken)
     {
-        var name = RoutingConventions.GetDestinationName(destination);
-
-        if (destination.Scheme == TopicScheme)
+        if (context.Delay.HasValue)
         {
-            if (_topics.TryGetValue(name, out var topic))
-                return topic.FanOutAsync(new InMemoryEnvelope(payload, headers), cancellationToken);
+            // Schedule delivery in the background so the caller is not blocked for the delay duration.
+            _ = DeliverAfterDelayAsync(context, cancellationToken);
             return Task.CompletedTask;
         }
 
-        if (destination.Scheme == QueueScheme)
+        return DeliverCoreAsync(context, cancellationToken);
+    }
+
+    /// <summary>Waits for the configured delay then forwards the message to the destination.</summary>
+    private async Task DeliverAfterDelayAsync(TransportSendContext context, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await Task.Delay(context.Delay!.Value, cancellationToken);
+            await DeliverCoreAsync(context, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            // Delivery cancelled (e.g. host shutting down or caller token cancelled). Silently discard.
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(
+                ex,
+                "InterBus InMemory: unhandled error delivering delayed message to {Destination}",
+                context.Destination);
+        }
+    }
+
+    private Task DeliverCoreAsync(TransportSendContext context, CancellationToken cancellationToken)
+    {
+        var name = RoutingConventions.GetDestinationName(context.Destination);
+
+        if (context.Destination.Scheme == TopicScheme)
+        {
+            if (_topics.TryGetValue(name, out var topic))
+                return topic.FanOutAsync(new InMemoryEnvelope(context.Payload, context.Headers), cancellationToken);
+            return Task.CompletedTask;
+        }
+
+        if (context.Destination.Scheme == QueueScheme)
         {
             return _queues.TryGetValue(name, out var queue)
-                ? queue.WriteAsync(new InMemoryEnvelope(payload, headers), cancellationToken).AsTask()
+                ? queue.WriteAsync(new InMemoryEnvelope(context.Payload, context.Headers), cancellationToken).AsTask()
                 : Task.CompletedTask;
         }
 
         throw new ArgumentException(
-            $"Unsupported destination URI scheme '{destination.Scheme}'. " +
+            $"Unsupported destination URI scheme '{context.Destination.Scheme}'. " +
             $"Expected '{TopicScheme}' or '{QueueScheme}'.",
-            nameof(destination));
+            nameof(context));
     }
 
     /// <summary>Returns all registered queues. Used by the message pump to start consumers.</summary>

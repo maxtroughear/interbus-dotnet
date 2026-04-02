@@ -144,7 +144,7 @@ internal sealed class PostgreSqlSchemaManager
         // publish_to_topic: fan-out publish to all queues subscribed to the given topic.
         // Payload is inserted lazily — only when at least one subscriber is found — so no orphan
         // cleanup is needed for the case where the topic exists but has no subscriptions.
-        $"CREATE OR REPLACE FUNCTION {s}.publish_to_topic(p_topic_name TEXT, p_payload BYTEA, p_headers TEXT)\n" +
+        $"CREATE OR REPLACE FUNCTION {s}.publish_to_topic(p_topic_name TEXT, p_payload BYTEA, p_headers TEXT, p_visible_at TIMESTAMPTZ DEFAULT NULL)\n" +
         "RETURNS VOID LANGUAGE plpgsql AS $$\n" +
         "DECLARE\n" +
         "    v_topic_id   BIGINT;\n" +
@@ -159,7 +159,7 @@ internal sealed class PostgreSqlSchemaManager
         $"            INSERT INTO {s}.message_payloads (payload, headers) VALUES (p_payload, p_headers)\n" +
         "                RETURNING id INTO v_payload_id;\n" +
         "        END IF;\n" +
-        $"        INSERT INTO {s}.messages (queue_id, payload_id) VALUES (v_queue_id, v_payload_id);\n" +
+        $"        INSERT INTO {s}.messages (queue_id, payload_id, visible_at) VALUES (v_queue_id, v_payload_id, COALESCE(p_visible_at, NOW()));\n" +
         "        PERFORM pg_notify('ib_' || v_queue_id::TEXT, '');\n" +
         "    END LOOP;\n" +
         "END;\n" +
@@ -167,7 +167,7 @@ internal sealed class PostgreSqlSchemaManager
 
         // send_to_queue: direct send, bypassing topic routing.
         // SELECT-first optimistic read; falls back to insert with race-condition handling.
-        $"CREATE OR REPLACE FUNCTION {s}.send_to_queue(p_queue_name TEXT, p_payload BYTEA, p_headers TEXT)\n" +
+        $"CREATE OR REPLACE FUNCTION {s}.send_to_queue(p_queue_name TEXT, p_payload BYTEA, p_headers TEXT, p_visible_at TIMESTAMPTZ DEFAULT NULL)\n" +
         "RETURNS VOID LANGUAGE plpgsql AS $$\n" +
         "DECLARE\n" +
         "    v_queue_id   BIGINT;\n" +
@@ -184,7 +184,7 @@ internal sealed class PostgreSqlSchemaManager
         "    END IF;\n" +
         $"    INSERT INTO {s}.message_payloads (payload, headers) VALUES (p_payload, p_headers)\n" +
         "        RETURNING id INTO v_payload_id;\n" +
-        $"    INSERT INTO {s}.messages (queue_id, payload_id) VALUES (v_queue_id, v_payload_id);\n" +
+        $"    INSERT INTO {s}.messages (queue_id, payload_id, visible_at) VALUES (v_queue_id, v_payload_id, COALESCE(p_visible_at, NOW()));\n" +
         "    PERFORM pg_notify('ib_' || v_queue_id::TEXT, '');\n" +
         "END;\n" +
         "$$;\n\n" +

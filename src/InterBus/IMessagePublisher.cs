@@ -1,3 +1,5 @@
+using InterBus.Middleware;
+
 namespace InterBus;
 
 /// <summary>
@@ -13,10 +15,14 @@ public interface IMessagePublisher
     Task Publish<T>(T message, CancellationToken cancellationToken = default) where T : class;
 
     /// <summary>
-    /// Publish a message to the topic for <typeparamref name="T"/>, attaching the supplied
-    /// <paramref name="headers"/>. All registered consumers will receive the message and headers.
+    /// Publish a message to the topic for <typeparamref name="T"/>, applying the supplied
+    /// <paramref name="configure"/> delegate to the <see cref="PublishContext{T}"/> before dispatch.
+    /// Use the delegate to set headers (via <see cref="PublishContext{T}.Headers"/>) and/or an
+    /// optional send delay (via <see cref="PublishContext{T}.Delay"/>).
+    /// All registered consumers will receive the message.
     /// </summary>
-    Task Publish<T>(T message, MessageHeaders headers, CancellationToken cancellationToken = default) where T : class;
+    Task Publish<T>(T message, Action<PublishContext<T>> configure, CancellationToken cancellationToken = default)
+        where T : class;
 
     /// <summary>
     /// Send a message directly to the queue of <typeparamref name="TConsumer"/>, bypassing topic fan-out.
@@ -27,10 +33,12 @@ public interface IMessagePublisher
         where T : class;
 
     /// <summary>
-    /// Send a message directly to the queue of <typeparamref name="TConsumer"/>, attaching the supplied
-    /// <paramref name="headers"/>. Only <typeparamref name="TConsumer"/> will receive the message.
+    /// Send a message directly to the queue of <typeparamref name="TConsumer"/>, applying the supplied
+    /// <paramref name="configure"/> delegate to the <see cref="PublishContext{T}"/> before dispatch.
+    /// Use the delegate to set headers and/or an optional send delay.
+    /// Only <typeparamref name="TConsumer"/> will receive the message.
     /// </summary>
-    Task Send<TConsumer, T>(T message, MessageHeaders headers, CancellationToken cancellationToken = default)
+    Task Send<TConsumer, T>(T message, Action<PublishContext<T>> configure, CancellationToken cancellationToken = default)
         where TConsumer : IConsumer<T>
         where T : class;
 
@@ -41,9 +49,12 @@ public interface IMessagePublisher
     Task Send<T>(string queueName, T message, CancellationToken cancellationToken = default) where T : class;
 
     /// <summary>
-    /// Send a message directly to the named <paramref name="queueName"/>, attaching the supplied
-    /// <paramref name="headers"/>. Use this overload when the consumer type is not available at the call site.
+    /// Send a message directly to the named <paramref name="queueName"/>, applying the supplied
+    /// <paramref name="configure"/> delegate to the <see cref="PublishContext{T}"/> before dispatch.
+    /// Use the delegate to set headers and/or an optional send delay.
+    /// Use this overload when the consumer type is not available at the call site.
     /// </summary>
-    Task Send<T>(string queueName, T message, MessageHeaders headers, CancellationToken cancellationToken = default)
+    Task Send<T>(string queueName, T message, Action<PublishContext<T>> configure,
+        CancellationToken cancellationToken = default)
         where T : class;
 }

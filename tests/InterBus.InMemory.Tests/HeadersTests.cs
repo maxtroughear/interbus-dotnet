@@ -103,9 +103,12 @@ public class HeadersTests
             using var scope = provider.CreateScope();
             var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
             var msg = new OrderPlaced(Guid.NewGuid(), "headers@test.com", 1.00m);
-            var headers = new MessageHeaders { ["x-correlation-id"] = "abc123", ["x-tenant"] = "acme" };
 
-            await publisher.Publish(msg, headers, TestContext.Current.CancellationToken);
+            await publisher.Publish(msg, ctx =>
+            {
+                ctx.Headers["x-correlation-id"] = "abc123";
+                ctx.Headers["x-tenant"] = "acme";
+            }, TestContext.Current.CancellationToken);
 
             await WaitUntilAsync(() => headerCapture.Captured.Count == 1);
 
@@ -138,9 +141,11 @@ public class HeadersTests
             using var scope = provider.CreateScope();
             var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
             var msg = new OrderPlaced(Guid.NewGuid(), "send@test.com", 2.00m);
-            var headers = new MessageHeaders { ["x-source"] = "unit-test" };
 
-            await publisher.Send<HeaderAwareConsumer, OrderPlaced>(msg, headers, TestContext.Current.CancellationToken);
+            await publisher.Send<HeaderAwareConsumer, OrderPlaced>(msg, ctx =>
+            {
+                ctx.Headers["x-source"] = "unit-test";
+            }, TestContext.Current.CancellationToken);
 
             await WaitUntilAsync(() => headerCapture.Captured.Count == 1);
 
@@ -217,9 +222,11 @@ public class HeadersTests
             using var scope = provider.CreateScope();
             var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
             var msg = new OrderPlaced(Guid.NewGuid(), "corr@test.com", 5.00m);
-            var headers = new MessageHeaders { [InterBusHeaders.CorrelationId] = "corr-999" };
 
-            await publisher.Publish(msg, headers, TestContext.Current.CancellationToken);
+            await publisher.Publish(msg, ctx =>
+            {
+                ctx.Headers[InterBusHeaders.CorrelationId] = "corr-999";
+            }, TestContext.Current.CancellationToken);
 
             await WaitUntilAsync(() => correlationIds.Count == 1);
 

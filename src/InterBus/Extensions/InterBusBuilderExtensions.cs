@@ -10,11 +10,35 @@ namespace InterBus.Extensions;
 public static class InterBusBuilderExtensions
 {
     /// <summary>
+    /// Register the <see cref="TransportDelaySchedulingProvider"/> as the
+    /// <see cref="IMessageSchedulingProvider"/>. This provider converts a scheduled delivery
+    /// time into a transport-level delay and passes it to
+    /// <see cref="IInterBusTransport.SendAsync"/> via <see cref="TransportSendContext.Delay"/>.
+    /// <para>
+    /// Requires the configured transport to honour <see cref="TransportSendContext.Delay"/>
+    /// (e.g. the in-memory transport uses <see cref="System.Threading.Tasks.Task.Delay(TimeSpan)"/>;
+    /// the PostgreSQL transport maps the delay to a <c>visible_at</c> column).
+    /// </para>
+    /// <para>
+    /// Call <see cref="AddScheduling"/> after this method to enable <see cref="IMessageScheduler"/>
+    /// injection in application services.
+    /// </para>
+    /// </summary>
+    /// <param name="builder">The InterBus builder.</param>
+    public static IInterBusBuilder AddTransportDelayScheduler(this IInterBusBuilder builder)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+        builder.Services.AddSingleton<IMessageSchedulingProvider, TransportDelaySchedulingProvider>();
+        return builder;
+    }
+
+    /// <summary>
     /// Register the InterBus scheduling infrastructure. This enables injecting
     /// <see cref="IMessageScheduler"/> to schedule messages for deferred delivery.
     /// <para>
     /// A concrete <see cref="IMessageSchedulingProvider"/> must also be registered (e.g. via
-    /// <c>AddTickerQScheduler()</c>) to supply the underlying delivery mechanism.
+    /// <c>AddTransportDelayScheduler()</c> or <c>AddTickerQScheduler()</c>) to supply the
+    /// underlying delivery mechanism.
     /// </para>
     /// </summary>
     /// <param name="builder">The InterBus builder.</param>

@@ -87,4 +87,14 @@ internal sealed class InterBusBuilder : IInterBusBuilder
         Services.AddScoped<IConsumeMiddleware, TMiddleware>();
         return this;
     }
+
+    /// <inheritdoc/>
+    public IInterBusBuilder UseScheduleMiddleware<
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
+        TMiddleware>()
+        where TMiddleware : class, IScheduleMiddleware
+    {
+        Services.AddScoped<IScheduleMiddleware, TMiddleware>();
+        return this;
+    }
 }

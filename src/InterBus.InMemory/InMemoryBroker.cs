@@ -47,29 +47,31 @@ public sealed class InMemoryBroker : IInterBusTransport, IDisposable
     }
 
     /// <inheritdoc/>
-    public Task SendAsync(Uri destination, byte[] payload, MessageHeaders headers,
-        CancellationToken cancellationToken)
+    public async Task SendAsync(TransportSendContext context, CancellationToken cancellationToken)
     {
-        var name = RoutingConventions.GetDestinationName(destination);
+        if (context.Delay.HasValue)
+            await Task.Delay(context.Delay.Value, cancellationToken);
 
-        if (destination.Scheme == TopicScheme)
+        var name = RoutingConventions.GetDestinationName(context.Destination);
+
+        if (context.Destination.Scheme == TopicScheme)
         {
             if (_topics.TryGetValue(name, out var topic))
-                return topic.FanOutAsync(new InMemoryEnvelope(payload, headers), cancellationToken);
-            return Task.CompletedTask;
+                await topic.FanOutAsync(new InMemoryEnvelope(context.Payload, context.Headers), cancellationToken);
+            return;
         }
 
-        if (destination.Scheme == QueueScheme)
+        if (context.Destination.Scheme == QueueScheme)
         {
-            return _queues.TryGetValue(name, out var queue)
-                ? queue.WriteAsync(new InMemoryEnvelope(payload, headers), cancellationToken).AsTask()
-                : Task.CompletedTask;
+            if (_queues.TryGetValue(name, out var queue))
+                await queue.WriteAsync(new InMemoryEnvelope(context.Payload, context.Headers), cancellationToken);
+            return;
         }
 
         throw new ArgumentException(
-            $"Unsupported destination URI scheme '{destination.Scheme}'. " +
+            $"Unsupported destination URI scheme '{context.Destination.Scheme}'. " +
             $"Expected '{TopicScheme}' or '{QueueScheme}'.",
-            nameof(destination));
+            nameof(context));
     }
 
     /// <summary>Returns all registered queues. Used by the message pump to start consumers.</summary>

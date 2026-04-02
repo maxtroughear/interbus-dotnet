@@ -73,7 +73,11 @@ public sealed class RedeliverySchedulingConsumeMiddleware(
                 await publisher.Send(
                     context.Descriptor.QueueName,
                     context.Payload,
-                    redeliveryHeaders,
+                    ctx =>
+                    {
+                        foreach (var header in redeliveryHeaders)
+                            ctx.Headers[header.Key] = header.Value;
+                    },
                     cancellationToken);
             }
 

@@ -28,6 +28,7 @@ internal sealed class TickerQDeliverFunction(IInterBusTransportFactory transport
         var destination = new Uri(request.Destination);
         var headers = new MessageHeaders(request.Headers);
         var transport = transportFactory.Resolve(destination);
-        return transport.SendAsync(destination, request.Payload, headers, cancellationToken);
+        var sendContext = new TransportSendContext(destination, request.Payload, headers, delay: null);
+        return transport.SendAsync(sendContext, cancellationToken);
     }
 }

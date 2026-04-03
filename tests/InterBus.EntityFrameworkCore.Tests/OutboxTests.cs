@@ -1,6 +1,6 @@
 using System.Collections.Concurrent;
-using InterBus.EFCore;
-using InterBus.EFCore.Extensions;
+using InterBus.EntityFrameworkCore;
+using InterBus.EntityFrameworkCore.Extensions;
 using InterBus.Extensions;
 using InterBus.Generated;
 using InterBus.InMemory.Extensions;
@@ -10,7 +10,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Xunit;
 
-namespace InterBus.EFCore.Tests;
+namespace InterBus.EntityFrameworkCore.Tests;
 
 // ── Message types ────────────────────────────────────────────────────────────
 
@@ -69,23 +69,19 @@ public class OutboxTests
         Action<IInterBusBuilder> configureBus,
         Action<IServiceCollection>? extraServices = null)
     {
-        // Use a single, kept-open SqliteConnection so all DbContext instances share the
-        // same in-memory database for the duration of the test.
+        // Use a single kept-open SqliteConnection so all DbContext instances share the same
+        // in-memory database for the duration of the test.
         var connection = new SqliteConnection("Data Source=:memory:");
         await connection.OpenAsync();
 
         var services = new ServiceCollection();
         services.AddLogging();
-
         services.AddDbContext<TestDbContext>(o => o.UseSqlite(connection));
-
         extraServices?.Invoke(services);
-
         services.AddInterBus(configureBus);
 
         var provider = services.BuildServiceProvider();
 
-        // Ensure the schema exists before starting hosted services.
         await using (var scope = provider.CreateAsyncScope())
         {
             await scope.ServiceProvider.GetRequiredService<TestDbContext>()
@@ -129,7 +125,7 @@ public class OutboxTests
         {
             bus.AddInMemoryTransport();
             bus.AddConsumer<OrderPlacedConsumer>();
-            // Disable automatic polling so the processor doesn't run during the assertion.
+            // Long poll interval so the processor does not run during assertions.
             bus.UseOutbox<TestDbContext>(o => o.PollInterval = TimeSpan.FromHours(1));
         }, services => services.AddSingleton(tracker));
 
@@ -153,7 +149,6 @@ public class OutboxTests
             // Consumer should NOT have received the message yet (processor hasn't run).
             Assert.Empty(tracker.Messages);
 
-            // The outbox row exists in the DB.
             var outboxCount = await dbContext.OutboxMessages
                 .CountAsync(TestContext.Current.CancellationToken);
             Assert.Equal(1, outboxCount);
@@ -165,8 +160,7 @@ public class OutboxTests
     }
 
     /// <summary>
-    /// The outbox processor must forward stored messages to the transport and then delete
-    /// (or mark) them so they are not forwarded twice.
+    /// The outbox processor must forward stored messages to the transport and delete them.
     /// </summary>
     [Fact]
     public async Task OutboxProcessor_ForwardsMessages_ToTransport()
@@ -177,7 +171,6 @@ public class OutboxTests
         {
             bus.AddInMemoryTransport();
             bus.AddConsumer<OrderPlacedConsumer>();
-            // Short poll interval so the processor runs quickly in the test.
             bus.UseOutbox<TestDbContext>(o => o.PollInterval = TimeSpan.FromMilliseconds(50));
         }, services => services.AddSingleton(tracker));
 
@@ -193,7 +186,6 @@ public class OutboxTests
                 await dbContext.SaveChangesAsync(TestContext.Current.CancellationToken);
             }
 
-            // Wait for the background processor to forward the message.
             await WaitUntilAsync(() => tracker.Messages.Count == 1);
 
             Assert.Single(tracker.Messages);
@@ -206,11 +198,10 @@ public class OutboxTests
     }
 
     /// <summary>
-    /// Multiple messages published in the same scope and saved in the same
-    /// <c>SaveChangesAsync</c> call must all be forwarded.
+    /// Multiple messages published in the same scope share a GroupId and are all forwarded.
     /// </summary>
     [Fact]
-    public async Task OutboxProcessor_ForwardsMultipleMessages_FromSameTransaction()
+    public async Task OutboxProcessor_ForwardsMultipleMessages_FromSameGroup()
     {
         var tracker = new OrderPlacedTracker();
 
@@ -235,7 +226,10 @@ public class OutboxTests
                         new OrderPlaced(Guid.NewGuid(), $"user{i}@example.com", i * 10m),
                         TestContext.Current.CancellationToken);
 
-                // All messages are saved atomically in one call.
+                // All messages share the same GroupId (same middleware scope).
+                var groupIds = dbContext.OutboxMessages.Local.Select(m => m.GroupId).Distinct().ToList();
+                Assert.Single(groupIds);
+
                 await dbContext.SaveChangesAsync(TestContext.Current.CancellationToken);
             }
 
@@ -250,11 +244,10 @@ public class OutboxTests
     }
 
     /// <summary>
-    /// After the outbox processor forwards messages, the outbox table must be empty
-    /// (default behaviour is to delete processed rows).
+    /// After the outbox processor forwards messages, the outbox table must be empty.
     /// </summary>
     [Fact]
-    public async Task OutboxProcessor_DeletesProcessedMessages_ByDefault()
+    public async Task OutboxProcessor_DeletesProcessedMessages()
     {
         var tracker = new OrderPlacedTracker();
 
@@ -278,10 +271,9 @@ public class OutboxTests
                 await dbContext.SaveChangesAsync(TestContext.Current.CancellationToken);
             }
 
-            // Wait until the message is delivered.
             await WaitUntilAsync(() => tracker.Messages.Count == 1);
 
-            // Allow a brief moment for the delete to be committed.
+            // Allow a brief moment for the delete + commit.
             await Task.Delay(200, TestContext.Current.CancellationToken);
 
             await using (var scope = provider.CreateAsyncScope())
@@ -299,53 +291,35 @@ public class OutboxTests
     }
 
     /// <summary>
-    /// When <see cref="OutboxOptions.KeepProcessedMessages"/> is <c>true</c>, processed
-    /// rows must be retained with <see cref="OutboxMessage.ProcessedAt"/> populated.
+    /// A message published with a delay must have that delay stored in the outbox row
+    /// so the processor can pass it through to the transport.
     /// </summary>
     [Fact]
-    public async Task OutboxProcessor_KeepsProcessedMessages_WhenOptionEnabled()
+    public async Task Publish_WithDelay_StoresDelayInOutboxMessage()
     {
-        var tracker = new OrderPlacedTracker();
-
         var (provider, cts, conn) = await StartAsync(bus =>
         {
             bus.AddInMemoryTransport();
-            bus.AddConsumer<OrderPlacedConsumer>();
-            bus.UseOutbox<TestDbContext>(o =>
-            {
-                o.PollInterval = TimeSpan.FromMilliseconds(50);
-                o.KeepProcessedMessages = true;
-            });
-        }, services => services.AddSingleton(tracker));
+            // Long poll interval — we only want to inspect the stored row, not forward.
+            bus.UseOutbox<TestDbContext>(o => o.PollInterval = TimeSpan.FromHours(1));
+        });
 
         try
         {
-            Guid msgId;
-            await using (var scope = provider.CreateAsyncScope())
-            {
-                var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
-                var dbContext = scope.ServiceProvider.GetRequiredService<TestDbContext>();
+            await using var scope = provider.CreateAsyncScope();
+            var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
+            var dbContext = scope.ServiceProvider.GetRequiredService<TestDbContext>();
 
-                var msg = new OrderPlaced(Guid.NewGuid(), "keep@example.com", 7m);
-                await publisher.Publish(msg, TestContext.Current.CancellationToken);
-                await dbContext.SaveChangesAsync(TestContext.Current.CancellationToken);
+            var delay = TimeSpan.FromMinutes(5);
+            await publisher.Publish(
+                new OrderPlaced(Guid.NewGuid(), "delay@example.com", 1m),
+                ctx => ctx.Delay = delay,
+                TestContext.Current.CancellationToken);
 
-                // Capture the ID so we can look it up later.
-                msgId = dbContext.OutboxMessages.Local.Single().Id;
-            }
+            await dbContext.SaveChangesAsync(TestContext.Current.CancellationToken);
 
-            await WaitUntilAsync(() => tracker.Messages.Count == 1);
-
-            // Allow a brief moment for the update to be committed.
-            await Task.Delay(200, TestContext.Current.CancellationToken);
-
-            await using (var scope = provider.CreateAsyncScope())
-            {
-                var dbContext = scope.ServiceProvider.GetRequiredService<TestDbContext>();
-                var row = await dbContext.OutboxMessages.FindAsync([msgId], TestContext.Current.CancellationToken);
-                Assert.NotNull(row);
-                Assert.NotNull(row!.ProcessedAt);
-            }
+            var row = await dbContext.OutboxMessages.SingleAsync(TestContext.Current.CancellationToken);
+            Assert.Equal(delay, row.Delay);
         }
         finally
         {

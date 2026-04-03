@@ -1,6 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 
-namespace InterBus.EFCore;
+namespace InterBus.EntityFrameworkCore;
 
 /// <summary>
 /// Marker interface that an application's <see cref="DbContext"/> must implement to participate
@@ -12,8 +12,8 @@ public interface IOutboxDbContext
 {
     /// <summary>
     /// The outbox messages table. Messages are written here by
-    /// <see cref="InterBus.Middleware.IPublishMiddleware"/> and deleted (or marked processed)
-    /// once successfully forwarded to the transport by the background processor.
+    /// <see cref="InterBus.Middleware.IPublishMiddleware"/> and deleted once successfully
+    /// forwarded to the transport by the background processor.
     /// </summary>
     DbSet<OutboxMessage> OutboxMessages { get; }
 }

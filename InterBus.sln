@@ -30,7 +30,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "InterBus.Tests", "tests\Int
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "InterBus.PostgreSQL", "src\InterBus.PostgreSQL\InterBus.PostgreSQL.csproj", "{B9D19050-D59E-414B-8A60-E09878249D88}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "InterBus.EFCore", "src\InterBus.EFCore\InterBus.EFCore.csproj", "{C1D2E3F4-0006-0000-0000-000000000006}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "InterBus.EntityFrameworkCore", "src\InterBus.EntityFrameworkCore\InterBus.EntityFrameworkCore.csproj", "{C1D2E3F4-0006-0000-0000-000000000006}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sample.PostgreSQL", "samples\Sample.PostgreSQL\Sample.PostgreSQL.csproj", "{46BA568A-F187-4F5F-AE0B-6E7959BEFD1C}"
 EndProject
@@ -40,7 +40,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "InterBus.TickerQ.Tests", "t
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "InterBus.PostgreSQL.Tests", "tests\InterBus.PostgreSQL.Tests\InterBus.PostgreSQL.Tests.csproj", "{FAD92990-2F26-43C1-AE9B-2C34AE64A34F}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "InterBus.EFCore.Tests", "tests\InterBus.EFCore.Tests\InterBus.EFCore.Tests.csproj", "{D1E2F3A4-0007-0000-0000-000000000007}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "InterBus.EntityFrameworkCore.Tests", "tests\InterBus.EntityFrameworkCore.Tests\InterBus.EntityFrameworkCore.Tests.csproj", "{D1E2F3A4-0007-0000-0000-000000000007}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

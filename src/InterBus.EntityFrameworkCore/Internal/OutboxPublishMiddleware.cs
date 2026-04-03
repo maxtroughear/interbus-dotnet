@@ -2,7 +2,7 @@ using System.Text.Json;
 using InterBus.Middleware;
 using Microsoft.EntityFrameworkCore;
 
-namespace InterBus.EFCore.Internal;
+namespace InterBus.EntityFrameworkCore.Internal;
 
 /// <summary>
 /// Publish middleware that writes outgoing messages to the transactional outbox instead of
@@ -15,6 +15,11 @@ namespace InterBus.EFCore.Internal;
 /// <c>dbContext.SaveChangesAsync()</c>. This guarantees that a message is only forwarded if
 /// the business transaction committed, eliminating dual-write races.
 /// </para>
+/// <para>
+/// All messages published within the same DI scope share the same
+/// <see cref="OutboxMessage.GroupId"/>, allowing the background processor to fetch and
+/// forward them as a single atomic group.
+/// </para>
 /// </summary>
 internal sealed class OutboxPublishMiddleware<TDbContext>(
     TDbContext dbContext,
@@ -22,6 +27,9 @@ internal sealed class OutboxPublishMiddleware<TDbContext>(
     : IPublishMiddleware
     where TDbContext : DbContext, IOutboxDbContext
 {
+    /// <summary>Shared by all Publish/Send calls within this DI scope.</summary>
+    private readonly Guid _groupId = Guid.NewGuid();
+
     public Task InvokeAsync<T>(
         PublishContext<T> context,
         Func<PublishContext<T>, CancellationToken, Task> next,
@@ -30,16 +38,14 @@ internal sealed class OutboxPublishMiddleware<TDbContext>(
     {
         var payload = serializer.Serialize(context.Payload);
         var headersJson = SerializeHeaders(context.Headers);
-        var visibleAt = context.Delay.HasValue
-            ? (DateTime?)DateTime.UtcNow.Add(context.Delay.Value)
-            : null;
 
         dbContext.OutboxMessages.Add(new OutboxMessage
         {
+            GroupId = _groupId,
             Destination = context.Destination.ToString(),
             Payload = payload,
             HeadersJson = headersJson,
-            VisibleAt = visibleAt,
+            Delay = context.Delay,
         });
 
         // Do not call next — the message will be sent by OutboxProcessor once the

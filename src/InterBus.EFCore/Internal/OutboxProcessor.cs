@@ -65,20 +65,11 @@ internal sealed class OutboxProcessor<TDbContext>(
         var dbContext = scope.ServiceProvider.GetRequiredService<TDbContext>();
 
         var now = DateTime.UtcNow;
-
-        // Load unprocessed candidates server-side (ProcessedAt IS NULL),
-        // then apply the VisibleAt eligibility check client-side.
-        // This avoids provider-specific translation issues with nullable DateTimeOffset
-        // comparisons while still pushing the most selective filter (ProcessedAt) to the DB.
-        var candidates = await dbContext.OutboxMessages
-            .Where(m => m.ProcessedAt == null)
+        var messages = await dbContext.OutboxMessages
+            .Where(m => m.ProcessedAt == null && (m.VisibleAt == null || m.VisibleAt <= now))
             .OrderBy(m => m.CreatedAt)
-            .ToListAsync(cancellationToken);
-
-        var messages = candidates
-            .Where(m => m.VisibleAt == null || m.VisibleAt <= now)
             .Take(options.BatchSize)
-            .ToList();
+            .ToListAsync(cancellationToken);
 
         if (messages.Count == 0)
             return;

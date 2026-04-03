@@ -52,13 +52,13 @@ public sealed class SchedulingTests
     }
 
     [Fact]
-    public async Task SchedulePublish_WithHeaders_PassesHeadersToProvider()
+    public async Task SchedulePublish_WithConfigureDelegate_PassesHeadersToProvider()
     {
         var (publisher, schedulingProvider) = BuildPublisher();
         var scheduledAt = DateTimeOffset.UtcNow.AddMinutes(1);
-        var headers = new MessageHeaders { ["x-custom"] = "value" };
 
-        await publisher.SchedulePublish(new TestMessage(Guid.NewGuid()), headers, scheduledAt,
+        await publisher.SchedulePublish(new TestMessage(Guid.NewGuid()), scheduledAt,
+            ctx => ctx.Headers["x-custom"] = "value",
             TestContext.Current.CancellationToken);
 
         var call = Assert.Single(schedulingProvider.Calls);
@@ -106,13 +106,13 @@ public sealed class SchedulingTests
     }
 
     [Fact]
-    public async Task ScheduleSend_ByConsumerType_WithHeaders_PassesHeaders()
+    public async Task ScheduleSend_ByConsumerType_WithConfigureDelegate_PassesHeaders()
     {
         var (publisher, schedulingProvider) = BuildPublisher();
-        var headers = new MessageHeaders { ["x-trace"] = "abc" };
 
         await publisher.ScheduleSend<TestConsumer, TestMessage>(
-            new TestMessage(Guid.NewGuid()), headers, DateTimeOffset.UtcNow.AddSeconds(5),
+            new TestMessage(Guid.NewGuid()), DateTimeOffset.UtcNow.AddSeconds(5),
+            ctx => ctx.Headers["x-trace"] = "abc",
             TestContext.Current.CancellationToken);
 
         var call = Assert.Single(schedulingProvider.Calls);
@@ -139,13 +139,14 @@ public sealed class SchedulingTests
     }
 
     [Fact]
-    public async Task ScheduleSend_ByQueueName_WithHeaders_PassesHeaders()
+    public async Task ScheduleSend_ByQueueName_WithConfigureDelegate_PassesHeaders()
     {
         var (publisher, schedulingProvider) = BuildPublisher();
-        var headers = new MessageHeaders { ["x-source"] = "unit-test" };
 
-        await publisher.ScheduleSend("q", new TestMessage(Guid.NewGuid()), headers,
-            DateTimeOffset.UtcNow.AddMinutes(2), TestContext.Current.CancellationToken);
+        await publisher.ScheduleSend("q", new TestMessage(Guid.NewGuid()),
+            DateTimeOffset.UtcNow.AddMinutes(2),
+            ctx => ctx.Headers["x-source"] = "unit-test",
+            TestContext.Current.CancellationToken);
 
         var call = Assert.Single(schedulingProvider.Calls);
         Assert.Equal("unit-test", call.Headers["x-source"]);

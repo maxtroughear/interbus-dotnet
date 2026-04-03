@@ -1,3 +1,5 @@
+using InterBus.Middleware;
+
 namespace InterBus.Internal;
 
 /// <summary>
@@ -19,22 +21,23 @@ internal sealed class PublishMessageScheduler(
 {
     public Task SchedulePublish<T>(T message, DateTimeOffset scheduledAt,
         CancellationToken cancellationToken = default) where T : class =>
-        SchedulePublish(message, [], scheduledAt, cancellationToken);
+        SchedulePublish(message, scheduledAt, _ => { }, cancellationToken);
 
-    public Task SchedulePublish<T>(T message, MessageHeaders headers, DateTimeOffset scheduledAt,
+    public Task SchedulePublish<T>(T message, DateTimeOffset scheduledAt, Action<ScheduleContext<T>> configure,
         CancellationToken cancellationToken = default) where T : class
     {
         var topicName = options.TryGetTopicName(typeof(T), out var customName)
             ? customName
             : RoutingConventions.TopicName(typeof(T));
         var destination = RoutingConventions.TopicUri(options.TopicUriScheme, topicName);
-        var payload = serializer.Serialize(message);
-        var enriched = Enrich<T>(headers);
+        var context = new ScheduleContext<T>(destination, message, Stamp<T>());
+        configure(context);
+        var payload = serializer.Serialize(context.Payload);
         var command = new ScheduleDeliveryCommand
         {
             Destination = destination.ToString(),
             Payload = payload,
-            Headers = new Dictionary<string, string>(enriched),
+            Headers = new Dictionary<string, string>(context.Headers),
             ScheduledAt = scheduledAt
         };
         return publisher.Send<SchedulingConsumer, ScheduleDeliveryCommand>(command, cancellationToken);
@@ -44,21 +47,22 @@ internal sealed class PublishMessageScheduler(
         CancellationToken cancellationToken = default)
         where TConsumer : IConsumer<T>
         where T : class =>
-        ScheduleSend<TConsumer, T>(message, [], scheduledAt, cancellationToken);
+        ScheduleSend<TConsumer, T>(message, scheduledAt, _ => { }, cancellationToken);
 
-    public Task ScheduleSend<TConsumer, T>(T message, MessageHeaders headers, DateTimeOffset scheduledAt,
+    public Task ScheduleSend<TConsumer, T>(T message, DateTimeOffset scheduledAt, Action<ScheduleContext<T>> configure,
         CancellationToken cancellationToken = default)
         where TConsumer : IConsumer<T>
         where T : class
     {
         var destination = RoutingConventions.QueueUri(options.QueueUriScheme, typeof(TConsumer));
-        var payload = serializer.Serialize(message);
-        var enriched = Enrich<T>(headers);
+        var context = new ScheduleContext<T>(destination, message, Stamp<T>());
+        configure(context);
+        var payload = serializer.Serialize(context.Payload);
         var command = new ScheduleDeliveryCommand
         {
             Destination = destination.ToString(),
             Payload = payload,
-            Headers = new Dictionary<string, string>(enriched),
+            Headers = new Dictionary<string, string>(context.Headers),
             ScheduledAt = scheduledAt
         };
         return publisher.Send<SchedulingConsumer, ScheduleDeliveryCommand>(command, cancellationToken);
@@ -66,30 +70,26 @@ internal sealed class PublishMessageScheduler(
 
     public Task ScheduleSend<T>(string queueName, T message, DateTimeOffset scheduledAt,
         CancellationToken cancellationToken = default) where T : class =>
-        ScheduleSend(queueName, message, [], scheduledAt, cancellationToken);
+        ScheduleSend(queueName, message, scheduledAt, _ => { }, cancellationToken);
 
-    public Task ScheduleSend<T>(string queueName, T message, MessageHeaders headers, DateTimeOffset scheduledAt,
+    public Task ScheduleSend<T>(string queueName, T message, DateTimeOffset scheduledAt,
+        Action<ScheduleContext<T>> configure,
         CancellationToken cancellationToken = default) where T : class
     {
         var destination = RoutingConventions.QueueUri(options.QueueUriScheme, queueName);
-        var payload = serializer.Serialize(message);
-        var enriched = Enrich<T>(headers);
+        var context = new ScheduleContext<T>(destination, message, Stamp<T>());
+        configure(context);
+        var payload = serializer.Serialize(context.Payload);
         var command = new ScheduleDeliveryCommand
         {
             Destination = destination.ToString(),
             Payload = payload,
-            Headers = new Dictionary<string, string>(enriched),
+            Headers = new Dictionary<string, string>(context.Headers),
             ScheduledAt = scheduledAt
         };
         return publisher.Send<SchedulingConsumer, ScheduleDeliveryCommand>(command, cancellationToken);
     }
 
-    private static MessageHeaders Enrich<T>(MessageHeaders headers) where T : class
-    {
-        var enriched = new MessageHeaders(headers)
-        {
-            [InterBusHeaders.MessageType] = typeof(T).FullName ?? typeof(T).Name
-        };
-        return enriched;
-    }
+    private static MessageHeaders Stamp<T>() where T : class =>
+        new() { [InterBusHeaders.MessageType] = typeof(T).FullName ?? typeof(T).Name };
 }

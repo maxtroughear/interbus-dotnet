@@ -1,4 +1,5 @@
 using InterBus.Extensions;
+using InterBus.Middleware;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
@@ -48,7 +49,8 @@ public sealed class TransportDelaySchedulingTests
         });
 
         var provider = services.BuildServiceProvider();
-        var schedulingProvider = provider.GetService<IMessageSchedulingProvider>();
+        using var scope = provider.CreateScope();
+        var schedulingProvider = scope.ServiceProvider.GetService<IMessageSchedulingProvider>();
 
         Assert.NotNull(schedulingProvider);
     }
@@ -184,6 +186,38 @@ public sealed class TransportDelaySchedulingTests
 
     #endregion
 
+    #region Schedule middleware pipeline is invoked
+
+    [Fact]
+    public async Task SchedulePublish_InvokesScheduleMiddlewarePipeline()
+    {
+        var transport = new CapturingTransport();
+        var middleware = new RecordingScheduleMiddleware();
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddInterBus(bus =>
+        {
+            bus.Services.AddSingleton<IInterBusTransport>(transport);
+            bus.Services.AddScoped<IScheduleMiddleware>(_ => middleware);
+            bus.AddTransportDelayScheduler();
+            bus.AddScheduling();
+        });
+
+        var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+        var scheduler = scope.ServiceProvider.GetRequiredService<IMessageScheduler>();
+
+        await scheduler.SchedulePublish(new TestMessage(Guid.NewGuid()),
+            DateTimeOffset.UtcNow.AddSeconds(10), TestContext.Current.CancellationToken);
+
+        Assert.Single(middleware.Contexts);
+        // Verify the middleware received the computed delay on the context
+        Assert.NotNull(middleware.Contexts[0].Delay);
+        Assert.Single(transport.Sends);
+    }
+
+    #endregion
+
     #region Support types
 
     private sealed record TestMessage(Guid Id);
@@ -208,6 +242,18 @@ public sealed class TransportDelaySchedulingTests
         {
             Sends.Add((context.Destination, context.Payload, context.Headers, context.Delay));
             return Task.CompletedTask;
+        }
+    }
+
+    private sealed class RecordingScheduleMiddleware : IScheduleMiddleware
+    {
+        public List<ScheduleContext> Contexts { get; } = [];
+
+        public Task InvokeAsync(ScheduleContext context, Func<ScheduleContext, CancellationToken, Task> next,
+            CancellationToken cancellationToken = default)
+        {
+            Contexts.Add(context);
+            return next(context, cancellationToken);
         }
     }
 

@@ -100,4 +100,20 @@ public interface IInterBusBuilder
         [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
         TMiddleware>()
         where TMiddleware : class, IConsumeMiddleware;
+
+    /// <summary>
+    /// Add a middleware step to the schedule pipeline.
+    /// Steps are executed in registration order - the first registered step is outermost
+    /// and runs first. The terminal step forwards the serialized payload to the configured
+    /// <see cref="IInterBusTransport"/> via <see cref="IInterBusTransportFactory"/>.
+    /// </summary>
+    /// <remarks>
+    /// The schedule pipeline runs on already-serialized messages, unlike the publish pipeline.
+    /// This makes it suitable for cross-cutting concerns that operate on raw bytes, such as
+    /// the Claim Check pattern for large scheduled payloads.
+    /// </remarks>
+    IInterBusBuilder UseScheduleMiddleware<
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
+        TMiddleware>()
+        where TMiddleware : class, IScheduleMiddleware;
 }

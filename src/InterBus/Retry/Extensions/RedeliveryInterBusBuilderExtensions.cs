@@ -38,7 +38,35 @@ public static class RedeliveryInterBusBuilderExtensions
     }
 
     /// <summary>
-    /// Adds <see cref="RedeliverySchedulingConsumeMiddleware"/> to the consume pipeline using the supplied
+    /// Adds <see cref="RedeliveryDelayConsumeMiddleware"/> to the consume pipeline using the supplied
+    /// <paramref name="configure"/> delegate to customise <see cref="RedeliveryOptions"/>.
+    /// </summary>
+    /// <param name="builder">The InterBus builder.</param>
+    /// <param name="configure">
+    /// Optional delegate to configure the <see cref="RedeliveryOptions"/> instance.
+    /// When <c>null</c>, defaults are used (3 retries, no delay, catch all exceptions).
+    /// </param>
+    /// <returns>The builder for fluent chaining.</returns>
+    /// <remarks>
+    /// Uses the transport's native delay mechanism (<see cref="TransportSendContext.Delay"/>) to defer
+    /// redelivery, without requiring a separate scheduling infrastructure.
+    /// Transports that do not support deferred visibility will deliver the message immediately.
+    /// </remarks>
+    public static IInterBusBuilder UseRedeliveryTransportDelayMiddleware(
+        this IInterBusBuilder builder,
+        Action<RedeliveryOptions>? configure = null)
+    {
+        var options = new RedeliveryOptions();
+        configure?.Invoke(options);
+
+        builder.Services.AddSingleton(options);
+        builder.Services.AddScoped<IConsumeMiddleware, RedeliveryDelayConsumeMiddleware>();
+
+        return builder;
+    }
+
+    /// <summary>
+    /// Adds <see cref="RedeliveryImmediateConsumeMiddleware"/> to the consume pipeline using the supplied
     /// <paramref name="configure"/> delegate to customise <see cref="RedeliveryOptions"/>
     /// </summary>
     /// <param name="builder">The InterBus builder</param>

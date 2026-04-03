@@ -12,8 +12,9 @@ public static class InterBusBuilderExtensions
     /// <summary>
     /// Register the <see cref="TransportDelaySchedulingProvider"/> as the
     /// <see cref="IMessageSchedulingProvider"/>. This provider converts a scheduled delivery
-    /// time into a transport-level delay and passes it to
-    /// <see cref="IInterBusTransport.SendAsync"/> via <see cref="TransportSendContext.Delay"/>.
+    /// time into a transport-level delay, runs the message through the
+    /// <see cref="InterBus.Middleware.SchedulePipelineExecutor"/>, and passes the delay to the
+    /// transport via <see cref="TransportSendContext.Delay"/>.
     /// <para>
     /// Requires the configured transport to honour <see cref="TransportSendContext.Delay"/>
     /// (e.g. the in-memory transport uses <see cref="System.Threading.Tasks.Task.Delay(TimeSpan)"/>;
@@ -28,7 +29,7 @@ public static class InterBusBuilderExtensions
     public static IInterBusBuilder AddTransportDelayScheduler(this IInterBusBuilder builder)
     {
         ArgumentNullException.ThrowIfNull(builder);
-        builder.Services.AddSingleton<IMessageSchedulingProvider, TransportDelaySchedulingProvider>();
+        builder.Services.AddScoped<IMessageSchedulingProvider, TransportDelaySchedulingProvider>();
         return builder;
     }
 

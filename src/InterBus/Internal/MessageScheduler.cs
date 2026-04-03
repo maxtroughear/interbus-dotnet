@@ -1,21 +1,18 @@
-using InterBus.Middleware;
-
 namespace InterBus.Internal;
 
 /// <summary>
-/// Scoped <see cref="IMessageScheduler"/> implementation. Serializes each message, runs it
-/// through the configured <see cref="IPublishMiddleware"/> pipeline, and forwards to the
-/// registered <see cref="IMessageSchedulingProvider"/> for deferred delivery.
+/// Scoped <see cref="IMessageScheduler"/> implementation. Serializes each message and
+/// forwards directly to the registered <see cref="IMessageSchedulingProvider"/> for deferred
+/// delivery. Any cross-cutting delivery concerns (e.g. the Claim Check pattern) are handled
+/// by the <see cref="InterBus.Middleware.IScheduleMiddleware"/> pipeline that runs on the
+/// provider side via <see cref="InterBus.Middleware.SchedulePipelineExecutor"/> when the job fires.
 /// </summary>
 internal sealed class MessageScheduler(
     IMessageSchedulingProvider schedulingProvider,
     InterBusOptions options,
-    IMessageSerializer serializer,
-    IEnumerable<IPublishMiddleware> middlewares)
+    IMessageSerializer serializer)
     : IMessageScheduler
 {
-    private readonly IList<IPublishMiddleware> _middlewares = middlewares.Reverse().ToList();
-
     public Task SchedulePublish<T>(T message, DateTimeOffset scheduledAt,
         CancellationToken cancellationToken = default) where T : class =>
         SchedulePublish(message, [], scheduledAt, cancellationToken);
@@ -27,11 +24,9 @@ internal sealed class MessageScheduler(
             ? customName
             : RoutingConventions.TopicName(typeof(T));
         var destination = RoutingConventions.TopicUri(options.TopicUriScheme, topicName);
+        var payload = serializer.Serialize(message);
         var enriched = Enrich<T>(headers);
-        var context = new PublishContext<T>(destination, message, enriched);
-        var pipeline = BuildScheduledMiddlewarePipeline<T>(scheduledAt);
-
-        return pipeline(context, cancellationToken);
+        return schedulingProvider.ScheduleAsync(destination, payload, enriched, scheduledAt, cancellationToken);
     }
 
     public Task ScheduleSend<TConsumer, T>(T message, DateTimeOffset scheduledAt,
@@ -46,11 +41,9 @@ internal sealed class MessageScheduler(
         where T : class
     {
         var destination = RoutingConventions.QueueUri(options.QueueUriScheme, typeof(TConsumer));
+        var payload = serializer.Serialize(message);
         var enriched = Enrich<T>(headers);
-        var context = new PublishContext<T>(destination, message, enriched);
-        var pipeline = BuildScheduledMiddlewarePipeline<T>(scheduledAt);
-
-        return pipeline(context, cancellationToken);
+        return schedulingProvider.ScheduleAsync(destination, payload, enriched, scheduledAt, cancellationToken);
     }
 
     public Task ScheduleSend<T>(string queueName, T message, DateTimeOffset scheduledAt,
@@ -61,32 +54,9 @@ internal sealed class MessageScheduler(
         CancellationToken cancellationToken = default) where T : class
     {
         var destination = RoutingConventions.QueueUri(options.QueueUriScheme, queueName);
+        var payload = serializer.Serialize(message);
         var enriched = Enrich<T>(headers);
-        var context = new PublishContext<T>(destination, message, enriched);
-        var pipeline = BuildScheduledMiddlewarePipeline<T>(scheduledAt);
-
-        return pipeline(context, cancellationToken);
-    }
-
-    private Func<PublishContext<T>, CancellationToken, Task> BuildScheduledMiddlewarePipeline<T>(
-        DateTimeOffset scheduledAt) where T : class
-    {
-        var pipeline = TerminalScheduleDelegate;
-        foreach (var middleware in _middlewares)
-        {
-            var current = middleware;
-            var next = pipeline;
-            pipeline = (ctx, ct) => current.InvokeAsync(ctx, next, ct);
-        }
-
-        return pipeline;
-
-        // Terminal step: serialize and forward to the scheduling provider.
-        Task TerminalScheduleDelegate(PublishContext<T> ctx, CancellationToken ct)
-        {
-            var payload = serializer.Serialize(ctx.Payload);
-            return schedulingProvider.ScheduleAsync(ctx.Destination, payload, ctx.Headers, scheduledAt, ct);
-        }
+        return schedulingProvider.ScheduleAsync(destination, payload, enriched, scheduledAt, cancellationToken);
     }
 
     private static MessageHeaders Enrich<T>(MessageHeaders headers) where T : class

@@ -1,21 +1,25 @@
+using InterBus.Middleware;
+
 namespace InterBus.Internal;
 
 /// <summary>
 /// <see cref="IMessageSchedulingProvider"/> implementation that converts a scheduled delivery
-/// time into a transport-level delay and forwards the message to the appropriate transport.
+/// time into a transport-level delay and runs the message through the
+/// <see cref="SchedulePipelineExecutor"/> for delivery.
 /// <para>
 /// The delay is calculated as <c>scheduledAt - DateTimeOffset.UtcNow</c>, clamped to a minimum
-/// of <see cref="TimeSpan.Zero"/>. The <see cref="TransportSendContext.Delay"/> is then passed
-/// to <see cref="IInterBusTransport.SendAsync"/>, which must support deferred delivery
-/// (e.g. <c>InMemoryBroker</c> uses <c>Task.Delay</c>; <c>PostgreSqlTransport</c> uses a
-/// database <c>visible_at</c> column).
+/// of <see cref="TimeSpan.Zero"/>. The delay is attached to the <see cref="ScheduleContext"/>
+/// and forwarded to the transport as <see cref="TransportSendContext.Delay"/> by the terminal
+/// step of the schedule pipeline. Transports that support deferred visibility
+/// (e.g. <c>InMemoryBroker</c> via <c>Task.Delay</c>; <c>PostgreSqlTransport</c> via a
+/// database <c>visible_at</c> column) will honour this value.
 /// </para>
 /// <para>
 /// Register via <c>builder.AddTransportDelayScheduler()</c>. This provider introduces no
 /// additional dependencies beyond the configured transport.
 /// </para>
 /// </summary>
-internal sealed class TransportDelaySchedulingProvider(IInterBusTransportFactory transportFactory)
+internal sealed class TransportDelaySchedulingProvider(SchedulePipelineExecutor schedulePipeline)
     : IMessageSchedulingProvider
 {
     /// <inheritdoc/>
@@ -26,8 +30,7 @@ internal sealed class TransportDelaySchedulingProvider(IInterBusTransportFactory
         if (delay < TimeSpan.Zero)
             delay = TimeSpan.Zero;
 
-        var transport = transportFactory.Resolve(destination);
-        var context = new TransportSendContext(destination, payload, headers, delay);
-        return transport.SendAsync(context, cancellationToken);
+        var context = new ScheduleContext(destination, payload, headers) { Delay = delay };
+        return schedulePipeline.ExecuteAsync(context, cancellationToken);
     }
 }

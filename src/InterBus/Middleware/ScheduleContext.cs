@@ -31,26 +31,24 @@ public sealed class ScheduleContext
     public MessageHeaders Headers { get; set; }
 
     /// <summary>
-    /// Optional scheduled delivery time, forwarded to <see cref="SchedulePipelineExecutor"/>
-    /// which computes the transport delay as <c>ScheduledAt - UtcNow</c> and passes it to
-    /// <see cref="TransportSendContext.Delay"/>.
+    /// Optional delay before the message becomes visible to consumers, forwarded to
+    /// <see cref="TransportSendContext.Delay"/> by <see cref="SchedulePipelineExecutor"/>.
     /// When <c>null</c> the message is delivered immediately (default behaviour).
     /// Set by <c>TransportDelaySchedulingProvider</c> to delegate deferred visibility to the
     /// transport layer.
     /// </summary>
-    public DateTimeOffset? ScheduledAt { get; }
+    public TimeSpan? Delay { get; }
 
     /// <summary>
     /// Initializes a <see cref="ScheduleContext"/>.
     /// The framework creates instances internally, but the constructor is public to allow
     /// test implementations of <see cref="IScheduleMiddleware"/>.
     /// </summary>
-    public ScheduleContext(Uri destination, byte[] payload, MessageHeaders headers,
-        DateTimeOffset? scheduledAt = null)
+    public ScheduleContext(Uri destination, byte[] payload, MessageHeaders headers, TimeSpan? delay = null)
     {
         Destination = destination;
         Payload = payload;
         Headers = headers;
-        ScheduledAt = scheduledAt;
+        Delay = delay;
     }
 }

@@ -33,14 +33,7 @@ public sealed class SchedulePipelineExecutor(
         Task TerminalDeliverDelegate(ScheduleContext ctx, CancellationToken ct)
         {
             var transport = transportFactory.Resolve(ctx.Destination);
-            TimeSpan? delay = null;
-            if (ctx.ScheduledAt is { } scheduledAt)
-            {
-                delay = scheduledAt - DateTimeOffset.UtcNow;
-                if (delay < TimeSpan.Zero)
-                    delay = TimeSpan.Zero;
-            }
-            var sendContext = new TransportSendContext(ctx.Destination, ctx.Payload, ctx.Headers, delay);
+            var sendContext = new TransportSendContext(ctx.Destination, ctx.Payload, ctx.Headers, ctx.Delay);
             return transport.SendAsync(sendContext, ct);
         }
     }

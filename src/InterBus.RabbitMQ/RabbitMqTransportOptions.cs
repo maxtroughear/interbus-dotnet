@@ -1,3 +1,5 @@
+using InterBus.Retry;
+
 namespace InterBus.RabbitMQ;
 
 /// <summary>
@@ -47,4 +49,25 @@ public sealed class RabbitMqTransportOptions
     /// Defaults to <c>interbus.topic.</c>.
     /// </summary>
     public string ExchangePrefix { get; set; } = "interbus.topic.";
+
+    /// <summary>
+    /// Configures retry behavior for RabbitMQ connection-related failures in hosted services
+    /// such as the message pump.
+    /// <para>
+    /// Defaults to effectively unbounded retries with exponential backoff from 1 second up to
+    /// 30 seconds.
+    /// </para>
+    /// </summary>
+    public RetryOptions ConnectionRetry { get; set; } = new()
+    {
+        RetryCount = int.MaxValue,
+        DelayProvider = RetryDelays.Exponential(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(30)),
+    };
+
+    /// <summary>Per-queue options keyed by queue name. Populated via the <see cref="InterBus.RabbitMQ.Extensions.RabbitMqTransportBuilderExtensions.WithConsumerConcurrency{TConsumer}"/> extension method.</summary>
+    internal Dictionary<string, RabbitMqQueueOptions> QueueOptions { get; } = new(StringComparer.Ordinal);
+
+    /// <summary>Returns the options for the given queue, or a default instance if not configured.</summary>
+    internal RabbitMqQueueOptions GetQueueOptions(string queueName) =>
+        QueueOptions.TryGetValue(queueName, out var opts) ? opts : new RabbitMqQueueOptions();
 }

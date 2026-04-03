@@ -1,9 +1,11 @@
 using InterBus.Middleware;
+using InterBus.Retry;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
+using RabbitMQ.Client.Exceptions;
 
 namespace InterBus.RabbitMQ;
 
@@ -20,10 +22,14 @@ namespace InterBus.RabbitMQ;
 /// Successful dispatch acknowledges the RabbitMQ message. Consumer failures issue a negative
 /// acknowledgement with <c>requeue=true</c> so the message is redelivered.
 /// </para>
+/// <para>
+/// Initial connection failures are retried using the exponential back-off configured in
+/// <see cref="RabbitMqTransportOptions.ConnectionRetry"/>.
+/// </para>
 /// </summary>
 internal sealed class RabbitMqMessagePump : BackgroundService
 {
-    private readonly RabbitMqTransport _transport;
+    private readonly RabbitMqConnectionProvider _connectionProvider;
     private readonly RabbitMqTransportOptions _options;
     private readonly InterBusOptions _busOptions;
     private readonly IServiceScopeFactory _scopeFactory;
@@ -32,13 +38,13 @@ internal sealed class RabbitMqMessagePump : BackgroundService
     private IConnection? _connection;
 
     public RabbitMqMessagePump(
-        RabbitMqTransport transport,
+        RabbitMqConnectionProvider connectionProvider,
         RabbitMqTransportOptions options,
         InterBusOptions busOptions,
         IServiceScopeFactory scopeFactory,
         ILogger<RabbitMqMessagePump> logger)
     {
-        _transport = transport;
+        _connectionProvider = connectionProvider;
         _options = options;
         _busOptions = busOptions;
         _scopeFactory = scopeFactory;
@@ -51,12 +57,16 @@ internal sealed class RabbitMqMessagePump : BackgroundService
     /// messages as soon as <see cref="StartAsync"/> returns without risking a race where
     /// a publish happens before the exchange bindings exist (which would silently drop the message
     /// on a fanout exchange with no bound queues).
+    /// <para>
+    /// Initial connection attempts are retried using the exponential back-off policy defined
+    /// in <see cref="RabbitMqTransportOptions.ConnectionRetry"/>.
+    /// </para>
     /// </summary>
     public override async Task StartAsync(CancellationToken cancellationToken)
     {
         if (_busOptions.Consumers.Count > 0)
         {
-            _connection = await _transport.CreateConnectionAsync(cancellationToken);
+            _connection = await ConnectWithRetryAsync(cancellationToken);
             _logger.LogDebug("InterBus RabbitMQ: consume connection established");
             await DeclareTopologyAsync(cancellationToken);
         }
@@ -77,6 +87,51 @@ internal sealed class RabbitMqMessagePump : BackgroundService
         var tasks = consumers.Select(d => ConsumeQueueAsync(d, stoppingToken));
         await Task.WhenAll(tasks);
     }
+
+    /// <summary>
+    /// Establishes the consume connection, retrying on transient connection failures using
+    /// the policy in <see cref="RabbitMqTransportOptions.ConnectionRetry"/>.
+    /// </summary>
+    private async Task<IConnection> ConnectWithRetryAsync(CancellationToken cancellationToken)
+    {
+        var attempt = 0;
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                return await _connectionProvider.CreateConsumeConnectionAsync(cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex) when (IsConnectionRelated(ex) && ShouldRetry(ex, attempt + 1))
+            {
+                var delay = _options.ConnectionRetry.DelayProvider(++attempt);
+                _logger.LogWarning(
+                    ex,
+                    "InterBus RabbitMQ: consume connection failed; retrying in {Delay}",
+                    delay);
+                await Task.Delay(delay, cancellationToken);
+            }
+        }
+    }
+
+    private bool ShouldRetry(Exception ex, int attempt)
+    {
+        var retry = _options.ConnectionRetry;
+        if (attempt > retry.RetryCount)
+            return false;
+        return retry.ShouldRetry?.Invoke(ex) ?? true;
+    }
+
+    private static bool IsConnectionRelated(Exception ex) =>
+        ex is BrokerUnreachableException
+            or ConnectFailureException
+            or System.Net.Sockets.SocketException
+            or TimeoutException
+            || (ex.InnerException is not null && IsConnectionRelated(ex.InnerException));
 
     /// <summary>
     /// Declares all queues, exchanges, and bindings. Idempotent — safe to call even if the
@@ -140,10 +195,20 @@ internal sealed class RabbitMqMessagePump : BackgroundService
             "InterBus RabbitMQ: starting consumer for queue {QueueName}",
             descriptor.QueueName);
 
-        var channel = await _connection!.CreateChannelAsync(cancellationToken: stoppingToken);
+        var queueOpts = _options.GetQueueOptions(descriptor.QueueName);
+        var channelOptions = new CreateChannelOptions(
+            publisherConfirmationsEnabled: false,
+            publisherConfirmationTrackingEnabled: false,
+            consumerDispatchConcurrency: queueOpts.ConcurrencyCount);
 
-        // Prefetch one message at a time for fair dispatch.
-        await channel.BasicQosAsync(prefetchSize: 0, prefetchCount: 1, global: false, cancellationToken: stoppingToken);
+        var channel = await _connection!.CreateChannelAsync(channelOptions, stoppingToken);
+
+        // Prefetch one message at a time per concurrent handler for fair dispatch.
+        await channel.BasicQosAsync(
+            prefetchSize: 0,
+            prefetchCount: queueOpts.ConcurrencyCount,
+            global: false,
+            cancellationToken: stoppingToken);
 
         var consumer = new AsyncEventingBasicConsumer(channel);
         consumer.ReceivedAsync += async (_, ea) =>

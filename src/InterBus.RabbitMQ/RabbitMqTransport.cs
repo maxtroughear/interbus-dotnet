@@ -15,6 +15,16 @@ namespace InterBus.RabbitMQ;
 /// When called with a <c>rabbitmqqueue://</c> destination URI, it publishes directly to the
 /// named queue using the default exchange (routing key = queue name).
 /// </para>
+/// <para>
+/// Publisher confirms are enabled on the shared publish channel so that every
+/// <see cref="BasicPublishAsync"/> call waits for a broker acknowledgement before returning,
+/// preventing silent message loss.
+/// </para>
+/// <para>
+/// Delayed delivery is not natively supported by this transport; the
+/// <see cref="TransportSendContext.Delay"/> value is ignored and messages are always
+/// delivered immediately.
+/// </para>
 /// </summary>
 public sealed class RabbitMqTransport : IInterBusTransport, IAsyncDisposable
 {
@@ -24,15 +34,20 @@ public sealed class RabbitMqTransport : IInterBusTransport, IAsyncDisposable
     /// <summary>URI scheme for RabbitMQ queue (point-to-point) destinations.</summary>
     public const string QueueScheme = "rabbitmqqueue";
 
+    private readonly RabbitMqConnectionProvider _connectionProvider;
     private readonly RabbitMqTransportOptions _options;
     private readonly ILogger<RabbitMqTransport> _logger;
-    private IConnection? _connection;
+
     private IChannel? _publishChannel;
-    private readonly SemaphoreSlim _initLock = new(1, 1);
+    private readonly SemaphoreSlim _channelLock = new(1, 1);
     private bool _disposed;
 
-    public RabbitMqTransport(RabbitMqTransportOptions options, ILogger<RabbitMqTransport> logger)
+    internal RabbitMqTransport(
+        RabbitMqConnectionProvider connectionProvider,
+        RabbitMqTransportOptions options,
+        ILogger<RabbitMqTransport> logger)
     {
+        _connectionProvider = connectionProvider;
         _options = options;
         _logger = logger;
     }
@@ -40,39 +55,7 @@ public sealed class RabbitMqTransport : IInterBusTransport, IAsyncDisposable
     /// <inheritdoc/>
     public async Task SendAsync(TransportSendContext context, CancellationToken cancellationToken)
     {
-        if (context.Delay.HasValue)
-        {
-            // Schedule delivery in the background so the caller is not blocked for the delay duration.
-            _ = DeliverAfterDelayAsync(context, cancellationToken);
-            return;
-        }
-
-        await DeliverCoreAsync(context, cancellationToken);
-    }
-
-    /// <summary>Waits for the configured delay then forwards the message to the destination.</summary>
-    private async Task DeliverAfterDelayAsync(TransportSendContext context, CancellationToken cancellationToken)
-    {
-        try
-        {
-            await Task.Delay(context.Delay!.Value, cancellationToken);
-            await DeliverCoreAsync(context, cancellationToken);
-        }
-        catch (OperationCanceledException)
-        {
-            // Delivery cancelled (e.g. host shutting down). Silently discard.
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(
-                ex,
-                "InterBus RabbitMQ: unhandled error delivering delayed message to {Destination}",
-                context.Destination);
-        }
-    }
-
-    private async Task DeliverCoreAsync(TransportSendContext context, CancellationToken cancellationToken)
-    {
+        // RabbitMQ does not natively support deferred visibility; deliver immediately.
         var channel = await GetPublishChannelAsync(cancellationToken);
         var name = RoutingConventions.GetDestinationName(context.Destination);
         var headers = BuildAmqpHeaders(context.Headers);
@@ -85,15 +68,6 @@ public sealed class RabbitMqTransport : IInterBusTransport, IAsyncDisposable
         if (context.Destination.Scheme == TopicScheme)
         {
             var exchangeName = _options.ExchangePrefix + name;
-            await channel.ExchangeDeclareAsync(
-                exchange: exchangeName,
-                type: ExchangeType.Fanout,
-                durable: true,
-                autoDelete: false,
-                arguments: null,
-                noWait: false,
-                cancellationToken: cancellationToken);
-
             await channel.BasicPublishAsync(
                 exchange: exchangeName,
                 routingKey: string.Empty,
@@ -104,15 +78,6 @@ public sealed class RabbitMqTransport : IInterBusTransport, IAsyncDisposable
         }
         else if (context.Destination.Scheme == QueueScheme)
         {
-            await channel.QueueDeclareAsync(
-                queue: name,
-                durable: true,
-                exclusive: false,
-                autoDelete: false,
-                arguments: null,
-                noWait: false,
-                cancellationToken: cancellationToken);
-
             await channel.BasicPublishAsync(
                 exchange: string.Empty,
                 routingKey: name,
@@ -131,58 +96,37 @@ public sealed class RabbitMqTransport : IInterBusTransport, IAsyncDisposable
     }
 
     /// <summary>
-    /// Returns the shared publish channel, creating the connection and channel on first use.
+    /// Returns the shared publish channel, creating it on first use with publisher confirms
+    /// enabled. Thread-safe via a semaphore; reconnects automatically if the channel is closed.
     /// </summary>
     private async Task<IChannel> GetPublishChannelAsync(CancellationToken cancellationToken)
     {
         if (_publishChannel is { IsOpen: true })
             return _publishChannel;
 
-        await _initLock.WaitAsync(cancellationToken);
+        await _channelLock.WaitAsync(cancellationToken);
         try
         {
             if (_publishChannel is { IsOpen: true })
                 return _publishChannel;
 
-            if (_connection is not null)
-                await _connection.DisposeAsync();
-            _connection = await CreateConnectionAsync(cancellationToken);
-            _publishChannel = await _connection.CreateChannelAsync(cancellationToken: cancellationToken);
+            if (_publishChannel is not null)
+                await _publishChannel.DisposeAsync();
 
-            _logger.LogDebug("InterBus RabbitMQ: publish connection and channel established");
+            var connection = await _connectionProvider.GetPublishConnectionAsync(cancellationToken);
+            var channelOptions = new CreateChannelOptions(
+                publisherConfirmationsEnabled: true,
+                publisherConfirmationTrackingEnabled: true);
+            _publishChannel = await connection.CreateChannelAsync(channelOptions, cancellationToken);
+
+            _logger.LogDebug("InterBus RabbitMQ: publish channel established");
 
             return _publishChannel;
         }
         finally
         {
-            _initLock.Release();
+            _channelLock.Release();
         }
-    }
-
-    internal async Task<IConnection> CreateConnectionAsync(CancellationToken cancellationToken)
-    {
-        var factory = BuildConnectionFactory();
-        return await factory.CreateConnectionAsync(cancellationToken);
-    }
-
-    internal ConnectionFactory BuildConnectionFactory()
-    {
-        var factory = new ConnectionFactory();
-
-        if (!string.IsNullOrWhiteSpace(_options.Uri))
-        {
-            factory.Uri = new Uri(_options.Uri);
-        }
-        else
-        {
-            factory.HostName = _options.HostName;
-            factory.Port = _options.Port;
-            factory.VirtualHost = _options.VirtualHost;
-            factory.UserName = _options.UserName;
-            factory.Password = _options.Password;
-        }
-
-        return factory;
     }
 
     internal static Dictionary<string, object?> BuildAmqpHeaders(MessageHeaders headers)
@@ -220,11 +164,11 @@ public sealed class RabbitMqTransport : IInterBusTransport, IAsyncDisposable
         _disposed = true;
 
         if (_publishChannel is not null)
+        {
             await _publishChannel.CloseAsync();
+            await _publishChannel.DisposeAsync();
+        }
 
-        if (_connection is not null)
-            await _connection.CloseAsync();
-
-        _initLock.Dispose();
+        _channelLock.Dispose();
     }
 }

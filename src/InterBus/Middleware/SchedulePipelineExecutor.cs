@@ -33,7 +33,7 @@ public sealed class SchedulePipelineExecutor(
         Task TerminalDeliverDelegate(ScheduleContext ctx, CancellationToken ct)
         {
             var transport = transportFactory.Resolve(ctx.Destination);
-            var sendContext = new TransportSendContext(ctx.Destination, ctx.Payload, ctx.Headers, delay: null);
+            var sendContext = new TransportSendContext(ctx.Destination, ctx.Payload, ctx.Headers, ctx.Delay);
             return transport.SendAsync(sendContext, ct);
         }
     }

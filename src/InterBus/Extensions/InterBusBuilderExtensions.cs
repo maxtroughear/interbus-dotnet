@@ -84,6 +84,29 @@ public static class InterBusBuilderExtensions
     }
 
     /// <summary>
+    /// Register the transport-delay scheduling provider. Scheduled messages are delivered
+    /// immediately via the configured transport with a <see cref="TransportSendContext.Delay"/>
+    /// equal to the requested deferral duration. Transports that support deferred visibility
+    /// (e.g. PostgreSQL <c>visible_at</c>) will honour the delay; transports that do not will
+    /// deliver the message immediately.
+    /// <para>
+    /// This provider requires no additional dependencies beyond the configured transport and
+    /// is suitable for environments where a dedicated scheduler (e.g. TickerQ) is not available.
+    /// </para>
+    /// <para>
+    /// Call <c>bus.AddScheduling()</c> before calling this method to register the
+    /// <see cref="IMessageScheduler"/> infrastructure.
+    /// </para>
+    /// </summary>
+    /// <param name="builder">The InterBus builder.</param>
+    public static IInterBusBuilder AddTransportDelayScheduler(this IInterBusBuilder builder)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+        builder.Services.AddScoped<IMessageSchedulingProvider, TransportDelaySchedulingProvider>();
+        return builder;
+    }
+
+    /// <summary>
     /// Register a <see cref="SystemTextJsonMessageSerializer"/> configured with the provided
     /// <paramref name="options"/>, replacing the default reflection-based serialiser.
     /// <para>

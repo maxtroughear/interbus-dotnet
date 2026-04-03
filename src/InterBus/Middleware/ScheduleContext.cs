@@ -31,14 +31,24 @@ public sealed class ScheduleContext
     public MessageHeaders Headers { get; set; }
 
     /// <summary>
+    /// Optional delay before the message becomes visible to consumers, forwarded to
+    /// <see cref="TransportSendContext.Delay"/> by <see cref="SchedulePipelineExecutor"/>.
+    /// When <c>null</c> the message is delivered immediately (default behaviour).
+    /// Set by <c>TransportDelaySchedulingProvider</c> to delegate deferred visibility to the
+    /// transport layer.
+    /// </summary>
+    public TimeSpan? Delay { get; }
+
+    /// <summary>
     /// Initializes a <see cref="ScheduleContext"/>.
     /// The framework creates instances internally, but the constructor is public to allow
     /// test implementations of <see cref="IScheduleMiddleware"/>.
     /// </summary>
-    public ScheduleContext(Uri destination, byte[] payload, MessageHeaders headers)
+    public ScheduleContext(Uri destination, byte[] payload, MessageHeaders headers, TimeSpan? delay = null)
     {
         Destination = destination;
         Payload = payload;
         Headers = headers;
+        Delay = delay;
     }
 }

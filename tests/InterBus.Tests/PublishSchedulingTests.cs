@@ -86,13 +86,14 @@ public sealed class PublishSchedulingTests
     }
 
     [Fact]
-    public async Task SchedulePublish_WithHeaders_PreservesCustomHeaders()
+    public async Task SchedulePublish_WithConfigureDelegate_PreservesCustomHeaders()
     {
         var (scheduler, transport) = BuildScheduler();
-        var headers = new MessageHeaders { ["x-custom"] = "test-value" };
 
-        await scheduler.SchedulePublish(new TestMessage(Guid.NewGuid()), headers,
-            DateTimeOffset.UtcNow.AddMinutes(1), TestContext.Current.CancellationToken);
+        await scheduler.SchedulePublish(new TestMessage(Guid.NewGuid()),
+            DateTimeOffset.UtcNow.AddMinutes(1),
+            ctx => ctx.Headers["x-custom"] = "test-value",
+            TestContext.Current.CancellationToken);
 
         Assert.Single(transport.Sends);
     }

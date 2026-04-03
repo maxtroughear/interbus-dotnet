@@ -241,14 +241,15 @@ public sealed class RedeliverySchedulingMiddlewareTests
         public Task SchedulePublish<T>(T message, DateTimeOffset scheduledAt,
             CancellationToken cancellationToken = default) where T : class => Task.CompletedTask;
 
-        public Task SchedulePublish<T>(T message, MessageHeaders headers, DateTimeOffset scheduledAt,
+        public Task SchedulePublish<T>(T message, DateTimeOffset scheduledAt, Action<PublishContext<T>> configure,
             CancellationToken cancellationToken = default) where T : class => Task.CompletedTask;
 
         public Task ScheduleSend<TConsumer, T>(T message, DateTimeOffset scheduledAt,
             CancellationToken cancellationToken = default) where TConsumer : IConsumer<T> where T : class
             => Task.CompletedTask;
 
-        public Task ScheduleSend<TConsumer, T>(T message, MessageHeaders headers, DateTimeOffset scheduledAt,
+        public Task ScheduleSend<TConsumer, T>(T message, DateTimeOffset scheduledAt,
+            Action<PublishContext<T>> configure,
             CancellationToken cancellationToken = default) where TConsumer : IConsumer<T> where T : class
             => Task.CompletedTask;
 
@@ -256,10 +257,14 @@ public sealed class RedeliverySchedulingMiddlewareTests
             CancellationToken cancellationToken = default) where T : class
             => Task.CompletedTask;
 
-        public Task ScheduleSend<T>(string queueName, T message, MessageHeaders headers, DateTimeOffset scheduledAt,
+        public Task ScheduleSend<T>(string queueName, T message, DateTimeOffset scheduledAt,
+            Action<PublishContext<T>> configure,
             CancellationToken cancellationToken = default) where T : class
         {
-            Scheduled.Add(new ScheduledMessage<object>(queueName, message, headers, scheduledAt));
+            var context = new PublishContext<T>(
+                new Uri("queue://interbus/" + queueName), message, new MessageHeaders());
+            configure(context);
+            Scheduled.Add(new ScheduledMessage<object>(queueName, message, context.Headers, scheduledAt));
             return Task.CompletedTask;
         }
     }

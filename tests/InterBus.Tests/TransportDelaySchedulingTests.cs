@@ -171,10 +171,10 @@ public sealed class TransportDelaySchedulingTests
 
     #endregion
 
-    #region ScheduleContext.Delay forwarded through middleware pipeline
+    #region ScheduleContext.ScheduledAt forwarded through middleware pipeline
 
     [Fact]
-    public async Task SchedulePipelineExecutor_ForwardsDelay_ToTransportSendContext()
+    public async Task SchedulePipelineExecutor_ForwardsScheduledAt_AsDelayToTransportSendContext()
     {
         var transport = new RecordingTransport();
         var services = new ServiceCollection();
@@ -187,17 +187,19 @@ public sealed class TransportDelaySchedulingTests
         var provider = services.BuildServiceProvider();
         using var scope = provider.CreateScope();
         var executor = scope.ServiceProvider.GetRequiredService<SchedulePipelineExecutor>();
-        var expectedDelay = TimeSpan.FromMinutes(3);
-        var ctx = new ScheduleContext(new Uri("queue://interbus/my-queue"), [1], new MessageHeaders(), expectedDelay);
+        var scheduledAt = DateTimeOffset.UtcNow.AddMinutes(3);
+        var ctx = new ScheduleContext(new Uri("queue://interbus/my-queue"), [1], new MessageHeaders(), scheduledAt);
 
         await executor.ExecuteAsync(ctx, TestContext.Current.CancellationToken);
 
         var sent = Assert.Single(transport.Sent);
-        Assert.Equal(expectedDelay, sent.Delay);
+        Assert.NotNull(sent.Delay);
+        Assert.True(sent.Delay > TimeSpan.Zero);
+        Assert.True(sent.Delay <= TimeSpan.FromMinutes(3));
     }
 
     [Fact]
-    public async Task SchedulePipelineExecutor_NullDelay_PassesNullToTransport()
+    public async Task SchedulePipelineExecutor_NullScheduledAt_PassesNullDelayToTransport()
     {
         var transport = new RecordingTransport();
         var services = new ServiceCollection();

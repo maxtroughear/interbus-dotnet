@@ -24,10 +24,10 @@ public interface IMessageScheduler
     /// <summary>
     /// Schedule a message to be published to the topic for <typeparamref name="T"/> at the
     /// absolute UTC time <paramref name="scheduledAt"/>, applying the supplied
-    /// <paramref name="configure"/> delegate to the <see cref="ScheduleContext{T}"/> before scheduling.
-    /// Use the delegate to set headers (via <see cref="ScheduleContext{T}.Headers"/>).
+    /// <paramref name="configure"/> delegate to the <see cref="PublishContext{T}"/> before scheduling.
+    /// Use the delegate to set headers (via <see cref="PublishContext{T}.Headers"/>).
     /// </summary>
-    Task SchedulePublish<T>(T message, DateTimeOffset scheduledAt, Action<ScheduleContext<T>> configure,
+    Task SchedulePublish<T>(T message, DateTimeOffset scheduledAt, Action<PublishContext<T>> configure,
         CancellationToken cancellationToken = default) where T : class;
 
     /// <summary>
@@ -41,10 +41,10 @@ public interface IMessageScheduler
     /// <summary>
     /// Schedule a message to be published to the topic for <typeparamref name="T"/> after
     /// the specified <paramref name="delay"/>, applying the supplied <paramref name="configure"/>
-    /// delegate to the <see cref="ScheduleContext{T}"/> before scheduling.
-    /// Use the delegate to set headers (via <see cref="ScheduleContext{T}.Headers"/>).
+    /// delegate to the <see cref="PublishContext{T}"/> before scheduling.
+    /// Use the delegate to set headers (via <see cref="PublishContext{T}.Headers"/>).
     /// </summary>
-    Task SchedulePublish<T>(T message, TimeSpan delay, Action<ScheduleContext<T>> configure,
+    Task SchedulePublish<T>(T message, TimeSpan delay, Action<PublishContext<T>> configure,
         CancellationToken cancellationToken = default) where T : class =>
         SchedulePublish(message, DateTimeOffset.UtcNow + delay, configure, cancellationToken);
 
@@ -64,10 +64,10 @@ public interface IMessageScheduler
     /// <summary>
     /// Schedule a message to be sent directly to the queue of <typeparamref name="TConsumer"/>
     /// at the absolute UTC time <paramref name="scheduledAt"/>, applying the supplied
-    /// <paramref name="configure"/> delegate to the <see cref="ScheduleContext{T}"/> before scheduling.
-    /// Use the delegate to set headers (via <see cref="ScheduleContext{T}.Headers"/>).
+    /// <paramref name="configure"/> delegate to the <see cref="PublishContext{T}"/> before scheduling.
+    /// Use the delegate to set headers (via <see cref="PublishContext{T}.Headers"/>).
     /// </summary>
-    Task ScheduleSend<TConsumer, T>(T message, DateTimeOffset scheduledAt, Action<ScheduleContext<T>> configure,
+    Task ScheduleSend<TConsumer, T>(T message, DateTimeOffset scheduledAt, Action<PublishContext<T>> configure,
         CancellationToken cancellationToken = default)
         where TConsumer : IConsumer<T>
         where T : class;
@@ -84,10 +84,10 @@ public interface IMessageScheduler
     /// <summary>
     /// Schedule a message to be sent directly to the queue of <typeparamref name="TConsumer"/>
     /// after the specified <paramref name="delay"/>, applying the supplied <paramref name="configure"/>
-    /// delegate to the <see cref="ScheduleContext{T}"/> before scheduling.
-    /// Use the delegate to set headers (via <see cref="ScheduleContext{T}.Headers"/>).
+    /// delegate to the <see cref="PublishContext{T}"/> before scheduling.
+    /// Use the delegate to set headers (via <see cref="PublishContext{T}.Headers"/>).
     /// </summary>
-    Task ScheduleSend<TConsumer, T>(T message, TimeSpan delay, Action<ScheduleContext<T>> configure,
+    Task ScheduleSend<TConsumer, T>(T message, TimeSpan delay, Action<PublishContext<T>> configure,
         CancellationToken cancellationToken = default)
         where TConsumer : IConsumer<T>
         where T : class =>
@@ -107,11 +107,11 @@ public interface IMessageScheduler
     /// <summary>
     /// Schedule a message to be sent directly to the named <paramref name="queueName"/> at
     /// the absolute UTC time <paramref name="scheduledAt"/>, applying the supplied
-    /// <paramref name="configure"/> delegate to the <see cref="ScheduleContext{T}"/> before scheduling.
-    /// Use the delegate to set headers (via <see cref="ScheduleContext{T}.Headers"/>).
+    /// <paramref name="configure"/> delegate to the <see cref="PublishContext{T}"/> before scheduling.
+    /// Use the delegate to set headers (via <see cref="PublishContext{T}.Headers"/>).
     /// </summary>
     Task ScheduleSend<T>(string queueName, T message, DateTimeOffset scheduledAt,
-        Action<ScheduleContext<T>> configure,
+        Action<PublishContext<T>> configure,
         CancellationToken cancellationToken = default) where T : class;
 
     /// <summary>
@@ -125,10 +125,10 @@ public interface IMessageScheduler
     /// <summary>
     /// Schedule a message to be sent directly to the named <paramref name="queueName"/> after
     /// the specified <paramref name="delay"/>, applying the supplied <paramref name="configure"/>
-    /// delegate to the <see cref="ScheduleContext{T}"/> before scheduling.
-    /// Use the delegate to set headers (via <see cref="ScheduleContext{T}.Headers"/>).
+    /// delegate to the <see cref="PublishContext{T}"/> before scheduling.
+    /// Use the delegate to set headers (via <see cref="PublishContext{T}.Headers"/>).
     /// </summary>
-    Task ScheduleSend<T>(string queueName, T message, TimeSpan delay, Action<ScheduleContext<T>> configure,
+    Task ScheduleSend<T>(string queueName, T message, TimeSpan delay, Action<PublishContext<T>> configure,
         CancellationToken cancellationToken = default) where T : class =>
         ScheduleSend(queueName, message, DateTimeOffset.UtcNow + delay, configure, cancellationToken);
 }

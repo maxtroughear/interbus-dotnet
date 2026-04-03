@@ -19,14 +19,14 @@ internal sealed class MessageScheduler(
         CancellationToken cancellationToken = default) where T : class =>
         SchedulePublish(message, scheduledAt, _ => { }, cancellationToken);
 
-    public Task SchedulePublish<T>(T message, DateTimeOffset scheduledAt, Action<ScheduleContext<T>> configure,
+    public Task SchedulePublish<T>(T message, DateTimeOffset scheduledAt, Action<PublishContext<T>> configure,
         CancellationToken cancellationToken = default) where T : class
     {
         var topicName = options.TryGetTopicName(typeof(T), out var customName)
             ? customName
             : RoutingConventions.TopicName(typeof(T));
         var destination = RoutingConventions.TopicUri(options.TopicUriScheme, topicName);
-        var context = new ScheduleContext<T>(destination, message, Stamp<T>());
+        var context = new PublishContext<T>(destination, message, Stamp<T>());
         configure(context);
         var payload = serializer.Serialize(context.Payload);
         return schedulingProvider.ScheduleAsync(destination, payload, context.Headers, scheduledAt, cancellationToken);
@@ -38,13 +38,13 @@ internal sealed class MessageScheduler(
         where T : class =>
         ScheduleSend<TConsumer, T>(message, scheduledAt, _ => { }, cancellationToken);
 
-    public Task ScheduleSend<TConsumer, T>(T message, DateTimeOffset scheduledAt, Action<ScheduleContext<T>> configure,
+    public Task ScheduleSend<TConsumer, T>(T message, DateTimeOffset scheduledAt, Action<PublishContext<T>> configure,
         CancellationToken cancellationToken = default)
         where TConsumer : IConsumer<T>
         where T : class
     {
         var destination = RoutingConventions.QueueUri(options.QueueUriScheme, typeof(TConsumer));
-        var context = new ScheduleContext<T>(destination, message, Stamp<T>());
+        var context = new PublishContext<T>(destination, message, Stamp<T>());
         configure(context);
         var payload = serializer.Serialize(context.Payload);
         return schedulingProvider.ScheduleAsync(destination, payload, context.Headers, scheduledAt, cancellationToken);
@@ -55,11 +55,11 @@ internal sealed class MessageScheduler(
         ScheduleSend(queueName, message, scheduledAt, _ => { }, cancellationToken);
 
     public Task ScheduleSend<T>(string queueName, T message, DateTimeOffset scheduledAt,
-        Action<ScheduleContext<T>> configure,
+        Action<PublishContext<T>> configure,
         CancellationToken cancellationToken = default) where T : class
     {
         var destination = RoutingConventions.QueueUri(options.QueueUriScheme, queueName);
-        var context = new ScheduleContext<T>(destination, message, Stamp<T>());
+        var context = new PublishContext<T>(destination, message, Stamp<T>());
         configure(context);
         var payload = serializer.Serialize(context.Payload);
         return schedulingProvider.ScheduleAsync(destination, payload, context.Headers, scheduledAt, cancellationToken);

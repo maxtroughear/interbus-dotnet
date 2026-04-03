@@ -241,7 +241,7 @@ public sealed class RedeliverySchedulingMiddlewareTests
         public Task SchedulePublish<T>(T message, DateTimeOffset scheduledAt,
             CancellationToken cancellationToken = default) where T : class => Task.CompletedTask;
 
-        public Task SchedulePublish<T>(T message, DateTimeOffset scheduledAt, Action<ScheduleContext<T>> configure,
+        public Task SchedulePublish<T>(T message, DateTimeOffset scheduledAt, Action<PublishContext<T>> configure,
             CancellationToken cancellationToken = default) where T : class => Task.CompletedTask;
 
         public Task ScheduleSend<TConsumer, T>(T message, DateTimeOffset scheduledAt,
@@ -249,7 +249,7 @@ public sealed class RedeliverySchedulingMiddlewareTests
             => Task.CompletedTask;
 
         public Task ScheduleSend<TConsumer, T>(T message, DateTimeOffset scheduledAt,
-            Action<ScheduleContext<T>> configure,
+            Action<PublishContext<T>> configure,
             CancellationToken cancellationToken = default) where TConsumer : IConsumer<T> where T : class
             => Task.CompletedTask;
 
@@ -258,10 +258,10 @@ public sealed class RedeliverySchedulingMiddlewareTests
             => Task.CompletedTask;
 
         public Task ScheduleSend<T>(string queueName, T message, DateTimeOffset scheduledAt,
-            Action<ScheduleContext<T>> configure,
+            Action<PublishContext<T>> configure,
             CancellationToken cancellationToken = default) where T : class
         {
-            var context = new ScheduleContext<T>(
+            var context = new PublishContext<T>(
                 new Uri("queue://interbus/" + queueName), message, new MessageHeaders());
             configure(context);
             Scheduled.Add(new ScheduledMessage<object>(queueName, message, context.Headers, scheduledAt));

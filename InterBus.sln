@@ -42,6 +42,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "InterBus.PostgreSQL.Tests",
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "InterBus.EntityFrameworkCore.Tests", "tests\InterBus.EntityFrameworkCore.Tests\InterBus.EntityFrameworkCore.Tests.csproj", "{D1E2F3A4-0007-0000-0000-000000000007}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "InterBus.EntityFrameworkCore.PostgreSQL.IntegrationTests", "tests\InterBus.EntityFrameworkCore.PostgreSQL.IntegrationTests\InterBus.EntityFrameworkCore.PostgreSQL.IntegrationTests.csproj", "{E2F3A4B5-0008-0000-0000-000000000008}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "InterBus.EntityFrameworkCore.SqlServer.IntegrationTests", "tests\InterBus.EntityFrameworkCore.SqlServer.IntegrationTests\InterBus.EntityFrameworkCore.SqlServer.IntegrationTests.csproj", "{F3A4B5C6-0009-0000-0000-000000000009}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -268,6 +272,30 @@ Global
 		{D1E2F3A4-0007-0000-0000-000000000007}.Release|x64.Build.0 = Release|Any CPU
 		{D1E2F3A4-0007-0000-0000-000000000007}.Release|x86.ActiveCfg = Release|Any CPU
 		{D1E2F3A4-0007-0000-0000-000000000007}.Release|x86.Build.0 = Release|Any CPU
+		{E2F3A4B5-0008-0000-0000-000000000008}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E2F3A4B5-0008-0000-0000-000000000008}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E2F3A4B5-0008-0000-0000-000000000008}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{E2F3A4B5-0008-0000-0000-000000000008}.Debug|x64.Build.0 = Debug|Any CPU
+		{E2F3A4B5-0008-0000-0000-000000000008}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{E2F3A4B5-0008-0000-0000-000000000008}.Debug|x86.Build.0 = Debug|Any CPU
+		{E2F3A4B5-0008-0000-0000-000000000008}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E2F3A4B5-0008-0000-0000-000000000008}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E2F3A4B5-0008-0000-0000-000000000008}.Release|x64.ActiveCfg = Release|Any CPU
+		{E2F3A4B5-0008-0000-0000-000000000008}.Release|x64.Build.0 = Release|Any CPU
+		{E2F3A4B5-0008-0000-0000-000000000008}.Release|x86.ActiveCfg = Release|Any CPU
+		{E2F3A4B5-0008-0000-0000-000000000008}.Release|x86.Build.0 = Release|Any CPU
+		{F3A4B5C6-0009-0000-0000-000000000009}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F3A4B5C6-0009-0000-0000-000000000009}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F3A4B5C6-0009-0000-0000-000000000009}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{F3A4B5C6-0009-0000-0000-000000000009}.Debug|x64.Build.0 = Debug|Any CPU
+		{F3A4B5C6-0009-0000-0000-000000000009}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{F3A4B5C6-0009-0000-0000-000000000009}.Debug|x86.Build.0 = Debug|Any CPU
+		{F3A4B5C6-0009-0000-0000-000000000009}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F3A4B5C6-0009-0000-0000-000000000009}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F3A4B5C6-0009-0000-0000-000000000009}.Release|x64.ActiveCfg = Release|Any CPU
+		{F3A4B5C6-0009-0000-0000-000000000009}.Release|x64.Build.0 = Release|Any CPU
+		{F3A4B5C6-0009-0000-0000-000000000009}.Release|x86.ActiveCfg = Release|Any CPU
+		{F3A4B5C6-0009-0000-0000-000000000009}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -291,5 +319,7 @@ Global
 		{1D668546-4680-44F3-96AD-EA6EF18BE71D} = {11FB39A0-9DB6-4513-BE75-CE888F5F7F22}
 		{FAD92990-2F26-43C1-AE9B-2C34AE64A34F} = {11FB39A0-9DB6-4513-BE75-CE888F5F7F22}
 		{D1E2F3A4-0007-0000-0000-000000000007} = {11FB39A0-9DB6-4513-BE75-CE888F5F7F22}
+		{E2F3A4B5-0008-0000-0000-000000000008} = {11FB39A0-9DB6-4513-BE75-CE888F5F7F22}
+		{F3A4B5C6-0009-0000-0000-000000000009} = {11FB39A0-9DB6-4513-BE75-CE888F5F7F22}
 	EndGlobalSection
 EndGlobal

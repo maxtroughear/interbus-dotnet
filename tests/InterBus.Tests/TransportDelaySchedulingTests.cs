@@ -210,7 +210,7 @@ public sealed class TransportDelaySchedulingTests
         var provider = services.BuildServiceProvider();
         using var scope = provider.CreateScope();
         var executor = scope.ServiceProvider.GetRequiredService<SchedulePipelineExecutor>();
-        var ctx = new ScheduleContext(new Uri("queue://interbus/my-queue"), [1], new MessageHeaders());
+        var ctx = new ScheduleContext(new Uri("queue://interbus/my-queue"), [1], new MessageHeaders(), null);
 
         await executor.ExecuteAsync(ctx, TestContext.Current.CancellationToken);
 

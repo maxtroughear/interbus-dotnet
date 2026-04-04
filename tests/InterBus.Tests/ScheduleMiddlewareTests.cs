@@ -30,7 +30,7 @@ public sealed class ScheduleMiddlewareTests
         using var scope = provider.CreateScope();
         var executor = scope.ServiceProvider.GetRequiredService<SchedulePipelineExecutor>();
         var destination = new Uri("topic://interbus/test-topic");
-        var ctx = new ScheduleContext(destination, [1, 2, 3], new MessageHeaders());
+        var ctx = new ScheduleContext(destination, [1, 2, 3], new MessageHeaders(), null);
 
         await executor.ExecuteAsync(ctx, TestContext.Current.CancellationToken);
 
@@ -53,7 +53,7 @@ public sealed class ScheduleMiddlewareTests
         using var scope = provider.CreateScope();
         var executor = scope.ServiceProvider.GetRequiredService<SchedulePipelineExecutor>();
         var destination = new Uri("topic://interbus/test-topic");
-        var ctx = new ScheduleContext(destination, [1, 2, 3], new MessageHeaders());
+        var ctx = new ScheduleContext(destination, [1, 2, 3], new MessageHeaders(), null);
 
         await executor.ExecuteAsync(ctx, TestContext.Current.CancellationToken);
 
@@ -77,7 +77,7 @@ public sealed class ScheduleMiddlewareTests
         var provider = services.BuildServiceProvider();
         using var scope = provider.CreateScope();
         var executor = scope.ServiceProvider.GetRequiredService<SchedulePipelineExecutor>();
-        var ctx = new ScheduleContext(new Uri("queue://interbus/my-queue"), [1, 2, 3], new MessageHeaders());
+        var ctx = new ScheduleContext(new Uri("queue://interbus/my-queue"), [1, 2, 3], new MessageHeaders(), null);
 
         await executor.ExecuteAsync(ctx, TestContext.Current.CancellationToken);
 
@@ -100,7 +100,7 @@ public sealed class ScheduleMiddlewareTests
         var provider = services.BuildServiceProvider();
         using var scope = provider.CreateScope();
         var executor = scope.ServiceProvider.GetRequiredService<SchedulePipelineExecutor>();
-        var ctx = new ScheduleContext(new Uri("queue://interbus/my-queue"), [1], new MessageHeaders());
+        var ctx = new ScheduleContext(new Uri("queue://interbus/my-queue"), [1], new MessageHeaders(), null);
 
         await executor.ExecuteAsync(ctx, TestContext.Current.CancellationToken);
 
@@ -125,7 +125,7 @@ public sealed class ScheduleMiddlewareTests
         var provider = services.BuildServiceProvider();
         using var scope = provider.CreateScope();
         var executor = scope.ServiceProvider.GetRequiredService<SchedulePipelineExecutor>();
-        var ctx = new ScheduleContext(new Uri("queue://interbus/my-queue"), [1], new MessageHeaders());
+        var ctx = new ScheduleContext(new Uri("queue://interbus/my-queue"), [1], new MessageHeaders(), null);
 
         await executor.ExecuteAsync(ctx, TestContext.Current.CancellationToken);
 

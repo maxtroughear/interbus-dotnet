@@ -7,7 +7,7 @@ public sealed class SendPipelineExecutor(
     private readonly IList<ISendMiddleware> _middlewares = middlewares.Reverse().ToList();
 
     /// <summary>
-    /// Builds and runs the schedule pipeline for the given <paramref name="context"/>,
+    /// Builds and runs the send pipeline for the given <paramref name="context"/>,
     /// forwarding to the correct <see cref="IInterBusTransport"/> as the terminal step.
     /// </summary>
     public Task ExecuteAsync(SendContext context, CancellationToken cancellationToken = default)

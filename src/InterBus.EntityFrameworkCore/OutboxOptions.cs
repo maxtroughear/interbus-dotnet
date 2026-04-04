@@ -16,16 +16,5 @@ public sealed class OutboxOptions
     /// </summary>
     public TimeSpan PollInterval { get; set; } = TimeSpan.FromSeconds(5);
 
-    /// <summary>
-    /// The strategy used to lock a group of pending messages before forwarding them.
-    /// Defaults to <see cref="Internal.EFCoreOutboxLockProvider"/>, which uses plain EF Core
-    /// queries with no database-level row locking. Suitable for single-instance deployments
-    /// and integration tests. For multi-instance deployments configure a provider that
-    /// matches your database:
-    /// <list type="bullet">
-    ///   <item>PostgreSQL — <see cref="PostgreSqlOutboxLockProvider"/></item>
-    ///   <item>SQL Server — <see cref="SqlServerOutboxLockProvider"/></item>
-    /// </list>
-    /// </summary>
-    public IOutboxLockProvider LockProvider { get; set; } = new Internal.EFCoreOutboxLockProvider();
+    public bool RunOutboxProcessor { get; internal set; } = true;
 }

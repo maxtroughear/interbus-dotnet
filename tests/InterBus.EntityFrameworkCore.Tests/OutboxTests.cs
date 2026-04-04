@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using InterBus.EntityFrameworkCore;
 using InterBus.EntityFrameworkCore.Extensions;
 using InterBus.Extensions;
 using InterBus.Generated;
@@ -41,6 +40,7 @@ public sealed class OrderPlacedConsumer(OrderPlacedTracker tracker) : IConsumer<
 public sealed class TestDbContext(DbContextOptions<TestDbContext> options)
     : DbContext(options), IOutboxDbContext
 {
+    public DbSet<OutboxGroup> OutboxGroups => Set<OutboxGroup>();
     public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder) =>
@@ -89,10 +89,14 @@ public class OutboxTests
         }
 
         var cts = new CancellationTokenSource();
-        foreach (var svc in provider.GetServices<IHostedService>())
-            await svc.StartAsync(cts.Token);
 
         return (provider, cts, connection);
+    }
+
+    private static async Task StartHostedServicesAsync(ServiceProvider provider, CancellationToken cancellationToken)
+    {
+        foreach (var svc in provider.GetServices<IHostedService>())
+            await svc.StartAsync(cancellationToken);
     }
 
     private static async Task StopAsync(ServiceProvider provider, CancellationTokenSource cts, SqliteConnection connection)
@@ -126,7 +130,7 @@ public class OutboxTests
             bus.AddInMemoryTransport();
             bus.AddConsumer<OrderPlacedConsumer>();
             // Long poll interval so the processor does not run during assertions.
-            bus.UseOutbox<TestDbContext>(o => o.PollInterval = TimeSpan.FromHours(1));
+            bus.UseOutbox<TestDbContext>(o => o.WithPollInterval(TimeSpan.FromHours(1)));
         }, services => services.AddSingleton(tracker));
 
         try
@@ -152,6 +156,10 @@ public class OutboxTests
             var outboxCount = await dbContext.OutboxMessages
                 .CountAsync(TestContext.Current.CancellationToken);
             Assert.Equal(1, outboxCount);
+
+            var groupCount = await dbContext.OutboxGroups
+                .CountAsync(TestContext.Current.CancellationToken);
+            Assert.Equal(1, groupCount);
         }
         finally
         {
@@ -171,7 +179,7 @@ public class OutboxTests
         {
             bus.AddInMemoryTransport();
             bus.AddConsumer<OrderPlacedConsumer>();
-            bus.UseOutbox<TestDbContext>(o => o.PollInterval = TimeSpan.FromMilliseconds(50));
+            bus.UseOutbox<TestDbContext>(o => o.WithPollInterval(TimeSpan.FromMilliseconds(50)));
         }, services => services.AddSingleton(tracker));
 
         try
@@ -185,6 +193,8 @@ public class OutboxTests
                 await publisher.Publish(msg, TestContext.Current.CancellationToken);
                 await dbContext.SaveChangesAsync(TestContext.Current.CancellationToken);
             }
+
+            await StartHostedServicesAsync(provider, cts.Token);
 
             await WaitUntilAsync(() => tracker.Messages.Count == 1);
 
@@ -209,7 +219,7 @@ public class OutboxTests
         {
             bus.AddInMemoryTransport();
             bus.AddConsumer<OrderPlacedConsumer>();
-            bus.UseOutbox<TestDbContext>(o => o.PollInterval = TimeSpan.FromMilliseconds(50));
+            bus.UseOutbox<TestDbContext>(o => o.WithPollInterval(TimeSpan.FromMilliseconds(50)));
         }, services => services.AddSingleton(tracker));
 
         try
@@ -233,6 +243,8 @@ public class OutboxTests
                 await dbContext.SaveChangesAsync(TestContext.Current.CancellationToken);
             }
 
+            await StartHostedServicesAsync(provider, cts.Token);
+
             await WaitUntilAsync(() => tracker.Messages.Count >= count);
 
             Assert.Equal(count, tracker.Messages.Count);
@@ -244,7 +256,7 @@ public class OutboxTests
     }
 
     /// <summary>
-    /// After the outbox processor forwards messages, the outbox table must be empty.
+    /// After the outbox processor forwards messages, outbox message and group tables must be empty.
     /// </summary>
     [Fact]
     public async Task OutboxProcessor_DeletesProcessedMessages()
@@ -255,7 +267,7 @@ public class OutboxTests
         {
             bus.AddInMemoryTransport();
             bus.AddConsumer<OrderPlacedConsumer>();
-            bus.UseOutbox<TestDbContext>(o => o.PollInterval = TimeSpan.FromMilliseconds(50));
+            bus.UseOutbox<TestDbContext>(o => o.WithPollInterval(TimeSpan.FromMilliseconds(50)));
         }, services => services.AddSingleton(tracker));
 
         try
@@ -271,6 +283,8 @@ public class OutboxTests
                 await dbContext.SaveChangesAsync(TestContext.Current.CancellationToken);
             }
 
+            await StartHostedServicesAsync(provider, cts.Token);
+
             await WaitUntilAsync(() => tracker.Messages.Count == 1);
 
             // Allow a brief moment for the delete + commit.
@@ -282,6 +296,10 @@ public class OutboxTests
                 var remaining = await dbContext.OutboxMessages
                     .CountAsync(TestContext.Current.CancellationToken);
                 Assert.Equal(0, remaining);
+
+                var remainingGroups = await dbContext.OutboxGroups
+                    .CountAsync(TestContext.Current.CancellationToken);
+                Assert.Equal(0, remainingGroups);
             }
         }
         finally
@@ -301,7 +319,7 @@ public class OutboxTests
         {
             bus.AddInMemoryTransport();
             // Long poll interval — we only want to inspect the stored row, not forward.
-            bus.UseOutbox<TestDbContext>(o => o.PollInterval = TimeSpan.FromHours(1));
+            bus.UseOutbox<TestDbContext>(o => o.WithPollInterval(TimeSpan.FromHours(1)));
         });
 
         try
@@ -320,6 +338,58 @@ public class OutboxTests
 
             var row = await dbContext.OutboxMessages.SingleAsync(TestContext.Current.CancellationToken);
             Assert.Equal(delay, row.Delay);
+        }
+        finally
+        {
+            await StopAsync(provider, cts, conn);
+        }
+    }
+
+    /// <summary>
+    /// Empty outbox groups (with no message rows) are still claimed and removed.
+    /// </summary>
+    [Fact]
+    public async Task OutboxProcessor_DeletesEmptyGroup()
+    {
+        var (provider, cts, conn) = await StartAsync(bus =>
+        {
+            bus.AddInMemoryTransport();
+            bus.UseOutbox<TestDbContext>(o => o.WithPollInterval(TimeSpan.FromMilliseconds(50)));
+        });
+
+        try
+        {
+            var groupId = Guid.NewGuid();
+
+            await using (var scope = provider.CreateAsyncScope())
+            {
+                var dbContext = scope.ServiceProvider.GetRequiredService<TestDbContext>();
+                dbContext.OutboxGroups.Add(new OutboxGroup { Id = groupId });
+                await dbContext.SaveChangesAsync(TestContext.Current.CancellationToken);
+            }
+
+            await StartHostedServicesAsync(provider, cts.Token);
+
+            var deadline = DateTime.UtcNow.AddSeconds(5);
+            while (DateTime.UtcNow < deadline)
+            {
+                await using var scope = provider.CreateAsyncScope();
+                var dbContext = scope.ServiceProvider.GetRequiredService<TestDbContext>();
+                var exists = await dbContext.OutboxGroups
+                    .AnyAsync(g => g.Id == groupId, TestContext.Current.CancellationToken);
+                if (!exists)
+                    break;
+
+                await Task.Delay(25, TestContext.Current.CancellationToken);
+            }
+
+            await using (var scope = provider.CreateAsyncScope())
+            {
+                var dbContext = scope.ServiceProvider.GetRequiredService<TestDbContext>();
+                var exists = await dbContext.OutboxGroups
+                    .AnyAsync(g => g.Id == groupId, TestContext.Current.CancellationToken);
+                Assert.False(exists);
+            }
         }
         finally
         {

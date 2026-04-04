@@ -161,7 +161,7 @@ public sealed class PublishSchedulingTests
             c => c.ConsumerType.Name == "SchedulingConsumer");
         // SchedulePublishCommand and ScheduleSendCommand were merged into a single
         // ScheduleDeliveryCommand, so the consumer now handles exactly one message type.
-        Assert.Equal(1, consumer.MessageTypes.Count);
+        Assert.Single(consumer.MessageTypes);
         Assert.Equal("ScheduleDeliveryCommand", consumer.MessageTypes[0].Name);
     }
 

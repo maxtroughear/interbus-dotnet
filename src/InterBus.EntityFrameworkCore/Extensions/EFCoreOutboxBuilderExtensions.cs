@@ -6,7 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 namespace InterBus.EntityFrameworkCore.Extensions;
 
 /// <summary>Extension methods for configuring the InterBus transactional outbox.</summary>
-public static class EFCoreOutboxBuilderExtensions
+public static class EfCoreOutboxBuilderExtensions
 {
     /// <summary>
     /// Enables the transactional outbox pattern for InterBus using an existing EF Core
@@ -30,10 +30,12 @@ public static class EFCoreOutboxBuilderExtensions
     /// call <c>modelBuilder.AddInterBusOutbox()</c> inside <c>OnModelCreating</c>.
     /// </para>
     /// <para>
-    /// Configure <see cref="OutboxOptions.LockProvider"/> to use a database-specific
-    /// locking strategy for multi-instance deployments:
+    /// Use the <see cref="OutboxBuilder{TDbContext}"/> delegate to configure options and select
+    /// a database-specific locking strategy for multi-instance deployments:
     /// <code>
-    /// bus.UseOutbox&lt;AppDbContext&gt;(o => o.LockProvider = new PostgreSqlOutboxLockProvider());
+    /// bus.UseOutbox&lt;AppDbContext&gt;(outbox => outbox
+    ///     .WithPollInterval(TimeSpan.FromSeconds(2))
+    ///     .UsePostgreSql());
     /// </code>
     /// </para>
     /// </summary>
@@ -41,20 +43,25 @@ public static class EFCoreOutboxBuilderExtensions
     /// The application's <see cref="DbContext"/>. Must implement <see cref="IOutboxDbContext"/>.
     /// </typeparam>
     /// <param name="builder">The InterBus builder.</param>
-    /// <param name="configure">Optional delegate to configure <see cref="OutboxOptions"/>.</param>
+    /// <param name="configure">Optional delegate to configure the <see cref="OutboxBuilder{TDbContext}"/>.</param>
     public static IInterBusBuilder UseOutbox<TDbContext>(
         this IInterBusBuilder builder,
-        Action<OutboxOptions>? configure = null)
+        Action<OutboxBuilder<TDbContext>>? configure = null)
         where TDbContext : DbContext, IOutboxDbContext
     {
         ArgumentNullException.ThrowIfNull(builder);
 
-        var options = new OutboxOptions();
-        configure?.Invoke(options);
+        // Register the default lock provider; lock-provider extension methods replace it.
+        builder.Services.AddSingleton<IOutboxLockProvider<TDbContext>, EfCoreOutboxLockProvider<TDbContext>>();
 
-        builder.Services.AddSingleton(options);
+        var outboxBuilder = new OutboxBuilder<TDbContext>(builder.Services);
+        configure?.Invoke(outboxBuilder);
+
+        builder.Services.AddSingleton(outboxBuilder.Options);
         builder.Services.AddScoped<IPublishMiddleware, OutboxPublishMiddleware<TDbContext>>();
-        builder.Services.AddHostedService<OutboxProcessor<TDbContext>>();
+        
+        if (outboxBuilder.Options.RunOutboxProcessor)
+            builder.Services.AddHostedService<OutboxProcessor<TDbContext>>();
 
         return builder;
     }

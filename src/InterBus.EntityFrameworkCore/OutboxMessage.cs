@@ -8,23 +8,24 @@ namespace InterBus.EntityFrameworkCore;
 public sealed class OutboxMessage
 {
     /// <summary>Unique identifier for this outbox entry.</summary>
-    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid Id { get; set; } = Guid.CreateVersion7();
 
     /// <summary>
-    /// Identifies the group of messages that were published together in the same DI scope
-    /// (e.g. a single HTTP request or unit-of-work). All messages in the same group are
-    /// fetched and forwarded atomically by the background processor.
+    /// Foreign key to the outbox group/header row that owns this message.
+    /// All messages in the same group are forwarded atomically.
     /// </summary>
-    public Guid GroupId { get; set; }
+    public required Guid GroupId { get; set; }
+
+    public OutboxGroup Group { get; set; } = null!;
 
     /// <summary>The serialized destination URI (e.g. <c>memorytopic://interbus/my-topic</c>).</summary>
-    public string Destination { get; set; } = string.Empty;
+    public required string Destination { get; set; }
 
     /// <summary>The serialized message payload.</summary>
-    public byte[] Payload { get; set; } = [];
+    public required byte[] Payload { get; set; }
 
     /// <summary>JSON-serialized message headers.</summary>
-    public string HeadersJson { get; set; } = string.Empty;
+    public required string HeadersJson { get; set; }
 
     /// <summary>
     /// Optional delay to pass to the transport when forwarding this message.

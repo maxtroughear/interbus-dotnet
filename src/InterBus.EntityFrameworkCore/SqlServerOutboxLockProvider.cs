@@ -4,62 +4,49 @@ using Microsoft.EntityFrameworkCore.Metadata;
 namespace InterBus.EntityFrameworkCore;
 
 /// <summary>
-/// <see cref="IOutboxLockProvider"/> for SQL Server databases. Uses a CTE with
-/// <c>UPDLOCK, READPAST</c> hints to atomically select the next pending group and lock
-/// all its rows within the caller's transaction. Concurrent processor instances skip
-/// locked groups and move on to the next available one.
+/// <see cref="IOutboxLockProvider{TDbContext}"/> for SQL Server databases. Uses
+/// <c>UPDLOCK, READPAST</c> to atomically select and lock one outbox group row,
+/// then reads all messages in that group.
 /// </summary>
-public sealed class SqlServerOutboxLockProvider : IOutboxLockProvider
+public sealed class SqlServerOutboxLockProvider<TDbContext> : IOutboxLockProvider<TDbContext>
+    where TDbContext : DbContext, IOutboxDbContext
 {
-    public Task<IReadOnlyList<OutboxMessage>> TryFetchGroupAsync(
-        DbContext context,
+    public async Task<OutboxGroup?> TryFetchGroupAsync(
+        TDbContext context,
         CancellationToken cancellationToken)
     {
-        var (fqn, groupIdCol, createdAtCol) = GetTableInfo(context);
+        var (groupsFqn, groupIdCol) = GetTableInfo(context.OutboxGroups.EntityType, nameof(OutboxGroup.Id));
 
-        // READPAST skips rows locked by other transactions (equivalent to SKIP LOCKED).
-        // UPDLOCK promotes the lock to an update lock, preventing phantom reads.
-        var sql = $"""
-            WITH first_group AS (
-                SELECT {groupIdCol}
-                FROM {fqn} WITH (UPDLOCK, READPAST)
-                ORDER BY {createdAtCol}
-                OFFSET 0 ROWS FETCH NEXT 1 ROWS ONLY
-            )
-            SELECT om.*
-            FROM {fqn} om WITH (UPDLOCK)
-            INNER JOIN first_group fg ON om.{groupIdCol} = fg.{groupIdCol}
-            ORDER BY om.{createdAtCol}
-            """;
+        // Lock one oldest group row; empty groups are still claimable and will be cleaned up.
+        var groupSql = $"""
+                        SELECT TOP (1) g.*
+                        FROM {groupsFqn} g WITH (UPDLOCK, READPAST)
+                        ORDER BY g.{groupIdCol}
+                        """;
 
-        return context.Set<OutboxMessage>()
-            .FromSqlRaw(sql)
-            .OrderBy(m => m.CreatedAt)
-            .ToListAsync(cancellationToken)
-            .ContinueWith(t => (IReadOnlyList<OutboxMessage>)t.Result, cancellationToken,
-                TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+        return await context.OutboxGroups
+            .FromSqlRaw(groupSql)
+            .Include(g => g.Messages.OrderBy(m => m.Id))
+            .FirstOrDefaultAsync(cancellationToken);
     }
 
-    private static (string fqn, string groupIdCol, string createdAtCol) GetTableInfo(
-        DbContext context)
+    private static (string fqn, string keyCol) GetTableInfo(
+        IEntityType entityType,
+        string keyProperty)
     {
-        var entityType = context.Model.FindEntityType(typeof(OutboxMessage))!;
-        var tableName = entityType.GetTableName() ?? "OutboxMessages";
+        var tableName = entityType.GetTableName() ?? entityType.ShortName();
         var schemaName = entityType.GetSchema();
         var storeObject = StoreObjectIdentifier.Table(tableName, schemaName);
 
-        var groupIdCol = Quote(
-            entityType.FindProperty(nameof(OutboxMessage.GroupId))!.GetColumnName(storeObject)
-            ?? nameof(OutboxMessage.GroupId));
-        var createdAtCol = Quote(
-            entityType.FindProperty(nameof(OutboxMessage.CreatedAt))!.GetColumnName(storeObject)
-            ?? nameof(OutboxMessage.CreatedAt));
+        var keyCol = Quote(
+            entityType.FindProperty(keyProperty)!.GetColumnName(storeObject)
+            ?? keyProperty);
 
         var fqn = schemaName is not null
             ? $"{Quote(schemaName)}.{Quote(tableName)}"
             : Quote(tableName);
 
-        return (fqn, groupIdCol, createdAtCol);
+        return (fqn, keyCol);
     }
 
     private static string Quote(string name) =>

@@ -28,7 +28,8 @@ internal sealed class OutboxPublishMiddleware<TDbContext>(
     where TDbContext : DbContext, IOutboxDbContext
 {
     /// <summary>Shared by all Publish/Send calls within this DI scope.</summary>
-    private readonly Guid _groupId = Guid.NewGuid();
+    private readonly Guid _groupId = Guid.CreateVersion7();
+    private OutboxGroup? _outboxGroup;
 
     public Task InvokeAsync<T>(
         PublishContext<T> context,
@@ -39,7 +40,7 @@ internal sealed class OutboxPublishMiddleware<TDbContext>(
         var payload = serializer.Serialize(context.Payload);
         var headersJson = SerializeHeaders(context.Headers);
 
-        dbContext.OutboxMessages.Add(new OutboxMessage
+        EnsureGroupExists().Messages.Add(new OutboxMessage
         {
             GroupId = _groupId,
             Destination = context.Destination.ToString(),
@@ -53,6 +54,16 @@ internal sealed class OutboxPublishMiddleware<TDbContext>(
         return Task.CompletedTask;
     }
 
-    internal static string SerializeHeaders(MessageHeaders headers) =>
+    private OutboxGroup EnsureGroupExists()
+    {
+        if (_outboxGroup is not null)
+            return _outboxGroup;
+
+        _outboxGroup = new OutboxGroup { Id = _groupId };
+        dbContext.OutboxGroups.Add(_outboxGroup);
+        return _outboxGroup;
+    }
+
+    private static string SerializeHeaders(MessageHeaders headers) =>
         JsonSerializer.Serialize(headers, OutboxJsonContext.Default.DictionaryStringString);
 }

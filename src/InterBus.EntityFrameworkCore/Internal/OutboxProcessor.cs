@@ -1,5 +1,5 @@
-using System.Collections.Generic;
 using System.Text.Json;
+using InterBus.Middleware;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -18,17 +18,17 @@ namespace InterBus.EntityFrameworkCore.Internal;
 /// </para>
 /// <para>
 /// The poll delay (<see cref="OutboxOptions.PollInterval"/>) is only applied when the outbox
-/// is empty. While messages are available the processor loops immediately.
+/// is empty. While messages are available, the processor loops immediately.
 /// </para>
 /// <para>
 /// Delivery is at-least-once: if the process crashes after forwarding but before committing,
 /// the group will be forwarded again on restart. Consumers should be idempotent.
 /// </para>
 /// </summary>
-internal sealed class OutboxProcessor<TDbContext>(
+internal sealed partial class OutboxProcessor<TDbContext>(
     IServiceScopeFactory scopeFactory,
-    IInterBusTransportFactory transportFactory,
     OutboxOptions options,
+    IOutboxLockProvider<TDbContext> lockProvider,
     ILogger<OutboxProcessor<TDbContext>> logger)
     : BackgroundService
     where TDbContext : DbContext, IOutboxDbContext
@@ -79,55 +79,63 @@ internal sealed class OutboxProcessor<TDbContext>(
         // Open a transaction so the lock provider can lock rows within it.
         await using var tx = await dbContext.Database.BeginTransactionAsync(cancellationToken);
 
-        var messages = await options.LockProvider.TryFetchGroupAsync(dbContext, cancellationToken);
+        try
+        {
+            var outboxGroup = await lockProvider.TryFetchGroupAsync(dbContext, cancellationToken);
 
-        if (messages.Count == 0)
+            if (outboxGroup is null)
+            {
+                await tx.RollbackAsync(cancellationToken);
+                return false;
+            }
+
+            using var _ = logger.BeginScope(new Dictionary<string, object> { ["GroupId"] = outboxGroup.Id });
+
+            LogOutboxForwardingGroupCount(outboxGroup.Id, outboxGroup.Messages.Count);
+
+            foreach (var msg in outboxGroup.Messages)
+            {
+                try
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+
+                    var destination = new Uri(msg.Destination);
+                    var headers = DeserializeHeaders(msg.HeadersJson);
+                    var pipeline = scope.ServiceProvider.GetRequiredService<SendPipelineExecutor>();
+                    var sendContext = new SendContext(destination, msg.Payload, headers, msg.Delay);
+                    await pipeline.ExecuteAsync(sendContext, cancellationToken);
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    logger.LogError(ex,
+                        "InterBus outbox: failed to forward message {MessageId} to {Destination}",
+                        msg.Id, msg.Destination);
+                    await tx.RollbackAsync(cancellationToken);
+                    return true;
+                }
+            }
+
+            dbContext.Set<OutboxGroup>().Remove(outboxGroup);
+            await dbContext.SaveChangesAsync(cancellationToken);
+            await tx.CommitAsync(cancellationToken);
+
+            return true;
+        }
+        catch (OperationCanceledException)
         {
             await tx.RollbackAsync(cancellationToken);
-            return false;
+            throw;
         }
-
-        logger.LogDebug(
-            "InterBus outbox: forwarding group {GroupId} ({Count} message(s))",
-            messages[0].GroupId,
-            messages.Count);
-
-        foreach (var msg in messages)
+        catch (Exception ex)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            try
-            {
-                var destination = new Uri(msg.Destination);
-                var transport = transportFactory.Resolve(destination);
-                var headers = DeserializeHeaders(msg.HeadersJson);
-                var sendContext = new TransportSendContext(destination, msg.Payload, headers, msg.Delay);
-                await transport.SendAsync(sendContext, cancellationToken);
-            }
-            catch (OperationCanceledException)
-            {
-                await tx.RollbackAsync(cancellationToken);
-                throw;
-            }
-            catch (Exception ex)
-            {
-                logger.LogWarning(
-                    ex,
-                    "InterBus outbox: failed to forward message {MessageId} to {Destination}; rolling back group {GroupId}",
-                    msg.Id,
-                    msg.Destination,
-                    msg.GroupId);
-                await tx.RollbackAsync(cancellationToken);
-                return true; // group existed; caller should not wait before retrying
-            }
+            logger.LogError(ex, "InterBus outbox: unexpected error during group processing");
+            await tx.RollbackAsync(cancellationToken);
+            return true; // group existed; caller should not wait before retrying
         }
-
-        // All messages forwarded — delete and commit.
-        dbContext.Set<OutboxMessage>().RemoveRange(messages);
-        await dbContext.SaveChangesAsync(cancellationToken);
-        await tx.CommitAsync(cancellationToken);
-
-        return true;
     }
 
     private static MessageHeaders DeserializeHeaders(string json)
@@ -136,4 +144,7 @@ internal sealed class OutboxProcessor<TDbContext>(
                    ?? new Dictionary<string, string>();
         return new MessageHeaders(dict);
     }
+
+    [LoggerMessage(LogLevel.Debug, "InterBus outbox: forwarding group {GroupId} ({Count} message(s))")]
+    partial void LogOutboxForwardingGroupCount(Guid groupId, int count);
 }

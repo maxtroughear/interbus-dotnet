@@ -28,7 +28,7 @@ internal sealed class TickerQDeliverFunction(SchedulePipelineExecutor schedulePi
         var request = context.Request;
         var destination = new Uri(request.Destination);
         var headers = new MessageHeaders(request.Headers);
-        var scheduleContext = new ScheduleContext(destination, request.Payload, headers);
+        var scheduleContext = new ScheduleContext(destination, request.Payload, headers, delay: null);
         return schedulePipeline.ExecuteAsync(scheduleContext, cancellationToken);
     }
 }

@@ -8,30 +8,30 @@ namespace InterBus.EntityFrameworkCore;
 /// <para>
 /// Implement this interface using the locking primitives of your database provider:
 /// <list type="bullet">
-///   <item>PostgreSQL — use <see cref="PostgreSqlOutboxLockProvider"/>.</item>
-///   <item>SQL Server — use <see cref="SqlServerOutboxLockProvider"/>.</item>
+///   <item>PostgreSQL — use <see cref="PostgreSqlOutboxLockProvider{TDbContext}"/>.</item>
+///   <item>SQL Server — use <see cref="SqlServerOutboxLockProvider{TDbContext}"/>.</item>
 ///   <item>Single-instance / testing — use the built-in default registered by
 ///   <c>UseOutbox&lt;TDbContext&gt;()</c> when no explicit provider is configured.</item>
 /// </list>
 /// </para>
 /// </summary>
-public interface IOutboxLockProvider
+public interface IOutboxLockProvider<in TDbContext> where TDbContext : DbContext, IOutboxDbContext
 {
     /// <summary>
-    /// Fetches and locks the next group of pending outbox messages for processing.
+    /// Claims and locks the next outbox group for processing.
     /// Must be called within an active database transaction (started by the caller).
     /// <para>
-    /// A "group" is all messages that share the same <see cref="OutboxMessage.GroupId"/>,
-    /// i.e. all messages published within the same DI scope / unit-of-work.
+    /// Implementations lock one <see cref="OutboxGroup"/> row and then fetch all
+    /// <see cref="OutboxMessage"/> rows that reference that group.
     /// </para>
     /// </summary>
     /// <param name="context">The DbContext with an active transaction.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>
-    /// All messages in the locked group, ordered by <see cref="OutboxMessage.CreatedAt"/>.
-    /// Returns an empty collection when no pending messages are available.
+    /// Claimed group metadata and messages ordered by <see cref="OutboxMessage.CreatedAt"/>.
+    /// Returns <see cref="OutboxGroupClaim.None"/> when no group could be claimed.
     /// </returns>
-    Task<IReadOnlyList<OutboxMessage>> TryFetchGroupAsync(
-        DbContext context,
+    Task<OutboxGroup?> TryFetchGroupAsync(
+        TDbContext context,
         CancellationToken cancellationToken);
 }

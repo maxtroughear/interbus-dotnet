@@ -8,8 +8,6 @@
     <ItemGroup>
         <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.5" />
         <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.5" />
-        <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.*"/>
-        <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.*"/>
     </ItemGroup>
     <ItemGroup>
         <ProjectReference Include="..\InterBus\InterBus.csproj"/>

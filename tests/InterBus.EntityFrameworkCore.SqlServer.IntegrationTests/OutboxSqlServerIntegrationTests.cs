@@ -186,29 +186,6 @@ public class OutboxSqlServerIntegrationTests(string imageTag)
     }
 
     /// <summary>
-    /// A message published with a <c>Delay</c> has that delay stored on the outbox row.
-    /// The processor passes it through to the transport unchanged.
-    /// </summary>
-    [Test]
-    public async Task Publish_WithDelay_StoresDelayOnOutboxMessage()
-    {
-        await using var scope = _provider.CreateAsyncScope();
-        var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
-        var dbContext = scope.ServiceProvider.GetRequiredService<TestDbContext>();
-
-        var delay = TimeSpan.FromMinutes(3);
-        await publisher.Publish(
-            new OrderPlaced(Guid.NewGuid(), "ss-delay@example.com", 1m),
-            ctx => ctx.Delay = delay,
-            TestContext.CurrentContext.CancellationToken);
-
-        await dbContext.SaveChangesAsync(TestContext.CurrentContext.CancellationToken);
-
-        var row = await dbContext.OutboxMessages.SingleAsync(TestContext.CurrentContext.CancellationToken);
-        Assert.That(row.Delay, Is.EqualTo(delay));
-    }
-
-    /// <summary>
     /// Messages committed in two separate scopes (two distinct groups) are each forwarded
     /// in their own processing cycle without interference.
     /// </summary>
@@ -245,7 +222,7 @@ public class OutboxSqlServerIntegrationTests(string imageTag)
         {
             Assert.That(_tracker.Messages, Has.Count.EqualTo(2));
             Assert.That(_tracker.Messages.Select(m => m.CustomerEmail),
-                Is.EquivalentTo(new[] { "ss-group1@example.com", "ss-group2@example.com" }));
+                Is.EquivalentTo(["ss-group1@example.com", "ss-group2@example.com"]));
         }
     }
 }

@@ -75,6 +75,7 @@ internal sealed partial class OutboxProcessor<TDbContext>(
     {
         await using var scope = scopeFactory.CreateAsyncScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<TDbContext>();
+        var pipeline = scope.ServiceProvider.GetRequiredService<SendPipelineExecutor>();
 
         // Open a transaction so the lock provider can lock rows within it.
         await using var tx = await dbContext.Database.BeginTransactionAsync(cancellationToken);
@@ -101,7 +102,6 @@ internal sealed partial class OutboxProcessor<TDbContext>(
 
                     var destination = new Uri(msg.Destination);
                     var headers = DeserializeHeaders(msg.HeadersJson);
-                    var pipeline = scope.ServiceProvider.GetRequiredService<SendPipelineExecutor>();
                     var sendContext = new SendContext(destination, msg.Payload, headers, msg.Delay);
                     await pipeline.ExecuteAsync(sendContext, cancellationToken);
                 }

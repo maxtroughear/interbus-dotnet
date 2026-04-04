@@ -28,8 +28,7 @@ public interface IOutboxLockProvider<in TDbContext> where TDbContext : DbContext
     /// <param name="context">The DbContext with an active transaction.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>
-    /// Claimed group metadata and messages ordered by <see cref="OutboxMessage.CreatedAt"/>.
-    /// Returns <see cref="OutboxGroupClaim.None"/> when no group could be claimed.
+    /// Claimed group and messages
     /// </returns>
     Task<OutboxGroup?> TryFetchGroupAsync(
         TDbContext context,

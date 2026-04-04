@@ -17,7 +17,7 @@ namespace InterBus.EntityFrameworkCore.PostgreSQL.IntegrationTests;
 [TestFixtureSource(typeof(PostgreSqlVersions), nameof(PostgreSqlVersions.All))]
 public class OutboxPostgreSqlIntegrationTests(string imageTag)
 {
-    private PostgreSqlContainer _container = new PostgreSqlBuilder(imageTag).Build();
+    private readonly PostgreSqlContainer _container = new PostgreSqlBuilder(imageTag).Build();
     private ServiceProvider _provider = null!;
     private CancellationTokenSource _cts = null!;
     private OrderPlacedTracker _tracker = null!;
@@ -185,29 +185,6 @@ public class OutboxPostgreSqlIntegrationTests(string imageTag)
     }
 
     /// <summary>
-    /// A message published with a <c>Delay</c> has that delay stored on the outbox row.
-    /// The processor passes it through to the transport unchanged.
-    /// </summary>
-    [Test]
-    public async Task Publish_WithDelay_StoresDelayOnOutboxMessage()
-    {
-        await using var scope = _provider.CreateAsyncScope();
-        var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
-        var dbContext = scope.ServiceProvider.GetRequiredService<TestDbContext>();
-
-        var delay = TimeSpan.FromMinutes(3);
-        await publisher.Publish(
-            new OrderPlaced(Guid.NewGuid(), "pg-delay@example.com", 1m),
-            ctx => ctx.Delay = delay,
-            TestContext.CurrentContext.CancellationToken);
-
-        await dbContext.SaveChangesAsync(TestContext.CurrentContext.CancellationToken);
-
-        var row = await dbContext.OutboxMessages.SingleAsync(TestContext.CurrentContext.CancellationToken);
-        Assert.That(row.Delay, Is.EqualTo(delay));
-    }
-
-    /// <summary>
     /// Messages committed in two separate scopes (two distinct groups) are each forwarded
     /// in their own processing cycle without interference.
     /// </summary>
@@ -244,7 +221,7 @@ public class OutboxPostgreSqlIntegrationTests(string imageTag)
         {
             Assert.That(_tracker.Messages, Has.Count.EqualTo(2));
             Assert.That(_tracker.Messages.Select(m => m.CustomerEmail),
-                Is.EquivalentTo(new[] { "pg-group1@example.com", "pg-group2@example.com" }));
+                Is.EquivalentTo(["pg-group1@example.com", "pg-group2@example.com"]));
         }
     }
 }

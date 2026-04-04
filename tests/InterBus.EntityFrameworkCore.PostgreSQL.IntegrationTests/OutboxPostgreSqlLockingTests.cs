@@ -18,7 +18,7 @@ public class OutboxPostgreSqlLockingTests(string imageTag)
     private static readonly Guid GroupAId = Guid.Parse("11111111-1111-7000-8000-100000000001");
     private static readonly Guid GroupBId = Guid.Parse("22222222-2222-7000-8000-200000000002");
 
-    private PostgreSqlContainer _container = new PostgreSqlBuilder(imageTag).Build();
+    private readonly PostgreSqlContainer _container = new PostgreSqlBuilder(imageTag).Build();
     private ServiceProvider _provider = null!;
 
     [OneTimeSetUp]

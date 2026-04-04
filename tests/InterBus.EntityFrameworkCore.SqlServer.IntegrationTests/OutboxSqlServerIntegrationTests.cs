@@ -62,8 +62,11 @@ public class OutboxSqlServerIntegrationTests(string imageTag)
 
         await using (var scope = _provider.CreateAsyncScope())
         {
-            await scope.ServiceProvider.GetRequiredService<TestDbContext>()
-                .Database.EnsureCreatedAsync();
+            var db = scope.ServiceProvider.GetRequiredService<TestDbContext>();
+            await db.Database.EnsureCreatedAsync();
+
+            // Clear any leftover rows from previous tests so each test starts clean.
+            await db.OutboxGroups.ExecuteDeleteAsync();
         }
 
         foreach (var svc in _provider.GetServices<IHostedService>())

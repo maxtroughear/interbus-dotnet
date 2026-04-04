@@ -9,7 +9,8 @@ namespace InterBus.EntityFrameworkCore.SqlServer.IntegrationTests;
 /// <c>UPDLOCK, READPAST</c> semantics: a group that is already locked by one database
 /// connection is skipped (not double-claimed) by a concurrent connection.
 /// </summary>
-public class OutboxSqlServerLockingTests
+[TestFixtureSource(typeof(SqlServerVersions), nameof(SqlServerVersions.All))]
+public class OutboxSqlServerLockingTests(string imageTag)
 {
     // These GUIDs are ordered A < B in both PostgreSQL (lexicographic UUID order)
     // and SQL Server (last-6-bytes-first uniqueidentifier order) so the lock provider
@@ -19,19 +20,18 @@ public class OutboxSqlServerLockingTests
 
     // Separate container so these locking tests are fully isolated from
     // OutboxSqlServerIntegrationTests (which runs a background processor).
-    private static readonly MsSqlContainer Container =
-        new MsSqlBuilder("mcr.microsoft.com/mssql/server:2022-latest").Build();
+    private readonly MsSqlContainer _container = new MsSqlBuilder(imageTag).Build();
 
     private ServiceProvider _provider = null!;
 
     [OneTimeSetUp]
-    public async Task OneTimeSetUp() => await Container.StartAsync();
+    public async Task OneTimeSetUp() => await _container.StartAsync();
 
     [OneTimeTearDown]
     public async Task OneTimeTearDown()
     {
-        await Container.StopAsync();
-        await Container.DisposeAsync();
+        await _container.StopAsync();
+        await _container.DisposeAsync();
     }
 
     [SetUp]
@@ -39,7 +39,7 @@ public class OutboxSqlServerLockingTests
     {
         var services = new ServiceCollection();
         services.AddLogging();
-        services.AddDbContext<TestDbContext>(o => o.UseSqlServer(Container.GetConnectionString()));
+        services.AddDbContext<TestDbContext>(o => o.UseSqlServer(_container.GetConnectionString()));
 
         _provider = services.BuildServiceProvider();
 

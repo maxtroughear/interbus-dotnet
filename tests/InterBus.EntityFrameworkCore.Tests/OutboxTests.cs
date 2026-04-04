@@ -11,11 +11,7 @@ using Xunit;
 
 namespace InterBus.EntityFrameworkCore.Tests;
 
-// ── Message types ────────────────────────────────────────────────────────────
-
 public record OrderPlaced(Guid OrderId, string CustomerEmail, decimal Total);
-
-// ── Tracking helpers ─────────────────────────────────────────────────────────
 
 public sealed class OrderPlacedTracker
 {
@@ -23,8 +19,6 @@ public sealed class OrderPlacedTracker
     public IReadOnlyCollection<OrderPlaced> Messages => _messages;
     public void Track(OrderPlaced msg) => _messages.Add(msg);
 }
-
-// ── Consumer ─────────────────────────────────────────────────────────────────
 
 public sealed class OrderPlacedConsumer(OrderPlacedTracker tracker) : IConsumer<OrderPlaced>
 {
@@ -35,8 +29,6 @@ public sealed class OrderPlacedConsumer(OrderPlacedTracker tracker) : IConsumer<
     }
 }
 
-// ── Test DbContext ────────────────────────────────────────────────────────────
-
 public sealed class TestDbContext(DbContextOptions<TestDbContext> options)
     : DbContext(options), IOutboxDbContext
 {
@@ -46,8 +38,6 @@ public sealed class TestDbContext(DbContextOptions<TestDbContext> options)
     protected override void OnModelCreating(ModelBuilder modelBuilder) =>
         modelBuilder.AddInterBusOutbox();
 }
-
-// ── Tests ─────────────────────────────────────────────────────────────────────
 
 /// <summary>
 /// Integration tests for the transactional outbox middleware and background processor.
@@ -112,9 +102,7 @@ public class OutboxTests
         cts.Dispose();
         await connection.DisposeAsync();
     }
-
-    // ── Tests ────────────────────────────────────────────────────────────────
-
+    
     /// <summary>
     /// When a message is published with the outbox middleware, it must be stored in the
     /// outbox table before <c>SaveChangesAsync</c> is called and must NOT be forwarded

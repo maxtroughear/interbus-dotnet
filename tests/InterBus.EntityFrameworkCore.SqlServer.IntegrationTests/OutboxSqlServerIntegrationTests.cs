@@ -14,11 +14,11 @@ namespace InterBus.EntityFrameworkCore.SqlServer.IntegrationTests;
 /// Testcontainers. Validates the <see cref="SqlServerOutboxLockProvider{TDbContext}"/> with
 /// <c>UPDLOCK, READPAST</c> row-level locking.
 /// </summary>
-public class OutboxSqlServerIntegrationTests
+[TestFixtureSource(typeof(SqlServerVersions), nameof(SqlServerVersions.All))]
+public class OutboxSqlServerIntegrationTests(string imageTag)
 {
     // SQL Server container is expensive to start, so we share one instance across all tests.
-    private static readonly MsSqlContainer Container =
-        new MsSqlBuilder("mcr.microsoft.com/mssql/server:2022-latest").Build();
+    private readonly MsSqlContainer _container = new MsSqlBuilder(imageTag).Build();
     private ServiceProvider _provider = null!;
     private CancellationTokenSource _cts = null!;
     private OrderPlacedTracker _tracker = null!;
@@ -26,14 +26,14 @@ public class OutboxSqlServerIntegrationTests
     [OneTimeSetUp]
     public async Task OneTimeSetUp()
     {
-        await Container.StartAsync();
+        await _container.StartAsync();
     }
 
     [OneTimeTearDown]
     public async Task OneTimeTearDown()
     {
-        await Container.StopAsync();
-        await Container.DisposeAsync();
+        await _container.StopAsync();
+        await _container.DisposeAsync();
     }
 
     [SetUp]
@@ -46,7 +46,7 @@ public class OutboxSqlServerIntegrationTests
         services.AddSingleton(_tracker);
 
         services.AddDbContext<TestDbContext>(o =>
-            o.UseSqlServer(Container.GetConnectionString()));
+            o.UseSqlServer(_container.GetConnectionString()));
 
         services.AddInterBus(bus =>
         {

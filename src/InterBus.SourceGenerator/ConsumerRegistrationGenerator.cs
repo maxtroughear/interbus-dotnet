@@ -256,6 +256,32 @@ public sealed class ConsumerRegistrationGenerator : IIncrementalGenerator
         sb.AppendLine("                + \"Ensure the consumer implements IConsumer<T> and InterBus.SourceGenerator is referenced \"");
         sb.AppendLine("                + \"in the assembly that defines it.\");");
         sb.AppendLine("        }");
+        sb.AppendLine();
+
+        // AddConsumer<TConsumer>(builder, configure): same as above but applies a consumer builder delegate.
+        sb.AppendLine("        /// <summary>");
+        sb.AppendLine("        /// Register a specific consumer and immediately apply a consumer builder configuration.");
+        sb.AppendLine("        /// </summary>");
+        sb.AppendLine("        public static global::InterBus.IInterBusBuilder AddConsumer<");
+        sb.AppendLine("            [global::System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(");
+        sb.AppendLine("                global::System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicConstructors)] TConsumer>(");
+        sb.AppendLine("            this global::InterBus.IInterBusBuilder builder,");
+        sb.AppendLine("            global::System.Action<global::InterBus.IConsumerBuilder> configure)");
+        sb.AppendLine("            where TConsumer : class, global::InterBus.IConsumer");
+        sb.AppendLine("        {");
+
+        for (var i = 0; i < allModuleNames.Count; i++)
+        {
+            sb.AppendLine($"            if (global::{GeneratedNamespace}.{allModuleNames[i]}.TryGetDispatch(");
+            sb.AppendLine($"                    typeof(TConsumer), out var m{i}c, out var d{i}c))");
+            sb.AppendLine($"                return builder.AddConsumer<TConsumer>(m{i}c, d{i}c, configure);");
+        }
+
+        sb.AppendLine("            throw new global::System.InvalidOperationException(");
+        sb.AppendLine("                $\"No source-generated dispatch found for consumer type '{typeof(TConsumer).FullName}'. \"");
+        sb.AppendLine("                + \"Ensure the consumer implements IConsumer<T> and InterBus.SourceGenerator is referenced \"");
+        sb.AppendLine("                + \"in the assembly that defines it.\");");
+        sb.AppendLine("        }");
         sb.AppendLine("    }");
     }
 

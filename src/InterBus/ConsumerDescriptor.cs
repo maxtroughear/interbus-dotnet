@@ -39,4 +39,12 @@ public sealed class ConsumerDescriptor(
     /// not handled by this consumer it logs an error and returns without throwing.
     /// </summary>
     public Func<DispatchContext, IServiceProvider, CancellationToken, Task> Dispatch { get; } = dispatch;
+
+    /// <summary>
+    /// The number of concurrent message handlers for this consumer's queue.
+    /// Transports that support concurrent dispatch per queue (e.g. RabbitMQ) use this value
+    /// to configure the channel's dispatch concurrency and prefetch count.
+    /// Defaults to <c>1</c> (sequential dispatch).
+    /// </summary>
+    public int ConcurrencyCount { get; internal set; } = 1;
 }

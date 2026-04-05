@@ -8,9 +8,9 @@ public sealed class OutboxGroup
 {
     /// <summary>Unique identifier for this outbox group.</summary>
     public required Guid Id { get; set; }
-    
+
     /// <summary>When the group was created (UTC).</summary>
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-    
+
     public ICollection<OutboxMessage> Messages { get; } = new List<OutboxMessage>();
 }

@@ -201,7 +201,8 @@ public class LeasePumpTests(string imageTag)
     {
         private static readonly TimeSpan StallingDuration = TimeSpan.FromSeconds(8);
 
-        public async Task Consume(OrderPlaced message, IConsumeContext context, CancellationToken cancellationToken = default)
+        public async Task Consume(OrderPlaced message, IConsumeContext context,
+            CancellationToken cancellationToken = default)
         {
             var attempt = counter.Increment();
             if (attempt == 1)
@@ -246,4 +247,3 @@ public class LeasePumpTests(string imageTag)
         }
     }
 }
-

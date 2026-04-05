@@ -18,4 +18,3 @@ public enum PostgreSqlMessagePumpMode
     /// </summary>
     Transactional = 1,
 }
-

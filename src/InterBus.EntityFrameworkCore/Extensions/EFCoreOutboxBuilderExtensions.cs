@@ -59,7 +59,7 @@ public static class EfCoreOutboxBuilderExtensions
 
         builder.Services.AddSingleton(outboxBuilder.Options);
         builder.Services.AddScoped<IPublishMiddleware, OutboxPublishMiddleware<TDbContext>>();
-        
+
         if (outboxBuilder.Options.RunOutboxProcessor)
             builder.Services.AddHostedService<OutboxProcessor<TDbContext>>();
 

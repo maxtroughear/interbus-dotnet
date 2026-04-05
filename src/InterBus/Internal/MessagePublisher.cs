@@ -17,7 +17,8 @@ internal sealed class MessagePublisher(
     IEnumerable<IPublishMiddleware> middlewares)
     : IMessagePublisher
 {
-    private readonly IList<IPublishMiddleware> _middlewares = middlewares.Reverse().ToList(); // Reverse middleware order for the correct execution order
+    // Reverse middleware order for the correct execution order
+    private readonly IList<IPublishMiddleware> _middlewares = middlewares.Reverse().ToList();
 
     private Func<PublishContext<T>, CancellationToken, Task> BuildMiddlewarePipeline<T>() where T : class
     {

@@ -38,7 +38,8 @@ public interface IMessagePublisher
     /// Use the delegate to set headers and/or an optional send delay.
     /// Only <typeparamref name="TConsumer"/> will receive the message.
     /// </summary>
-    Task Send<TConsumer, T>(T message, Action<PublishContext<T>> configure, CancellationToken cancellationToken = default)
+    Task Send<TConsumer, T>(T message, Action<PublishContext<T>> configure,
+        CancellationToken cancellationToken = default)
         where TConsumer : IConsumer<T>
         where T : class;
 

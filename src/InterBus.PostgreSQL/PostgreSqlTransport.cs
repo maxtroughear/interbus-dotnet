@@ -50,10 +50,12 @@ public sealed class PostgreSqlTransport(NpgsqlDataSource dataSource, PostgreSqlT
         };
 
         cmd.Parameters.Add(new NpgsqlParameter<string> { TypedValue = name });
-        cmd.Parameters.Add(new NpgsqlParameter<byte[]> { TypedValue = context.Payload, NpgsqlDbType = NpgsqlDbType.Bytea });
+        cmd.Parameters.Add(new NpgsqlParameter<byte[]>
+            { TypedValue = context.Payload, NpgsqlDbType = NpgsqlDbType.Bytea });
         cmd.Parameters.Add(new NpgsqlParameter<string> { TypedValue = headersJson });
         cmd.Parameters.Add(visibleAt.HasValue
-            ? new NpgsqlParameter<DateTimeOffset> { TypedValue = visibleAt.Value, NpgsqlDbType = NpgsqlDbType.TimestampTz }
+            ? new NpgsqlParameter<DateTimeOffset>
+                { TypedValue = visibleAt.Value, NpgsqlDbType = NpgsqlDbType.TimestampTz }
             : new NpgsqlParameter { Value = DBNull.Value, NpgsqlDbType = NpgsqlDbType.TimestampTz });
         await cmd.ExecuteNonQueryAsync(cancellationToken);
     }

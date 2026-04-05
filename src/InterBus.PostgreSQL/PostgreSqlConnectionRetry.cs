@@ -12,8 +12,8 @@ internal static class PostgreSqlConnectionRetry
             return false;
 
         return exception is NpgsqlException
-            || FindInner<SocketException>(exception) is not null
-            || FindInner<TimeoutException>(exception) is not null;
+               || FindInner<SocketException>(exception) is not null
+               || FindInner<TimeoutException>(exception) is not null;
     }
 
     public static async Task<T> ExecuteAsync<T>(
@@ -93,5 +93,3 @@ internal static class PostgreSqlConnectionRetry
         return null;
     }
 }
-
-

@@ -13,7 +13,6 @@ internal sealed class InterBusTransportFactory(IServiceProvider serviceProvider)
     /// <inheritdoc/>
     public IInterBusTransport Resolve(Uri destination) =>
         serviceProvider.GetKeyedService<IInterBusTransport>(destination.Scheme)
-        ?? serviceProvider.GetService<IInterBusTransport>()
         ?? throw new InvalidOperationException(
             $"No IInterBusTransport registered for destination scheme '{destination.Scheme}'. " +
             "Register a transport extension (e.g. AddInMemoryTransport()) or register a keyed " +

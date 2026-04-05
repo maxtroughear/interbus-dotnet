@@ -54,8 +54,7 @@ public class TransactionalPumpTests(string imageTag)
         var msg = new OrderPlaced(Guid.NewGuid(), "tx@test.com", 10m);
         await publisher.Publish(msg, TestContext.CurrentContext.CancellationToken);
 
-        await TestHelpers.WaitUntilAsync(
-            () => orderTracker.Messages.Count == 1 && auditTracker.Messages.Count == 1);
+        await TestHelpers.WaitUntilAsync(() => orderTracker.Messages.Count == 1 && auditTracker.Messages.Count == 1);
 
         using (Assert.EnterMultipleScope())
         {

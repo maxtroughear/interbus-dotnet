@@ -28,7 +28,8 @@ internal class PostgreSqlTransactionalMessagePump : PostgreSqlMessagePumpBase
         PostgreSqlTransportOptions options,
         InterBusOptions busOptions,
         IServiceScopeFactory scopeFactory,
-        ILogger<PostgreSqlTransactionalMessagePump> logger) : base(dataSource, options, busOptions, scopeFactory, logger)
+        ILogger<PostgreSqlTransactionalMessagePump> logger) : base(dataSource, options, busOptions, scopeFactory,
+        logger)
     {
         _logger = logger;
     }
@@ -43,7 +44,8 @@ internal class PostgreSqlTransactionalMessagePump : PostgreSqlMessagePumpBase
     /// a single round trip.
     /// </summary>
     /// <returns><c>true</c> if a message was dispatched; <c>false</c> if the queue was empty.</returns>
-    protected override async Task<bool> TryProcessNextAsync(ConsumerDescriptor descriptor, long queueId, CancellationToken stoppingToken)
+    protected override async Task<bool> TryProcessNextAsync(ConsumerDescriptor descriptor, long queueId,
+        CancellationToken stoppingToken)
     {
         await using var conn = await DataSource.OpenConnectionAsync(stoppingToken);
         await using var tx = await conn.BeginTransactionAsync(stoppingToken);
@@ -109,8 +111,4 @@ internal class PostgreSqlTransactionalMessagePump : PostgreSqlMessagePumpBase
             return false;
         }
     }
-
 }
-
-
-

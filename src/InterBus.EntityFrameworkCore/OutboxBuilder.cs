@@ -49,4 +49,3 @@ public sealed class OutboxBuilder<TDbContext>
         return this;
     }
 }
-

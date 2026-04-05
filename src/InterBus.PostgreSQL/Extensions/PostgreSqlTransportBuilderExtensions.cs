@@ -112,9 +112,6 @@ public static class PostgreSqlTransportBuilderExtensions
             (sp, _) => sp.GetRequiredService<PostgreSqlTransport>());
         builder.Services.AddKeyedSingleton<IInterBusTransport>(PostgreSqlTransport.QueueScheme,
             (sp, _) => sp.GetRequiredService<PostgreSqlTransport>());
-
-        // Keep the non-keyed registration for backward compatibility.
-        builder.Services.AddSingleton<IInterBusTransport>(sp => sp.GetRequiredService<PostgreSqlTransport>());
     }
 
     /// <summary>
@@ -142,7 +139,8 @@ public static class PostgreSqlTransportBuilderExtensions
                 builder.Services.AddHostedService<PostgreSqlTransactionalMessagePump>();
                 break;
             default:
-                throw new ArgumentOutOfRangeException(nameof(options.MessagePumpMode), options.MessagePumpMode, "Unsupported PostgreSQL message pump mode.");
+                throw new ArgumentOutOfRangeException(nameof(options.MessagePumpMode), options.MessagePumpMode,
+                    "Unsupported PostgreSQL message pump mode.");
         }
     }
 
@@ -152,9 +150,11 @@ public static class PostgreSqlTransportBuilderExtensions
             throw new InvalidOperationException("PostgreSqlTransportOptions.LeaseDuration must be greater than zero.");
 
         if (options.LeaseRenewInterval is { } renewInterval && renewInterval <= TimeSpan.Zero)
-            throw new InvalidOperationException("PostgreSqlTransportOptions.LeaseRenewInterval must be greater than zero when set.");
+            throw new InvalidOperationException(
+                "PostgreSqlTransportOptions.LeaseRenewInterval must be greater than zero when set.");
 
         if (options.FailureRedeliveryDelay < TimeSpan.Zero)
-            throw new InvalidOperationException("PostgreSqlTransportOptions.FailureRedeliveryDelay cannot be negative.");
+            throw new InvalidOperationException(
+                "PostgreSqlTransportOptions.FailureRedeliveryDelay cannot be negative.");
     }
 }

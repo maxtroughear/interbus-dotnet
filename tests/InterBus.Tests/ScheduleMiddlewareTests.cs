@@ -44,10 +44,7 @@ public sealed class ScheduleMiddlewareTests
         var transport = new RecordingTransport();
         var services = new ServiceCollection();
         services.AddLogging();
-        services.AddInterBus(bus =>
-        {
-            bus.Services.AddSingleton<IInterBusTransport>(transport);
-        });
+        services.AddInterBus(bus => { bus.Services.AddSingleton<IInterBusTransport>(transport); });
 
         var provider = services.BuildServiceProvider();
         using var scope = provider.CreateScope();

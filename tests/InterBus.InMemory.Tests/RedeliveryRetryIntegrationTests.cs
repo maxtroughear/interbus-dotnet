@@ -92,6 +92,7 @@ public sealed class RedeliveryRetryIntegrationTests
             await StopAsync(provider, cts);
         }
     }
+
     [Fact]
     public async Task RedeliveryTransportDelayMiddleware_RedeliversFailedMessage_WithIncrementedHeader()
     {

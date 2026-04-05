@@ -142,10 +142,8 @@ public class HeadersTests
             var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
             var msg = new OrderPlaced(Guid.NewGuid(), "send@test.com", 2.00m);
 
-            await publisher.Send<HeaderAwareConsumer, OrderPlaced>(msg, ctx =>
-            {
-                ctx.Headers["x-source"] = "unit-test";
-            }, TestContext.Current.CancellationToken);
+            await publisher.Send<HeaderAwareConsumer, OrderPlaced>(msg,
+                ctx => { ctx.Headers["x-source"] = "unit-test"; }, TestContext.Current.CancellationToken);
 
             await WaitUntilAsync(() => headerCapture.Captured.Count == 1);
 
@@ -223,10 +221,8 @@ public class HeadersTests
             var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
             var msg = new OrderPlaced(Guid.NewGuid(), "corr@test.com", 5.00m);
 
-            await publisher.Publish(msg, ctx =>
-            {
-                ctx.Headers[InterBusHeaders.CorrelationId] = "corr-999";
-            }, TestContext.Current.CancellationToken);
+            await publisher.Publish(msg, ctx => { ctx.Headers[InterBusHeaders.CorrelationId] = "corr-999"; },
+                TestContext.Current.CancellationToken);
 
             await WaitUntilAsync(() => correlationIds.Count == 1);
 

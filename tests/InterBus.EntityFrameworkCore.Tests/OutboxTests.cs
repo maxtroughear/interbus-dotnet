@@ -55,9 +55,10 @@ public class OutboxTests
             await Task.Delay(intervalMs);
     }
 
-    private static async Task<(ServiceProvider Provider, CancellationTokenSource Cts, SqliteConnection Connection)> StartAsync(
-        Action<IInterBusBuilder> configureBus,
-        Action<IServiceCollection>? extraServices = null)
+    private static async Task<(ServiceProvider Provider, CancellationTokenSource Cts, SqliteConnection Connection)>
+        StartAsync(
+            Action<IInterBusBuilder> configureBus,
+            Action<IServiceCollection>? extraServices = null)
     {
         // Use a single kept-open SqliteConnection so all DbContext instances share the same
         // in-memory database for the duration of the test.
@@ -89,20 +90,26 @@ public class OutboxTests
             await svc.StartAsync(cancellationToken);
     }
 
-    private static async Task StopAsync(ServiceProvider provider, CancellationTokenSource cts, SqliteConnection connection)
+    private static async Task StopAsync(ServiceProvider provider, CancellationTokenSource cts,
+        SqliteConnection connection)
     {
         await cts.CancelAsync();
         foreach (var svc in provider.GetServices<IHostedService>())
         {
-            try { await svc.StopAsync(CancellationToken.None); }
-            catch (OperationCanceledException) { }
+            try
+            {
+                await svc.StopAsync(CancellationToken.None);
+            }
+            catch (OperationCanceledException)
+            {
+            }
         }
 
         await provider.DisposeAsync();
         cts.Dispose();
         await connection.DisposeAsync();
     }
-    
+
     /// <summary>
     /// When a message is published with the outbox middleware, it must be stored in the
     /// outbox table before <c>SaveChangesAsync</c> is called and must NOT be forwarded

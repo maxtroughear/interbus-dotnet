@@ -69,7 +69,7 @@ internal abstract class PostgreSqlMessagePumpBase(
         await using var ensureSubCmd = conn.CreateCommand();
         ensureSubCmd.CommandText =
             $"SELECT \"{EscapeIdentifier(Options.SchemaName)}\".ensure_subscription($1, $2)";
-        var pQueueId = new NpgsqlParameter<long>(); 
+        var pQueueId = new NpgsqlParameter<long>();
         var pTopicName = new NpgsqlParameter<string>();
         ensureSubCmd.Parameters.Add(pQueueId);
         ensureSubCmd.Parameters.Add(pTopicName);
@@ -153,7 +153,8 @@ internal abstract class PostgreSqlMessagePumpBase(
             descriptor.QueueName);
     }
 
-    protected async Task ProcessPendingAsync(ConsumerDescriptor descriptor, long queueId, CancellationToken stoppingToken)
+    protected async Task ProcessPendingAsync(ConsumerDescriptor descriptor, long queueId,
+        CancellationToken stoppingToken)
     {
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -190,4 +191,3 @@ internal abstract class PostgreSqlMessagePumpBase(
     protected static string EscapeIdentifier(string name) =>
         name.Replace("\"", "\"\"");
 }
-

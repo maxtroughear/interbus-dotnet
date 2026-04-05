@@ -41,7 +41,8 @@ internal sealed class PostgreSqlLeaseMessagePump : PostgreSqlMessagePumpBase
 
     protected override string PumpModeName => "lease";
 
-    protected override async Task<bool> TryProcessNextAsync(ConsumerDescriptor descriptor, long queueId, CancellationToken stoppingToken)
+    protected override async Task<bool> TryProcessNextAsync(ConsumerDescriptor descriptor, long queueId,
+        CancellationToken stoppingToken)
     {
         var leaseToken = CreateLeaseToken();
         var claim = await TryClaimNextAsync(queueId, leaseToken, stoppingToken);
@@ -113,7 +114,8 @@ internal sealed class PostgreSqlLeaseMessagePump : PostgreSqlMessagePumpBase
         }
     }
 
-    private async Task<ClaimedMessage?> TryClaimNextAsync(long queueId, string leaseToken, CancellationToken cancellationToken)
+    private async Task<ClaimedMessage?> TryClaimNextAsync(long queueId, string leaseToken,
+        CancellationToken cancellationToken)
     {
         await using var conn = await DataSource.OpenConnectionAsync(cancellationToken);
         await using var cmd = conn.CreateCommand();
@@ -138,7 +140,8 @@ internal sealed class PostgreSqlLeaseMessagePump : PostgreSqlMessagePumpBase
             reader.GetInt64(3));
     }
 
-    private async Task<bool> AckClaimAsync(long messageId, long payloadId, string leaseToken, CancellationToken cancellationToken)
+    private async Task<bool> AckClaimAsync(long messageId, long payloadId, string leaseToken,
+        CancellationToken cancellationToken)
     {
         await using var cmd = DataSource.CreateCommand();
         cmd.CommandText =
@@ -200,7 +203,8 @@ internal sealed class PostgreSqlLeaseMessagePump : PostgreSqlMessagePumpBase
     {
         try
         {
-            var released = await ReleaseClaimAsync(messageId, queueName, leaseToken, TimeSpan.Zero, CancellationToken.None);
+            var released =
+                await ReleaseClaimAsync(messageId, queueName, leaseToken, TimeSpan.Zero, CancellationToken.None);
             if (!released)
             {
                 _logger.LogDebug(
@@ -281,4 +285,3 @@ internal sealed class PostgreSqlLeaseMessagePump : PostgreSqlMessagePumpBase
 
     private sealed record ClaimedMessage(long MessageId, byte[] Payload, string HeadersJson, long PayloadId);
 }
-

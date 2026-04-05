@@ -129,8 +129,7 @@ public static class InterBusBuilderExtensions
         if (concurrencyCount < 1)
             throw new ArgumentOutOfRangeException(nameof(concurrencyCount), "Concurrency count must be at least 1.");
 
-        var queueName = RoutingConventions.QueueName(typeof(TConsumer));
-        var descriptor = builder.Options.Consumers.FirstOrDefault(d => d.QueueName == queueName);
+        var descriptor = builder.Options.Consumers.FirstOrDefault(d => d.ConsumerType == typeof(TConsumer));
         if (descriptor is null)
             throw new InvalidOperationException(
                 $"Consumer '{typeof(TConsumer).Name}' has not been registered. " +

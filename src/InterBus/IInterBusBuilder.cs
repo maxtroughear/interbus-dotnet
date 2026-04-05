@@ -46,6 +46,20 @@ public interface IInterBusBuilder
         where TConsumer : class, IConsumer;
 
     /// <summary>
+    /// Register a consumer with a source-generated dispatch delegate and an optional
+    /// consumer-level configuration delegate.
+    /// The <paramref name="configure"/> delegate is invoked immediately after registration,
+    /// allowing per-consumer options such as concurrent dispatch to be set inline.
+    /// </summary>
+    IInterBusBuilder AddConsumer<
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
+        TConsumer>(
+        Type[] messageTypes,
+        Func<DispatchContext, IServiceProvider, CancellationToken, Task> dispatch,
+        Action<IConsumerBuilder>? configure)
+        where TConsumer : class, IConsumer;
+
+    /// <summary>
     /// Register a consumer with a source-generated dispatch delegate.
     /// This is the only registration path; call it via the source-generated
     /// <c>AddConsumers()</c> extension method which is produced at compile time.
@@ -64,6 +78,21 @@ public interface IInterBusBuilder
         Type[] messageTypes,
         string queueName,
         Func<DispatchContext, IServiceProvider, CancellationToken, Task> dispatch)
+        where TConsumer : class, IConsumer;
+
+    /// <summary>
+    /// Register a consumer with a source-generated dispatch delegate, a custom queue name,
+    /// and an optional consumer-level configuration delegate.
+    /// The <paramref name="configure"/> delegate is invoked immediately after registration,
+    /// allowing per-consumer options such as concurrent dispatch to be set inline.
+    /// </summary>
+    IInterBusBuilder AddConsumer<
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
+        TConsumer>(
+        Type[] messageTypes,
+        string queueName,
+        Func<DispatchContext, IServiceProvider, CancellationToken, Task> dispatch,
+        Action<IConsumerBuilder>? configure)
         where TConsumer : class, IConsumer;
 
     /// <summary>

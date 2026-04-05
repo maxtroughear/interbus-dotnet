@@ -164,10 +164,12 @@ public sealed class ConsumerRegistrationGeneratorTests
         // Register() calls builder.AddConsumer<T> for each consumer (with dispatch args).
         Assert.Contains("builder.AddConsumer<global::MyApp.OrderPlacedConsumer>(", generated);
         Assert.Contains("builder.AddConsumer<global::MyApp.AuditConsumer>(", generated);
-        // Only one generic AddConsumer<TConsumer>() extension method is generated (not one per consumer).
+        // Two generic AddConsumer<TConsumer>() extension methods are generated:
+        // one without a configure delegate and one with Action<IConsumerBuilder>.
+        // Neither is emitted once-per-consumer type.
         var addConsumerMethodCount = System.Text.RegularExpressions.Regex
             .Matches(generated, @"public static global::InterBus\.IInterBusBuilder AddConsumer<").Count;
-        Assert.Equal(1, addConsumerMethodCount);
+        Assert.Equal(2, addConsumerMethodCount);
     }
 
     [Fact]

@@ -107,12 +107,43 @@ public static class InterBusBuilderExtensions
     }
 
     /// <summary>
+    /// Applies a consumer builder configuration delegate to <em>all previously registered</em>
+    /// consumers. Useful after <c>AddConsumers()</c> to configure options (such as
+    /// <see cref="ConsumerDescriptor.ConcurrencyCount"/>) for every consumer at once.
+    /// <para>
+    /// Only consumers already registered at the time of this call are affected. Consumers
+    /// registered afterwards are not configured by this call.
+    /// </para>
+    /// </summary>
+    /// <param name="builder">The InterBus builder.</param>
+    /// <param name="configure">
+    /// Delegate that receives an <see cref="IConsumerBuilder"/> for each registered consumer
+    /// and applies the desired configuration.
+    /// </param>
+    public static IInterBusBuilder WithConsumers(
+        this IInterBusBuilder builder,
+        Action<IConsumerBuilder> configure)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+        ArgumentNullException.ThrowIfNull(configure);
+
+        foreach (var descriptor in builder.Options.Consumers)
+            configure(new ConsumerBuilder(descriptor));
+
+        return builder;
+    }
+
+    /// <summary>
     /// Configures the number of concurrent message handlers for the specified consumer.
     /// Transports that support concurrent dispatch per queue (e.g. RabbitMQ) read this value
     /// from <see cref="ConsumerDescriptor.ConcurrencyCount"/> when setting up their consumer channels.
     /// Defaults to <c>1</c> (sequential dispatch) when not configured.
     /// <para>
     /// Must be called after the consumer has been registered (e.g. after <c>AddConsumers()</c>).
+    /// </para>
+    /// <para>
+    /// Prefer using the <c>AddConsumer&lt;TConsumer&gt;(Action&lt;IConsumerBuilder&gt;)</c> overload
+    /// or <see cref="WithConsumers"/> to configure concurrency inline at registration time.
     /// </para>
     /// </summary>
     /// <typeparam name="TConsumer">The consumer type to configure.</typeparam>

@@ -37,7 +37,17 @@ internal sealed class InterBusBuilder : IInterBusBuilder
         Type[] messageTypes,
         Func<DispatchContext, IServiceProvider, CancellationToken, Task> dispatch)
         where TConsumer : class, IConsumer =>
-        AddConsumer<TConsumer>(messageTypes, RoutingConventions.QueueName(typeof(TConsumer)), dispatch);
+        AddConsumer<TConsumer>(messageTypes, RoutingConventions.QueueName(typeof(TConsumer)), dispatch, null);
+
+    /// <inheritdoc/>
+    public IInterBusBuilder AddConsumer<
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
+        TConsumer>(
+        Type[] messageTypes,
+        Func<DispatchContext, IServiceProvider, CancellationToken, Task> dispatch,
+        Action<IConsumerBuilder>? configure)
+        where TConsumer : class, IConsumer =>
+        AddConsumer<TConsumer>(messageTypes, RoutingConventions.QueueName(typeof(TConsumer)), dispatch, configure);
 
     /// <inheritdoc/>
     /// <remarks>
@@ -51,9 +61,22 @@ internal sealed class InterBusBuilder : IInterBusBuilder
         Type[] messageTypes,
         string queueName,
         Func<DispatchContext, IServiceProvider, CancellationToken, Task> dispatch)
+        where TConsumer : class, IConsumer =>
+        AddConsumer<TConsumer>(messageTypes, queueName, dispatch, null);
+
+    /// <inheritdoc/>
+    public IInterBusBuilder AddConsumer<
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
+        TConsumer>(
+        Type[] messageTypes,
+        string queueName,
+        Func<DispatchContext, IServiceProvider, CancellationToken, Task> dispatch,
+        Action<IConsumerBuilder>? configure)
         where TConsumer : class, IConsumer
     {
-        _options.AddConsumer(new ConsumerDescriptor(typeof(TConsumer), queueName, messageTypes, dispatch));
+        var descriptor = new ConsumerDescriptor(typeof(TConsumer), queueName, messageTypes, dispatch);
+        configure?.Invoke(new ConsumerBuilder(descriptor));
+        _options.AddConsumer(descriptor);
         Services.TryAddScoped<TConsumer>();
         return this;
     }

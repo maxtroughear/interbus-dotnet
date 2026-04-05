@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
 using RabbitMQ.Client;
 
@@ -32,6 +33,14 @@ internal sealed class RabbitMqConnectionProvider : IAsyncDisposable
         _options = options;
         _logger = logger;
     }
+
+    /// <summary>
+    /// Application-level topology tracking. Exchange names and queue names that have been
+    /// declared on the broker are recorded here so that declarations are not repeated across
+    /// multiple transport scopes or instances. An entry is removed when a publish failure
+    /// indicates the topology no longer exists, triggering re-declaration on the next send.
+    /// </summary>
+    internal ConcurrentDictionary<string, bool> DeclaredTopology { get; } = new(StringComparer.Ordinal);
 
     /// <summary>
     /// Returns the shared publish connection, creating it on first use.

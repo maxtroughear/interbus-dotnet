@@ -28,10 +28,12 @@ namespace InterBus.RabbitMQ;
 /// preventing silent message loss.
 /// </para>
 /// <para>
-/// Before the first publish to each exchange or queue within an instance lifetime, the
-/// transport performs a single idempotent topology declaration (exchange or queue) as a
-/// safety net for publisher-only deployments where no <see cref="RabbitMqMessagePump"/> is
-/// running.
+/// Topology (exchanges and queues) is declared at most once per application lifetime, tracked
+/// by the singleton <see cref="RabbitMqConnectionProvider.DeclaredTopology"/> dictionary so
+/// that the cost is not repeated across DI scopes. If a publish fails because the channel is
+/// closed by the broker (e.g., an exchange or queue was deleted by an operator), the tracking
+/// entry is removed, the channel is reopened, topology is redeclared, and the publish is
+/// retried once.
 /// </para>
 /// <para>
 /// Delayed delivery is not natively supported; the <see cref="TransportSendContext.Delay"/>
@@ -52,9 +54,6 @@ public sealed class RabbitMqTransport : IInterBusTransport, IAsyncDisposable
 
     // Channel is created lazily on first SendAsync within the scope.
     private IChannel? _publishChannel;
-
-    // Tracks destinations declared within this scope to avoid redundant declarations.
-    private readonly HashSet<string> _declaredDestinations = new(StringComparer.Ordinal);
 
     internal RabbitMqTransport(
         RabbitMqConnectionProvider connectionProvider,
@@ -82,50 +81,11 @@ public sealed class RabbitMqTransport : IInterBusTransport, IAsyncDisposable
         if (context.Destination.Scheme == TopicScheme)
         {
             var exchangeName = _options.ExchangePrefix + name;
-
-            // Try once to declare the exchange as a safety net for publisher-only deployments.
-            if (_declaredDestinations.Add(exchangeName))
-            {
-                await channel.ExchangeDeclareAsync(
-                    exchange: exchangeName,
-                    type: ExchangeType.Fanout,
-                    durable: true,
-                    autoDelete: false,
-                    arguments: null,
-                    noWait: false,
-                    cancellationToken: cancellationToken);
-            }
-
-            await channel.BasicPublishAsync(
-                exchange: exchangeName,
-                routingKey: string.Empty,
-                mandatory: false,
-                basicProperties: props,
-                body: context.Payload,
-                cancellationToken: cancellationToken);
+            await PublishToExchangeAsync(channel, exchangeName, props, context.Payload, cancellationToken);
         }
         else if (context.Destination.Scheme == QueueScheme)
         {
-            // Try once to declare the queue as a safety net for publisher-only deployments.
-            if (_declaredDestinations.Add(name))
-            {
-                await channel.QueueDeclareAsync(
-                    queue: name,
-                    durable: true,
-                    exclusive: false,
-                    autoDelete: false,
-                    arguments: null,
-                    noWait: false,
-                    cancellationToken: cancellationToken);
-            }
-
-            await channel.BasicPublishAsync(
-                exchange: string.Empty,
-                routingKey: name,
-                mandatory: false,
-                basicProperties: props,
-                body: context.Payload,
-                cancellationToken: cancellationToken);
+            await PublishToQueueAsync(channel, name, props, context.Payload, cancellationToken);
         }
         else
         {
@@ -134,6 +94,130 @@ public sealed class RabbitMqTransport : IInterBusTransport, IAsyncDisposable
                 $"Expected '{TopicScheme}' or '{QueueScheme}'.",
                 nameof(context));
         }
+    }
+
+    /// <summary>
+    /// Declares the exchange at most once per application lifetime (tracked in the singleton
+    /// <see cref="RabbitMqConnectionProvider.DeclaredTopology"/>), then publishes the message.
+    /// If the channel is closed by the broker (e.g., the exchange was deleted), removes the
+    /// tracking entry, reopens the channel, redeclares, and retries the publish once.
+    /// </summary>
+    private async Task PublishToExchangeAsync(
+        IChannel channel,
+        string exchangeName,
+        BasicProperties props,
+        ReadOnlyMemory<byte> payload,
+        CancellationToken ct)
+    {
+        await EnsureExchangeDeclaredAsync(channel, exchangeName, ct);
+        try
+        {
+            await channel.BasicPublishAsync(
+                exchange: exchangeName,
+                routingKey: string.Empty,
+                mandatory: false,
+                basicProperties: props,
+                body: payload,
+                cancellationToken: ct);
+        }
+        catch (Exception) when (!channel.IsOpen)
+        {
+            // Channel was closed by the broker (exchange may have been deleted).
+            // Clear the topology entry, recreate the channel, redeclare, and retry once.
+            _connectionProvider.DeclaredTopology.TryRemove(exchangeName, out _);
+            _publishChannel = null;
+            var freshChannel = await EnsureChannelAsync(ct);
+            await EnsureExchangeDeclaredAsync(freshChannel, exchangeName, ct);
+            await freshChannel.BasicPublishAsync(
+                exchange: exchangeName,
+                routingKey: string.Empty,
+                mandatory: false,
+                basicProperties: props,
+                body: payload,
+                cancellationToken: ct);
+        }
+    }
+
+    /// <summary>
+    /// Declares the queue at most once per application lifetime (tracked in the singleton
+    /// <see cref="RabbitMqConnectionProvider.DeclaredTopology"/>), then publishes the message.
+    /// If the channel is closed by the broker (e.g., the queue was deleted), removes the
+    /// tracking entry, reopens the channel, redeclares, and retries the publish once.
+    /// </summary>
+    private async Task PublishToQueueAsync(
+        IChannel channel,
+        string queueName,
+        BasicProperties props,
+        ReadOnlyMemory<byte> payload,
+        CancellationToken ct)
+    {
+        await EnsureQueueDeclaredAsync(channel, queueName, ct);
+        try
+        {
+            await channel.BasicPublishAsync(
+                exchange: string.Empty,
+                routingKey: queueName,
+                mandatory: false,
+                basicProperties: props,
+                body: payload,
+                cancellationToken: ct);
+        }
+        catch (Exception) when (!channel.IsOpen)
+        {
+            // Channel was closed by the broker (queue may have been deleted).
+            // Clear the topology entry, recreate the channel, redeclare, and retry once.
+            _connectionProvider.DeclaredTopology.TryRemove(queueName, out _);
+            _publishChannel = null;
+            var freshChannel = await EnsureChannelAsync(ct);
+            await EnsureQueueDeclaredAsync(freshChannel, queueName, ct);
+            await freshChannel.BasicPublishAsync(
+                exchange: string.Empty,
+                routingKey: queueName,
+                mandatory: false,
+                basicProperties: props,
+                body: payload,
+                cancellationToken: ct);
+        }
+    }
+
+    /// <summary>
+    /// Declares <paramref name="exchangeName"/> on the broker if not already recorded in the
+    /// application-lifetime <see cref="RabbitMqConnectionProvider.DeclaredTopology"/> set.
+    /// Idempotent: safe to call even if the exchange already exists on the broker.
+    /// </summary>
+    private async Task EnsureExchangeDeclaredAsync(IChannel channel, string exchangeName, CancellationToken ct)
+    {
+        if (!_connectionProvider.DeclaredTopology.TryAdd(exchangeName, true))
+            return;
+
+        await channel.ExchangeDeclareAsync(
+            exchange: exchangeName,
+            type: ExchangeType.Fanout,
+            durable: true,
+            autoDelete: false,
+            arguments: null,
+            noWait: false,
+            cancellationToken: ct);
+    }
+
+    /// <summary>
+    /// Declares <paramref name="queueName"/> on the broker if not already recorded in the
+    /// application-lifetime <see cref="RabbitMqConnectionProvider.DeclaredTopology"/> set.
+    /// Idempotent: safe to call even if the queue already exists on the broker.
+    /// </summary>
+    private async Task EnsureQueueDeclaredAsync(IChannel channel, string queueName, CancellationToken ct)
+    {
+        if (!_connectionProvider.DeclaredTopology.TryAdd(queueName, true))
+            return;
+
+        await channel.QueueDeclareAsync(
+            queue: queueName,
+            durable: true,
+            exclusive: false,
+            autoDelete: false,
+            arguments: null,
+            noWait: false,
+            cancellationToken: ct);
     }
 
     /// <summary>

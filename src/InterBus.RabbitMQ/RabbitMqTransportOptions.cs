@@ -63,11 +63,4 @@ public sealed class RabbitMqTransportOptions
         RetryCount = int.MaxValue,
         DelayProvider = RetryDelays.Exponential(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(30)),
     };
-
-    /// <summary>Per-queue options keyed by queue name. Populated via the <see cref="InterBus.RabbitMQ.Extensions.RabbitMqTransportBuilderExtensions.WithConsumerConcurrency{TConsumer}"/> extension method.</summary>
-    internal Dictionary<string, RabbitMqQueueOptions> QueueOptions { get; } = new(StringComparer.Ordinal);
-
-    /// <summary>Returns the options for the given queue, or a default instance if not configured.</summary>
-    internal RabbitMqQueueOptions GetQueueOptions(string queueName) =>
-        QueueOptions.TryGetValue(queueName, out var opts) ? opts : new RabbitMqQueueOptions();
 }

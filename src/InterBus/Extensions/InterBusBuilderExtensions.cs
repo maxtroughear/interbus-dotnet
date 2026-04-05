@@ -107,6 +107,41 @@ public static class InterBusBuilderExtensions
     }
 
     /// <summary>
+    /// Configures the number of concurrent message handlers for the specified consumer.
+    /// Transports that support concurrent dispatch per queue (e.g. RabbitMQ) read this value
+    /// from <see cref="ConsumerDescriptor.ConcurrencyCount"/> when setting up their consumer channels.
+    /// Defaults to <c>1</c> (sequential dispatch) when not configured.
+    /// <para>
+    /// Must be called after the consumer has been registered (e.g. after <c>AddConsumers()</c>).
+    /// </para>
+    /// </summary>
+    /// <typeparam name="TConsumer">The consumer type to configure.</typeparam>
+    /// <param name="builder">The InterBus builder.</param>
+    /// <param name="concurrencyCount">
+    /// The number of concurrent message handlers. Must be at least <c>1</c>.
+    /// </param>
+    public static IInterBusBuilder WithConsumerConcurrency<TConsumer>(
+        this IInterBusBuilder builder,
+        int concurrencyCount)
+        where TConsumer : class, IConsumer
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+        if (concurrencyCount < 1)
+            throw new ArgumentOutOfRangeException(nameof(concurrencyCount), "Concurrency count must be at least 1.");
+
+        var queueName = RoutingConventions.QueueName(typeof(TConsumer));
+        var descriptor = builder.Options.Consumers.FirstOrDefault(d => d.QueueName == queueName);
+        if (descriptor is null)
+            throw new InvalidOperationException(
+                $"Consumer '{typeof(TConsumer).Name}' has not been registered. " +
+                $"Call AddConsumer<{typeof(TConsumer).Name}>() (or AddConsumers()) before calling WithConsumerConcurrency.");
+
+        descriptor.ConcurrencyCount = concurrencyCount;
+
+        return builder;
+    }
+
+    /// <summary>
     /// Register a <see cref="SystemTextJsonMessageSerializer"/> configured with the provided
     /// <paramref name="options"/>, replacing the default reflection-based serialiser.
     /// <para>

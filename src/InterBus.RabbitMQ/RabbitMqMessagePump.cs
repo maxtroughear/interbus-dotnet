@@ -195,18 +195,18 @@ internal sealed class RabbitMqMessagePump : BackgroundService
             "InterBus RabbitMQ: starting consumer for queue {QueueName}",
             descriptor.QueueName);
 
-        var queueOpts = _options.GetQueueOptions(descriptor.QueueName);
+        var concurrency = (ushort)Math.Max(1, descriptor.ConcurrencyCount);
         var channelOptions = new CreateChannelOptions(
             publisherConfirmationsEnabled: false,
             publisherConfirmationTrackingEnabled: false,
-            consumerDispatchConcurrency: queueOpts.ConcurrencyCount);
+            consumerDispatchConcurrency: concurrency);
 
         var channel = await _connection!.CreateChannelAsync(channelOptions, stoppingToken);
 
         // Prefetch one message at a time per concurrent handler for fair dispatch.
         await channel.BasicQosAsync(
             prefetchSize: 0,
-            prefetchCount: queueOpts.ConcurrencyCount,
+            prefetchCount: concurrency,
             global: false,
             cancellationToken: stoppingToken);
 

@@ -1,15 +1,10 @@
 namespace InterBus.RabbitMQ;
 
 /// <summary>
-/// Per-queue RabbitMQ options configured at registration time.
+/// Per-queue RabbitMQ options. This type is no longer used; per-consumer concurrency is now
+/// configured via
+/// <see cref="InterBus.Extensions.InterBusBuilderExtensions.WithConsumerConcurrency{TConsumer}"/>
+/// and stored on <see cref="ConsumerDescriptor.ConcurrencyCount"/>.
 /// </summary>
-public sealed class RabbitMqQueueOptions
-{
-    /// <summary>
-    /// Number of concurrent message handlers dispatched from a single consumer channel.
-    /// Maps to <c>ConsumerDispatchConcurrency</c> on the channel's
-    /// <see cref="RabbitMQ.Client.CreateChannelOptions"/>.
-    /// Defaults to <c>1</c> (sequential per-channel dispatch).
-    /// </summary>
-    public ushort ConcurrencyCount { get; set; } = 1;
-}
+[Obsolete("Use bus.WithConsumerConcurrency<TConsumer>(count) on IInterBusBuilder instead.")]
+public sealed class RabbitMqQueueOptions;

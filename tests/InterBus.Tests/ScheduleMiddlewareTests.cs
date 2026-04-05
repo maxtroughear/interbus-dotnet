@@ -22,7 +22,7 @@ public sealed class ScheduleMiddlewareTests
         services.AddLogging();
         services.AddInterBus(bus =>
         {
-            bus.Services.AddSingleton<IInterBusTransport>(transport);
+            bus.Services.AddKeyedSingleton<IInterBusTransport>("topic", transport);
             bus.Services.AddScoped<IScheduleMiddleware>(_ => middleware);
         });
 
@@ -44,10 +44,7 @@ public sealed class ScheduleMiddlewareTests
         var transport = new RecordingTransport();
         var services = new ServiceCollection();
         services.AddLogging();
-        services.AddInterBus(bus =>
-        {
-            bus.Services.AddSingleton<IInterBusTransport>(transport);
-        });
+        services.AddInterBus(bus => { bus.Services.AddKeyedSingleton<IInterBusTransport>("topic", transport); });
 
         var provider = services.BuildServiceProvider();
         using var scope = provider.CreateScope();
@@ -70,7 +67,7 @@ public sealed class ScheduleMiddlewareTests
         services.AddLogging();
         services.AddInterBus(bus =>
         {
-            bus.Services.AddSingleton<IInterBusTransport>(transport);
+            bus.Services.AddKeyedSingleton<IInterBusTransport>("queue", transport);
             bus.Services.AddScoped<IScheduleMiddleware>(_ => new PayloadReplacingScheduleMiddleware(replacedPayload));
         });
 
@@ -93,7 +90,7 @@ public sealed class ScheduleMiddlewareTests
         services.AddLogging();
         services.AddInterBus(bus =>
         {
-            bus.Services.AddSingleton<IInterBusTransport>(transport);
+            bus.Services.AddKeyedSingleton<IInterBusTransport>("queue", transport);
             bus.Services.AddScoped<IScheduleMiddleware, HeaderAddingScheduleMiddleware>();
         });
 
@@ -117,7 +114,7 @@ public sealed class ScheduleMiddlewareTests
         services.AddLogging();
         services.AddInterBus(bus =>
         {
-            bus.Services.AddSingleton<IInterBusTransport>(transport);
+            bus.Services.AddKeyedSingleton<IInterBusTransport>("queue", transport);
             bus.Services.AddScoped<IScheduleMiddleware>(_ => new OrderTrackingScheduleMiddleware("first", order));
             bus.Services.AddScoped<IScheduleMiddleware>(_ => new OrderTrackingScheduleMiddleware("second", order));
         });

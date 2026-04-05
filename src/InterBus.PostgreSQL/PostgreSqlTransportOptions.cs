@@ -18,6 +18,31 @@ public sealed class PostgreSqlTransportOptions
     public string SchemaName { get; set; } = "interbus";
 
     /// <summary>
+    /// Selects how the PostgreSQL transport claims in-flight messages.
+    /// Defaults to <see cref="PostgreSqlMessagePumpMode.Lease"/> so long-running consumers do not
+    /// hold a database connection open for the duration of message handling.
+    /// </summary>
+    public PostgreSqlMessagePumpMode MessagePumpMode { get; set; } = PostgreSqlMessagePumpMode.Lease;
+
+    /// <summary>
+    /// Duration for which a claimed message remains invisible to other consumers before its lease
+    /// must be renewed. Defaults to 60 seconds.
+    /// </summary>
+    public TimeSpan LeaseDuration { get; set; } = TimeSpan.FromSeconds(60);
+
+    /// <summary>
+    /// Interval at which the lease-based pump renews the visibility lease for an in-flight message.
+    /// When <c>null</c>, the transport renews at one-third of <see cref="LeaseDuration"/>.
+    /// </summary>
+    public TimeSpan? LeaseRenewInterval { get; set; }
+
+    /// <summary>
+    /// Delay before a failed leased message becomes visible again.
+    /// Defaults to immediate retry to preserve the transport's current failure semantics.
+    /// </summary>
+    public TimeSpan FailureRedeliveryDelay { get; set; } = TimeSpan.Zero;
+
+    /// <summary>
     /// Interval at which the message pump polls for pending messages as a fallback.
     /// This catches messages that were not processed due to consumer failures or missed
     /// notifications. Defaults to 5 seconds. Lower values increase responsiveness to
@@ -47,4 +72,13 @@ public sealed class PostgreSqlTransportOptions
     /// tables must exist before the application starts.
     /// </summary>
     public bool RunSchemaMigrations { get; set; } = true;
+
+    internal TimeSpan GetEffectiveLeaseRenewInterval()
+    {
+        if (LeaseRenewInterval is { } configured)
+            return configured;
+
+        var interval = TimeSpan.FromTicks(LeaseDuration.Ticks / 3);
+        return interval > TimeSpan.Zero ? interval : TimeSpan.FromSeconds(1);
+    }
 }

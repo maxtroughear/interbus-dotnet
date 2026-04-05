@@ -1,4 +1,4 @@
-﻿namespace InterBus.PostgreSQL.Tests;
+namespace InterBus.PostgreSQL.Tests;
 
 public class TestHelpers
 {

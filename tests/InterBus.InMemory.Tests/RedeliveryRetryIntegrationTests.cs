@@ -41,7 +41,7 @@ public sealed class RedeliveryRetryIntegrationTests
 
     private static async Task StopAsync(ServiceProvider provider, CancellationTokenSource cts)
     {
-        cts.Cancel();
+        await cts.CancelAsync();
         foreach (var svc in provider.GetServices<IHostedService>())
         {
             try
@@ -92,6 +92,7 @@ public sealed class RedeliveryRetryIntegrationTests
             await StopAsync(provider, cts);
         }
     }
+
     [Fact]
     public async Task RedeliveryTransportDelayMiddleware_RedeliversFailedMessage_WithIncrementedHeader()
     {

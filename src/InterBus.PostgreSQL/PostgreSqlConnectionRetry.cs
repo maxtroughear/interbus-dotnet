@@ -6,14 +6,14 @@ namespace InterBus.PostgreSQL;
 
 internal static class PostgreSqlConnectionRetry
 {
-    public static bool IsConnectionRelated(Exception exception)
+    private static bool IsConnectionRelated(Exception exception)
     {
         if (exception is PostgresException)
             return false;
 
         return exception is NpgsqlException
-            || FindInner<SocketException>(exception) is not null
-            || FindInner<TimeoutException>(exception) is not null;
+               || FindInner<SocketException>(exception) is not null
+               || FindInner<TimeoutException>(exception) is not null;
     }
 
     public static async Task<T> ExecuteAsync<T>(
@@ -63,7 +63,7 @@ internal static class PostgreSqlConnectionRetry
             logger,
             cancellationToken);
 
-    public static bool ShouldRetry(Exception exception, PostgreSqlTransportOptions options, int attempt)
+    private static bool ShouldRetry(Exception exception, PostgreSqlTransportOptions options, int attempt)
     {
         if (!IsConnectionRelated(exception))
             return false;
@@ -75,7 +75,7 @@ internal static class PostgreSqlConnectionRetry
         return retry.ShouldRetry?.Invoke(exception) ?? true;
     }
 
-    public static TimeSpan GetDelay(PostgreSqlTransportOptions options, int attempt)
+    private static TimeSpan GetDelay(PostgreSqlTransportOptions options, int attempt)
     {
         var delay = options.ConnectionRetry.DelayProvider(attempt);
         return delay > TimeSpan.Zero ? delay : TimeSpan.Zero;
@@ -93,5 +93,3 @@ internal static class PostgreSqlConnectionRetry
         return null;
     }
 }
-
-

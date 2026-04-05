@@ -21,7 +21,8 @@ public sealed class PublishSchedulingTests
         services.AddLogging();
         services.AddInterBus(bus =>
         {
-            bus.Services.AddSingleton<IInterBusTransport>(transport);
+            bus.Services.AddKeyedSingleton<IInterBusTransport>("topic", transport);
+            bus.Services.AddKeyedSingleton<IInterBusTransport>("queue", transport);
             bus.AddPublishScheduling();
             bus.AddSchedulingConsumer();
             configureBus?.Invoke(bus);

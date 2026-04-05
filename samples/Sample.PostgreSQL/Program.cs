@@ -1,4 +1,4 @@
-﻿using System.Text.Json.Serialization;
+using System.Text.Json.Serialization;
 using InterBus;
 using InterBus.Extensions;
 using InterBus.Generated;
@@ -14,10 +14,10 @@ var builder = Host.CreateApplicationBuilder(args);
 // Set the "ConnectionStrings:InterBus" key in appsettings.json or via the
 // CONNECTIONSTRINGS__INTERBUS environment variable when running the sample.
 var connectionString = builder.Configuration["ConnectionStrings:InterBus"]
-    ?? throw new InvalidOperationException(
-        "PostgreSQL connection string not configured. " +
-        "Set ConnectionStrings:InterBus in appsettings.json or the " +
-        "CONNECTIONSTRINGS__INTERBUS environment variable.");
+                       ?? throw new InvalidOperationException(
+                           "PostgreSQL connection string not configured. " +
+                           "Set ConnectionStrings:InterBus in appsettings.json or the " +
+                           "CONNECTIONSTRINGS__INTERBUS environment variable.");
 
 // Register InterBus with the PostgreSQL transport.
 // The transport automatically creates the required schema and tables on first run.

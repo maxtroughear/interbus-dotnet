@@ -80,8 +80,13 @@ public class OutboxSqlServerIntegrationTests(string imageTag)
 
         foreach (var svc in _provider.GetServices<IHostedService>())
         {
-            try { await svc.StopAsync(_cts.Token); }
-            catch (OperationCanceledException) { }
+            try
+            {
+                await svc.StopAsync(_cts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+            }
         }
 
         _cts.Dispose();

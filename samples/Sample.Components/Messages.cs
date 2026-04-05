@@ -1,4 +1,4 @@
-﻿namespace Sample.Components;
+namespace Sample.Components;
 
 public record GreetingMessage(string Text);
 

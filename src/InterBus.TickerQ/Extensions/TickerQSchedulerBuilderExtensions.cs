@@ -2,7 +2,6 @@ using InterBus.TickerQ.Internal;
 using Microsoft.Extensions.DependencyInjection;
 using TickerQ.Utilities;
 using TickerQ.Utilities.Base;
-using TickerQ.Utilities.Entities;
 using TickerQ.Utilities.Enums;
 
 namespace InterBus.TickerQ.Extensions;

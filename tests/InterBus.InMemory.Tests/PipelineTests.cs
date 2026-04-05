@@ -48,7 +48,7 @@ public class PipelineTests
 
     private static async Task StopAsync(ServiceProvider provider, CancellationTokenSource cts)
     {
-        cts.Cancel();
+        await cts.CancelAsync();
         foreach (var svc in provider.GetServices<IHostedService>())
         {
             try

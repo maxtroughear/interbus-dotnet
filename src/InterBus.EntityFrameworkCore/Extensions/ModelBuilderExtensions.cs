@@ -25,7 +25,7 @@ public static class ModelBuilderExtensions
             b.HasKey(g => g.Id);
             b.Property(g => g.Id).ValueGeneratedNever();
             b.Property(g => g.CreatedAt).IsRequired();
-            
+
             b.HasMany<OutboxMessage>()
                 .WithOne(m => m.Group)
                 .HasForeignKey(m => m.GroupId)

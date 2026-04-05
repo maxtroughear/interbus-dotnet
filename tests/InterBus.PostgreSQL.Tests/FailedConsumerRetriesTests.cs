@@ -1,4 +1,4 @@
-﻿using InterBus.Extensions;
+using InterBus.Extensions;
 using InterBus.Generated;
 using InterBus.PostgreSQL.Extensions;
 using Microsoft.Extensions.DependencyInjection;

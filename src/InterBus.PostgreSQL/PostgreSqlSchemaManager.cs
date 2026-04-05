@@ -64,23 +64,27 @@ internal sealed class PostgreSqlSchemaManager
                 ");\n" +
                 // One routing row per destination queue; queue_id FK replaces the old queue_name text column.
                 // visible_at gates consumption: messages with visible_at > NOW() are invisible to consumers,
-                // enabling future delayed-redelivery without schema changes.
+                // enabling scheduled delivery and renewable visibility leases without schema changes.
                 $"CREATE TABLE IF NOT EXISTS {s}.messages (\n" +
-                "    id         BIGSERIAL   PRIMARY KEY,\n" +
-                $"    queue_id   BIGINT      NOT NULL REFERENCES {s}.queues(id),\n" +
-                $"    payload_id BIGINT      NOT NULL REFERENCES {s}.message_payloads(id),\n" +
-                "    visible_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),\n" +
-                "    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()\n" +
+                "    id               BIGSERIAL   PRIMARY KEY,\n" +
+                $"    queue_id         BIGINT      NOT NULL REFERENCES {s}.queues(id),\n" +
+                $"    payload_id       BIGINT      NOT NULL REFERENCES {s}.message_payloads(id),\n" +
+                "    visible_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),\n" +
+                "    created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),\n" +
+                "    lease_token      TEXT NULL,\n" +
+                "    lease_expires_at TIMESTAMPTZ NULL,\n" +
+                "    delivery_count   INTEGER NOT NULL DEFAULT 0,\n" +
+                "    last_attempt_at  TIMESTAMPTZ NULL\n" +
                 ");\n" +
-                // (queue_id, visible_at, id): supports the consume_next filter (queue_id + visible_at <= NOW())
-                // and stable ordering by id within the visible window.
-                $"CREATE INDEX IF NOT EXISTS ix_messages_queue_pending\n" +
+                // (queue_id, visible_at, id): supports both transactional consume_next and lease claim_next
+                // and stable ordering by id within the visible window
+                "CREATE INDEX IF NOT EXISTS ix_messages_queue_pending\n" +
                 $"    ON {s}.messages (queue_id, visible_at, id);\n" +
                 // payload_id index: required for the NOT EXISTS subqueries in ack_message and
-                // cleanup_orphaned_payloads that check whether any routing row still references a payload.
-                $"CREATE INDEX IF NOT EXISTS ix_messages_payload_id\n" +
+                // cleanup_orphaned_payloads that check whether any routing row still references a payload
+                "CREATE INDEX IF NOT EXISTS ix_messages_payload_id\n" +
                 $"    ON {s}.messages (payload_id);\n" +
-                // Subscriptions now reference queues and topics by their numeric IDs.
+                // Subscriptions reference queues and topics by their numeric IDs
                 $"CREATE TABLE IF NOT EXISTS {s}.subscriptions (\n" +
                 $"    queue_id   BIGINT NOT NULL REFERENCES {s}.queues(id),\n" +
                 $"    topic_id   BIGINT NOT NULL REFERENCES {s}.topics(id),\n" +
@@ -100,7 +104,8 @@ internal sealed class PostgreSqlSchemaManager
     /// <summary>
     /// Builds the SQL that creates or replaces all stored functions used by the transport.
     /// <para>
-    /// Hot-path functions (<c>publish_to_topic</c>, <c>send_to_queue</c>, <c>consume_next</c>)
+    /// Hot-path functions (<c>publish_to_topic</c>, <c>send_to_queue</c>, <c>claim_next</c>,
+    /// <c>consume_next</c>)
     /// use an optimistic SELECT-first strategy: they read the relevant row first and only write
     /// when the row is absent. <c>ON CONFLICT … DO NOTHING</c> handles the race where two
     /// callers create the same queue or topic simultaneously.
@@ -189,6 +194,40 @@ internal sealed class PostgreSqlSchemaManager
         "END;\n" +
         "$$;\n\n" +
 
+        // claim_next: claims one visible message by assigning a renewable lease token and
+        // pushing visible_at forward to the lease expiry. The transaction is short-lived: once
+        // the row is updated, the caller can release its connection and process the message.
+        $"CREATE OR REPLACE FUNCTION {s}.claim_next(p_queue_id BIGINT, p_lease_token TEXT, p_lease_duration INTERVAL)\n" +
+        "RETURNS TABLE (message_id BIGINT, payload BYTEA, headers TEXT, payload_id BIGINT)\n" +
+        "LANGUAGE plpgsql AS $$\n" +
+        "BEGIN\n" +
+        "    RETURN QUERY\n" +
+        $"    WITH next_message AS (\n" +
+        $"        SELECT m.id\n" +
+        $"        FROM {s}.messages m\n" +
+        "        WHERE m.queue_id = p_queue_id\n" +
+        "          AND m.visible_at <= NOW()\n" +
+        "        ORDER BY m.id\n" +
+        "        FOR UPDATE OF m SKIP LOCKED\n" +
+        "        LIMIT 1\n" +
+        "    ),\n" +
+        "    claimed AS (\n" +
+        $"        UPDATE {s}.messages m\n" +
+        "        SET lease_token = p_lease_token,\n" +
+        "            lease_expires_at = NOW() + p_lease_duration,\n" +
+        "            visible_at = NOW() + p_lease_duration,\n" +
+        "            delivery_count = m.delivery_count + 1,\n" +
+        "            last_attempt_at = NOW()\n" +
+        "        FROM next_message\n" +
+        "        WHERE m.id = next_message.id\n" +
+        "        RETURNING m.id, m.payload_id\n" +
+        "    )\n" +
+        $"    SELECT c.id, mp.payload, mp.headers, c.payload_id\n" +
+        $"    FROM claimed c\n" +
+        $"    JOIN {s}.message_payloads mp ON mp.id = c.payload_id;\n" +
+        "END;\n" +
+        "$$;\n\n" +
+
         // consume_next: locks and returns the next visible pending message for a queue.
         // Messages with visible_at > NOW() are skipped, enabling future delayed redelivery.
         // Must be called inside an explicit transaction; the FOR UPDATE lock is held by the
@@ -209,6 +248,22 @@ internal sealed class PostgreSqlSchemaManager
         "END;\n" +
         "$$;\n\n" +
 
+        // renew_claim: extends the visibility timeout as long as the same lease holder still
+        // owns the message row AND the lease has not yet expired. Requiring lease_expires_at > NOW()
+        // means a worker that lost its lease window cannot silently re-acquire visibility.
+        $"CREATE OR REPLACE FUNCTION {s}.renew_claim(p_message_id BIGINT, p_lease_token TEXT, p_lease_duration INTERVAL)\n" +
+        "RETURNS BOOLEAN LANGUAGE plpgsql AS $$\n" +
+        "BEGIN\n" +
+        $"    UPDATE {s}.messages\n" +
+        "    SET lease_expires_at = NOW() + p_lease_duration,\n" +
+        "        visible_at = NOW() + p_lease_duration\n" +
+        "    WHERE id = p_message_id\n" +
+        "      AND lease_token = p_lease_token\n" +
+        "      AND lease_expires_at > NOW();\n" +
+        "    RETURN FOUND;\n" +
+        "END;\n" +
+        "$$;\n\n" +
+
         // ack_message: deletes the routing row and cleans up the payload when no other queue
         // still references it. Combines what was previously two separate round trips.
         $"CREATE OR REPLACE FUNCTION {s}.ack_message(p_message_id BIGINT, p_payload_id BIGINT)\n" +
@@ -217,6 +272,39 @@ internal sealed class PostgreSqlSchemaManager
         $"    DELETE FROM {s}.messages WHERE id = p_message_id;\n" +
         $"    DELETE FROM {s}.message_payloads WHERE id = p_payload_id\n" +
         $"        AND NOT EXISTS (SELECT 1 FROM {s}.messages WHERE payload_id = p_payload_id);\n" +
+        "END;\n" +
+        "$$;\n\n" +
+
+        // release_claim: returns a leased message to the queue if the current caller still owns
+        // the same lease token. Used for graceful shutdown and consumer failures.
+        $"CREATE OR REPLACE FUNCTION {s}.release_claim(p_message_id BIGINT, p_lease_token TEXT, p_visible_at TIMESTAMPTZ)\n" +
+        "RETURNS BOOLEAN LANGUAGE plpgsql AS $$\n" +
+        "BEGIN\n" +
+        $"    UPDATE {s}.messages\n" +
+        "    SET lease_token = NULL,\n" +
+        "        lease_expires_at = NULL,\n" +
+        "        visible_at = p_visible_at\n" +
+        "    WHERE id = p_message_id\n" +
+        "      AND lease_token = p_lease_token;\n" +
+        "    RETURN FOUND;\n" +
+        "END;\n" +
+        "$$;\n\n" +
+
+        // ack_claim: deletes the routing row only if the current caller still owns the message's
+        // lease token AND the lease has not yet expired (lease_expires_at > NOW()). The expiry
+        // check enforces that a handler which ran past its lease window cannot silently swallow
+        // a message — the stale ack is rejected and the now-visible row is redelivered.
+        $"CREATE OR REPLACE FUNCTION {s}.ack_claim(p_message_id BIGINT, p_payload_id BIGINT, p_lease_token TEXT)\n" +
+        "RETURNS BOOLEAN LANGUAGE plpgsql AS $$\n" +
+        "BEGIN\n" +
+        $"    DELETE FROM {s}.messages\n" +
+        "    WHERE id = p_message_id\n" +
+        "      AND lease_token = p_lease_token\n" +
+        "      AND lease_expires_at > NOW();\n" +
+        "    IF NOT FOUND THEN RETURN FALSE; END IF;\n" +
+        $"    DELETE FROM {s}.message_payloads WHERE id = p_payload_id\n" +
+        $"        AND NOT EXISTS (SELECT 1 FROM {s}.messages WHERE payload_id = p_payload_id);\n" +
+        "    RETURN TRUE;\n" +
         "END;\n" +
         "$$;\n\n" +
 

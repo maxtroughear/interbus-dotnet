@@ -1,4 +1,4 @@
-﻿using InterBus;
+using InterBus;
 using Sample.Components;
 
 namespace Sample.AuditComponents;

@@ -29,6 +29,7 @@ internal sealed class OutboxPublishMiddleware<TDbContext>(
 {
     /// <summary>Shared by all Publish/Send calls within this DI scope.</summary>
     private readonly Guid _groupId = Guid.CreateVersion7();
+
     private OutboxGroup? _outboxGroup;
 
     public Task InvokeAsync<T>(

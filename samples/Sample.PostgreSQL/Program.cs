@@ -1,4 +1,4 @@
-﻿using System.Text.Json.Serialization;
+using System.Text.Json.Serialization;
 using InterBus;
 using InterBus.Extensions;
 using InterBus.Generated;

@@ -91,7 +91,7 @@ public class OutboxTests
 
     private static async Task StopAsync(ServiceProvider provider, CancellationTokenSource cts, SqliteConnection connection)
     {
-        cts.Cancel();
+        await cts.CancelAsync();
         foreach (var svc in provider.GetServices<IHostedService>())
         {
             try { await svc.StopAsync(CancellationToken.None); }

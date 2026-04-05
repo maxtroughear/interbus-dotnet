@@ -1,5 +1,3 @@
-﻿using Microsoft.Extensions.DependencyInjection;
-
 namespace InterBus.Middleware;
 
 public sealed class DispatchPipelineExecutor(

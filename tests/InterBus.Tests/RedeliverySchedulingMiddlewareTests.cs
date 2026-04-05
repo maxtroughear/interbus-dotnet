@@ -1,4 +1,3 @@
-using System.Collections;
 using InterBus.Middleware;
 using InterBus.Retry;
 using Microsoft.Extensions.Logging.Abstractions;

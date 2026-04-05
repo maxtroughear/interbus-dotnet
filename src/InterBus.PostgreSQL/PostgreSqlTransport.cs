@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using System.Text.Json;
 using Npgsql;
 using NpgsqlTypes;
@@ -19,7 +18,8 @@ namespace InterBus.PostgreSQL;
 /// issues a <c>NOTIFY</c> in a single round trip.
 /// </para>
 /// </summary>
-public sealed class PostgreSqlTransport : IInterBusTransport
+public sealed class PostgreSqlTransport(NpgsqlDataSource dataSource, PostgreSqlTransportOptions options)
+    : IInterBusTransport
 {
     /// <summary>URI scheme for PostgreSQL topic (fan-out) destinations.</summary>
     public const string TopicScheme = "postgresqltopic";
@@ -27,14 +27,7 @@ public sealed class PostgreSqlTransport : IInterBusTransport
     /// <summary>URI scheme for PostgreSQL queue (point-to-point) destinations.</summary>
     public const string QueueScheme = "postgresqlqueue";
 
-    private readonly NpgsqlDataSource _dataSource;
-    private readonly string _schema;
-
-    public PostgreSqlTransport(NpgsqlDataSource dataSource, PostgreSqlTransportOptions options)
-    {
-        _dataSource = dataSource;
-        _schema = options.SchemaName;
-    }
+    private readonly string _schema = options.SchemaName;
 
     /// <inheritdoc/>
     public async Task SendAsync(TransportSendContext context, CancellationToken cancellationToken)
@@ -45,23 +38,16 @@ public sealed class PostgreSqlTransport : IInterBusTransport
             ? (DateTimeOffset?)DateTimeOffset.UtcNow.Add(context.Delay.Value)
             : null;
 
-        await using var cmd = _dataSource.CreateCommand();
+        await using var cmd = dataSource.CreateCommand();
 
-        if (context.Destination.Scheme == TopicScheme)
+        cmd.CommandText = context.Destination.Scheme switch
         {
-            cmd.CommandText = $"SELECT \"{EscapeIdentifier(_schema)}\".publish_to_topic($1, $2, $3, $4)";
-        }
-        else if (context.Destination.Scheme == QueueScheme)
-        {
-            cmd.CommandText = $"SELECT \"{EscapeIdentifier(_schema)}\".send_to_queue($1, $2, $3, $4)";
-        }
-        else
-        {
-            throw new ArgumentException(
+            TopicScheme => $"SELECT \"{EscapeIdentifier(_schema)}\".publish_to_topic($1, $2, $3, $4)",
+            QueueScheme => $"SELECT \"{EscapeIdentifier(_schema)}\".send_to_queue($1, $2, $3, $4)",
+            _ => throw new ArgumentException(
                 $"Unsupported destination URI scheme '{context.Destination.Scheme}'. " +
-                $"Expected '{TopicScheme}' or '{QueueScheme}'.",
-                nameof(context));
-        }
+                $"Expected '{TopicScheme}' or '{QueueScheme}'.", nameof(context))
+        };
 
         cmd.Parameters.Add(new NpgsqlParameter<string> { TypedValue = name });
         cmd.Parameters.Add(new NpgsqlParameter<byte[]> { TypedValue = context.Payload, NpgsqlDbType = NpgsqlDbType.Bytea });

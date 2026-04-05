@@ -10,7 +10,7 @@ namespace InterBus.RabbitMQ.Tests;
 [TestFixtureSource(typeof(RabbitMqVersions), nameof(RabbitMqVersions.All))]
 public class PublishSubscribeMultipleConsumersTests(string imageTag)
 {
-    private RabbitMqContainer _container = new RabbitMqBuilder(imageTag).Build();
+    private readonly RabbitMqContainer _container = new RabbitMqBuilder(imageTag).Build();
     private ServiceProvider _provider;
     private CancellationTokenSource _cts;
     private OrderPlacedTracker _orderTracker;

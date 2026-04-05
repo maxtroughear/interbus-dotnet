@@ -27,29 +27,15 @@ namespace InterBus.RabbitMQ;
 /// <see cref="RabbitMqTransportOptions.ConnectionRetry"/>.
 /// </para>
 /// </summary>
-internal sealed class RabbitMqMessagePump : BackgroundService
+internal sealed class RabbitMqMessagePump(
+    RabbitMqConnectionProvider connectionProvider,
+    RabbitMqTransportOptions options,
+    InterBusOptions busOptions,
+    IServiceScopeFactory scopeFactory,
+    ILogger<RabbitMqMessagePump> logger)
+    : BackgroundService
 {
-    private readonly RabbitMqConnectionProvider _connectionProvider;
-    private readonly RabbitMqTransportOptions _options;
-    private readonly InterBusOptions _busOptions;
-    private readonly IServiceScopeFactory _scopeFactory;
-    private readonly ILogger<RabbitMqMessagePump> _logger;
-
     private IConnection? _connection;
-
-    public RabbitMqMessagePump(
-        RabbitMqConnectionProvider connectionProvider,
-        RabbitMqTransportOptions options,
-        InterBusOptions busOptions,
-        IServiceScopeFactory scopeFactory,
-        ILogger<RabbitMqMessagePump> logger)
-    {
-        _connectionProvider = connectionProvider;
-        _options = options;
-        _busOptions = busOptions;
-        _scopeFactory = scopeFactory;
-        _logger = logger;
-    }
 
     /// <summary>
     /// Opens the consume connection and declares the full RabbitMQ topology before the
@@ -64,10 +50,10 @@ internal sealed class RabbitMqMessagePump : BackgroundService
     /// </summary>
     public override async Task StartAsync(CancellationToken cancellationToken)
     {
-        if (_busOptions.Consumers.Count > 0)
+        if (busOptions.Consumers.Count > 0)
         {
             _connection = await ConnectWithRetryAsync(cancellationToken);
-            _logger.LogDebug("InterBus RabbitMQ: consume connection established");
+            logger.LogDebug("InterBus RabbitMQ: consume connection established");
             await DeclareTopologyAsync(cancellationToken);
         }
 
@@ -76,10 +62,10 @@ internal sealed class RabbitMqMessagePump : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var consumers = _busOptions.Consumers;
+        var consumers = busOptions.Consumers;
         if (consumers.Count == 0)
         {
-            _logger.LogInformation("InterBus RabbitMQ: no consumers registered; message pump idle");
+            logger.LogInformation("InterBus RabbitMQ: no consumers registered; message pump idle");
             return;
         }
 
@@ -100,7 +86,7 @@ internal sealed class RabbitMqMessagePump : BackgroundService
             cancellationToken.ThrowIfCancellationRequested();
             try
             {
-                return await _connectionProvider.CreateConsumeConnectionAsync(cancellationToken);
+                return await connectionProvider.CreateConsumeConnectionAsync(cancellationToken);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -108,8 +94,8 @@ internal sealed class RabbitMqMessagePump : BackgroundService
             }
             catch (Exception ex) when (IsConnectionRelated(ex) && ShouldRetry(ex, attempt + 1))
             {
-                var delay = _options.ConnectionRetry.DelayProvider(++attempt);
-                _logger.LogWarning(
+                var delay = options.ConnectionRetry.DelayProvider(++attempt);
+                logger.LogWarning(
                     ex,
                     "InterBus RabbitMQ: consume connection failed; retrying in {Delay}",
                     delay);
@@ -120,7 +106,7 @@ internal sealed class RabbitMqMessagePump : BackgroundService
 
     private bool ShouldRetry(Exception ex, int attempt)
     {
-        var retry = _options.ConnectionRetry;
+        var retry = options.ConnectionRetry;
         if (attempt > retry.RetryCount)
             return false;
         return retry.ShouldRetry?.Invoke(ex) ?? true;
@@ -131,7 +117,7 @@ internal sealed class RabbitMqMessagePump : BackgroundService
             or ConnectFailureException
             or System.Net.Sockets.SocketException
             or TimeoutException
-            || (ex.InnerException is not null && IsConnectionRelated(ex.InnerException));
+        || (ex.InnerException is not null && IsConnectionRelated(ex.InnerException));
 
     /// <summary>
     /// Declares all queues, exchanges, and bindings. Idempotent — safe to call even if the
@@ -143,7 +129,7 @@ internal sealed class RabbitMqMessagePump : BackgroundService
     {
         await using var channel = await _connection!.CreateChannelAsync(cancellationToken: cancellationToken);
 
-        foreach (var descriptor in _busOptions.Consumers)
+        foreach (var descriptor in busOptions.Consumers)
         {
             // Declare the queue as durable so it survives broker restarts.
             await channel.QueueDeclareAsync(
@@ -158,11 +144,11 @@ internal sealed class RabbitMqMessagePump : BackgroundService
             // Bind the queue to a fanout exchange for each topic this consumer handles.
             foreach (var messageType in descriptor.MessageTypes)
             {
-                var topicName = _busOptions.TryGetTopicName(messageType, out var custom)
+                var topicName = busOptions.TryGetTopicName(messageType, out var custom)
                     ? custom
                     : RoutingConventions.TopicName(messageType);
 
-                var exchangeName = _options.ExchangePrefix + topicName;
+                var exchangeName = options.ExchangePrefix + topicName;
 
                 await channel.ExchangeDeclareAsync(
                     exchange: exchangeName,
@@ -181,7 +167,7 @@ internal sealed class RabbitMqMessagePump : BackgroundService
                     noWait: false,
                     cancellationToken: cancellationToken);
 
-                _logger.LogDebug(
+                logger.LogDebug(
                     "InterBus RabbitMQ: bound queue {QueueName} to exchange {ExchangeName}",
                     descriptor.QueueName,
                     exchangeName);
@@ -191,7 +177,7 @@ internal sealed class RabbitMqMessagePump : BackgroundService
 
     private async Task ConsumeQueueAsync(ConsumerDescriptor descriptor, CancellationToken stoppingToken)
     {
-        _logger.LogDebug(
+        logger.LogDebug(
             "InterBus RabbitMQ: starting consumer for queue {QueueName}",
             descriptor.QueueName);
 
@@ -213,6 +199,7 @@ internal sealed class RabbitMqMessagePump : BackgroundService
         var consumer = new AsyncEventingBasicConsumer(channel);
         consumer.ReceivedAsync += async (_, ea) =>
         {
+            // ReSharper disable MethodSupportsCancellation
             if (stoppingToken.IsCancellationRequested)
             {
                 await channel.BasicNackAsync(ea.DeliveryTag, multiple: false, requeue: true);
@@ -230,13 +217,14 @@ internal sealed class RabbitMqMessagePump : BackgroundService
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(
+                logger.LogWarning(
                     ex,
                     "InterBus RabbitMQ: consumer {ConsumerType} failed for queue {QueueName}; requeueing message for redelivery",
                     descriptor.ConsumerType.Name,
                     descriptor.QueueName);
 
                 await channel.BasicNackAsync(ea.DeliveryTag, multiple: false, requeue: true);
+                // ReSharper restore MethodSupportsCancellation
             }
         };
 
@@ -256,7 +244,7 @@ internal sealed class RabbitMqMessagePump : BackgroundService
             // Expected on shutdown.
         }
 
-        _logger.LogDebug(
+        logger.LogDebug(
             "InterBus RabbitMQ: consumer for queue {QueueName} stopped",
             descriptor.QueueName);
 
@@ -266,7 +254,7 @@ internal sealed class RabbitMqMessagePump : BackgroundService
 
     private async Task DispatchAsync(ConsumerDescriptor descriptor, BasicDeliverEventArgs ea, CancellationToken ct)
     {
-        await using var scope = _scopeFactory.CreateAsyncScope();
+        await using var scope = scopeFactory.CreateAsyncScope();
         var executor = scope.ServiceProvider.GetRequiredService<DispatchPipelineExecutor>();
         var headers = RabbitMqTransport.ParseAmqpHeaders(ea.BasicProperties.Headers);
         var context = new DispatchContext(descriptor, ea.Body.ToArray(), headers);

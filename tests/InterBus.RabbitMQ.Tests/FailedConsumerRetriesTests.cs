@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using InterBus.Extensions;
 using InterBus.Generated;
 using InterBus.RabbitMQ.Extensions;
@@ -11,7 +10,7 @@ namespace InterBus.RabbitMQ.Tests;
 [TestFixtureSource(typeof(RabbitMqVersions), nameof(RabbitMqVersions.All))]
 public class FailedConsumerRetriesTests(string imageTag)
 {
-    private RabbitMqContainer _container = new RabbitMqBuilder(imageTag).Build();
+    private readonly RabbitMqContainer _container = new RabbitMqBuilder(imageTag).Build();
     private ServiceProvider _provider;
     private CancellationTokenSource _cts;
     private OrderPlacedTracker _tracker;

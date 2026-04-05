@@ -23,9 +23,7 @@ public static class RabbitMqTransportBuilderExtensions
     /// </para>
     /// <para>
     /// <see cref="RabbitMqTransport"/> is registered as a <em>scoped</em> service; each DI
-    /// scope gets its own publish channel with publisher confirms enabled. Use
-    /// <see cref="InterBus.Extensions.InterBusBuilderExtensions.WithConsumerConcurrency{TConsumer}"/>
-    /// to configure per-consumer concurrent dispatch.
+    /// scope gets its own publish channel with publisher confirms enabled.
     /// </para>
     /// <para>
     /// Delayed delivery is not natively supported; the delay value is ignored and messages
@@ -61,12 +59,9 @@ public static class RabbitMqTransportBuilderExtensions
 
         // Keyed registrations for transport factory scheme-based resolution.
         builder.Services.AddKeyedScoped<IInterBusTransport>(RabbitMqTransport.TopicScheme,
-            (sp, _key) => sp.GetRequiredService<RabbitMqTransport>());
+            (sp, _) => sp.GetRequiredService<RabbitMqTransport>());
         builder.Services.AddKeyedScoped<IInterBusTransport>(RabbitMqTransport.QueueScheme,
-            (sp, _key) => sp.GetRequiredService<RabbitMqTransport>());
-
-        // Non-keyed scoped registration.
-        builder.Services.AddScoped<IInterBusTransport>(sp => sp.GetRequiredService<RabbitMqTransport>());
+            (sp, _) => sp.GetRequiredService<RabbitMqTransport>());
 
         // Message pump runs as a background service.
         builder.Services.AddHostedService<RabbitMqMessagePump>();

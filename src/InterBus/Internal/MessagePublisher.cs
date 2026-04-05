@@ -11,7 +11,7 @@ namespace InterBus.Internal;
 /// delegates can identify the message type without runtime reflection.
 /// </summary>
 internal sealed class MessagePublisher(
-    IInterBusTransportFactory transportFactory,
+    SendPipelineExecutor sendPipelineExecutor,
     InterBusOptions options,
     IMessageSerializer serializer,
     IEnumerable<IPublishMiddleware> middlewares)
@@ -37,9 +37,8 @@ internal sealed class MessagePublisher(
         Task TerminalPublishDelegate(PublishContext<T> ctx, CancellationToken ct)
         {
             var payload = serializer.Serialize(ctx.Payload);
-            var transport = transportFactory.Resolve(ctx.Destination);
-            var sendContext = new TransportSendContext(ctx.Destination, payload, ctx.Headers, ctx.Delay);
-            return transport.SendAsync(sendContext, ct);
+            var sendContext = new SendContext(ctx.Destination, payload, ctx.Headers, ctx.Delay);
+            return sendPipelineExecutor.ExecuteAsync(sendContext, ct);
         }
     }
 

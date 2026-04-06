@@ -123,13 +123,13 @@ public class TransactionalPumpTests(string imageTag)
     }
 
     // ──────────────────────────────────────────────────────────────────────────
-    //  4. GetPostgreSqlTransaction returns null outside transactional pump context
+    //  4. Each dispatch receives a non-null transaction
     // ──────────────────────────────────────────────────────────────────────────
 
     [Test]
-    public async Task Transactional_SharedTransaction_IsNullOutsideDispatch()
+    public async Task Transactional_EachDispatch_ReceivesNonNullTransaction()
     {
-        // Verify the ambient transaction is null between dispatches (no cross-message leakage).
+        // Verify that every dispatch exposes a non-null transaction to the consumer.
         var transactionSlots = new TransactionSlotTracker();
 
         await using var host = await BuildAndStartAsync(

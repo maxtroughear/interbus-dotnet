@@ -75,7 +75,7 @@ internal sealed class InterBusBuilder : IInterBusBuilder
         where TConsumer : class, IConsumer
     {
         var descriptor = new ConsumerDescriptor(typeof(TConsumer), queueName, messageTypes, dispatch);
-        configure?.Invoke(new ConsumerBuilder(descriptor));
+        configure?.Invoke(new ConsumerBuilder(descriptor, Services));
         _options.AddConsumer(descriptor);
         Services.TryAddScoped<TConsumer>();
         return this;

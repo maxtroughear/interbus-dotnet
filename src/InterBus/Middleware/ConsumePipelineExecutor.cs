@@ -1,4 +1,5 @@
 using InterBus.Internal;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace InterBus.Middleware;
 
@@ -9,7 +10,9 @@ namespace InterBus.Middleware;
 /// Transport packages should resolve this service from the message scope and call
 /// <see cref="ExecuteAsync"/> instead of invoking the consumer dispatch delegate directly.
 /// </summary>
-public sealed class ConsumePipelineExecutor(IEnumerable<IConsumeMiddleware> middlewares)
+public sealed class ConsumePipelineExecutor(
+    IEnumerable<IConsumeMiddleware> middlewares,
+    IServiceProvider serviceProvider)
 {
     private readonly IList<IConsumeMiddleware> _middlewares = middlewares.Reverse().ToList();
 
@@ -23,6 +26,18 @@ public sealed class ConsumePipelineExecutor(IEnumerable<IConsumeMiddleware> midd
         CancellationToken cancellationToken = default) where T : class
     {
         var pipeline = TerminalConsumeDelegate;
+
+        // Apply per-consumer middleware (runs after global middleware, closer to the consumer).
+        // Iterate in reverse so first-registered is outermost within the per-consumer section.
+        for (var i = context.Descriptor.ConsumeMiddlewareTypes.Count - 1; i >= 0; i--)
+        {
+            var mw = (IConsumeMiddleware)serviceProvider.GetRequiredService(
+                context.Descriptor.ConsumeMiddlewareTypes[i]);
+            var next = pipeline;
+            pipeline = (ctx, ct) => mw.InvokeAsync(ctx, next, ct);
+        }
+
+        // Apply global middleware (outermost layer, already reversed).
         foreach (var middleware in _middlewares)
         {
             var current = middleware;
@@ -34,7 +49,9 @@ public sealed class ConsumePipelineExecutor(IEnumerable<IConsumeMiddleware> midd
 
         Task TerminalConsumeDelegate(ConsumeContext<T> ctx, CancellationToken ct)
         {
-            var consumeContext = new ConsumeContext(ctx.Headers);
+            var publisher = serviceProvider.GetRequiredService<IMessagePublisher>();
+            var scheduler = serviceProvider.GetService<IMessageScheduler>();
+            var consumeContext = new ConsumeContext(ctx.Headers, publisher, scheduler);
             return finalDelegate(ctx.Payload, consumeContext, ct);
         }
     }

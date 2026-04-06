@@ -124,7 +124,7 @@ public static class InterBusBuilderExtensions
             ArgumentNullException.ThrowIfNull(configure);
 
             foreach (var descriptor in builder.Options.Consumers)
-                configure(new ConsumerBuilder(descriptor));
+                configure(new ConsumerBuilder(descriptor, builder.Services));
 
             return builder;
         }

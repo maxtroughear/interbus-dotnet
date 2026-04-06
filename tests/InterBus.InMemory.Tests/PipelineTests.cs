@@ -306,6 +306,254 @@ public class PipelineTests
 
     #endregion
 
+    #region Per-consumer middleware
+
+    [Fact]
+    public async Task PerConsumerMiddleware_IsInvoked_OnlyForThatConsumer()
+    {
+        // Register middleware on OrderPlacedConsumer but NOT on AuditConsumer.
+        // The per-consumer middleware should only fire for OrderPlacedConsumer.
+        var perConsumerTracker = new ConsumeMiddlewareCallTracker();
+        var orderTracker = new OrderPlacedTracker();
+        var auditTracker = new AuditTracker();
+
+        var (provider, cts) = await StartAsync(
+            services =>
+            {
+                services.AddSingleton(perConsumerTracker);
+                services.AddSingleton(orderTracker);
+                services.AddSingleton(auditTracker);
+            },
+            bus =>
+            {
+                bus.AddInMemoryTransport();
+                bus.AddConsumer<OrderPlacedConsumer>(b =>
+                    b.UseConsumeMiddleware<RecordingConsumeMiddleware>());
+                bus.AddConsumer<AuditConsumer>();
+            });
+
+        try
+        {
+            using var scope = provider.CreateScope();
+            var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
+            var msg = new OrderPlaced(Guid.NewGuid(), "per-consumer@test.com", 10m);
+            await publisher.Publish(msg, TestContext.Current.CancellationToken);
+
+            await WaitUntilAsync(() => orderTracker.Messages.Count >= 1 && auditTracker.Messages.Count >= 1);
+
+            // Per-consumer middleware should have been invoked exactly once (for OrderPlacedConsumer).
+            Assert.Equal(1, perConsumerTracker.InvocationCount);
+        }
+        finally
+        {
+            await StopAsync(provider, cts);
+        }
+    }
+
+    [Fact]
+    public async Task PerConsumerMiddleware_RunsAfterGlobalMiddleware()
+    {
+        // Verify execution order: global middleware → per-consumer middleware → consumer
+        var log = new ConcurrentQueue<string>();
+        var orderTracker = new OrderPlacedTracker();
+
+        var (provider, cts) = await StartAsync(
+            services =>
+            {
+                services.AddSingleton(log);
+                services.AddSingleton(orderTracker);
+            },
+            bus =>
+            {
+                bus.AddInMemoryTransport();
+                bus.AddConsumer<OrderPlacedConsumer>(b =>
+                    b.UseConsumeMiddleware<SecondConsumeMiddleware>());
+                bus.UseConsumeMiddleware<FirstConsumeMiddleware>();
+            });
+
+        try
+        {
+            using var scope = provider.CreateScope();
+            var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
+            var msg = new OrderPlaced(Guid.NewGuid(), "order@test.com", 1m);
+            await publisher.Publish(msg, TestContext.Current.CancellationToken);
+
+            await WaitUntilAsync(() => orderTracker.Messages.Count >= 1);
+            await Task.Delay(50, TestContext.Current.CancellationToken);
+
+            var entries = log.ToList();
+            Assert.Equal(4, entries.Count);
+            // Global middleware is outermost (first enter, last exit).
+            Assert.Equal("first-enter", entries[0]);
+            // Per-consumer middleware runs after global (second enter).
+            Assert.Equal("second-enter", entries[1]);
+            Assert.Equal("second-exit", entries[2]);
+            Assert.Equal("first-exit", entries[3]);
+        }
+        finally
+        {
+            await StopAsync(provider, cts);
+        }
+    }
+
+    [Fact]
+    public async Task WithConsumers_AppliesPerConsumerMiddleware_ToAllRegisteredConsumers()
+    {
+        var perConsumerTracker = new ConsumeMiddlewareCallTracker();
+        var orderTracker = new OrderPlacedTracker();
+        var auditTracker = new AuditTracker();
+
+        var (provider, cts) = await StartAsync(
+            services =>
+            {
+                services.AddSingleton(perConsumerTracker);
+                services.AddSingleton(orderTracker);
+                services.AddSingleton(auditTracker);
+            },
+            bus =>
+            {
+                bus.AddInMemoryTransport();
+                bus.AddConsumer<OrderPlacedConsumer>();
+                bus.AddConsumer<AuditConsumer>();
+                // Apply per-consumer middleware to all registered consumers at once.
+                bus.WithConsumers(b => b.UseConsumeMiddleware<RecordingConsumeMiddleware>());
+            });
+
+        try
+        {
+            using var scope = provider.CreateScope();
+            var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
+            var msg = new OrderPlaced(Guid.NewGuid(), "all-consumers@test.com", 5m);
+            await publisher.Publish(msg, TestContext.Current.CancellationToken);
+
+            await WaitUntilAsync(() => orderTracker.Messages.Count >= 1 && auditTracker.Messages.Count >= 1);
+
+            // Per-consumer middleware should have been invoked once per consumer (2 consumers → 2 invocations).
+            Assert.Equal(2, perConsumerTracker.InvocationCount);
+        }
+        finally
+        {
+            await StopAsync(provider, cts);
+        }
+    }
+
+    #endregion
+
+    #region Extended consume context (Publisher and Scheduler)
+
+    [Fact]
+    public async Task ConsumeContext_Publisher_CanPublishFromWithinConsumer()
+    {
+        // A consumer publishes a follow-up message via context.Publisher during Consume.
+        var orderTracker = new OrderPlacedTracker();
+        var followUpTracker = new OrderShippedTracker();
+
+        var (provider, cts) = await StartAsync(
+            services =>
+            {
+                services.AddSingleton(orderTracker);
+                services.AddSingleton(followUpTracker);
+            },
+            bus =>
+            {
+                bus.AddInMemoryTransport();
+                bus.AddConsumer<PublishingConsumer>();
+                bus.AddConsumer<FollowUpConsumer>();
+            });
+
+        try
+        {
+            using var scope = provider.CreateScope();
+            var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
+            var msg = new OrderPlaced(Guid.NewGuid(), "ctx-publisher@test.com", 50m);
+            await publisher.Publish(msg, TestContext.Current.CancellationToken);
+
+            await WaitUntilAsync(() => orderTracker.Messages.Count >= 1 && followUpTracker.Messages.Count >= 1);
+
+            Assert.Single(orderTracker.Messages);
+            Assert.Single(followUpTracker.Messages);
+        }
+        finally
+        {
+            await StopAsync(provider, cts);
+        }
+    }
+
+    [Fact]
+    public async Task ConsumeContext_Publisher_IsNotNull()
+    {
+        // The Publisher property on IConsumeContext must never be null.
+        var capturedPublisher = new PublisherCapture();
+        var orderTracker = new OrderPlacedTracker();
+
+        var (provider, cts) = await StartAsync(
+            services =>
+            {
+                services.AddSingleton(capturedPublisher);
+                services.AddSingleton(orderTracker);
+            },
+            bus =>
+            {
+                bus.AddInMemoryTransport();
+                bus.AddConsumer<PublisherCapturingConsumer>();
+            });
+
+        try
+        {
+            using var scope = provider.CreateScope();
+            var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
+            var msg = new OrderPlaced(Guid.NewGuid(), "ctx-notnull@test.com", 1m);
+            await publisher.Publish(msg, TestContext.Current.CancellationToken);
+
+            await WaitUntilAsync(() => capturedPublisher.Publisher is not null);
+
+            Assert.NotNull(capturedPublisher.Publisher);
+        }
+        finally
+        {
+            await StopAsync(provider, cts);
+        }
+    }
+
+    [Fact]
+    public async Task ConsumeContext_Scheduler_IsNullWhenSchedulingNotConfigured()
+    {
+        // When scheduling is not registered, Scheduler should be null.
+        var capturedScheduler = new SchedulerCapture();
+        var orderTracker = new OrderPlacedTracker();
+
+        var (provider, cts) = await StartAsync(
+            services =>
+            {
+                services.AddSingleton(capturedScheduler);
+                services.AddSingleton(orderTracker);
+            },
+            bus =>
+            {
+                bus.AddInMemoryTransport();
+                bus.AddConsumer<SchedulerCapturingConsumer>();
+                // Deliberately NOT calling bus.AddScheduling()
+            });
+
+        try
+        {
+            using var scope = provider.CreateScope();
+            var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
+            var msg = new OrderPlaced(Guid.NewGuid(), "no-scheduler@test.com", 1m);
+            await publisher.Publish(msg, TestContext.Current.CancellationToken);
+
+            await WaitUntilAsync(() => capturedScheduler.Captured);
+
+            Assert.Null(capturedScheduler.Scheduler);
+        }
+        finally
+        {
+            await StopAsync(provider, cts);
+        }
+    }
+
+    #endregion
+
     #region Support types
 
     public sealed class HeaderCapturingTracker
@@ -366,6 +614,32 @@ public class PipelineTests
         }
     }
 
+    /// <summary>Consume middleware that logs entry/exit to a shared queue for ordering tests.</summary>
+    public sealed class FirstConsumeMiddleware(ConcurrentQueue<string> log) : IConsumeMiddleware
+    {
+        public async Task InvokeAsync<T>(ConsumeContext<T> context,
+            Func<ConsumeContext<T>, CancellationToken, Task> next,
+            CancellationToken cancellationToken = default) where T : class
+        {
+            log.Enqueue("first-enter");
+            await next(context, cancellationToken);
+            log.Enqueue("first-exit");
+        }
+    }
+
+    /// <summary>Consume middleware that logs entry/exit to a shared queue for ordering tests.</summary>
+    public sealed class SecondConsumeMiddleware(ConcurrentQueue<string> log) : IConsumeMiddleware
+    {
+        public async Task InvokeAsync<T>(ConsumeContext<T> context,
+            Func<ConsumeContext<T>, CancellationToken, Task> next,
+            CancellationToken cancellationToken = default) where T : class
+        {
+            log.Enqueue("second-enter");
+            await next(context, cancellationToken);
+            log.Enqueue("second-exit");
+        }
+    }
+
     public sealed class FaultingConsumerCallCount
     {
         private int _count;
@@ -379,6 +653,56 @@ public class PipelineTests
         {
             count.Increment();
             throw new InvalidOperationException("Intentional test exception from FaultingConsumer");
+        }
+    }
+
+    /// <summary>Consumer that publishes a follow-up message via <see cref="IConsumeContext.Publisher"/>.</summary>
+    public sealed class PublishingConsumer(OrderPlacedTracker tracker) : IConsumer<OrderPlaced>
+    {
+        public async Task Consume(OrderPlaced message, IConsumeContext context, CancellationToken cancellationToken = default)
+        {
+            tracker.Track(message);
+            await context.Publisher.Publish(new OrderShipped(message.OrderId, "TRACKING-123"), cancellationToken);
+        }
+    }
+
+    /// <summary>Receives the follow-up message published by <see cref="PublishingConsumer"/>.</summary>
+    public sealed class FollowUpConsumer(OrderShippedTracker tracker) : IConsumer<OrderShipped>
+    {
+        public Task Consume(OrderShipped message, IConsumeContext context, CancellationToken cancellationToken = default)
+        {
+            tracker.Track(message);
+            return Task.CompletedTask;
+        }
+    }
+
+    public sealed class PublisherCapture
+    {
+        public IMessagePublisher? Publisher { get; set; }
+    }
+
+    public sealed class PublisherCapturingConsumer(PublisherCapture capture) : IConsumer<OrderPlaced>
+    {
+        public Task Consume(OrderPlaced message, IConsumeContext context, CancellationToken cancellationToken = default)
+        {
+            capture.Publisher = context.Publisher;
+            return Task.CompletedTask;
+        }
+    }
+
+    public sealed class SchedulerCapture
+    {
+        public bool Captured { get; set; }
+        public IMessageScheduler? Scheduler { get; set; }
+    }
+
+    public sealed class SchedulerCapturingConsumer(SchedulerCapture capture) : IConsumer<OrderPlaced>
+    {
+        public Task Consume(OrderPlaced message, IConsumeContext context, CancellationToken cancellationToken = default)
+        {
+            capture.Scheduler = context.Scheduler;
+            capture.Captured = true;
+            return Task.CompletedTask;
         }
     }
 

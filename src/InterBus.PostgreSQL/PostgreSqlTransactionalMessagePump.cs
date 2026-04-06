@@ -74,6 +74,10 @@ internal class PostgreSqlTransactionalMessagePump : PostgreSqlMessagePumpBase
 
         var headers = PostgreSqlTransport.DeserializeHeaders(headersJson);
 
+        // Make the transaction available to consumers via the extension method on IConsumeContext.
+        // AsyncLocal flows the value into all child async operations (including the consumer's
+        // Consume method) without affecting the caller's execution context.
+        PostgreSqlTransactionContext.Current = tx;
         try
         {
             await DispatchAsync(descriptor, payload, headers, stoppingToken);
@@ -109,6 +113,10 @@ internal class PostgreSqlTransactionalMessagePump : PostgreSqlMessagePumpBase
             // Return false so the processing loop backs off; the message will be re-delivered
             // on the next NOTIFY or on the next fallback poll.
             return false;
+        }
+        finally
+        {
+            PostgreSqlTransactionContext.Current = null;
         }
     }
 }

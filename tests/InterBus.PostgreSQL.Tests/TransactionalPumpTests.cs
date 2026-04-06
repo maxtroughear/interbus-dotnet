@@ -3,6 +3,7 @@ using InterBus.Generated;
 using InterBus.PostgreSQL.Extensions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Npgsql;
 using Testcontainers.PostgreSql;
 
 namespace InterBus.PostgreSQL.Tests;
@@ -98,6 +99,59 @@ public class TransactionalPumpTests(string imageTag)
     }
 
     // ──────────────────────────────────────────────────────────────────────────
+    //  3. Consumer can access and use the shared transaction
+    // ──────────────────────────────────────────────────────────────────────────
+
+    [Test]
+    public async Task Transactional_Consumer_CanAccessSharedTransaction()
+    {
+        var transactionTracker = new TransactionTracker();
+
+        await using var host = await BuildAndStartAsync(
+            svc => svc.AddSingleton(transactionTracker),
+            bus => bus.AddConsumer<TransactionAccessConsumer>());
+
+        using var scope = host.CreateScope();
+        var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
+        await publisher.Publish(new OrderPlaced(Guid.NewGuid(), "tx-access@test.com", 5m),
+            TestContext.CurrentContext.CancellationToken);
+
+        await TestHelpers.WaitUntilAsync(() => transactionTracker.ReceivedTransaction is not null);
+
+        Assert.That(transactionTracker.ReceivedTransaction, Is.Not.Null,
+            "Consumer should have received a non-null NpgsqlTransaction via GetPostgreSqlTransaction()");
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    //  4. Each dispatch receives a non-null transaction
+    // ──────────────────────────────────────────────────────────────────────────
+
+    [Test]
+    public async Task Transactional_EachDispatch_ReceivesNonNullTransaction()
+    {
+        // Verify that every dispatch exposes a non-null transaction to the consumer.
+        var transactionSlots = new TransactionSlotTracker();
+
+        await using var host = await BuildAndStartAsync(
+            svc => svc.AddSingleton(transactionSlots),
+            bus => bus.AddConsumer<TransactionSlotConsumer>());
+
+        using var scope = host.CreateScope();
+        var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
+        var ct = TestContext.CurrentContext.CancellationToken;
+
+        // Publish two messages so we get two dispatches.
+        await publisher.Publish(new OrderPlaced(Guid.NewGuid(), "slot1@test.com", 1m), ct);
+        await publisher.Publish(new OrderPlaced(Guid.NewGuid(), "slot2@test.com", 2m), ct);
+
+        await TestHelpers.WaitUntilAsync(() => transactionSlots.Snapshots.Count >= 2);
+
+        Assert.That(transactionSlots.Snapshots,
+            Has.All.Not.Null,
+            "Every dispatch should expose a non-null transaction to the consumer");
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
     //  Helper
     // ──────────────────────────────────────────────────────────────────────────
 
@@ -154,6 +208,37 @@ public class TransactionalPumpTests(string imageTag)
         private int _callCount;
         public int CallCount => _callCount;
         public int Increment() => Interlocked.Increment(ref _callCount);
+    }
+
+    internal sealed class TransactionTracker
+    {
+        public NpgsqlTransaction? ReceivedTransaction { get; private set; }
+        public void Record(NpgsqlTransaction? tx) => ReceivedTransaction = tx;
+    }
+
+    internal sealed class TransactionAccessConsumer(TransactionTracker tracker) : IConsumer<OrderPlaced>
+    {
+        public Task Consume(OrderPlaced message, IConsumeContext context, CancellationToken cancellationToken = default)
+        {
+            tracker.Record(context.GetPostgreSqlTransaction());
+            return Task.CompletedTask;
+        }
+    }
+
+    internal sealed class TransactionSlotTracker
+    {
+        private readonly System.Collections.Concurrent.ConcurrentBag<NpgsqlTransaction?> _snapshots = [];
+        public System.Collections.Generic.IReadOnlyCollection<NpgsqlTransaction?> Snapshots => _snapshots;
+        public void Record(NpgsqlTransaction? tx) => _snapshots.Add(tx);
+    }
+
+    internal sealed class TransactionSlotConsumer(TransactionSlotTracker tracker) : IConsumer<OrderPlaced>
+    {
+        public Task Consume(OrderPlaced message, IConsumeContext context, CancellationToken cancellationToken = default)
+        {
+            tracker.Record(context.GetPostgreSqlTransaction());
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class TestHost(ServiceProvider provider, CancellationTokenSource cts) : IAsyncDisposable

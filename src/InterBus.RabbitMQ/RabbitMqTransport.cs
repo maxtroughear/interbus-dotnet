@@ -267,6 +267,7 @@ public sealed class RabbitMqTransport : IInterBusTransport, IAsyncDisposable
                     dict[kv.Key] = value;
             }
         }
+
         return new MessageHeaders(dict);
     }
 

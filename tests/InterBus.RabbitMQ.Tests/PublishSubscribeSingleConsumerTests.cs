@@ -38,10 +38,7 @@ public class PublishSubscribeSingleConsumerTests(string imageTag)
         services.AddSingleton(_orderTracker);
         services.AddInterBus(bus =>
         {
-            bus.AddRabbitMqTransport(o =>
-            {
-                o.Uri = _container.GetConnectionString();
-            });
+            bus.AddRabbitMqTransport(o => { o.Uri = _container.GetConnectionString(); });
             bus.AddConsumer<OrderPlacedConsumer>();
         });
 

@@ -1,5 +1,6 @@
 using System.Diagnostics.CodeAnalysis;
 using InterBus.Middleware;
+using InterBus.Middleware.Internal;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
@@ -7,21 +8,19 @@ namespace InterBus.Internal;
 
 internal sealed class InterBusBuilder : IInterBusBuilder
 {
-    private readonly InterBusOptions _options;
-
     public IServiceCollection Services { get; }
 
-    public InterBusOptions Options => _options;
+    public InterBusOptions Options { get; }
 
     internal InterBusBuilder(IServiceCollection services, InterBusOptions options)
     {
         Services = services;
-        _options = options;
+        Options = options;
     }
 
     public IInterBusBuilder ConfigureTopic<T>(string topicName) where T : class
     {
-        _options.SetTopicName(typeof(T), topicName);
+        Options.SetTopicName(typeof(T), topicName);
         return this;
     }
 
@@ -75,8 +74,15 @@ internal sealed class InterBusBuilder : IInterBusBuilder
         where TConsumer : class, IConsumer
     {
         var descriptor = new ConsumerDescriptor(typeof(TConsumer), queueName, messageTypes, dispatch);
-        configure?.Invoke(new ConsumerBuilder(descriptor, Services));
-        _options.AddConsumer(descriptor);
+        var consumerBuilder = new ConsumerBuilder(descriptor, Services);
+
+        consumerBuilder.UseConsumeMiddleware<ExceptionLoggingConsumeMiddleware>();
+
+        configure?.Invoke(consumerBuilder);
+
+        consumerBuilder.UsePublishMiddleware<PublishToSendPipeline>();
+
+        Options.AddConsumer(descriptor);
         Services.TryAddScoped<TConsumer>();
         return this;
     }
@@ -97,17 +103,19 @@ internal sealed class InterBusBuilder : IInterBusBuilder
         TMiddleware>()
         where TMiddleware : class, IPublishMiddleware
     {
-        Services.AddScoped<IPublishMiddleware, TMiddleware>();
+        // Keyed to bus
+        Services.AddKeyedScoped<IPublishMiddleware, TMiddleware>(InterBusConstants.BusContext);
         return this;
     }
 
     /// <inheritdoc/>
-    public IInterBusBuilder UseConsumeMiddleware<
+    public IInterBusBuilder UseSendMiddleware<
         [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
         TMiddleware>()
-        where TMiddleware : class, IConsumeMiddleware
+        where TMiddleware : class, ISendMiddleware
     {
-        Services.AddScoped<IConsumeMiddleware, TMiddleware>();
+        // Keyed to bus
+        Services.AddKeyedScoped<ISendMiddleware, TMiddleware>(InterBusConstants.BusContext);
         return this;
     }
 

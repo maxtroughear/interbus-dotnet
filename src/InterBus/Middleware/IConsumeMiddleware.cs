@@ -6,9 +6,9 @@ namespace InterBus.Middleware;
 /// and executed in registration order (first registered = outermost).
 /// </summary>
 /// <remarks>
-/// Register via <see cref="IInterBusBuilder.UseConsumeMiddleware{TMiddleware}"/>.
+/// Register via <see cref="IConsumerBuilder.UseConsumeMiddleware{TMiddleware}"/>.
 /// </remarks>
-public interface IConsumeMiddleware
+public interface IConsumeMiddleware : IMiddleware
 {
     /// <summary>
     /// Execute this middleware step.

@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore;
 namespace InterBus.EntityFrameworkCore.Internal;
 
 /// <summary>
-/// Publish middleware that writes outgoing messages to the transactional outbox instead of
+/// Middleware that writes outgoing messages to the transactional outbox instead of
 /// forwarding them to the transport directly. The <see cref="OutboxProcessor{TDbContext}"/>
 /// background service later reads the outbox and forwards each message to the transport.
 /// <para>
@@ -21,9 +21,7 @@ namespace InterBus.EntityFrameworkCore.Internal;
 /// forward them as a single atomic group.
 /// </para>
 /// </summary>
-internal sealed class OutboxPublishMiddleware<TDbContext>(
-    TDbContext dbContext,
-    IMessageSerializer serializer)
+internal sealed class OutboxSendMiddleware<TDbContext>(TDbContext dbContext, IMessageSerializer serializer)
     : IPublishMiddleware
     where TDbContext : DbContext, IOutboxDbContext
 {
@@ -32,13 +30,10 @@ internal sealed class OutboxPublishMiddleware<TDbContext>(
 
     private OutboxGroup? _outboxGroup;
 
-    public Task InvokeAsync<T>(
-        PublishContext<T> context,
-        Func<PublishContext<T>, CancellationToken, Task> next,
-        CancellationToken cancellationToken = default)
-        where T : class
+    public Task InvokeAsync<T>(PublishContext<T> context, Func<PublishContext<T>, CancellationToken, Task> next,
+        CancellationToken cancellationToken = default) where T : class
     {
-        var payload = serializer.Serialize(context.Payload);
+        var payload = serializer.Serialize(context.Message);
         var headersJson = SerializeHeaders(context.Headers);
 
         EnsureGroupExists().Messages.Add(new OutboxMessage

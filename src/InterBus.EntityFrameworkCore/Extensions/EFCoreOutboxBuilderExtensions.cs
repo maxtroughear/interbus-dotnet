@@ -1,5 +1,4 @@
 using InterBus.EntityFrameworkCore.Internal;
-using InterBus.Middleware;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -58,7 +57,7 @@ public static class EfCoreOutboxBuilderExtensions
         configure?.Invoke(outboxBuilder);
 
         builder.Services.AddSingleton(outboxBuilder.Options);
-        builder.Services.AddScoped<IPublishMiddleware, OutboxPublishMiddleware<TDbContext>>();
+        builder.UsePublishMiddleware<OutboxSendMiddleware<TDbContext>>();
 
         if (outboxBuilder.Options.RunOutboxProcessor)
             builder.Services.AddHostedService<OutboxProcessor<TDbContext>>();

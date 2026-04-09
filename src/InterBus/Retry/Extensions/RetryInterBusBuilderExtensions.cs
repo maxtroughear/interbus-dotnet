@@ -20,14 +20,15 @@ public static class RetryInterBusBuilderExtensions
     /// (3 retries, no delay, catch all exceptions).
     /// </param>
     /// <returns>The builder for fluent chaining.</returns>
-    public static IInterBusBuilder UseRetryMiddleware(
-        this IInterBusBuilder builder,
+    public static IConsumerBuilder UseRetryMiddleware(
+        this IConsumerBuilder builder,
         Action<RetryOptions>? configure = null)
     {
         var options = new RetryOptions();
         configure?.Invoke(options);
 
         builder.Services.AddSingleton(options);
+
         return builder.UseConsumeMiddleware<RetryConsumeMiddleware>();
     }
 }

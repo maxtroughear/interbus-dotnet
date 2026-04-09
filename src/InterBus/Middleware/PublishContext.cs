@@ -3,11 +3,11 @@ namespace InterBus.Middleware;
 /// <summary>
 /// Carries the state of a single publish or send operation through the
 /// <see cref="IPublishMiddleware"/> pipeline.
-/// Middleware may inspect or mutate <see cref="Payload"/> and <see cref="Headers"/>
+/// Middleware may inspect or mutate <see cref="Message"/> and <see cref="Headers"/>
 /// (e.g. to implement the Claim Check pattern) before the terminal step forwards the
 /// message to the transport.
 /// </summary>
-public sealed class PublishContext<T>
+public sealed class PublishContext<T> : IContext
 {
     /// <summary>
     /// The destination URI for this message. The scheme encodes the transport and
@@ -17,8 +17,8 @@ public sealed class PublishContext<T>
     /// </summary>
     public Uri Destination { get; }
 
-    /// <summary>The serialized message payload. Middleware may replace this value.</summary>
-    public T Payload { get; set; }
+    /// <summary>The message. Middleware may replace this value.</summary>
+    public T Message { get; set; }
 
     /// <summary>
     /// The headers attached to the outgoing message.
@@ -39,10 +39,10 @@ public sealed class PublishContext<T>
     /// test implementations of <see cref="IMessagePublisher"/> to invoke configure delegates
     /// (e.g. in unit tests for middleware or redelivery handlers).
     /// </summary>
-    public PublishContext(Uri destination, T payload, MessageHeaders headers)
+    public PublishContext(Uri destination, T message, MessageHeaders headers)
     {
         Destination = destination;
-        Payload = payload;
+        Message = message;
         Headers = headers;
     }
 }

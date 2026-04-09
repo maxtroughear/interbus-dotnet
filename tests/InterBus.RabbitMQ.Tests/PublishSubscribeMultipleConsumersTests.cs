@@ -41,10 +41,7 @@ public class PublishSubscribeMultipleConsumersTests(string imageTag)
         services.AddSingleton(_auditTracker);
         services.AddInterBus(bus =>
         {
-            bus.AddRabbitMqTransport(o =>
-            {
-                o.Uri = _container.GetConnectionString();
-            });
+            bus.AddRabbitMqTransport(o => { o.Uri = _container.GetConnectionString(); });
             bus.AddConsumer<OrderPlacedConsumer>();
             bus.AddConsumer<AuditConsumer>();
         });
@@ -76,8 +73,7 @@ public class PublishSubscribeMultipleConsumersTests(string imageTag)
         var msg = new OrderPlaced(Guid.NewGuid(), "fan@out.test", 50m);
         await publisher.Publish(msg, TestContext.CurrentContext.CancellationToken);
 
-        await TestHelpers.WaitUntilAsync(
-            () => _orderTracker.Messages.Count == 1 && _auditTracker.Messages.Count == 1);
+        await TestHelpers.WaitUntilAsync(() => _orderTracker.Messages.Count == 1 && _auditTracker.Messages.Count == 1);
 
         using (Assert.EnterMultipleScope())
         {

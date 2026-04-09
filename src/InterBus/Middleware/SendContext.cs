@@ -1,6 +1,6 @@
 namespace InterBus.Middleware;
 
-public class SendContext
+public class SendContext : IContext
 {
     /// <summary>
     /// The destination URI for this message. The scheme encodes the transport and

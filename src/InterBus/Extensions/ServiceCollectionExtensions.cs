@@ -1,6 +1,7 @@
 using System.Diagnostics.CodeAnalysis;
 using InterBus.Internal;
 using InterBus.Middleware;
+using InterBus.Middleware.Internal;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
@@ -37,10 +38,6 @@ public static class ServiceCollectionExtensions
         var options = new InterBusOptions();
         var builder = new InterBusBuilder(services, options);
 
-        // Register the exception-logging consume middleware as the outermost (first) step
-        // before user-defined middleware so it catches exceptions from all downstream steps.
-        services.AddScoped<IConsumeMiddleware, ExceptionLoggingConsumeMiddleware>();
-
         configure(builder);
 
         // Register options so transports can resolve them.
@@ -50,6 +47,8 @@ public static class ServiceCollectionExtensions
         // or a direct services.AddSingleton<IMessageSerializer>(...) call inside configure
         services.TryAddSingleton<IMessageSerializer, SystemTextJsonMessageSerializer>();
 
+        services.AddScoped<IMiddlewareFactory, MiddlewareFactory>();
+
         services.AddScoped<DispatchPipelineExecutor>();
         services.AddScoped<ConsumePipelineExecutor>();
         services.AddScoped<SchedulePipelineExecutor>();
@@ -57,7 +56,10 @@ public static class ServiceCollectionExtensions
 
         // Register the transport factory and the scoped publisher.
         services.AddSingleton<IInterBusTransportFactory, InterBusTransportFactory>();
-        services.AddScoped<IMessagePublisher, MessagePublisher>();
+        services.AddScoped<IMessagePublisher, BusMessagePublisher>();
+
+        // Register final steps in middleware pipelines
+        builder.UsePublishMiddleware<PublishToSendPipeline>();
 
         return services;
     }

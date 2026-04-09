@@ -21,7 +21,8 @@ public interface IMessagePublisher
     /// optional send delay (via <see cref="PublishContext{T}.Delay"/>).
     /// All registered consumers will receive the message.
     /// </summary>
-    Task Publish<T>(T message, Action<PublishContext<T>> configure, CancellationToken cancellationToken = default)
+    Task Publish<T>(T message, Action<PublishContext<T>> configure,
+        CancellationToken cancellationToken = default)
         where T : class;
 
     /// <summary>

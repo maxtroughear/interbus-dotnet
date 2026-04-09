@@ -1,11 +1,9 @@
 namespace InterBus.Middleware;
 
 public sealed class SendPipelineExecutor(
-    IEnumerable<ISendMiddleware> middlewares,
-    IInterBusTransportFactory transportFactory)
+    IInterBusTransportFactory transportFactory,
+    IMiddlewareFactory middlewareFactory)
 {
-    private readonly IList<ISendMiddleware> _middlewares = middlewares.Reverse().ToList();
-
     /// <summary>
     /// Builds and runs the send pipeline for the given <paramref name="context"/>,
     /// forwarding to the correct <see cref="IInterBusTransport"/> as the terminal step.
@@ -13,11 +11,12 @@ public sealed class SendPipelineExecutor(
     public Task ExecuteAsync(SendContext context, CancellationToken cancellationToken = default)
     {
         var pipeline = TerminalDeliverDelegate;
-        foreach (var middleware in _middlewares)
+
+        var middlewares = middlewareFactory.Resolve<ISendMiddleware>();
+        foreach (var middleware in middlewares)
         {
-            var current = middleware;
             var next = pipeline;
-            pipeline = (ctx, ct) => current.InvokeAsync(ctx, next, ct);
+            pipeline = (ctx, ct) => middleware.InvokeAsync(ctx, next, ct);
         }
 
         return pipeline(context, cancellationToken);

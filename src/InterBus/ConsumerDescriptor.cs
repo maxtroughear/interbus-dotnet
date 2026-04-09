@@ -47,11 +47,4 @@ public sealed class ConsumerDescriptor(
     /// Defaults to <c>1</c> (sequential dispatch).
     /// </summary>
     public int ConcurrencyCount { get; internal set; } = 1;
-
-    /// <summary>
-    /// The consume middleware types registered specifically for this consumer.
-    /// These run after any globally-registered consume middleware, closer to the consumer.
-    /// Populated by <see cref="IConsumerBuilder.UseConsumeMiddleware{TMiddleware}"/>.
-    /// </summary>
-    internal List<Type> ConsumeMiddlewareTypes { get; } = [];
 }

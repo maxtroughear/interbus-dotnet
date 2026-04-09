@@ -107,28 +107,32 @@ public interface IInterBusBuilder
         where TSerializer : class, IMessageSerializer;
 
     /// <summary>
-    /// Add a middleware step to the publish pipeline.
+    /// Add a middleware step to the publish pipeline, used in the bus context.
     /// Steps are executed in registration order - the first registered step is outermost
-    /// and runs first. The terminal step calls the configured <see cref="IInterBusTransport"/>.
+    /// and runs first. The terminal step serializes the message and starts the send pipeline.
     /// </summary>
+    /// <remarks>
+    /// Use <see cref="IConsumerBuilder.UsePublishMiddleware{TMiddleware}"/> to add publish
+    /// middleware to the consume context
+    /// </remarks>
     IInterBusBuilder UsePublishMiddleware<
         [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
         TMiddleware>()
         where TMiddleware : class, IPublishMiddleware;
 
     /// <summary>
-    /// Add a middleware step to the consume pipeline.
+    /// Add a middleware step to the send pipeline, used in the bus context.
     /// Steps are executed in registration order - the first registered step is outermost
-    /// and runs first. The terminal step invokes the consumer's dispatch delegate.
+    /// and runs first. The terminal step calls the configured <see cref="IInterBusTransport"/>.
     /// </summary>
     /// <remarks>
-    /// An exception-logging middleware is automatically registered as the first (outermost)
-    /// step before any user-defined steps.
+    /// Use <see cref="IConsumerBuilder.UseSendMiddleware{TMiddleware}"/> to add send
+    /// middleware to the consume context
     /// </remarks>
-    IInterBusBuilder UseConsumeMiddleware<
+    IInterBusBuilder UseSendMiddleware<
         [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
         TMiddleware>()
-        where TMiddleware : class, IConsumeMiddleware;
+        where TMiddleware : class, ISendMiddleware;
 
     /// <summary>
     /// Add a middleware step to the schedule pipeline.

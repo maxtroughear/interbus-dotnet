@@ -63,7 +63,7 @@ public sealed class RedeliverySchedulingConsumeMiddleware(
             {
                 await scheduler.ScheduleSend(
                     context.Descriptor.QueueName,
-                    context.Payload,
+                    context.Message,
                     delay,
                     ctx =>
                     {
@@ -76,7 +76,7 @@ public sealed class RedeliverySchedulingConsumeMiddleware(
             {
                 await publisher.Send(
                     context.Descriptor.QueueName,
-                    context.Payload,
+                    context.Message,
                     ctx =>
                     {
                         foreach (var header in redeliveryHeaders)

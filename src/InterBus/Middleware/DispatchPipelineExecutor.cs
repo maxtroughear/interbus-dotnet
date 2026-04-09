@@ -11,9 +11,8 @@ public sealed class DispatchPipelineExecutor(
         var pipeline = TerminalDispatchDelegate;
         foreach (var middleware in _middlewares)
         {
-            var current = middleware;
             var next = pipeline;
-            pipeline = (ctx, ct) => current.InvokeAsync(ctx, next, ct);
+            pipeline = (ctx, ct) => middleware.InvokeAsync(ctx, next, ct);
         }
 
         return pipeline(context, cancellationToken);

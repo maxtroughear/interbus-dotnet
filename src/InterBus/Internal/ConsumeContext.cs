@@ -11,11 +11,9 @@ internal sealed class ConsumeContext(MessageHeaders headers, IMessagePublisher p
     public Task Publish<T>(T message, CancellationToken cancellationToken = default) where T : class =>
         publisher.Publish(message, cancellationToken);
 
-    public Task Publish<T>(T message, Action<PublishContext<T>>? configure = null,
+    public Task Publish<T>(T message, Action<PublishContext<T>> configure,
         CancellationToken cancellationToken = default) where T : class =>
-        configure is null
-            ? publisher.Publish(message, cancellationToken)
-            : publisher.Publish(message, configure, cancellationToken);
+        publisher.Publish(message, configure, cancellationToken);
 
     public Task Send<TConsumer, T>(T message, CancellationToken cancellationToken = default)
         where TConsumer : IConsumer<T> where T : class =>

@@ -9,7 +9,11 @@ namespace InterBus.Middleware;
 /// Transport packages should resolve this service from the message scope and call
 /// <see cref="ExecuteAsync"/> instead of invoking the consumer dispatch delegate directly.
 /// </summary>
-public sealed class ConsumePipelineExecutor(IMiddlewareFactory middlewareFactory)
+public sealed class ConsumePipelineExecutor(
+    IMiddlewareFactory middlewareFactory,
+    InterBusOptions options,
+    IInterBusTransportFactory transportFactory,
+    IMessageSerializer serializer)
 {
     /// <summary>
     /// Builds and runs the consume pipeline for the given <paramref name="context"/> and
@@ -34,7 +38,9 @@ public sealed class ConsumePipelineExecutor(IMiddlewareFactory middlewareFactory
 
         Task TerminalConsumeDelegate(ConsumeContext<T> ctx, CancellationToken ct)
         {
-            var consumeContext = new ConsumeContext(ctx.Headers);
+            var publisher = new ConsumerScopedMessagePublisher(
+                options, middlewareFactory, transportFactory, serializer, ctx.Descriptor.ConsumerType);
+            var consumeContext = new ConsumeContext(ctx.Headers, publisher);
             return finalDelegate(ctx.Message, consumeContext, ct);
         }
     }

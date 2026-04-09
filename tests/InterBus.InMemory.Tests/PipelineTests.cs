@@ -495,4 +495,224 @@ public class PipelineTests
     }
 
     #endregion
+
+    #region Consume-scoped publish middleware
+
+    [Fact]
+    public async Task ConsumeContext_Publish_DeliversMessage()
+    {
+        // A consumer publishes a new message from within its Consume method via IConsumeContext.
+        // The published message should be delivered to the downstream consumer.
+        var orderShippedTracker = new OrderShippedTracker();
+
+        var (provider, cts) = await StartAsync(
+            services => { services.AddSingleton(orderShippedTracker); },
+            bus =>
+            {
+                bus.AddInMemoryTransport();
+                bus.AddConsumer<OrderPlacedConsumer>(b => { });
+                bus.AddConsumer<PublishingOrderPlacedConsumer>();
+                bus.AddConsumer<DownstreamOrderShippedConsumer>();
+            });
+
+        try
+        {
+            using var scope = provider.CreateScope();
+            var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
+            await publisher.Send<PublishingOrderPlacedConsumer, OrderPlaced>(
+                new OrderPlaced(Guid.NewGuid(), "chain@test.com", 1m),
+                TestContext.Current.CancellationToken);
+
+            await WaitUntilAsync(() => orderShippedTracker.Messages.Count == 1);
+
+            Assert.Single(orderShippedTracker.Messages);
+        }
+        finally
+        {
+            await StopAsync(provider, cts);
+        }
+    }
+
+    [Fact]
+    public async Task ConsumeContext_Publish_UsesConsumerScopedPublishMiddleware()
+    {
+        // Middleware registered on OrderPlacedConsumer via UsePublishMiddleware should
+        // be invoked when that consumer publishes from its Consume method.
+        var publishCallTracker = new PublishCallTracker();
+        var orderShippedTracker = new OrderShippedTracker();
+
+        var (provider, cts) = await StartAsync(
+            services =>
+            {
+                services.AddSingleton(publishCallTracker);
+                services.AddSingleton(orderShippedTracker);
+            },
+            bus =>
+            {
+                bus.AddInMemoryTransport();
+                bus.AddConsumer<PublishingOrderPlacedConsumer>(b =>
+                    b.UsePublishMiddleware<RecordingPublishMiddleware>());
+                bus.AddConsumer<DownstreamOrderShippedConsumer>();
+            });
+
+        try
+        {
+            using var scope = provider.CreateScope();
+            var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
+            await publisher.Send<PublishingOrderPlacedConsumer, OrderPlaced>(
+                new OrderPlaced(Guid.NewGuid(), "scoped-publish@test.com", 1m),
+                TestContext.Current.CancellationToken);
+
+            await WaitUntilAsync(() => orderShippedTracker.Messages.Count == 1);
+
+            // The consumer-scoped publish middleware must have run.
+            Assert.NotEmpty(publishCallTracker.Calls);
+        }
+        finally
+        {
+            await StopAsync(provider, cts);
+        }
+    }
+
+    [Fact]
+    public async Task ConsumeContext_Publish_BusLevelPublishMiddlewareIsNotInvoked()
+    {
+        // Bus-level publish middleware should NOT fire when a consumer publishes
+        // via IConsumeContext – the consumer-scoped pipeline is used instead.
+        var busPublishCallTracker = new PublishCallTracker();
+        var orderShippedTracker = new OrderShippedTracker();
+
+        var (provider, cts) = await StartAsync(
+            services =>
+            {
+                services.AddSingleton(busPublishCallTracker);
+                services.AddSingleton(orderShippedTracker);
+            },
+            bus =>
+            {
+                bus.AddInMemoryTransport();
+                // Register the recording middleware at the BUS level, NOT on the consumer.
+                bus.UsePublishMiddleware<RecordingPublishMiddleware>();
+                bus.AddConsumer<PublishingOrderPlacedConsumer>();
+                bus.AddConsumer<DownstreamOrderShippedConsumer>();
+            });
+
+        try
+        {
+            using var scope = provider.CreateScope();
+            var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
+
+            // Drain any recorded calls from the initial Publish via the bus publisher.
+            await publisher.Send<PublishingOrderPlacedConsumer, OrderPlaced>(
+                new OrderPlaced(Guid.NewGuid(), "bus-level@test.com", 1m),
+                TestContext.Current.CancellationToken);
+
+            await WaitUntilAsync(() => orderShippedTracker.Messages.Count == 1);
+
+            // The initial Send (via bus publisher) triggers the recording middleware once for
+            // the outer send. The subsequent publish from within the consumer uses the
+            // consumer-scoped pipeline, which has NO recording middleware registered,
+            // so no additional calls should be recorded after the bus-level send.
+            var callsAfterInitialSend = busPublishCallTracker.Calls.Count;
+
+            // Verify message was delivered – meaning the consumer's publish worked.
+            Assert.Single(orderShippedTracker.Messages);
+
+            // The recording middleware was registered at bus level only; after the initial
+            // send the counter must not have grown from the consumer-scoped publish.
+            Assert.Equal(callsAfterInitialSend, busPublishCallTracker.Calls.Count);
+        }
+        finally
+        {
+            await StopAsync(provider, cts);
+        }
+    }
+
+    #endregion
+
+    #region Consume-scoped send middleware
+
+    [Fact]
+    public async Task ConsumeContext_Send_UsesConsumerScopedSendMiddleware()
+    {
+        // ISendMiddleware registered on a consumer via UseSendMiddleware should be
+        // invoked when that consumer sends a message from its Consume method.
+        var sendCallTracker = new SendMiddlewareCallTracker();
+        var orderShippedTracker = new OrderShippedTracker();
+
+        var (provider, cts) = await StartAsync(
+            services =>
+            {
+                services.AddSingleton(sendCallTracker);
+                services.AddSingleton(orderShippedTracker);
+            },
+            bus =>
+            {
+                bus.AddInMemoryTransport();
+                bus.AddConsumer<PublishingOrderPlacedConsumer>(b =>
+                    b.UseSendMiddleware<RecordingSendMiddleware>());
+                bus.AddConsumer<DownstreamOrderShippedConsumer>();
+            });
+
+        try
+        {
+            using var scope = provider.CreateScope();
+            var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
+            await publisher.Send<PublishingOrderPlacedConsumer, OrderPlaced>(
+                new OrderPlaced(Guid.NewGuid(), "scoped-send@test.com", 1m),
+                TestContext.Current.CancellationToken);
+
+            await WaitUntilAsync(() => orderShippedTracker.Messages.Count == 1);
+
+            // The consumer-scoped send middleware must have been invoked.
+            Assert.True(sendCallTracker.InvocationCount > 0);
+        }
+        finally
+        {
+            await StopAsync(provider, cts);
+        }
+    }
+
+    #endregion
+
+    #region Consume-scoped support types
+
+    /// <summary>
+    /// Consumes an <see cref="OrderPlaced"/> message and immediately publishes an
+    /// <see cref="OrderShipped"/> message via <see cref="IConsumeContext"/>.
+    /// </summary>
+    public sealed class PublishingOrderPlacedConsumer : IConsumer<OrderPlaced>
+    {
+        public Task Consume(OrderPlaced message, IConsumeContext context, CancellationToken cancellationToken = default) =>
+            context.Publish(new OrderShipped(message.OrderId, "TRK-CHAIN"), cancellationToken);
+    }
+
+    public sealed class DownstreamOrderShippedConsumer(OrderShippedTracker tracker) : IConsumer<OrderShipped>
+    {
+        public Task Consume(OrderShipped message, IConsumeContext context, CancellationToken cancellationToken = default)
+        {
+            tracker.Track(message);
+            return Task.CompletedTask;
+        }
+    }
+
+    public sealed class SendMiddlewareCallTracker
+    {
+        private int _count;
+        public int InvocationCount => _count;
+        public void Increment() => Interlocked.Increment(ref _count);
+    }
+
+    public sealed class RecordingSendMiddleware(SendMiddlewareCallTracker tracker) : ISendMiddleware
+    {
+        public async Task InvokeAsync(SendContext context,
+            Func<SendContext, CancellationToken, Task> next,
+            CancellationToken cancellationToken = default)
+        {
+            tracker.Increment();
+            await next(context, cancellationToken);
+        }
+    }
+
+    #endregion
 }

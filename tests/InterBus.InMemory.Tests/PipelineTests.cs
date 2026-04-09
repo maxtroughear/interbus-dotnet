@@ -510,7 +510,6 @@ public class PipelineTests
             bus =>
             {
                 bus.AddInMemoryTransport();
-                bus.AddConsumer<OrderPlacedConsumer>(b => { });
                 bus.AddConsumer<PublishingOrderPlacedConsumer>();
                 bus.AddConsumer<DownstreamOrderShippedConsumer>();
             });

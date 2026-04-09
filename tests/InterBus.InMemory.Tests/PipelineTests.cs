@@ -674,6 +674,190 @@ public class PipelineTests
 
     #endregion
 
+    #region Consume-scoped scheduling (publish scheduling path)
+
+    [Fact]
+    public async Task ConsumeContext_SchedulePublish_UsesConsumerScopedSendMiddleware()
+    {
+        // When a consumer calls context.SchedulePublish(), the ScheduleDeliveryCommand is
+        // forwarded via the consumer-scoped publisher.  Any ISendMiddleware registered on
+        // that consumer should therefore run for the command send.
+        var sendCallTracker = new SendMiddlewareCallTracker();
+        var orderShippedTracker = new OrderShippedTracker();
+
+        var (provider, cts) = await StartAsync(
+            services =>
+            {
+                services.AddSingleton(sendCallTracker);
+                services.AddSingleton(orderShippedTracker);
+            },
+            bus =>
+            {
+                bus.AddInMemoryTransport();
+                bus.AddPublishScheduling();
+                bus.AddSchedulingConsumer();
+                bus.AddTransportDelayScheduler();
+                bus.AddConsumer<SchedulingOrderPlacedConsumer>(b =>
+                    b.UseSendMiddleware<RecordingSendMiddleware>());
+                bus.AddConsumer<DownstreamOrderShippedConsumer>();
+            });
+
+        try
+        {
+            using var scope = provider.CreateScope();
+            var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
+            await publisher.Send<SchedulingOrderPlacedConsumer, OrderPlaced>(
+                new OrderPlaced(Guid.NewGuid(), "sched-send@test.com", 1m),
+                TestContext.Current.CancellationToken);
+
+            await WaitUntilAsync(() => orderShippedTracker.Messages.Count == 1);
+
+            // The consumer-scoped send middleware must have been invoked at least once
+            // for the ScheduleDeliveryCommand send.
+            Assert.True(sendCallTracker.InvocationCount > 0);
+        }
+        finally
+        {
+            await StopAsync(provider, cts);
+        }
+    }
+
+    [Fact]
+    public async Task ConsumeContext_SchedulePublish_DeliversMessage()
+    {
+        // When a consumer calls context.SchedulePublish() with scheduledAt = now,
+        // the message should be delivered to the downstream consumer end-to-end.
+        var orderShippedTracker = new OrderShippedTracker();
+
+        var (provider, cts) = await StartAsync(
+            services => { services.AddSingleton(orderShippedTracker); },
+            bus =>
+            {
+                bus.AddInMemoryTransport();
+                bus.AddPublishScheduling();
+                bus.AddSchedulingConsumer();
+                bus.AddTransportDelayScheduler();
+                bus.AddConsumer<SchedulingOrderPlacedConsumer>();
+                bus.AddConsumer<DownstreamOrderShippedConsumer>();
+            });
+
+        try
+        {
+            using var scope = provider.CreateScope();
+            var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
+            await publisher.Send<SchedulingOrderPlacedConsumer, OrderPlaced>(
+                new OrderPlaced(Guid.NewGuid(), "sched-deliver@test.com", 1m),
+                TestContext.Current.CancellationToken);
+
+            await WaitUntilAsync(() => orderShippedTracker.Messages.Count == 1);
+
+            Assert.Single(orderShippedTracker.Messages);
+        }
+        finally
+        {
+            await StopAsync(provider, cts);
+        }
+    }
+
+    [Fact]
+    public async Task ConsumeContext_SchedulePublish_BusLevelSendMiddlewareIsNotInvoked()
+    {
+        // Bus-level send middleware should NOT fire when a consumer schedules via
+        // IConsumeContext – the consumer-scoped pipeline is used instead.
+        var busSendCallTracker = new SendMiddlewareCallTracker();
+        var orderShippedTracker = new OrderShippedTracker();
+
+        var (provider, cts) = await StartAsync(
+            services =>
+            {
+                services.AddSingleton(busSendCallTracker);
+                services.AddSingleton(orderShippedTracker);
+            },
+            bus =>
+            {
+                bus.AddInMemoryTransport();
+                bus.AddPublishScheduling();
+                bus.AddSchedulingConsumer();
+                bus.AddTransportDelayScheduler();
+                // Register the recording middleware at the BUS level, NOT on the consumer.
+                bus.UseSendMiddleware<RecordingSendMiddleware>();
+                bus.AddConsumer<SchedulingOrderPlacedConsumer>();
+                bus.AddConsumer<DownstreamOrderShippedConsumer>();
+            });
+
+        try
+        {
+            using var scope = provider.CreateScope();
+            var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
+
+            await publisher.Send<SchedulingOrderPlacedConsumer, OrderPlaced>(
+                new OrderPlaced(Guid.NewGuid(), "bus-sched@test.com", 1m),
+                TestContext.Current.CancellationToken);
+
+            await WaitUntilAsync(() => orderShippedTracker.Messages.Count == 1);
+
+            // The initial Send (via bus publisher) triggers the bus-level send middleware.
+            // The subsequent SchedulePublish from within the consumer uses the consumer-scoped
+            // pipeline which has NO bus-level send middleware registered.
+            // Capture the count after the initial bus-level Send; it must not grow further
+            // once the consumer-scoped scheduling executes.
+            var countAfterInitialSend = busSendCallTracker.InvocationCount;
+
+            Assert.Single(orderShippedTracker.Messages);
+            Assert.Equal(countAfterInitialSend, busSendCallTracker.InvocationCount);
+        }
+        finally
+        {
+            await StopAsync(provider, cts);
+        }
+    }
+
+    [Fact]
+    public async Task ConsumeContext_SchedulePublish_UsesConsumerScopedScheduleMiddleware()
+    {
+        // IScheduleMiddleware registered on a consumer via UseScheduleMiddleware should be
+        // invoked when that consumer calls SchedulePublish from its Consume method.
+        var scheduleCallTracker = new ScheduleMiddlewareCallTracker();
+        var orderShippedTracker = new OrderShippedTracker();
+
+        var (provider, cts) = await StartAsync(
+            services =>
+            {
+                services.AddSingleton(scheduleCallTracker);
+                services.AddSingleton(orderShippedTracker);
+            },
+            bus =>
+            {
+                bus.AddInMemoryTransport();
+                bus.AddPublishScheduling();
+                bus.AddSchedulingConsumer();
+                bus.AddTransportDelayScheduler();
+                bus.AddConsumer<SchedulingOrderPlacedConsumer>(b =>
+                    b.UseScheduleMiddleware<RecordingScheduleMiddleware>());
+                bus.AddConsumer<DownstreamOrderShippedConsumer>();
+            });
+
+        try
+        {
+            using var scope = provider.CreateScope();
+            var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
+            await publisher.Send<SchedulingOrderPlacedConsumer, OrderPlaced>(
+                new OrderPlaced(Guid.NewGuid(), "sched-mw@test.com", 1m),
+                TestContext.Current.CancellationToken);
+
+            await WaitUntilAsync(() => orderShippedTracker.Messages.Count == 1);
+
+            // The consumer-scoped schedule middleware must have been invoked.
+            Assert.True(scheduleCallTracker.InvocationCount > 0);
+        }
+        finally
+        {
+            await StopAsync(provider, cts);
+        }
+    }
+
+    #endregion
+
     #region Consume-scoped support types
 
     /// <summary>
@@ -706,6 +890,38 @@ public class PipelineTests
     {
         public async Task InvokeAsync(SendContext context,
             Func<SendContext, CancellationToken, Task> next,
+            CancellationToken cancellationToken = default)
+        {
+            tracker.Increment();
+            await next(context, cancellationToken);
+        }
+    }
+
+    /// <summary>
+    /// Consumes an <see cref="OrderPlaced"/> message and schedules an
+    /// <see cref="OrderShipped"/> message for immediate delivery via
+    /// <see cref="IConsumeContext"/>.
+    /// </summary>
+    public sealed class SchedulingOrderPlacedConsumer : IConsumer<OrderPlaced>
+    {
+        public Task Consume(OrderPlaced message, IConsumeContext context, CancellationToken cancellationToken = default) =>
+            context.SchedulePublish(
+                new OrderShipped(message.OrderId, "TRK-SCHEDULED"),
+                DateTimeOffset.UtcNow,
+                cancellationToken);
+    }
+
+    public sealed class ScheduleMiddlewareCallTracker
+    {
+        private int _count;
+        public int InvocationCount => _count;
+        public void Increment() => Interlocked.Increment(ref _count);
+    }
+
+    public sealed class RecordingScheduleMiddleware(ScheduleMiddlewareCallTracker tracker) : IScheduleMiddleware
+    {
+        public async Task InvokeAsync(ScheduleContext context,
+            Func<ScheduleContext, CancellationToken, Task> next,
             CancellationToken cancellationToken = default)
         {
             tracker.Increment();

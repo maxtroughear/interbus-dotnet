@@ -5,7 +5,7 @@ namespace InterBus;
 /// and enables publishing and scheduling messages from within a consumer.
 /// An instance is passed directly to <see cref="IConsumer{T}.Consume"/> for each message dispatch.
 /// </summary>
-public interface IConsumeContext : IMessagePublisher
+public interface IConsumeContext : IMessagePublisher, IMessageScheduler
 {
     /// <summary>The headers attached to the current message.</summary>
     IReadOnlyDictionary<string, string> Headers { get; }

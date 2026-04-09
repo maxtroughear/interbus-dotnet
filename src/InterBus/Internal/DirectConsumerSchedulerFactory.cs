@@ -20,9 +20,13 @@ internal sealed class DirectConsumerSchedulerFactory(InterBusOptions options) : 
         IMessageSerializer serializer,
         Type consumerType,
         IMessagePublisher consumerPublisher,
-        IMessageSchedulingProvider? provider) =>
-        provider == null
-            ? null
-            : new(options, middlewareFactory, serializer, consumerType, consumerPublisher,
-                isPublishBased: false, provider);
+        IMessageSchedulingProvider? provider)
+    {
+        if (provider == null)
+            return null;
+
+        return new ConsumerScopedMessageScheduler(
+            options, middlewareFactory, serializer, consumerType, consumerPublisher,
+            isPublishBased: false, provider);
+    }
 }

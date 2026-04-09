@@ -804,6 +804,10 @@ public class PipelineTests
             var countAfterInitialSend = busSendCallTracker.InvocationCount;
 
             Assert.Single(orderShippedTracker.Messages);
+            // Verify bus-level send middleware was actually invoked for the initial Send.
+            Assert.True(countAfterInitialSend > 0,
+                "Bus-level send middleware should have been invoked for the initial Send.");
+            // Verify no additional invocations happened from the consumer-scoped scheduling.
             Assert.Equal(countAfterInitialSend, busSendCallTracker.InvocationCount);
         }
         finally

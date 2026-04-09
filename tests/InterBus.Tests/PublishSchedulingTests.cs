@@ -29,7 +29,7 @@ public sealed class PublishSchedulingTests
         });
 
         var provider = services.BuildServiceProvider();
-        using var scope = provider.CreateScope();
+        var scope = provider.CreateScope();
         var scheduler = scope.ServiceProvider.GetRequiredService<IMessageScheduler>();
         return (scheduler, transport);
     }

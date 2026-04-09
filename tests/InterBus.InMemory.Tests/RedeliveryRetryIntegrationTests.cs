@@ -69,7 +69,7 @@ public sealed class RedeliveryRetryIntegrationTests
                 bus.AddInMemoryTransport();
                 bus.AddConsumer<RedeliveryTestConsumer>();
                 bus.AddScheduling();
-                bus.UseRedeliveryImmediateMiddleware(options => options.RetryCount = 3);
+                bus.WithConsumers(b => b.UseRedeliveryImmediateMiddleware(options => options.RetryCount = 3));
             });
 
         try
@@ -104,7 +104,7 @@ public sealed class RedeliveryRetryIntegrationTests
             {
                 bus.AddInMemoryTransport();
                 bus.AddConsumer<RedeliveryDelayTestConsumer>();
-                bus.UseRedeliveryTransportDelayMiddleware(options => options.RetryCount = 3);
+                bus.WithConsumers(b => b.UseRedeliveryTransportDelayMiddleware(options => options.RetryCount = 3));
             });
 
         try
@@ -139,11 +139,11 @@ public sealed class RedeliveryRetryIntegrationTests
             {
                 bus.AddInMemoryTransport();
                 bus.AddConsumer<RedeliveryDelayTestConsumer>();
-                bus.UseRedeliveryTransportDelayMiddleware(options =>
+                bus.WithConsumers(b => b.UseRedeliveryTransportDelayMiddleware(options =>
                 {
                     options.RetryCount = 3;
                     options.DelayProvider = _ => TimeSpan.FromMilliseconds(10);
-                });
+                }));
             });
 
         try

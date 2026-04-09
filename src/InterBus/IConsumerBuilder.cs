@@ -1,3 +1,7 @@
+using System.Diagnostics.CodeAnalysis;
+using InterBus.Middleware;
+using Microsoft.Extensions.DependencyInjection;
+
 namespace InterBus;
 
 /// <summary>
@@ -8,6 +12,9 @@ namespace InterBus;
 /// </summary>
 public interface IConsumerBuilder
 {
+    /// <summary>The underlying service collection, available for transport extension methods to register additional services.</summary>
+    IServiceCollection Services { get; }
+
     /// <summary>
     /// Configures the number of concurrent message handlers for this consumer's queue.
     /// Transports that support concurrent dispatch per queue (e.g. RabbitMQ) use this value
@@ -18,4 +25,40 @@ public interface IConsumerBuilder
     /// The number of concurrent message handlers. Must be at least <c>1</c>.
     /// </param>
     IConsumerBuilder WithConcurrency(int concurrencyCount);
+
+    /// <summary>
+    /// Add a middleware step to the consume pipeline for this consumer only.
+    /// Steps are executed in registration order - the first registered step is outermost
+    /// </summary>
+    /// <remarks>
+    /// The middleware type is automatically registered as a scoped service in the DI container.
+    /// </remarks>
+    IConsumerBuilder UseConsumeMiddleware<
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
+        TMiddleware>()
+        where TMiddleware : class, IConsumeMiddleware;
+
+    /// <summary>
+    /// Add a middleware step to the send pipeline for this consumer only.
+    /// Steps are executed in registration order - the first registered step is outermost
+    /// </summary>
+    /// <remarks>
+    /// The middleware type is automatically registered as a scoped service in the DI container.
+    /// </remarks>
+    public IConsumerBuilder UseSendMiddleware<
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
+        TMiddleware>()
+        where TMiddleware : class, ISendMiddleware;
+
+    /// <summary>
+    /// Add a middleware step to the publish pipeline for this consumer only.
+    /// Steps are executed in registration order - the first registered step is outermost
+    /// </summary>
+    /// <remarks>
+    /// The middleware type is automatically registered as a scoped service in the DI container.
+    /// </remarks>
+    public IConsumerBuilder UsePublishMiddleware<
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
+        TMiddleware>()
+        where TMiddleware : class, IPublishMiddleware;
 }

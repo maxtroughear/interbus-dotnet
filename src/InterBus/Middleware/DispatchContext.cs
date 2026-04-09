@@ -1,6 +1,6 @@
 namespace InterBus.Middleware;
 
-public sealed class DispatchContext(ConsumerDescriptor descriptor, byte[] payload, MessageHeaders headers)
+public sealed class DispatchContext(ConsumerDescriptor descriptor, byte[] payload, MessageHeaders headers) : IContext
 {
     public ConsumerDescriptor Descriptor { get; } = descriptor;
 

@@ -9,10 +9,8 @@ namespace InterBus.Middleware;
 /// Transport packages should resolve this service from the message scope and call
 /// <see cref="ExecuteAsync"/> instead of invoking the consumer dispatch delegate directly.
 /// </summary>
-public sealed class ConsumePipelineExecutor(IEnumerable<IConsumeMiddleware> middlewares)
+public sealed class ConsumePipelineExecutor(IMiddlewareFactory middlewareFactory)
 {
-    private readonly IList<IConsumeMiddleware> _middlewares = middlewares.Reverse().ToList();
-
     /// <summary>
     /// Builds and runs the consume pipeline for the given <paramref name="context"/> and
     /// <paramref name="finalDelegate"/>
@@ -23,11 +21,13 @@ public sealed class ConsumePipelineExecutor(IEnumerable<IConsumeMiddleware> midd
         CancellationToken cancellationToken = default) where T : class
     {
         var pipeline = TerminalConsumeDelegate;
-        foreach (var middleware in _middlewares)
+
+        var middlewares = middlewareFactory.Resolve<IConsumeMiddleware>(context.Descriptor.ConsumerType);
+
+        foreach (var middleware in middlewares)
         {
-            var current = middleware;
             var next = pipeline;
-            pipeline = (ctx, ct) => current.InvokeAsync(ctx, next, ct);
+            pipeline = (ctx, ct) => middleware.InvokeAsync(ctx, next, ct);
         }
 
         return pipeline(context, cancellationToken);
@@ -35,7 +35,7 @@ public sealed class ConsumePipelineExecutor(IEnumerable<IConsumeMiddleware> midd
         Task TerminalConsumeDelegate(ConsumeContext<T> ctx, CancellationToken ct)
         {
             var consumeContext = new ConsumeContext(ctx.Headers);
-            return finalDelegate(ctx.Payload, consumeContext, ct);
+            return finalDelegate(ctx.Message, consumeContext, ct);
         }
     }
 }

@@ -13,7 +13,7 @@ namespace InterBus.Middleware;
 /// external storage before the scheduling record is created.
 /// Register via <see cref="IInterBusBuilder.UseScheduleMiddleware{TMiddleware}"/>.
 /// </remarks>
-public interface IScheduleMiddleware
+public interface IScheduleMiddleware : IMiddleware
 {
     /// <summary>
     /// Execute this middleware step.

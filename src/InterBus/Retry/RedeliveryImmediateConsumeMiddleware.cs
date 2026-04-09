@@ -39,7 +39,7 @@ public sealed class RedeliveryImmediateConsumeMiddleware(
 
             await publisher.Send(
                 context.Descriptor.QueueName,
-                context.Payload,
+                context.Message,
                 ctx =>
                 {
                     foreach (var header in redeliveryHeaders)

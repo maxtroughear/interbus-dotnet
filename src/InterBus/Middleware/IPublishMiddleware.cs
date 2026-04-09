@@ -9,7 +9,7 @@ namespace InterBus.Middleware;
 /// <remarks>
 /// Register via <see cref="IInterBusBuilder.UsePublishMiddleware{TMiddleware}"/>.
 /// </remarks>
-public interface IPublishMiddleware
+public interface IPublishMiddleware : IMiddleware
 {
     /// <summary>
     /// Execute this middleware step.

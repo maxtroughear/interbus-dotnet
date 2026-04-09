@@ -73,7 +73,8 @@ public static class InterBusBuilderExtensions
                     if (messageType == deliveryCommandTypeName)
                     {
                         var cmd = serializer.Deserialize<ScheduleDeliveryCommand>(ctx.Payload)!;
-                        var consumeContext = new ConsumeContext<ScheduleDeliveryCommand>(ctx.Descriptor, cmd, ctx.Headers);
+                        var consumeContext =
+                            new ConsumeContext<ScheduleDeliveryCommand>(ctx.Descriptor, cmd, ctx.Headers);
                         return consumePipeline.ExecuteAsync(consumeContext, consumer.Consume, ct);
                     }
 
@@ -124,7 +125,7 @@ public static class InterBusBuilderExtensions
             ArgumentNullException.ThrowIfNull(configure);
 
             foreach (var descriptor in builder.Options.Consumers)
-                configure(new ConsumerBuilder(descriptor));
+                configure(new ConsumerBuilder(descriptor, builder.Services));
 
             return builder;
         }

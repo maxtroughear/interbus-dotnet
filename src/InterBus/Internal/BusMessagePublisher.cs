@@ -3,46 +3,16 @@ using InterBus.Middleware;
 namespace InterBus.Internal;
 
 /// <summary>
-/// Scoped <see cref="IMessagePublisher"/> implementation. Serializes each message and routes it
+/// Bus scoped <see cref="IMessagePublisher"/> implementation. Serializes each message and routes it
 /// through the configured <see cref="IPublishMiddleware"/> pipeline. The terminal pipeline step
 /// resolves the correct <see cref="IInterBusTransport"/> by the destination URI scheme via
 /// <see cref="IInterBusTransportFactory"/> and forwards the message.
 /// Always stamps the <see cref="InterBusHeaders.MessageType"/> header so consumer dispatch
 /// delegates can identify the message type without runtime reflection.
 /// </summary>
-internal sealed class MessagePublisher(
-    SendPipelineExecutor sendPipelineExecutor,
-    InterBusOptions options,
-    IMessageSerializer serializer,
-    IEnumerable<IPublishMiddleware> middlewares)
+internal sealed class BusMessagePublisher(InterBusOptions options, IMiddlewareFactory middlewareFactory)
     : IMessagePublisher
 {
-    // Reverse middleware order for the correct execution order
-    private readonly IList<IPublishMiddleware> _middlewares = middlewares.Reverse().ToList();
-
-    private Func<PublishContext<T>, CancellationToken, Task> BuildMiddlewarePipeline<T>() where T : class
-    {
-        // Build pipeline: first registered middleware is outermost.
-        // Iterate in reverse so each new step wraps the already-built inner chain.
-        var pipeline = TerminalPublishDelegate;
-        foreach (var middleware in _middlewares)
-        {
-            var current = middleware;
-            var next = pipeline;
-            pipeline = (ctx, ct) => current.InvokeAsync(ctx, next, ct);
-        }
-
-        return pipeline;
-
-        // Terminal step: resolve the transport by destination URI scheme and forward.
-        Task TerminalPublishDelegate(PublishContext<T> ctx, CancellationToken ct)
-        {
-            var payload = serializer.Serialize(ctx.Payload);
-            var sendContext = new SendContext(ctx.Destination, payload, ctx.Headers, ctx.Delay);
-            return sendPipelineExecutor.ExecuteAsync(sendContext, ct);
-        }
-    }
-
     public Task Publish<T>(T message, CancellationToken cancellationToken = default) where T : class =>
         Publish(message, _ => { }, cancellationToken);
 
@@ -56,7 +26,7 @@ internal sealed class MessagePublisher(
         var destination = RoutingConventions.TopicUri(options.TopicUriScheme, topicName);
         var context = new PublishContext<T>(destination, message, Stamp<T>());
         configure(context);
-        var pipeline = BuildMiddlewarePipeline<T>();
+        var pipeline = BuildPublishPipeline<T>();
 
         return pipeline(context, cancellationToken);
     }
@@ -74,7 +44,7 @@ internal sealed class MessagePublisher(
         var destination = RoutingConventions.QueueUri(options.QueueUriScheme, typeof(TConsumer));
         var context = new PublishContext<T>(destination, message, Stamp<T>());
         configure(context);
-        var pipeline = BuildMiddlewarePipeline<T>();
+        var pipeline = BuildPublishPipeline<T>();
 
         return pipeline(context, cancellationToken);
     }
@@ -90,7 +60,7 @@ internal sealed class MessagePublisher(
         var destination = RoutingConventions.QueueUri(options.QueueUriScheme, queueName);
         var context = new PublishContext<T>(destination, message, Stamp<T>());
         configure(context);
-        var pipeline = BuildMiddlewarePipeline<T>();
+        var pipeline = BuildPublishPipeline<T>();
 
         return pipeline(context, cancellationToken);
     }
@@ -101,4 +71,20 @@ internal sealed class MessagePublisher(
     /// </summary>
     private static MessageHeaders Stamp<T>() where T : class =>
         new() { [InterBusHeaders.MessageType] = typeof(T).FullName ?? typeof(T).Name };
+
+    // Maybe move to base class?
+    private Func<PublishContext<TMessage>, CancellationToken, Task> BuildPublishPipeline<TMessage>()
+        where TMessage : class
+    {
+        Func<PublishContext<TMessage>, CancellationToken, Task> pipeline = (_, _) => Task.CompletedTask;
+
+        var middlewares = middlewareFactory.Resolve<IPublishMiddleware>();
+        foreach (var middleware in middlewares)
+        {
+            var next = pipeline;
+            pipeline = (ctx, ct) => middleware.InvokeAsync(ctx, next, ct);
+        }
+
+        return pipeline;
+    }
 }

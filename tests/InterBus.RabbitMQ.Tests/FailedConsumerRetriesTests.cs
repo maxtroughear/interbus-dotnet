@@ -41,10 +41,7 @@ public class FailedConsumerRetriesTests(string imageTag)
         services.AddSingleton(_receiveTracker);
         services.AddInterBus(bus =>
         {
-            bus.AddRabbitMqTransport(o =>
-            {
-                o.Uri = _container.GetConnectionString();
-            });
+            bus.AddRabbitMqTransport(o => { o.Uri = _container.GetConnectionString(); });
             bus.AddConsumer<FailingOrderPlacedConsumer>();
         });
 

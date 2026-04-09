@@ -24,15 +24,15 @@ public static class RedeliveryInterBusBuilderExtensions
     /// Requires an <see cref="IMessageSchedulingProvider"/> to be registered first, which is used to schedule the
     /// redelivery of messages when retries are needed
     /// </remarks>
-    public static IInterBusBuilder UseRedeliverySchedulingMiddleware(
-        this IInterBusBuilder builder,
+    public static IConsumerBuilder UseRedeliverySchedulingMiddleware(
+        this IConsumerBuilder builder,
         Action<RedeliveryOptions>? configure = null)
     {
         var options = new RedeliveryOptions();
         configure?.Invoke(options);
 
         builder.Services.AddSingleton(options);
-        builder.Services.AddScoped<IConsumeMiddleware, RedeliverySchedulingConsumeMiddleware>();
+        builder.UseConsumeMiddleware<RedeliverySchedulingConsumeMiddleware>();
 
         return builder;
     }
@@ -52,15 +52,15 @@ public static class RedeliveryInterBusBuilderExtensions
     /// redelivery, without requiring a separate scheduling infrastructure.
     /// Transports that do not support deferred visibility will deliver the message immediately.
     /// </remarks>
-    public static IInterBusBuilder UseRedeliveryTransportDelayMiddleware(
-        this IInterBusBuilder builder,
+    public static IConsumerBuilder UseRedeliveryTransportDelayMiddleware(
+        this IConsumerBuilder builder,
         Action<RedeliveryOptions>? configure = null)
     {
         var options = new RedeliveryOptions();
         configure?.Invoke(options);
 
         builder.Services.AddSingleton(options);
-        builder.Services.AddScoped<IConsumeMiddleware, RedeliveryDelayConsumeMiddleware>();
+        builder.UseConsumeMiddleware<RedeliveryDelayConsumeMiddleware>();
 
         return builder;
     }
@@ -78,15 +78,15 @@ public static class RedeliveryInterBusBuilderExtensions
     /// <remarks>
     /// Does not support delays
     /// </remarks>
-    public static IInterBusBuilder UseRedeliveryImmediateMiddleware(
-        this IInterBusBuilder builder,
+    public static IConsumerBuilder UseRedeliveryImmediateMiddleware(
+        this IConsumerBuilder builder,
         Action<RedeliveryOptions>? configure = null)
     {
         var options = new RedeliveryOptions();
         configure?.Invoke(options);
 
         builder.Services.AddSingleton(options);
-        builder.Services.AddScoped<IConsumeMiddleware, RedeliveryImmediateConsumeMiddleware>();
+        builder.UseConsumeMiddleware<RedeliveryImmediateConsumeMiddleware>();
 
         return builder;
     }

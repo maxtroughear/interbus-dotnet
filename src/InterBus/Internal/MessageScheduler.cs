@@ -28,7 +28,7 @@ internal sealed class MessageScheduler(
         var destination = RoutingConventions.TopicUri(options.TopicUriScheme, topicName);
         var context = new PublishContext<T>(destination, message, Stamp<T>());
         configure(context);
-        var payload = serializer.Serialize(context.Payload);
+        var payload = serializer.Serialize(context.Message);
         return schedulingProvider.ScheduleAsync(destination, payload, context.Headers, scheduledAt, cancellationToken);
     }
 
@@ -46,7 +46,7 @@ internal sealed class MessageScheduler(
         var destination = RoutingConventions.QueueUri(options.QueueUriScheme, typeof(TConsumer));
         var context = new PublishContext<T>(destination, message, Stamp<T>());
         configure(context);
-        var payload = serializer.Serialize(context.Payload);
+        var payload = serializer.Serialize(context.Message);
         return schedulingProvider.ScheduleAsync(destination, payload, context.Headers, scheduledAt, cancellationToken);
     }
 
@@ -61,7 +61,7 @@ internal sealed class MessageScheduler(
         var destination = RoutingConventions.QueueUri(options.QueueUriScheme, queueName);
         var context = new PublishContext<T>(destination, message, Stamp<T>());
         configure(context);
-        var payload = serializer.Serialize(context.Payload);
+        var payload = serializer.Serialize(context.Message);
         return schedulingProvider.ScheduleAsync(destination, payload, context.Headers, scheduledAt, cancellationToken);
     }
 

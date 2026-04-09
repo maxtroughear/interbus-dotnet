@@ -79,7 +79,7 @@ public class PipelineTests
 
     /// <summary>
     /// Publish middleware that records a call to <see cref="PublishCallTracker"/>
-    /// and appends a header before calling <paramref name="next"/>.
+    /// and appends a header before calling next middleware.
     /// </summary>
     public sealed class RecordingPublishMiddleware(PublishCallTracker tracker) : IPublishMiddleware
     {
@@ -235,8 +235,7 @@ public class PipelineTests
             bus =>
             {
                 bus.AddInMemoryTransport();
-                bus.AddConsumer<OrderPlacedConsumer>();
-                bus.UseConsumeMiddleware<RecordingConsumeMiddleware>();
+                bus.AddConsumer<OrderPlacedConsumer>(b => { b.UseConsumeMiddleware<RecordingConsumeMiddleware>(); });
             });
 
         try
@@ -306,6 +305,93 @@ public class PipelineTests
 
     #endregion
 
+    #region Per-consumer middleware
+
+    [Fact]
+    public async Task PerConsumerMiddleware_IsInvoked_OnlyForThatConsumer()
+    {
+        // Register middleware on OrderPlacedConsumer but NOT on AuditConsumer.
+        // The per-consumer middleware should only fire for OrderPlacedConsumer.
+        var perConsumerTracker = new ConsumeMiddlewareCallTracker();
+        var orderTracker = new OrderPlacedTracker();
+        var auditTracker = new AuditTracker();
+
+        var (provider, cts) = await StartAsync(
+            services =>
+            {
+                services.AddSingleton(perConsumerTracker);
+                services.AddSingleton(orderTracker);
+                services.AddSingleton(auditTracker);
+            },
+            bus =>
+            {
+                bus.AddInMemoryTransport();
+                bus.AddConsumer<OrderPlacedConsumer>(b =>
+                    b.UseConsumeMiddleware<RecordingConsumeMiddleware>());
+                bus.AddConsumer<AuditConsumer>();
+            });
+
+        try
+        {
+            using var scope = provider.CreateScope();
+            var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
+            var msg = new OrderPlaced(Guid.NewGuid(), "per-consumer@test.com", 10m);
+            await publisher.Publish(msg, TestContext.Current.CancellationToken);
+
+            await WaitUntilAsync(() => orderTracker.Messages.Count >= 1 && auditTracker.Messages.Count >= 1);
+
+            // Per-consumer middleware should have been invoked exactly once (for OrderPlacedConsumer).
+            Assert.Equal(1, perConsumerTracker.InvocationCount);
+        }
+        finally
+        {
+            await StopAsync(provider, cts);
+        }
+    }
+
+    [Fact]
+    public async Task WithConsumers_AppliesPerConsumerMiddleware_ToAllRegisteredConsumers()
+    {
+        var perConsumerTracker = new ConsumeMiddlewareCallTracker();
+        var orderTracker = new OrderPlacedTracker();
+        var auditTracker = new AuditTracker();
+
+        var (provider, cts) = await StartAsync(
+            services =>
+            {
+                services.AddSingleton(perConsumerTracker);
+                services.AddSingleton(orderTracker);
+                services.AddSingleton(auditTracker);
+            },
+            bus =>
+            {
+                bus.AddInMemoryTransport();
+                bus.AddConsumer<OrderPlacedConsumer>();
+                bus.AddConsumer<AuditConsumer>();
+                // Apply per-consumer middleware to all registered consumers at once.
+                bus.WithConsumers(b => b.UseConsumeMiddleware<RecordingConsumeMiddleware>());
+            });
+
+        try
+        {
+            using var scope = provider.CreateScope();
+            var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
+            var msg = new OrderPlaced(Guid.NewGuid(), "all-consumers@test.com", 5m);
+            await publisher.Publish(msg, TestContext.Current.CancellationToken);
+
+            await WaitUntilAsync(() => orderTracker.Messages.Count >= 1 && auditTracker.Messages.Count >= 1);
+
+            // Per-consumer middleware should have been invoked once per consumer (2 consumers → 2 invocations).
+            Assert.Equal(2, perConsumerTracker.InvocationCount);
+        }
+        finally
+        {
+            await StopAsync(provider, cts);
+        }
+    }
+
+    #endregion
+
     #region Support types
 
     public sealed class HeaderCapturingTracker
@@ -358,6 +444,32 @@ public class PipelineTests
     {
         public async Task InvokeAsync<T>(PublishContext<T> context,
             Func<PublishContext<T>, CancellationToken, Task> next,
+            CancellationToken cancellationToken = default) where T : class
+        {
+            log.Enqueue("second-enter");
+            await next(context, cancellationToken);
+            log.Enqueue("second-exit");
+        }
+    }
+
+    /// <summary>Consume middleware that logs entry/exit to a shared queue for ordering tests.</summary>
+    public sealed class FirstConsumeMiddleware(ConcurrentQueue<string> log) : IConsumeMiddleware
+    {
+        public async Task InvokeAsync<T>(ConsumeContext<T> context,
+            Func<ConsumeContext<T>, CancellationToken, Task> next,
+            CancellationToken cancellationToken = default) where T : class
+        {
+            log.Enqueue("first-enter");
+            await next(context, cancellationToken);
+            log.Enqueue("first-exit");
+        }
+    }
+
+    /// <summary>Consume middleware that logs entry/exit to a shared queue for ordering tests.</summary>
+    public sealed class SecondConsumeMiddleware(ConcurrentQueue<string> log) : IConsumeMiddleware
+    {
+        public async Task InvokeAsync<T>(ConsumeContext<T> context,
+            Func<ConsumeContext<T>, CancellationToken, Task> next,
             CancellationToken cancellationToken = default) where T : class
         {
             log.Enqueue("second-enter");

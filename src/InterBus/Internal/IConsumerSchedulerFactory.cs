@@ -16,14 +16,25 @@ namespace InterBus.Internal;
 public interface IConsumerSchedulerFactory
 {
     /// <summary>
-    /// Creates a <see cref="ConsumerScopedMessageScheduler"/> for the given consumer, or returns
+    /// Creates an <see cref="IMessageScheduler"/> for the given consumer, or returns
     /// <c>null</c> if the required runtime dependencies (e.g. a scheduling provider) are not
     /// available in the current scope.
     /// </summary>
-    ConsumerScopedMessageScheduler? CreateForConsumer(
+    /// <param name="middlewareFactory">The middleware factory for resolving consumer-keyed middleware.</param>
+    /// <param name="serializer">The message serializer.</param>
+    /// <param name="consumerType">The type of the consuming consumer.</param>
+    /// <param name="consumerPublisher">The consumer-scoped publisher for the consuming consumer.</param>
+    /// <param name="provider">The scheduling provider, if registered.</param>
+    /// <param name="consumeHeaders">
+    /// The headers of the message currently being consumed. Used to propagate
+    /// <see cref="InterBusHeaders.CorrelationId"/> and to set
+    /// <see cref="InterBusHeaders.CausationId"/> on scheduled messages.
+    /// </param>
+    IMessageScheduler? CreateForConsumer(
         IMiddlewareFactory middlewareFactory,
         IMessageSerializer serializer,
         Type consumerType,
         IMessagePublisher consumerPublisher,
-        IMessageSchedulingProvider? provider);
+        IMessageSchedulingProvider? provider,
+        MessageHeaders consumeHeaders);
 }

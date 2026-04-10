@@ -44,7 +44,8 @@ public sealed class ConsumePipelineExecutor(
                 options, middlewareFactory, transportFactory, serializer, ctx.Descriptor.ConsumerType);
 
             IMessageScheduler? scheduler = schedulerFactory?.CreateForConsumer(
-                middlewareFactory, serializer, ctx.Descriptor.ConsumerType, publisher, schedulingProvider);
+                middlewareFactory, serializer, ctx.Descriptor.ConsumerType, publisher, schedulingProvider,
+                ctx.Headers);
 
             var consumeContext = new ConsumeContext(ctx.Headers, publisher, scheduler);
             return finalDelegate(ctx.Message, consumeContext, ct);

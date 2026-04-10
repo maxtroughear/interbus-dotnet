@@ -4,7 +4,7 @@ namespace InterBus.Internal;
 
 /// <summary>
 /// <see cref="IConsumerSchedulerFactory"/> for the direct scheduling path
-/// (<c>AddScheduling()</c>). Creates a <see cref="ConsumerScopedMessageScheduler"/> that
+/// (<c>AddScheduling()</c>). Creates a <see cref="DirectConsumerScopedMessageScheduler"/> that
 /// forwards scheduling requests directly to the registered
 /// <see cref="IMessageSchedulingProvider"/>, running consumer-keyed
 /// <see cref="IScheduleMiddleware"/> steps before the provider call.
@@ -15,18 +15,19 @@ namespace InterBus.Internal;
 /// </summary>
 internal sealed class DirectConsumerSchedulerFactory(InterBusOptions options) : IConsumerSchedulerFactory
 {
-    public ConsumerScopedMessageScheduler? CreateForConsumer(
+    public IMessageScheduler? CreateForConsumer(
         IMiddlewareFactory middlewareFactory,
         IMessageSerializer serializer,
         Type consumerType,
         IMessagePublisher consumerPublisher,
-        IMessageSchedulingProvider? provider)
+        IMessageSchedulingProvider? provider,
+        MessageHeaders consumeHeaders)
     {
         if (provider == null)
             return null;
 
-        return new ConsumerScopedMessageScheduler(
-            options, middlewareFactory, serializer, consumerType, consumerPublisher,
-            isPublishBased: false, provider);
+        return new DirectConsumerScopedMessageScheduler(
+            options, middlewareFactory, serializer, consumerType, consumeHeaders, provider);
     }
 }
+

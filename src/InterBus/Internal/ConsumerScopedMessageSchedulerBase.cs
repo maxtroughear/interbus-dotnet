@@ -3,34 +3,18 @@ using InterBus.Middleware;
 namespace InterBus.Internal;
 
 /// <summary>
-/// Consumer-scoped <see cref="IMessageScheduler"/> implementation.
-/// <para>
-/// When <see cref="AddPublishScheduling"/> is active (<paramref name="isPublishBased"/> is
-/// <c>true</c>), scheduling requests are forwarded as a <see cref="ScheduleDeliveryCommand"/>
-/// via the consumer-scoped <see cref="IMessagePublisher"/>. This ensures that consumer-keyed
-/// <see cref="ISendMiddleware"/> and <see cref="IPublishMiddleware"/> steps run when a consumer
-/// schedules a message from within its <c>Consume</c> method, mirroring the behaviour of
-/// <see cref="ConsumerScopedMessagePublisher"/> for immediate sends.
-/// </para>
-/// <para>
-/// When direct scheduling is active (<paramref name="isPublishBased"/> is <c>false</c>),
-/// scheduling requests are forwarded directly to the registered
-/// <see cref="IMessageSchedulingProvider"/>. Consumer-keyed <see cref="IScheduleMiddleware"/>
-/// steps are applied in both cases before the terminal delivery step.
-/// </para>
+/// Abstract base for consumer-scoped <see cref="IMessageScheduler"/> implementations.
+/// Handles destination resolution, header stamping (including causation-tracking headers
+/// propagated from the triggering consume context), middleware pipeline execution, and
+/// serialization. Subclasses provide the terminal delivery step by implementing
+/// <see cref="BuildTerminal"/>.
 /// </summary>
-/// <remarks>
-/// Created by <see cref="IConsumerSchedulerFactory"/> implementations and not intended for
-/// direct construction by application code.
-/// </remarks>
-public sealed class ConsumerScopedMessageScheduler(
+internal abstract class ConsumerScopedMessageSchedulerBase(
     InterBusOptions options,
     IMiddlewareFactory middlewareFactory,
     IMessageSerializer serializer,
     Type consumerType,
-    IMessagePublisher consumerPublisher,
-    bool isPublishBased,
-    IMessageSchedulingProvider? provider)
+    MessageHeaders consumeHeaders)
     : IMessageScheduler
 {
     public Task SchedulePublish<T>(T message, DateTimeOffset scheduledAt,
@@ -94,12 +78,8 @@ public sealed class ConsumerScopedMessageScheduler(
     private Task ExecuteSchedulePipelineAsync(ScheduleContext scheduleContext, DateTimeOffset scheduledAt,
         CancellationToken cancellationToken)
     {
-        Func<ScheduleContext, CancellationToken, Task> terminal = isPublishBased
-            ? BuildPublishTerminal(scheduledAt)
-            : BuildDirectTerminal(scheduledAt);
-
+        var pipeline = BuildTerminal(scheduledAt);
         var middlewares = middlewareFactory.Resolve<IScheduleMiddleware>(consumerType);
-        var pipeline = terminal;
         foreach (var middleware in middlewares)
         {
             var current = middleware;
@@ -110,29 +90,28 @@ public sealed class ConsumerScopedMessageScheduler(
         return pipeline(scheduleContext, cancellationToken);
     }
 
-    private Func<ScheduleContext, CancellationToken, Task> BuildPublishTerminal(DateTimeOffset scheduledAt) =>
-        (ctx, ct) =>
-        {
-            var command = new ScheduleDeliveryCommand
-            {
-                Destination = ctx.Destination.ToString(),
-                Payload = ctx.Payload,
-                Headers = new Dictionary<string, string>(ctx.Headers),
-                ScheduledAt = scheduledAt
-            };
-            return consumerPublisher.Send<SchedulingConsumer, ScheduleDeliveryCommand>(command, ct);
-        };
+    /// <summary>
+    /// Stamps the initial headers for a newly scheduled message.
+    /// Propagates the <see cref="InterBusHeaders.CorrelationId"/> from the triggering message
+    /// and sets <see cref="InterBusHeaders.CausationId"/> to the triggering message's
+    /// <see cref="InterBusHeaders.MessageId"/> to enable causal tracing across deliveries.
+    /// </summary>
+    private MessageHeaders Stamp<T>() where T : class
+    {
+        var headers = new MessageHeaders { [InterBusHeaders.MessageType] = typeof(T).FullName ?? typeof(T).Name };
 
-    private Func<ScheduleContext, CancellationToken, Task> BuildDirectTerminal(DateTimeOffset scheduledAt) =>
-        (ctx, ct) =>
-        {
-            if (provider == null)
-                throw new InvalidOperationException(
-                    "No IMessageSchedulingProvider is registered. " +
-                    "Call AddTransportDelayScheduler() or register another provider.");
-            return provider.ScheduleAsync(ctx.Destination, ctx.Payload, ctx.Headers, scheduledAt, ct);
-        };
+        if (consumeHeaders.TryGetValue(InterBusHeaders.CorrelationId, out var correlationId))
+            headers[InterBusHeaders.CorrelationId] = correlationId;
 
-    private static MessageHeaders Stamp<T>() where T : class =>
-        new() { [InterBusHeaders.MessageType] = typeof(T).FullName ?? typeof(T).Name };
+        if (consumeHeaders.TryGetValue(InterBusHeaders.MessageId, out var messageId))
+            headers[InterBusHeaders.CausationId] = messageId;
+
+        return headers;
+    }
+
+    /// <summary>
+    /// Builds the terminal step of the schedule pipeline for the given
+    /// <paramref name="scheduledAt"/> delivery time.
+    /// </summary>
+    protected abstract Func<ScheduleContext, CancellationToken, Task> BuildTerminal(DateTimeOffset scheduledAt);
 }

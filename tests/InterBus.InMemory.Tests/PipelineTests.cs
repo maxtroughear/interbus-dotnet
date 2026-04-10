@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using InterBus;
 using InterBus.Extensions;
 using InterBus.Generated;
 using InterBus.InMemory.Extensions;
@@ -857,6 +858,91 @@ public class PipelineTests
         finally
         {
             await StopAsync(provider, cts);
+        }
+    }
+
+    #endregion
+
+    #region Consume-scoped scheduling — header propagation
+
+    [Fact]
+    public async Task ConsumeContext_SchedulePublish_PropagatesCorrelationIdAndSetsCausationId()
+    {
+        // When a consumer calls context.SchedulePublish(), the scheduled message should carry
+        // the CorrelationId from the triggering message and a CausationId set to the triggering
+        // message's MessageId.
+        var scheduledHeadersTracker = new ScheduledDeliveryHeadersTracker();
+        var orderShippedTracker = new OrderShippedTracker();
+
+        const string correlationId = "test-correlation-id";
+        const string triggeringMessageId = "test-message-id";
+
+        var (provider, cts) = await StartAsync(
+            services =>
+            {
+                services.AddSingleton(scheduledHeadersTracker);
+                services.AddSingleton(orderShippedTracker);
+            },
+            bus =>
+            {
+                bus.AddInMemoryTransport();
+                bus.AddPublishScheduling();
+                bus.AddSchedulingConsumer();
+                bus.AddTransportDelayScheduler();
+                bus.AddConsumer<SchedulingOrderPlacedConsumer>();
+                bus.AddConsumer<HeaderCapturingOrderShippedConsumer>();
+            });
+
+        try
+        {
+            using var scope = provider.CreateScope();
+            var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
+
+            // Send with explicit CorrelationId and MessageId headers on the triggering message.
+            await publisher.Send<SchedulingOrderPlacedConsumer, OrderPlaced>(
+                new OrderPlaced(Guid.NewGuid(), "header-prop@test.com", 1m),
+                ctx =>
+                {
+                    ctx.Headers[InterBusHeaders.CorrelationId] = correlationId;
+                    ctx.Headers[InterBusHeaders.MessageId] = triggeringMessageId;
+                },
+                TestContext.Current.CancellationToken);
+
+            await WaitUntilAsync(() => scheduledHeadersTracker.CapturedHeaders.Count > 0);
+
+            var capturedHeaders = Assert.Single(scheduledHeadersTracker.CapturedHeaders);
+
+            // CorrelationId must be propagated from the triggering message.
+            Assert.True(capturedHeaders.TryGetValue(InterBusHeaders.CorrelationId, out var actualCorrelationId));
+            Assert.Equal(correlationId, actualCorrelationId);
+
+            // CausationId must be set to the triggering message's MessageId.
+            Assert.True(capturedHeaders.TryGetValue(InterBusHeaders.CausationId, out var actualCausationId));
+            Assert.Equal(triggeringMessageId, actualCausationId);
+        }
+        finally
+        {
+            await StopAsync(provider, cts);
+        }
+    }
+
+    public sealed class ScheduledDeliveryHeadersTracker
+    {
+        private readonly ConcurrentBag<IReadOnlyDictionary<string, string>> _captured = [];
+        public IReadOnlyCollection<IReadOnlyDictionary<string, string>> CapturedHeaders => _captured;
+        public void Capture(IReadOnlyDictionary<string, string> headers) => _captured.Add(headers);
+    }
+
+    public sealed class HeaderCapturingOrderShippedConsumer(
+        ScheduledDeliveryHeadersTracker tracker,
+        OrderShippedTracker orderShippedTracker) : IConsumer<OrderShipped>
+    {
+        public Task Consume(OrderShipped message, IConsumeContext context,
+            CancellationToken cancellationToken = default)
+        {
+            tracker.Capture(context.Headers);
+            orderShippedTracker.Track(message);
+            return Task.CompletedTask;
         }
     }
 

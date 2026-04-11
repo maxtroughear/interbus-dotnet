@@ -43,4 +43,12 @@ public static class InterBusHeaders
     /// The value is a UTC timestamp in ISO 8601 format (e.g. <c>2024-06-01T12:00:00Z</c>)
     /// </remarks>
     public const string ExpirationTime = "interbus-expiration-time";
+
+    /// <summary>
+    /// Header key for the causation identifier.
+    /// Set automatically by <see cref="IConsumeContext"/> when a message is scheduled from
+    /// within a consumer's <c>Consume</c> method, to the <see cref="MessageId"/> of the
+    /// message that triggered the scheduling. Enables causal tracing across scheduled deliveries.
+    /// </summary>
+    public const string CausationId = "interbus-causation-id";
 }

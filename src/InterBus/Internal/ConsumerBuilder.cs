@@ -50,4 +50,14 @@ internal sealed class ConsumerBuilder(ConsumerDescriptor descriptor, IServiceCol
         services.AddKeyedScoped<IPublishMiddleware, TMiddleware>(descriptor.ConsumerType);
         return this;
     }
+
+    /// <inheritdoc/>
+    public IConsumerBuilder UseScheduleMiddleware<
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
+        TMiddleware>()
+        where TMiddleware : class, IScheduleMiddleware
+    {
+        services.AddKeyedScoped<IScheduleMiddleware, TMiddleware>(descriptor.ConsumerType);
+        return this;
+    }
 }

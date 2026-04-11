@@ -24,6 +24,7 @@ public static class InterBusBuilderExtensions
         {
             ArgumentNullException.ThrowIfNull(builder);
             builder.Services.AddScoped<IMessageScheduler, MessageScheduler>();
+            builder.Services.TryAddSingleton<IConsumerSchedulerFactory, DirectConsumerSchedulerFactory>();
             return builder;
         }
 
@@ -42,6 +43,7 @@ public static class InterBusBuilderExtensions
         {
             ArgumentNullException.ThrowIfNull(builder);
             builder.Services.AddScoped<IMessageScheduler, PublishMessageScheduler>();
+            builder.Services.TryAddSingleton<IConsumerSchedulerFactory, PublishConsumerSchedulerFactory>();
             return builder;
         }
 

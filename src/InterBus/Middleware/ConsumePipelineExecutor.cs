@@ -13,7 +13,9 @@ public sealed class ConsumePipelineExecutor(
     IMiddlewareFactory middlewareFactory,
     InterBusOptions options,
     IInterBusTransportFactory transportFactory,
-    IMessageSerializer serializer)
+    IMessageSerializer serializer,
+    IConsumerSchedulerFactory? schedulerFactory = null,
+    IMessageSchedulingProvider? schedulingProvider = null)
 {
     /// <summary>
     /// Builds and runs the consume pipeline for the given <paramref name="context"/> and
@@ -40,7 +42,12 @@ public sealed class ConsumePipelineExecutor(
         {
             var publisher = new ConsumerScopedMessagePublisher(
                 options, middlewareFactory, transportFactory, serializer, ctx.Descriptor.ConsumerType);
-            var consumeContext = new ConsumeContext(ctx.Headers, publisher);
+
+            IMessageScheduler? scheduler = schedulerFactory?.CreateForConsumer(
+                middlewareFactory, serializer, ctx.Descriptor.ConsumerType, publisher, schedulingProvider,
+                ctx.Headers);
+
+            var consumeContext = new ConsumeContext(ctx.Headers, publisher, scheduler);
             return finalDelegate(ctx.Message, consumeContext, ct);
         }
     }

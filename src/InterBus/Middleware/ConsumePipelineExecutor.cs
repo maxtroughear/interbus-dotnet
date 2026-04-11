@@ -41,9 +41,10 @@ public sealed class ConsumePipelineExecutor(
         Task TerminalConsumeDelegate(ConsumeContext<T> ctx, CancellationToken ct)
         {
             var publisher = new ConsumerScopedMessagePublisher(
-                options, middlewareFactory, transportFactory, serializer, ctx.Descriptor.ConsumerType);
+                options, middlewareFactory, transportFactory, serializer, ctx.Descriptor.ConsumerType,
+                ctx.Headers);
 
-            IMessageScheduler? scheduler = schedulerFactory?.CreateForConsumer(
+            var scheduler = schedulerFactory?.CreateForConsumer(
                 middlewareFactory, serializer, ctx.Descriptor.ConsumerType, publisher, schedulingProvider,
                 ctx.Headers);
 

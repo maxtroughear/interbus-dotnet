@@ -60,10 +60,16 @@ internal abstract class MessagePublisherBase(InterBusOptions options) : IMessage
 
     /// <summary>
     /// Returns a new <see cref="MessageHeaders"/> with <see cref="InterBusHeaders.MessageType"/>
-    /// stamped to the fully qualified CLR type name of <typeparamref name="T"/>.
+    /// stamped to the fully qualified CLR type name of <typeparamref name="T"/> and a
+    /// new <see cref="InterBusHeaders.MessageId"/> set to a V7 <see cref="Guid"/>.
+    /// Subclasses may override this method to stamp additional headers.
     /// </summary>
-    protected static MessageHeaders Stamp<T>() where T : class =>
-        new() { [InterBusHeaders.MessageType] = typeof(T).FullName ?? typeof(T).Name };
+    protected virtual MessageHeaders Stamp<T>() where T : class =>
+        new()
+        {
+            [InterBusHeaders.MessageType] = typeof(T).FullName ?? typeof(T).Name,
+            [InterBusHeaders.MessageId] = Guid.CreateVersion7().ToString()
+        };
 
     /// <summary>
     /// Builds the publish pipeline to invoke for a message of type <typeparamref name="TMessage"/>.

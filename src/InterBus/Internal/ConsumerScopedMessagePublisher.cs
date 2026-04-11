@@ -16,8 +16,22 @@ internal sealed class ConsumerScopedMessagePublisher(
     IMiddlewareFactory middlewareFactory,
     IInterBusTransportFactory transportFactory,
     IMessageSerializer serializer,
-    Type consumerType) : MessagePublisherBase(options)
+    Type consumerType,
+    MessageHeaders consumeHeaders) : MessagePublisherBase(options)
 {
+    protected override MessageHeaders Stamp<T>() where T : class
+    {
+        var headers = base.Stamp<T>();
+
+        if (consumeHeaders.TryGetValue(InterBusHeaders.CorrelationId, out var correlationId))
+            headers[InterBusHeaders.CorrelationId] = correlationId;
+
+        if (consumeHeaders.TryGetValue(InterBusHeaders.MessageId, out var messageId))
+            headers[InterBusHeaders.CausationId] = messageId;
+
+        return headers;
+    }
+
     protected override Func<PublishContext<TMessage>, CancellationToken, Task> BuildPublishPipeline<TMessage>()
     {
         // Terminal publish step: serialize and forward through the consumer-scoped send pipeline.

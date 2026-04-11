@@ -181,11 +181,12 @@ public class HeadersTests
 
             Assert.Single(headerCapture.Captured);
             var received = headerCapture.Captured.Single();
-            // The publisher always stamps the interbus-message-type header; no user headers present.
-            Assert.Single(received);
+            // The publisher always stamps interbus-message-type and interbus-message-id; no user headers present.
+            Assert.Equal(2, received.Count);
             Assert.Equal(
                 typeof(OrderPlaced).FullName,
                 received[InterBusHeaders.MessageType]);
+            Assert.True(received.ContainsKey(InterBusHeaders.MessageId));
         }
         finally
         {

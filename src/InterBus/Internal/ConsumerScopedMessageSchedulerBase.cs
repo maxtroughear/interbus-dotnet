@@ -4,10 +4,9 @@ namespace InterBus.Internal;
 
 /// <summary>
 /// Abstract base for consumer-scoped <see cref="IMessageScheduler"/> implementations.
-/// Handles destination resolution, header stamping (including causation-tracking headers
-/// propagated from the triggering consume context), middleware pipeline execution, and
-/// serialization. Subclasses provide the terminal delivery step by implementing
-/// <see cref="BuildTerminal"/>.
+/// Handles header stamping (including causation-tracking headers propagated from the
+/// triggering consume context) and the schedule middleware pipeline. Subclasses provide
+/// the terminal delivery step by implementing <see cref="BuildTerminal"/>.
 /// </summary>
 internal abstract class ConsumerScopedMessageSchedulerBase(
     InterBusOptions options,
@@ -15,63 +14,32 @@ internal abstract class ConsumerScopedMessageSchedulerBase(
     IMessageSerializer serializer,
     Type consumerType,
     MessageHeaders consumeHeaders)
-    : IMessageScheduler
+    : MessageSchedulerBase(options, serializer)
 {
-    public Task SchedulePublish<T>(T message, DateTimeOffset scheduledAt,
-        CancellationToken cancellationToken = default) where T : class =>
-        SchedulePublish(message, scheduledAt, _ => { }, cancellationToken);
-
-    public Task SchedulePublish<T>(T message, DateTimeOffset scheduledAt,
-        Action<PublishContext<T>> configure,
-        CancellationToken cancellationToken = default) where T : class
+    /// <inheritdoc/>
+    protected override MessageHeaders Stamp<T>() where T : class
     {
-        var topicName = options.TryGetTopicName(typeof(T), out var customName)
-            ? customName
-            : RoutingConventions.TopicName(typeof(T));
-        var destination = RoutingConventions.TopicUri(options.TopicUriScheme, topicName);
-        return ScheduleInternal(message, destination, scheduledAt, configure, cancellationToken);
+        var headers = base.Stamp<T>();
+
+        if (consumeHeaders.TryGetValue(InterBusHeaders.CorrelationId, out var correlationId))
+            headers[InterBusHeaders.CorrelationId] = correlationId;
+
+        if (consumeHeaders.TryGetValue(InterBusHeaders.MessageId, out var messageId))
+            headers[InterBusHeaders.CausationId] = messageId;
+
+        return headers;
     }
 
-    public Task ScheduleSend<TConsumer, T>(T message, DateTimeOffset scheduledAt,
-        CancellationToken cancellationToken = default)
-        where TConsumer : IConsumer<T>
-        where T : class =>
-        ScheduleSend<TConsumer, T>(message, scheduledAt, _ => { }, cancellationToken);
-
-    public Task ScheduleSend<TConsumer, T>(T message, DateTimeOffset scheduledAt,
-        Action<PublishContext<T>> configure,
-        CancellationToken cancellationToken = default)
-        where TConsumer : IConsumer<T>
-        where T : class
+    /// <inheritdoc/>
+    protected override Task ScheduleInternalAsync<T>(PublishContext<T> context, DateTimeOffset scheduledAt,
+        CancellationToken cancellationToken) where T : class
     {
-        var destination = RoutingConventions.QueueUri(options.QueueUriScheme, typeof(TConsumer));
-        return ScheduleInternal(message, destination, scheduledAt, configure, cancellationToken);
-    }
-
-    public Task ScheduleSend<T>(string queueName, T message, DateTimeOffset scheduledAt,
-        CancellationToken cancellationToken = default) where T : class =>
-        ScheduleSend(queueName, message, scheduledAt, _ => { }, cancellationToken);
-
-    public Task ScheduleSend<T>(string queueName, T message, DateTimeOffset scheduledAt,
-        Action<PublishContext<T>> configure,
-        CancellationToken cancellationToken = default) where T : class
-    {
-        var destination = RoutingConventions.QueueUri(options.QueueUriScheme, queueName);
-        return ScheduleInternal(message, destination, scheduledAt, configure, cancellationToken);
-    }
-
-    private Task ScheduleInternal<T>(T message, Uri destination, DateTimeOffset scheduledAt,
-        Action<PublishContext<T>> configure, CancellationToken cancellationToken) where T : class
-    {
-        var publishContext = new PublishContext<T>(destination, message, Stamp<T>());
-        configure(publishContext);
-        var payload = serializer.Serialize(publishContext.Message);
+        var payload = Serializer.Serialize(context.Message);
 
         var delay = scheduledAt - DateTimeOffset.UtcNow;
         if (delay < TimeSpan.Zero) delay = TimeSpan.Zero;
 
-        var scheduleContext = new ScheduleContext(destination, payload, publishContext.Headers, delay);
-
+        var scheduleContext = new ScheduleContext(context.Destination, payload, context.Headers, delay);
         return ExecuteSchedulePipelineAsync(scheduleContext, scheduledAt, cancellationToken);
     }
 
@@ -88,25 +56,6 @@ internal abstract class ConsumerScopedMessageSchedulerBase(
         }
 
         return pipeline(scheduleContext, cancellationToken);
-    }
-
-    /// <summary>
-    /// Stamps the initial headers for a newly scheduled message.
-    /// Propagates the <see cref="InterBusHeaders.CorrelationId"/> from the triggering message
-    /// and sets <see cref="InterBusHeaders.CausationId"/> to the triggering message's
-    /// <see cref="InterBusHeaders.MessageId"/> to enable causal tracing across deliveries.
-    /// </summary>
-    private MessageHeaders Stamp<T>() where T : class
-    {
-        var headers = new MessageHeaders { [InterBusHeaders.MessageType] = typeof(T).FullName ?? typeof(T).Name };
-
-        if (consumeHeaders.TryGetValue(InterBusHeaders.CorrelationId, out var correlationId))
-            headers[InterBusHeaders.CorrelationId] = correlationId;
-
-        if (consumeHeaders.TryGetValue(InterBusHeaders.MessageId, out var messageId))
-            headers[InterBusHeaders.CausationId] = messageId;
-
-        return headers;
     }
 
     /// <summary>

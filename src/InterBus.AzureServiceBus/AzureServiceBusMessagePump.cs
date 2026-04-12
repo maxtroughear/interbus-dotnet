@@ -52,18 +52,25 @@ internal sealed class AzureServiceBusMessagePump(
         await base.StartAsync(cancellationToken);
     }
 
-    protected override Task ExecuteAsync(CancellationToken stoppingToken)
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         if (busOptions.Consumers.Count == 0)
         {
             logger.LogInformation(
                 "InterBus AzureServiceBus: no consumers registered; message pump idle");
+            return;
         }
 
-        // Processors run independently; keep the task alive until cancellation.
-        return Task.Delay(Timeout.Infinite, stoppingToken)
-            .ContinueWith(_ => Task.CompletedTask, TaskContinuationOptions.OnlyOnCanceled)
-            .Unwrap();
+        // Processors run independently via callbacks; keep the hosted service alive until
+        // the application shuts down.
+        try
+        {
+            await Task.Delay(Timeout.Infinite, stoppingToken);
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected on shutdown.
+        }
     }
 
     /// <summary>

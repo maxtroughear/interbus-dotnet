@@ -25,8 +25,8 @@ public interface IConsumerSchedulerFactory
     /// <param name="consumerType">The type of the consuming consumer.</param>
     /// <param name="consumerPublisher">The consumer-scoped publisher for the consuming consumer.</param>
     /// <param name="provider">The scheduling provider, if registered.</param>
-    /// <param name="consumeHeaders">
-    /// The headers of the message currently being consumed. Used to propagate
+    /// <param name="contextAccessor">
+    /// The consume context accessor for the current scope. Used to propagate
     /// <see cref="InterBusHeaders.CorrelationId"/> and to set
     /// <see cref="InterBusHeaders.CausationId"/> on scheduled messages.
     /// </param>
@@ -36,5 +36,5 @@ public interface IConsumerSchedulerFactory
         Type consumerType,
         IMessagePublisher consumerPublisher,
         IMessageSchedulingProvider? provider,
-        MessageHeaders consumeHeaders);
+        IConsumeContextAccessor contextAccessor);
 }

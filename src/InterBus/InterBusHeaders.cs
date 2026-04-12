@@ -46,9 +46,10 @@ public static class InterBusHeaders
 
     /// <summary>
     /// Header key for the causation identifier.
-    /// Set automatically by <see cref="IConsumeContext"/> when a message is scheduled from
-    /// within a consumer's <c>Consume</c> method, to the <see cref="MessageId"/> of the
-    /// message that triggered the scheduling. Enables causal tracing across scheduled deliveries.
+    /// Set automatically by <see cref="IConsumeContext"/> on outgoing messages created from within
+    /// a consumer's <c>Consume</c> method, including publish, send, and schedule operations.
+    /// When available, the value is set to the <see cref="MessageId"/> of the message that
+    /// triggered the current consume operation. Enables causal tracing across related messages.
     /// </summary>
     public const string CausationId = "interbus-causation-id";
 }

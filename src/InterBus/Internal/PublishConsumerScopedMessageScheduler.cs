@@ -15,9 +15,9 @@ internal sealed class PublishConsumerScopedMessageScheduler(
     IMiddlewareFactory middlewareFactory,
     IMessageSerializer serializer,
     Type consumerType,
-    MessageHeaders consumeHeaders,
+    IConsumeContextAccessor contextAccessor,
     IMessagePublisher consumerPublisher)
-    : ConsumerScopedMessageSchedulerBase(options, middlewareFactory, serializer, consumerType, consumeHeaders)
+    : ConsumerScopedMessageSchedulerBase(options, middlewareFactory, serializer, consumerType, contextAccessor)
 {
     protected override Func<ScheduleContext, CancellationToken, Task> BuildTerminal(DateTimeOffset scheduledAt) =>
         (ctx, ct) =>

@@ -17,7 +17,7 @@ internal sealed class PublishConsumerSchedulerFactory(InterBusOptions options) :
         Type consumerType,
         IMessagePublisher consumerPublisher,
         IMessageSchedulingProvider? _,
-        MessageHeaders consumeHeaders) =>
+        IConsumeContextAccessor contextAccessor) =>
         new PublishConsumerScopedMessageScheduler(
-            options, middlewareFactory, serializer, consumerType, consumeHeaders, consumerPublisher);
+            options, middlewareFactory, serializer, consumerType, contextAccessor, consumerPublisher);
 }

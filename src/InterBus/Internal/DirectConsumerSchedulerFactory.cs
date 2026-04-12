@@ -21,13 +21,13 @@ internal sealed class DirectConsumerSchedulerFactory(InterBusOptions options) : 
         Type consumerType,
         IMessagePublisher consumerPublisher,
         IMessageSchedulingProvider? provider,
-        MessageHeaders consumeHeaders)
+        IConsumeContextAccessor contextAccessor)
     {
         if (provider == null)
             return null;
 
         return new DirectConsumerScopedMessageScheduler(
-            options, middlewareFactory, serializer, consumerType, consumeHeaders, provider);
+            options, middlewareFactory, serializer, consumerType, contextAccessor, provider);
     }
 }
 

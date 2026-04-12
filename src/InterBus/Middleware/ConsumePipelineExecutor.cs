@@ -14,6 +14,7 @@ public sealed class ConsumePipelineExecutor(
     InterBusOptions options,
     IInterBusTransportFactory transportFactory,
     IMessageSerializer serializer,
+    IConsumeContextAccessor contextAccessor,
     IConsumerSchedulerFactory? schedulerFactory = null,
     IMessageSchedulingProvider? schedulingProvider = null)
 {
@@ -42,13 +43,14 @@ public sealed class ConsumePipelineExecutor(
         {
             var publisher = new ConsumerScopedMessagePublisher(
                 options, middlewareFactory, transportFactory, serializer, ctx.Descriptor.ConsumerType,
-                ctx.Headers);
+                contextAccessor);
 
             var scheduler = schedulerFactory?.CreateForConsumer(
                 middlewareFactory, serializer, ctx.Descriptor.ConsumerType, publisher, schedulingProvider,
-                ctx.Headers);
+                contextAccessor);
 
             var consumeContext = new ConsumeContext(ctx.Headers, publisher, scheduler);
+            contextAccessor.ConsumeContext = consumeContext;
             return finalDelegate(ctx.Message, consumeContext, ct);
         }
     }

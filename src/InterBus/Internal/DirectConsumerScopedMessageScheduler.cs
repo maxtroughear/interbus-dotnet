@@ -13,9 +13,9 @@ internal sealed class DirectConsumerScopedMessageScheduler(
     IMiddlewareFactory middlewareFactory,
     IMessageSerializer serializer,
     Type consumerType,
-    MessageHeaders consumeHeaders,
+    IConsumeContextAccessor contextAccessor,
     IMessageSchedulingProvider provider)
-    : ConsumerScopedMessageSchedulerBase(options, middlewareFactory, serializer, consumerType, consumeHeaders)
+    : ConsumerScopedMessageSchedulerBase(options, middlewareFactory, serializer, consumerType, contextAccessor)
 {
     protected override Func<ScheduleContext, CancellationToken, Task> BuildTerminal(DateTimeOffset scheduledAt) =>
         (ctx, ct) => provider.ScheduleAsync(ctx.Destination, ctx.Payload, ctx.Headers, scheduledAt, ct);

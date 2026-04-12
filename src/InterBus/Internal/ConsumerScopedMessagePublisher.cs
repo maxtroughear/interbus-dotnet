@@ -17,16 +17,17 @@ internal sealed class ConsumerScopedMessagePublisher(
     IInterBusTransportFactory transportFactory,
     IMessageSerializer serializer,
     Type consumerType,
-    MessageHeaders consumeHeaders) : MessagePublisherBase(options)
+    IConsumeContextAccessor contextAccessor) : MessagePublisherBase(options)
 {
     protected override MessageHeaders Stamp<T>() where T : class
     {
         var headers = base.Stamp<T>();
+        var consumeHeaders = contextAccessor.ConsumeContext?.Headers;
 
-        if (consumeHeaders.TryGetValue(InterBusHeaders.CorrelationId, out var correlationId))
+        if (consumeHeaders?.TryGetValue(InterBusHeaders.CorrelationId, out var correlationId) == true)
             headers[InterBusHeaders.CorrelationId] = correlationId;
 
-        if (consumeHeaders.TryGetValue(InterBusHeaders.MessageId, out var messageId))
+        if (consumeHeaders?.TryGetValue(InterBusHeaders.MessageId, out var messageId) == true)
             headers[InterBusHeaders.CausationId] = messageId;
 
         return headers;

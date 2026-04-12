@@ -607,13 +607,13 @@ public class PipelineTests
                 new OrderPlaced(Guid.NewGuid(), "bus-level@test.com", 1m),
                 TestContext.Current.CancellationToken);
 
-            await WaitUntilAsync(() => orderShippedTracker.Messages.Count == 1);
-
-            // The initial Send (via bus publisher) triggers the recording middleware once for
-            // the outer send. The subsequent publish from within the consumer uses the
-            // consumer-scoped pipeline, which has NO recording middleware registered,
-            // so no additional calls should be recorded after the bus-level send.
+            // Capture the count right after the bus-level Send returns. The initial Send runs
+            // through the bus-level recording middleware, so the count is already non-zero here.
+            // Once the consumer runs and publishes via the consumer-scoped pipeline (which has
+            // NO recording middleware), this count must not increase.
             var callsAfterInitialSend = busPublishCallTracker.Calls.Count;
+
+            await WaitUntilAsync(() => orderShippedTracker.Messages.Count == 1);
 
             // Verify message was delivered – meaning the consumer's publish worked.
             Assert.Single(orderShippedTracker.Messages);
@@ -795,6 +795,11 @@ public class PipelineTests
                 new OrderPlaced(Guid.NewGuid(), "bus-sched@test.com", 1m),
                 TestContext.Current.CancellationToken);
 
+            // Capture the count right after the bus-level Send returns. The initial Send runs
+            // through the bus-level recording send middleware, so the count is already non-zero
+            // here. The consumer-scoped scheduling path must not add further invocations.
+            var countAfterInitialSend = busSendCallTracker.InvocationCount;
+
             await WaitUntilAsync(() => orderShippedTracker.Messages.Count == 1);
 
             // The initial Send (via bus publisher) triggers the bus-level send middleware.
@@ -802,7 +807,6 @@ public class PipelineTests
             // pipeline which has NO bus-level send middleware registered.
             // Capture the count after the initial bus-level Send; it must not grow further
             // once the consumer-scoped scheduling executes.
-            var countAfterInitialSend = busSendCallTracker.InvocationCount;
 
             Assert.Single(orderShippedTracker.Messages);
             // Verify bus-level send middleware was actually invoked for the initial Send.

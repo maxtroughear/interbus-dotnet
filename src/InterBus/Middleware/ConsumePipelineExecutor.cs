@@ -39,7 +39,7 @@ public sealed class ConsumePipelineExecutor(
 
         return pipeline(context, cancellationToken);
 
-        Task TerminalConsumeDelegate(ConsumeContext<T> ctx, CancellationToken ct)
+        async Task TerminalConsumeDelegate(ConsumeContext<T> ctx, CancellationToken ct)
         {
             var publisher = new ConsumerScopedMessagePublisher(
                 options, middlewareFactory, transportFactory, serializer, ctx.Descriptor.ConsumerType,
@@ -52,9 +52,19 @@ public sealed class ConsumePipelineExecutor(
             // Create the ConsumeContext and immediately register it on the accessor.
             // The publisher and scheduler read from the accessor only when the consumer calls
             // Publish/Send/Schedule (inside finalDelegate), so the ordering is safe.
+            // Clear the accessor after dispatch (via finally) so downstream code in the same
+            // scope cannot observe a stale context once the consumer has finished.
             var consumeContext = new ConsumeContext(ctx.Headers, publisher, scheduler);
+            var previous = contextAccessor.ConsumeContext;
             contextAccessor.ConsumeContext = consumeContext;
-            return finalDelegate(ctx.Message, consumeContext, ct);
+            try
+            {
+                await finalDelegate(ctx.Message, consumeContext, ct);
+            }
+            finally
+            {
+                contextAccessor.ConsumeContext = previous;
+            }
         }
     }
 }

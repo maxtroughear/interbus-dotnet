@@ -61,5 +61,7 @@ internal sealed class ConsumeContext(
 
     private IMessageScheduler RequireScheduler() =>
         scheduler ?? throw new InvalidOperationException(
-            "No scheduling provider is configured. Call AddScheduling() or AddPublishScheduling() on the InterBus builder.");
+            "Scheduling is not configured or no IMessageSchedulingProvider is available in the current scope. " +
+            "Call AddScheduling() or AddPublishScheduling() on the InterBus builder and ensure an " +
+            "IMessageSchedulingProvider is registered (for example via a scheduling transport package).");
 }

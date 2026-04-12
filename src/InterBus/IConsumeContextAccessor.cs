@@ -17,5 +17,10 @@ public interface IConsumeContextAccessor
     /// The <see cref="IConsumeContext"/> for the message currently being processed, or
     /// <c>null</c> if no consume operation is active in this scope.
     /// </summary>
+    /// <remarks>
+    /// The setter is used exclusively by the InterBus infrastructure
+    /// (<see cref="Middleware.ConsumePipelineExecutor"/>) to initialise the value before
+    /// each consumer dispatch. Application code should treat this property as read-only.
+    /// </remarks>
     IConsumeContext? ConsumeContext { get; set; }
 }

@@ -49,6 +49,9 @@ public sealed class ConsumePipelineExecutor(
                 middlewareFactory, serializer, ctx.Descriptor.ConsumerType, publisher, schedulingProvider,
                 contextAccessor);
 
+            // Create the ConsumeContext and immediately register it on the accessor.
+            // The publisher and scheduler read from the accessor only when the consumer calls
+            // Publish/Send/Schedule (inside finalDelegate), so the ordering is safe.
             var consumeContext = new ConsumeContext(ctx.Headers, publisher, scheduler);
             contextAccessor.ConsumeContext = consumeContext;
             return finalDelegate(ctx.Message, consumeContext, ct);

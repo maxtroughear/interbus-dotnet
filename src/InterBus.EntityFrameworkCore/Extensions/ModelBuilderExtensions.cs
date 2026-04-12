@@ -27,7 +27,8 @@ public static class ModelBuilderExtensions
             b.Property(g => g.CreatedAt).IsRequired();
             b.Property(g => g.VisibleAt);
 
-            b.HasIndex(g => new { g.Id, g.VisibleAt });
+            // VisibleAt first: lock-provider queries filter on VisibleAt before ordering by Id.
+            b.HasIndex(g => new { g.VisibleAt, g.Id });
 
             b.HasMany<OutboxMessage>()
                 .WithOne(m => m.Group)

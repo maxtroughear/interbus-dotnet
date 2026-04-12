@@ -425,9 +425,11 @@ public class OutboxTests
 
     /// <summary>
     /// When a consumer opts into the outbox via <c>UseOutbox&lt;TDbContext&gt;()</c> and
-    /// publishes a message during its consume handler, the middleware attempts to deliver the
-    /// message directly to the transport. When delivery succeeds no outbox entry is created,
-    /// so the message bypasses the background processor entirely.
+    /// publishes a message during its consume handler, the message is first written to the outbox
+    /// atomically with the consumer's own database changes. After the consumer's <c>Consume</c>
+    /// handler returns, <see cref="OutboxConsumeMiddleware{TDbContext}"/> attempts inline
+    /// delivery: if delivery succeeds the group is deleted from the DB, so the outbox is empty
+    /// after the execute pipeline completes. No outbox processor involvement is needed.
     /// </summary>
     [Fact]
     public async Task ConsumerPublish_InlineDelivery_SucceedsWithoutOutboxEntry()
@@ -466,7 +468,7 @@ public class OutboxTests
                     return consumer.Consume(msg, ctx, ct);
                 }, TestContext.Current.CancellationToken);
 
-                // Inline delivery succeeded — no outbox entry should be written.
+                // Outbox entry was written then immediately delivered and deleted — DB should be empty.
                 var dbContext = scope.ServiceProvider.GetRequiredService<TestDbContext>();
                 var outboxCount = await dbContext.OutboxMessages.CountAsync(TestContext.Current.CancellationToken);
                 Assert.Equal(0, outboxCount);
@@ -485,9 +487,9 @@ public class OutboxTests
     }
 
     /// <summary>
-    /// When a consumer opts into the outbox and publishes inline, the InMemory transport
-    /// queues the message immediately. Once the message pump is started the downstream
-    /// consumer receives it — no outbox processor involvement needed.
+    /// Consumer-published messages that are delivered inline are queued in the InMemory transport.
+    /// Once the message pump is started the downstream consumer receives the message.
+    /// The outbox processor plays no role because inline delivery already forwarded the message.
     /// </summary>
     [Fact]
     public async Task ConsumerPublish_InlineDelivery_MessageDeliveredByPump()
@@ -539,10 +541,11 @@ public class OutboxTests
     }
 
     /// <summary>
-    /// When inline delivery fails (e.g. transport unavailable), the middleware falls back to
-    /// writing the message to the outbox. When <see cref="OutboxOptions.ConsumerVisibilityTimeout"/>
-    /// is configured, the outbox group's <c>VisibleAt</c> is set so the processor does not pick
-    /// it up before the consumer's transaction has committed.
+    /// When inline delivery fails (e.g. no transport registered), the outbox entry written
+    /// atomically during <c>Consume</c> is left in the database. When
+    /// <see cref="OutboxOptions.ConsumerVisibilityTimeout"/> is configured the group is stamped
+    /// with a future <c>VisibleAt</c> so the processor does not pick it up before the consumer's
+    /// surrounding transaction has committed.
     /// </summary>
     [Fact]
     public async Task ConsumerPublish_InlineDeliveryFails_FallsBackToOutboxWithVisibleAt()

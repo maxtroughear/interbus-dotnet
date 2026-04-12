@@ -1,6 +1,7 @@
 using InterBus.EntityFrameworkCore.Internal;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace InterBus.EntityFrameworkCore.Extensions;
 
@@ -57,6 +58,10 @@ public static class EfCoreOutboxBuilderExtensions
         configure?.Invoke(outboxBuilder);
 
         builder.Services.AddSingleton(outboxBuilder.Options);
+        // OutboxConsumeState bridges OutboxSendMiddleware and OutboxConsumeMiddleware within a
+        // single dispatch scope. Register globally so that OutboxSendMiddleware can be resolved
+        // in any scope (including the bus-context scope where no consume middleware is active).
+        builder.Services.TryAddScoped<OutboxConsumeState>();
         builder.UsePublishMiddleware<OutboxSendMiddleware<TDbContext>>();
 
         if (outboxBuilder.Options.RunOutboxProcessor)

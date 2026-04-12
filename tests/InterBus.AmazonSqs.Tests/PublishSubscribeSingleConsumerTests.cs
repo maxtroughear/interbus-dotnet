@@ -11,11 +11,13 @@ namespace InterBus.AmazonSqs.Tests;
 public class PublishSubscribeSingleConsumerTests
 {
     private static readonly LocalStackContainer Container =
-        new LocalStackBuilder("localstack/localstack:latest").Build();
+        new LocalStackBuilder("localstack/localstack:3.8.1").Build();
 
     private ServiceProvider _provider = null!;
     private CancellationTokenSource _cts = null!;
     private OrderPlacedTracker _orderTracker = null!;
+    // Unique prefix per test-setup so that different tests don't share queues/topics.
+    private string _runId = null!;
 
     [OneTimeSetUp]
     public static Task OneTimeSetUp() => Container.StartAsync();
@@ -30,6 +32,7 @@ public class PublishSubscribeSingleConsumerTests
     [SetUp]
     public async Task Setup()
     {
+        _runId = Guid.NewGuid().ToString("N")[..8]; // 8 hex chars for uniqueness
         _orderTracker = new OrderPlacedTracker();
 
         var services = new ServiceCollection();
@@ -43,6 +46,10 @@ public class PublishSubscribeSingleConsumerTests
                 o.AccessKey = "test";
                 o.SecretKey = "test";
                 o.Region = "us-east-1";
+                // Unique per-test prefix isolates queues and topics so tests sharing
+                // the same LocalStack container don't interfere with each other.
+                o.QueuePrefix = $"q-{_runId}-";
+                o.TopicPrefix = $"t-{_runId}-";
             });
             bus.AddConsumer<OrderPlacedConsumer>();
         });

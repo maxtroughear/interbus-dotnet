@@ -11,12 +11,13 @@ namespace InterBus.AmazonSqs.Tests;
 public class PublishSubscribeMultipleConsumersTests
 {
     private static readonly LocalStackContainer Container =
-        new LocalStackBuilder("localstack/localstack:latest").Build();
+        new LocalStackBuilder("localstack/localstack:3.8.1").Build();
 
     private ServiceProvider _provider = null!;
     private CancellationTokenSource _cts = null!;
     private OrderPlacedTracker _orderTracker = null!;
     private AuditTracker _auditTracker = null!;
+    private string _runId = null!;
 
     [OneTimeSetUp]
     public static Task OneTimeSetUp() => Container.StartAsync();
@@ -31,6 +32,7 @@ public class PublishSubscribeMultipleConsumersTests
     [SetUp]
     public async Task Setup()
     {
+        _runId = Guid.NewGuid().ToString("N")[..8];
         _orderTracker = new OrderPlacedTracker();
         _auditTracker = new AuditTracker();
 
@@ -46,6 +48,8 @@ public class PublishSubscribeMultipleConsumersTests
                 o.AccessKey = "test";
                 o.SecretKey = "test";
                 o.Region = "us-east-1";
+                o.QueuePrefix = $"q-{_runId}-";
+                o.TopicPrefix = $"t-{_runId}-";
             });
             bus.AddConsumer<OrderPlacedConsumer>();
             bus.AddConsumer<AuditConsumer>();

@@ -249,6 +249,7 @@ internal sealed class SqsMessagePump(
         var concurrency = Math.Max(1, descriptor.ConcurrencyCount);
 
         using var semaphore = new SemaphoreSlim(concurrency);
+        var activeTasks = new List<Task>();
 
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -288,7 +289,7 @@ internal sealed class SqsMessagePump(
 
                 // Capture for the lambda below.
                 var captured = message;
-                _ = Task.Run(
+                var task = Task.Run(
                     async () =>
                     {
                         try
@@ -300,7 +301,27 @@ internal sealed class SqsMessagePump(
                             semaphore.Release();
                         }
                     },
-                    stoppingToken);
+                    CancellationToken.None);
+
+                activeTasks.Add(task);
+
+                // Remove completed tasks to prevent unbounded growth.
+                activeTasks.RemoveAll(t => t.IsCompleted);
+            }
+        }
+
+        // Wait for all in-flight processing tasks to complete before declaring the pump stopped.
+        // This ensures that messages that were successfully dispatched are also deleted from SQS,
+        // preventing unnecessary redelivery.
+        if (activeTasks.Count > 0)
+        {
+            try
+            {
+                await Task.WhenAll(activeTasks);
+            }
+            catch
+            {
+                // Exceptions are already handled (logged) inside ProcessMessageAsync.
             }
         }
 
@@ -320,11 +341,14 @@ internal sealed class SqsMessagePump(
             await DispatchAsync(descriptor, message, ct);
 
             // ACK: delete the message from SQS.
-            await clientProvider.SqsClient.DeleteMessageAsync(queueUrl, message.ReceiptHandle, ct);
+            // Use CancellationToken.None so that a graceful shutdown does not leave
+            // successfully-dispatched messages to be redelivered unnecessarily.
+            await clientProvider.SqsClient.DeleteMessageAsync(queueUrl, message.ReceiptHandle,
+                CancellationToken.None);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            // Shutdown; do not delete – message will be redelivered.
+            // Dispatch was cancelled mid-flight; do not delete – SQS will redeliver.
         }
         catch (Exception ex)
         {

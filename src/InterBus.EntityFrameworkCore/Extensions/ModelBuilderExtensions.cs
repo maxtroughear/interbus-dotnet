@@ -25,7 +25,9 @@ public static class ModelBuilderExtensions
             b.HasKey(g => g.Id);
             b.Property(g => g.Id).ValueGeneratedNever();
             b.Property(g => g.CreatedAt).IsRequired();
-            b.Property(g => g.VisibleAfter);
+            b.Property(g => g.VisibleAt);
+
+            b.HasIndex(g => new { g.Id, g.VisibleAt });
 
             b.HasMany<OutboxMessage>()
                 .WithOne(m => m.Group)

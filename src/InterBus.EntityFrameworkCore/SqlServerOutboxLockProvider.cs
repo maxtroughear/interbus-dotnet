@@ -16,13 +16,13 @@ public sealed class SqlServerOutboxLockProvider<TDbContext> : IOutboxLockProvide
         CancellationToken cancellationToken)
     {
         var (groupsFqn, groupIdCol) = GetTableInfo(context.OutboxGroups.EntityType, nameof(OutboxGroup.Id));
-        var (_, visibleAfterCol) = GetTableInfo(context.OutboxGroups.EntityType, nameof(OutboxGroup.VisibleAfter));
+        var (_, visibleAtCol) = GetTableInfo(context.OutboxGroups.EntityType, nameof(OutboxGroup.VisibleAt));
 
         // Lock one oldest eligible group row; empty groups are still claimable and will be cleaned up.
         var groupSql = $"""
                         SELECT TOP (1) g.*
                         FROM {groupsFqn} g WITH (UPDLOCK, READPAST)
-                        WHERE (g.{visibleAfterCol} IS NULL OR g.{visibleAfterCol} <= GETUTCDATE())
+                        WHERE (g.{visibleAtCol} IS NULL OR g.{visibleAtCol} <= GETUTCDATE())
                         ORDER BY g.{groupIdCol}
                         """;
 

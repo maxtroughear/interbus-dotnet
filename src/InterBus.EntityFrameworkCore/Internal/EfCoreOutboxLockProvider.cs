@@ -17,7 +17,7 @@ internal sealed class EfCoreOutboxLockProvider<TDbContext> : IOutboxLockProvider
     {
         var now = DateTime.UtcNow;
         return await context.OutboxGroups
-            .Where(g => g.VisibleAfter == null || g.VisibleAfter <= now)
+            .Where(g => g.VisibleAt == null || g.VisibleAt <= now)
             .OrderBy(g => g.Id)
             .Include(g => g.Messages.OrderBy(m => m.Id))
             .FirstOrDefaultAsync(cancellationToken);

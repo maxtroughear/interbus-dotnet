@@ -125,15 +125,4 @@ internal sealed class InterBusBuilder : IInterBusBuilder
         Services.AddScoped<IScheduleMiddleware, TMiddleware>();
         return this;
     }
-
-    /// <inheritdoc/>
-    public IInterBusBuilder UseConsumePublishMiddleware<
-        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
-        TMiddleware>()
-        where TMiddleware : class, IPublishMiddleware
-    {
-        // Keyed to AllConsumersContext so MiddlewareFactory includes it for every consumer type.
-        Services.AddKeyedScoped<IPublishMiddleware, TMiddleware>(InterBusConstants.AllConsumersContext);
-        return this;
-    }
 }

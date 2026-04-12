@@ -42,6 +42,13 @@ internal sealed class ConsumerBuilder(ConsumerDescriptor descriptor, IServiceCol
     }
 
     /// <inheritdoc/>
+    public IConsumerBuilder UsePublishMiddleware(Type middlewareType)
+    {
+        services.AddKeyedScoped(typeof(IPublishMiddleware), descriptor.ConsumerType, middlewareType);
+        return this;
+    }
+
+    /// <inheritdoc/>
     public IConsumerBuilder UsePublishMiddleware<
         [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
         TMiddleware>()

@@ -18,7 +18,7 @@ public sealed class OutboxGroup
     /// within a consumer's consume handler, to avoid the outbox processor picking up the group
     /// before the consumer's own transaction has had time to commit.
     /// </summary>
-    public DateTime? VisibleAfter { get; set; }
+    public DateTime? VisibleAt { get; set; }
 
     public ICollection<OutboxMessage> Messages { get; } = new List<OutboxMessage>();
 }

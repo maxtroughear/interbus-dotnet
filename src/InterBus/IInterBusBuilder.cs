@@ -149,21 +149,4 @@ public interface IInterBusBuilder
         [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
         TMiddleware>()
         where TMiddleware : class, IScheduleMiddleware;
-
-    /// <summary>
-    /// Add a middleware step to the publish pipeline for <b>all</b> consumer contexts.
-    /// When a consumer publishes a message from within its <c>Consume</c> handler, each
-    /// registered all-consumer publish middleware is applied in addition to any
-    /// consumer-specific middlewares registered via
-    /// <see cref="IConsumerBuilder.UsePublishMiddleware{TMiddleware}"/>.
-    /// <para>
-    /// All-consumer middlewares are applied <em>innermost</em> — they execute after any
-    /// consumer-specific middlewares and before the terminal send step. Steps are executed in
-    /// registration order (first registered = outermost among all-consumer middlewares).
-    /// </para>
-    /// </summary>
-    IInterBusBuilder UseConsumePublishMiddleware<
-        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
-        TMiddleware>()
-        where TMiddleware : class, IPublishMiddleware;
 }

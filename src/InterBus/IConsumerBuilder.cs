@@ -61,4 +61,20 @@ public interface IConsumerBuilder
         [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
         TMiddleware>()
         where TMiddleware : class, IPublishMiddleware;
+
+    /// <summary>
+    /// Add a middleware step to the schedule pipeline for this consumer only.
+    /// Steps run when the consumer calls scheduling methods on <see cref="IConsumeContext"/>
+    /// (e.g. <c>SchedulePublish</c> or <c>ScheduleSend</c>) and are executed in registration
+    /// order – the first registered step is outermost.
+    /// </summary>
+    /// <remarks>
+    /// The middleware type is automatically registered as a scoped service in the DI container.
+    /// Requires scheduling to be configured via <c>AddScheduling()</c> or
+    /// <c>AddPublishScheduling()</c> on the InterBus builder.
+    /// </remarks>
+    public IConsumerBuilder UseScheduleMiddleware<
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
+        TMiddleware>()
+        where TMiddleware : class, IScheduleMiddleware;
 }

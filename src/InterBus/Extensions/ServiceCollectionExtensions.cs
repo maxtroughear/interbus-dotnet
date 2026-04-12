@@ -48,6 +48,7 @@ public static class ServiceCollectionExtensions
         services.TryAddSingleton<IMessageSerializer, SystemTextJsonMessageSerializer>();
 
         services.AddScoped<IMiddlewareFactory, MiddlewareFactory>();
+        services.AddScoped<IConsumeContextAccessor, ConsumeContextAccessor>();
 
         services.AddScoped<DispatchPipelineExecutor>();
         services.AddScoped<ConsumePipelineExecutor>();

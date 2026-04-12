@@ -1,6 +1,5 @@
 using System.Diagnostics.CodeAnalysis;
 using InterBus.Middleware;
-using InterBus.Middleware.Internal;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
@@ -79,8 +78,6 @@ internal sealed class InterBusBuilder : IInterBusBuilder
         consumerBuilder.UseConsumeMiddleware<ExceptionLoggingConsumeMiddleware>();
 
         configure?.Invoke(consumerBuilder);
-
-        consumerBuilder.UsePublishMiddleware<PublishToSendPipeline>();
 
         Options.AddConsumer(descriptor);
         Services.TryAddScoped<TConsumer>();

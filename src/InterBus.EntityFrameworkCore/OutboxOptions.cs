@@ -16,5 +16,13 @@ public sealed class OutboxOptions
     /// </summary>
     public TimeSpan PollInterval { get; set; } = TimeSpan.FromSeconds(5);
 
+    /// <summary>
+    /// How long after a group is created by a consumer's consume handler before the outbox
+    /// processor is allowed to pick it up. Defaults to <see cref="TimeSpan.Zero"/> (immediately
+    /// eligible). Increase this to allow the consumer's surrounding transaction to commit before
+    /// the processor attempts to lock the group, reducing contention in high-throughput scenarios.
+    /// </summary>
+    public TimeSpan ConsumerVisibilityTimeout { get; set; } = TimeSpan.Zero;
+
     public bool RunOutboxProcessor { get; internal set; } = true;
 }

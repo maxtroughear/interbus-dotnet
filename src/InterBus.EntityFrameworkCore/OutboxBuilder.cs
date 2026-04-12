@@ -43,6 +43,22 @@ public sealed class OutboxBuilder<TDbContext>
         return this;
     }
 
+    /// <summary>
+    /// Sets the visibility timeout for outbox groups created by consumer publish calls.
+    /// When a consumer publishes a message during its consume handler, the outbox group is
+    /// created with a <c>VisibleAfter</c> timestamp of <c>UtcNow + timeout</c>, preventing the
+    /// outbox processor from picking it up until that time has elapsed.
+    /// <para>
+    /// Defaults to <see cref="TimeSpan.Zero"/> (immediately eligible). Increase this to reduce
+    /// lock contention between the outbox processor and the consumer's own transaction.
+    /// </para>
+    /// </summary>
+    public OutboxBuilder<TDbContext> WithConsumerVisibilityTimeout(TimeSpan timeout)
+    {
+        Options.ConsumerVisibilityTimeout = timeout;
+        return this;
+    }
+
     public OutboxBuilder<TDbContext> DisableOutboxProcessor()
     {
         Options.RunOutboxProcessor = false;

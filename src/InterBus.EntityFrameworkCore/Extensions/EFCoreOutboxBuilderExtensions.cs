@@ -58,6 +58,7 @@ public static class EfCoreOutboxBuilderExtensions
 
         builder.Services.AddSingleton(outboxBuilder.Options);
         builder.UsePublishMiddleware<OutboxSendMiddleware<TDbContext>>();
+        builder.UseConsumePublishMiddleware<OutboxSendMiddleware<TDbContext>>();
 
         if (outboxBuilder.Options.RunOutboxProcessor)
             builder.Services.AddHostedService<OutboxProcessor<TDbContext>>();

@@ -20,8 +20,20 @@ namespace InterBus.EntityFrameworkCore.Internal;
 /// <see cref="OutboxMessage.GroupId"/>, allowing the background processor to fetch and
 /// forward them as a single atomic group.
 /// </para>
+/// <para>
+/// When invoked from within a consumer's consume handler (i.e. when
+/// <see cref="IConsumeContextAccessor.ConsumeContext"/> is set), a
+/// <see cref="OutboxGroup.VisibleAfter"/> timestamp is applied to the group equal to
+/// <c>UtcNow + <see cref="OutboxOptions.ConsumerVisibilityTimeout"/></c>. This prevents
+/// the outbox processor from picking up the group before the consumer's surrounding
+/// transaction has had time to commit.
+/// </para>
 /// </summary>
-internal sealed class OutboxSendMiddleware<TDbContext>(TDbContext dbContext, IMessageSerializer serializer)
+internal sealed class OutboxSendMiddleware<TDbContext>(
+    TDbContext dbContext,
+    IMessageSerializer serializer,
+    OutboxOptions options,
+    IConsumeContextAccessor contextAccessor)
     : IPublishMiddleware
     where TDbContext : DbContext, IOutboxDbContext
 {
@@ -55,7 +67,11 @@ internal sealed class OutboxSendMiddleware<TDbContext>(TDbContext dbContext, IMe
         if (_outboxGroup is not null)
             return _outboxGroup;
 
-        _outboxGroup = new OutboxGroup { Id = _groupId };
+        DateTime? visibleAfter = null;
+        if (contextAccessor.ConsumeContext is not null && options.ConsumerVisibilityTimeout > TimeSpan.Zero)
+            visibleAfter = DateTime.UtcNow + options.ConsumerVisibilityTimeout;
+
+        _outboxGroup = new OutboxGroup { Id = _groupId, VisibleAfter = visibleAfter };
         dbContext.OutboxGroups.Add(_outboxGroup);
         return _outboxGroup;
     }

@@ -15,5 +15,5 @@ internal sealed class OutboxConsumeState
     /// The <see cref="OutboxGroup.Id"/> written by the publish middleware during this dispatch.
     /// <c>null</c> if no outbox group was written in this scope.
     /// </summary>
-    public Guid? GroupId { get; set; }
+    public Guid? GroupId { get; internal set; }
 }

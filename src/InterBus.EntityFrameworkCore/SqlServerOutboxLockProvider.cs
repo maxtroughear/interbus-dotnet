@@ -22,7 +22,7 @@ public sealed class SqlServerOutboxLockProvider<TDbContext> : IOutboxLockProvide
         var groupSql = $"""
                         SELECT TOP (1) g.*
                         FROM {groupsFqn} g WITH (UPDLOCK, READPAST)
-                        WHERE (g.{visibleAtCol} IS NULL OR g.{visibleAtCol} <= GETUTCDATE())
+                        WHERE g.{visibleAtCol} <= GETUTCDATE()
                         ORDER BY g.{groupIdCol}
                         """;
 

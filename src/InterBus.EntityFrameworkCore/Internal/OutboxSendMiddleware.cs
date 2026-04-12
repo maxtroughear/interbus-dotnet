@@ -10,7 +10,8 @@ namespace InterBus.EntityFrameworkCore.Internal;
 /// database transaction, guaranteeing atomicity with any surrounding business-logic writes.
 /// <para>
 /// <b>Bus context</b> (message published via <see cref="InterBus.IMessagePublisher"/>):
-/// the message is written to the outbox table and will be forwarded by the
+/// the message is written to the outbox table with <see cref="OutboxGroup.VisibleAt"/> set to
+/// <c>UtcNow</c> (immediately eligible) and will be forwarded by the
 /// <see cref="OutboxProcessor{TDbContext}"/> background service once the caller commits.
 /// </para>
 /// <para>
@@ -19,9 +20,9 @@ namespace InterBus.EntityFrameworkCore.Internal;
 /// <see cref="OutboxGroup.VisibleAt"/> timestamp of
 /// <c>UtcNow + <see cref="OutboxOptions.ConsumerVisibilityTimeout"/></c>.
 /// After the consumer's <c>Consume</c> handler completes (and its transaction has committed), the
-/// paired <see cref="OutboxConsumeMiddleware{TDbContext}"/> attempts immediate inline delivery,
-/// deleting the group on success. If inline delivery fails the group remains in the outbox and
-/// the processor retries it after <see cref="OutboxGroup.VisibleAt"/> has elapsed.
+/// paired <see cref="OutboxConsumeMiddleware{TDbContext}"/> (when registered) attempts immediate
+/// inline delivery, deleting the group on success. If inline delivery fails the group remains in
+/// the outbox and the processor retries it after <see cref="OutboxGroup.VisibleAt"/> has elapsed.
 /// </para>
 /// <para>
 /// All messages published within the same DI scope share the same
@@ -77,9 +78,12 @@ internal sealed class OutboxSendMiddleware<TDbContext>(
         if (_outboxGroup is not null)
             return _outboxGroup;
 
-        DateTime? visibleAt = null;
-        if (isConsumerContext && options.ConsumerVisibilityTimeout > TimeSpan.Zero)
-            visibleAt = DateTime.UtcNow + options.ConsumerVisibilityTimeout;
+        // Bus context: VisibleAt = UtcNow (immediately eligible).
+        // Consumer context: VisibleAt = UtcNow + ConsumerVisibilityTimeout (may equal UtcNow when
+        // timeout is zero) — prevents the processor racing with inline delivery.
+        var visibleAt = isConsumerContext
+            ? DateTime.UtcNow + options.ConsumerVisibilityTimeout
+            : DateTime.UtcNow;
 
         _outboxGroup = new OutboxGroup { Id = _groupId, VisibleAt = visibleAt };
         dbContext.OutboxGroups.Add(_outboxGroup);

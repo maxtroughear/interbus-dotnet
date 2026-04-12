@@ -16,18 +16,18 @@ public static class ConsumerBuilderOutboxExtensions
     /// <para>
     /// The consumer's publish calls are captured by
     /// <see cref="OutboxSendMiddleware{TDbContext}"/> and written to the outbox atomically with
-    /// any other database writes the consumer makes before calling
-    /// <c>SaveChangesAsync()</c>. After <c>Consume</c> returns,
-    /// <see cref="OutboxConsumeMiddleware{TDbContext}"/> attempts to deliver the messages
-    /// directly to the transport ("inline delivery"). If delivery succeeds the outbox group is
-    /// deleted, saving a background-processor round-trip. If delivery fails the group remains in
-    /// the outbox so the <see cref="OutboxProcessor{TDbContext}"/> background service can retry
-    /// it after <see cref="OutboxOptions.ConsumerVisibilityTimeout"/> has elapsed.
+    /// any other database writes the consumer makes before calling <c>SaveChangesAsync()</c>.
+    /// The <see cref="OutboxProcessor{TDbContext}"/> background service forwards the messages
+    /// to the transport once <see cref="OutboxGroup.VisibleAt"/> has elapsed.
     /// </para>
     /// <para>
-    /// Requires <c>bus.UseOutbox&lt;TDbContext&gt;()</c> to be called on the InterBus builder so
-    /// that <typeparamref name="TDbContext"/> is configured as the outbox store and the
-    /// <see cref="OutboxOptions"/> singleton is registered.
+    /// To also attempt immediate ("inline") delivery after <c>Consume</c> returns, call
+    /// <see cref="UseOutboxWithInlineDelivery{TDbContext}"/> instead.
+    /// </para>
+    /// <para>
+    /// Requires <c>bus.AddOutbox&lt;TDbContext&gt;()</c> or <c>bus.UseOutbox&lt;TDbContext&gt;()</c>
+    /// to be called on the InterBus builder so that the outbox infrastructure and
+    /// <see cref="OutboxOptions"/> singleton are registered.
     /// </para>
     /// </summary>
     /// <typeparam name="TDbContext">
@@ -38,8 +38,43 @@ public static class ConsumerBuilderOutboxExtensions
     {
         ArgumentNullException.ThrowIfNull(builder);
 
-        // Shared scoped state that lets OutboxSendMiddleware hand the written GroupId to
-        // OutboxConsumeMiddleware so it can attempt inline delivery after Consume returns.
+        // OutboxConsumeState is registered globally by AddOutbox/UseOutbox, but ensure it's
+        // available even when only AddOutbox is not called (defensive registration).
+        builder.Services.TryAddScoped<OutboxConsumeState>();
+
+        builder.UsePublishMiddleware(typeof(OutboxSendMiddleware<TDbContext>));
+
+        return builder;
+    }
+
+    /// <summary>
+    /// Routes messages published by this consumer through the transactional outbox and also
+    /// attempts immediate ("inline") delivery after the consumer's <c>Consume</c> handler returns.
+    /// <para>
+    /// The consumer's publish calls are written to the outbox atomically with
+    /// <c>SaveChangesAsync()</c>. After <c>Consume</c> returns,
+    /// <see cref="OutboxConsumeMiddleware{TDbContext}"/> reads the committed group and forwards
+    /// each message directly to the transport via <see cref="InterBus.Middleware.SendPipelineExecutor"/>,
+    /// exactly as the background processor would. If delivery succeeds the group is deleted,
+    /// saving a background-processor round-trip. If delivery fails the group remains in the
+    /// outbox so the <see cref="OutboxProcessor{TDbContext}"/> background service can retry
+    /// it after <see cref="OutboxGroup.VisibleAt"/> (controlled by
+    /// <see cref="OutboxOptions.ConsumerVisibilityTimeout"/>) has elapsed.
+    /// </para>
+    /// <para>
+    /// Requires <c>bus.AddOutbox&lt;TDbContext&gt;()</c> or <c>bus.UseOutbox&lt;TDbContext&gt;()</c>
+    /// to be called on the InterBus builder so that the outbox infrastructure and
+    /// <see cref="OutboxOptions"/> singleton are registered.
+    /// </para>
+    /// </summary>
+    /// <typeparam name="TDbContext">
+    /// The application's <see cref="DbContext"/>. Must implement <see cref="IOutboxDbContext"/>.
+    /// </typeparam>
+    public static IConsumerBuilder UseOutboxWithInlineDelivery<TDbContext>(this IConsumerBuilder builder)
+        where TDbContext : DbContext, IOutboxDbContext
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+
         builder.Services.TryAddScoped<OutboxConsumeState>();
 
         builder.UsePublishMiddleware(typeof(OutboxSendMiddleware<TDbContext>));

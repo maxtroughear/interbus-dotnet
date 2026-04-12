@@ -390,7 +390,7 @@ public class OutboxTests
             await using (var scope = provider.CreateAsyncScope())
             {
                 var dbContext = scope.ServiceProvider.GetRequiredService<TestDbContext>();
-                dbContext.OutboxGroups.Add(new OutboxGroup { Id = groupId });
+                dbContext.OutboxGroups.Add(new OutboxGroup { Id = groupId, VisibleAt = DateTime.UtcNow });
                 await dbContext.SaveChangesAsync(TestContext.Current.CancellationToken);
             }
 
@@ -424,8 +424,8 @@ public class OutboxTests
     }
 
     /// <summary>
-    /// When a consumer opts into the outbox via <c>UseOutbox&lt;TDbContext&gt;()</c> and
-    /// publishes a message during its consume handler, the message is first written to the outbox
+    /// When a consumer opts into the outbox via <c>UseOutboxWithInlineDelivery&lt;TDbContext&gt;()</c>
+    /// and publishes a message during its consume handler, the message is first written to the outbox
     /// atomically with the consumer's own database changes. After the consumer's <c>Consume</c>
     /// handler returns, <see cref="OutboxConsumeMiddleware{TDbContext}"/> attempts inline
     /// delivery: if delivery succeeds the group is deleted from the DB, so the outbox is empty
@@ -439,7 +439,7 @@ public class OutboxTests
         var (provider, cts, conn) = await StartAsync(bus =>
         {
             bus.AddInMemoryTransport();
-            bus.AddConsumer<OrderPlacedPublishingConsumer>(c => c.UseOutbox<TestDbContext>());
+            bus.AddConsumer<OrderPlacedPublishingConsumer>(c => c.UseOutboxWithInlineDelivery<TestDbContext>());
             bus.AddConsumer<OrderShippedConsumer>();
             // Long poll interval so the outbox processor does not run during assertions.
             bus.UseOutbox<TestDbContext>(o => o.WithPollInterval(TimeSpan.FromHours(1)));
@@ -499,7 +499,7 @@ public class OutboxTests
         var (provider, cts, conn) = await StartAsync(bus =>
         {
             bus.AddInMemoryTransport();
-            bus.AddConsumer<OrderPlacedPublishingConsumer>(c => c.UseOutbox<TestDbContext>());
+            bus.AddConsumer<OrderPlacedPublishingConsumer>(c => c.UseOutboxWithInlineDelivery<TestDbContext>());
             bus.AddConsumer<OrderShippedConsumer>();
             bus.UseOutbox<TestDbContext>(o => o.WithPollInterval(TimeSpan.FromMilliseconds(50)));
         }, services => services.AddSingleton(shippedTracker));
@@ -542,23 +542,18 @@ public class OutboxTests
 
     /// <summary>
     /// When inline delivery fails (e.g. no transport registered), the outbox entry written
-    /// atomically during <c>Consume</c> is left in the database. When
-    /// <see cref="OutboxOptions.ConsumerVisibilityTimeout"/> is configured the group is stamped
-    /// with a future <c>VisibleAt</c> so the processor does not pick it up before the consumer's
-    /// surrounding transaction has committed.
+    /// atomically during <c>Consume</c> is left in the database with <c>VisibleAt</c> set to a
+    /// future timestamp so the processor does not race with the remaining inline-delivery attempt.
     /// </summary>
     [Fact]
     public async Task ConsumerPublish_InlineDeliveryFails_FallsBackToOutboxWithVisibleAt()
     {
-        var visibilityTimeout = TimeSpan.FromSeconds(5);
-
         // No transport registered — inline delivery will throw, triggering the outbox fallback.
         var (provider, cts, conn) = await StartAsync(bus =>
         {
-            bus.AddConsumer<OrderPlacedPublishingConsumer>(c => c.UseOutbox<TestDbContext>());
-            bus.UseOutbox<TestDbContext>(o => o
-                .WithPollInterval(TimeSpan.FromHours(1))
-                .WithConsumerVisibilityTimeout(visibilityTimeout));
+            bus.AddConsumer<OrderPlacedPublishingConsumer>(c => c.UseOutboxWithInlineDelivery<TestDbContext>());
+            // Use the default ConsumerVisibilityTimeout (5 s); just suppress the background processor.
+            bus.UseOutbox<TestDbContext>(o => o.WithPollInterval(TimeSpan.FromHours(1)));
         });
 
         try
@@ -583,10 +578,9 @@ public class OutboxTests
                 return consumer.Consume(msg, ctx, ct);
             }, TestContext.Current.CancellationToken);
 
-            // Inline delivery failed — outbox entry should exist with VisibleAt in the future.
+            // Inline delivery failed — outbox entry should remain with VisibleAt in the future.
             var dbContext = scope.ServiceProvider.GetRequiredService<TestDbContext>();
             var group = await dbContext.OutboxGroups.SingleAsync(TestContext.Current.CancellationToken);
-            Assert.NotNull(group.VisibleAt);
             Assert.True(group.VisibleAt > DateTime.UtcNow);
         }
         finally
@@ -596,12 +590,12 @@ public class OutboxTests
     }
 
     /// <summary>
-    /// Non-consumer publish calls (via <see cref="IMessagePublisher"/>) must not have
-    /// <c>VisibleAt</c> set, even when <see cref="OutboxOptions.ConsumerVisibilityTimeout"/>
-    /// is configured.
+    /// Non-consumer publish calls (via <see cref="IMessagePublisher"/>) have
+    /// <c>VisibleAt</c> set to <c>UtcNow</c> (immediately eligible), even when
+    /// <see cref="OutboxOptions.ConsumerVisibilityTimeout"/> is configured.
     /// </summary>
     [Fact]
-    public async Task BusPublish_WithVisibilityTimeout_GroupHasNullVisibleAt()
+    public async Task BusPublish_GroupHasImmediateVisibleAt()
     {
         var (provider, cts, conn) = await StartAsync(bus =>
         {
@@ -623,7 +617,8 @@ public class OutboxTests
             await dbContext.SaveChangesAsync(TestContext.Current.CancellationToken);
 
             var group = await dbContext.OutboxGroups.SingleAsync(TestContext.Current.CancellationToken);
-            Assert.Null(group.VisibleAt);
+            // Bus-context publishes are immediately eligible; VisibleAt should be <= UtcNow.
+            Assert.True(group.VisibleAt <= DateTime.UtcNow);
         }
         finally
         {

@@ -25,7 +25,7 @@ public static class ModelBuilderExtensions
             b.HasKey(g => g.Id);
             b.Property(g => g.Id).ValueGeneratedNever();
             b.Property(g => g.CreatedAt).IsRequired();
-            b.Property(g => g.VisibleAt);
+            b.Property(g => g.VisibleAt).IsRequired();
 
             // VisibleAt first: lock-provider queries filter on VisibleAt before ordering by Id.
             b.HasIndex(g => new { g.VisibleAt, g.Id });

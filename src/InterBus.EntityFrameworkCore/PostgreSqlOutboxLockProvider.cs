@@ -22,7 +22,7 @@ public sealed class PostgreSqlOutboxLockProvider<TDbContext> : IOutboxLockProvid
         var groupSql = $"""
                         SELECT g.*
                         FROM {groupsFqn} g
-                        WHERE (g.{visibleAtCol} IS NULL OR g.{visibleAtCol} <= NOW())
+                        WHERE g.{visibleAtCol} <= NOW()
                         ORDER BY g.{groupIdCol}
                         LIMIT 1
                         FOR UPDATE SKIP LOCKED

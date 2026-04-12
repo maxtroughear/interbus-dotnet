@@ -77,7 +77,7 @@ public class OutboxSqlServerLockingTests(string imageTag)
         await using (var scope = _provider.CreateAsyncScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<TestDbContext>();
-            db.OutboxGroups.Add(new OutboxGroup { Id = GroupAId });
+            db.OutboxGroups.Add(new OutboxGroup { Id = GroupAId, VisibleAt = DateTime.UtcNow });
             await db.SaveChangesAsync();
         }
 
@@ -118,8 +118,8 @@ public class OutboxSqlServerLockingTests(string imageTag)
         {
             var db = scope.ServiceProvider.GetRequiredService<TestDbContext>();
             db.OutboxGroups.AddRange(
-                new OutboxGroup { Id = GroupAId },
-                new OutboxGroup { Id = GroupBId });
+                new OutboxGroup { Id = GroupAId, VisibleAt = DateTime.UtcNow },
+                new OutboxGroup { Id = GroupBId, VisibleAt = DateTime.UtcNow });
             await db.SaveChangesAsync();
         }
 

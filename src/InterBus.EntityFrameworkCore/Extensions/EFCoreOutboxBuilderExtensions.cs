@@ -9,6 +9,52 @@ namespace InterBus.EntityFrameworkCore.Extensions;
 public static class EfCoreOutboxBuilderExtensions
 {
     /// <summary>
+    /// Registers the transactional outbox infrastructure for InterBus: the lock provider,
+    /// shared options, <see cref="OutboxConsumeState"/>, and the background
+    /// <see cref="OutboxProcessor{TDbContext}"/>. Does <b>not</b> add the bus-level publish
+    /// middleware — call <see cref="UseOutbox{TDbContext}(IInterBusBuilder,Action{OutboxBuilder{TDbContext}})"/>
+    /// to also route <see cref="InterBus.IMessagePublisher"/> calls through the outbox.
+    /// <para>
+    /// Call this method when you only want consumers (not the global bus publisher) to write to
+    /// the outbox. Consumers opt in individually via
+    /// <c>bus.AddConsumer&lt;T&gt;(c =&gt; c.UseOutbox&lt;TDbContext&gt;())</c>.
+    /// </para>
+    /// <para>
+    /// <typeparamref name="TDbContext"/> must implement <see cref="IOutboxDbContext"/> and
+    /// call <c>modelBuilder.AddInterBusOutbox()</c> inside <c>OnModelCreating</c>.
+    /// </para>
+    /// </summary>
+    /// <typeparam name="TDbContext">
+    /// The application's <see cref="DbContext"/>. Must implement <see cref="IOutboxDbContext"/>.
+    /// </typeparam>
+    /// <param name="builder">The InterBus builder.</param>
+    /// <param name="configure">Optional delegate to configure the <see cref="OutboxBuilder{TDbContext}"/>.</param>
+    public static IInterBusBuilder AddOutbox<TDbContext>(
+        this IInterBusBuilder builder,
+        Action<OutboxBuilder<TDbContext>>? configure = null)
+        where TDbContext : DbContext, IOutboxDbContext
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+
+        // Register the default lock provider; lock-provider extension methods replace it.
+        builder.Services.AddSingleton<IOutboxLockProvider<TDbContext>, EfCoreOutboxLockProvider<TDbContext>>();
+
+        var outboxBuilder = new OutboxBuilder<TDbContext>(builder.Services);
+        configure?.Invoke(outboxBuilder);
+
+        builder.Services.AddSingleton(outboxBuilder.Options);
+        // OutboxConsumeState bridges OutboxSendMiddleware and OutboxConsumeMiddleware within a
+        // single dispatch scope. Register globally so that OutboxSendMiddleware can be resolved
+        // in any scope (including the bus-context scope where no consume middleware is active).
+        builder.Services.TryAddScoped<OutboxConsumeState>();
+
+        if (outboxBuilder.Options.RunOutboxProcessor)
+            builder.Services.AddHostedService<OutboxProcessor<TDbContext>>();
+
+        return builder;
+    }
+
+    /// <summary>
     /// Enables the transactional outbox pattern for InterBus using an existing EF Core
     /// <typeparamref name="TDbContext"/> as the outbox store.
     /// <para>
@@ -38,6 +84,11 @@ public static class EfCoreOutboxBuilderExtensions
     ///     .UsePostgreSql());
     /// </code>
     /// </para>
+    /// <para>
+    /// To route only consumer-published messages through the outbox (not the global bus
+    /// publisher), use <see cref="AddOutbox{TDbContext}(IInterBusBuilder, Action{OutboxBuilder{TDbContext}})"/>
+    /// instead and opt consumers in individually.
+    /// </para>
     /// </summary>
     /// <typeparam name="TDbContext">
     /// The application's <see cref="DbContext"/>. Must implement <see cref="IOutboxDbContext"/>.
@@ -51,21 +102,8 @@ public static class EfCoreOutboxBuilderExtensions
     {
         ArgumentNullException.ThrowIfNull(builder);
 
-        // Register the default lock provider; lock-provider extension methods replace it.
-        builder.Services.AddSingleton<IOutboxLockProvider<TDbContext>, EfCoreOutboxLockProvider<TDbContext>>();
-
-        var outboxBuilder = new OutboxBuilder<TDbContext>(builder.Services);
-        configure?.Invoke(outboxBuilder);
-
-        builder.Services.AddSingleton(outboxBuilder.Options);
-        // OutboxConsumeState bridges OutboxSendMiddleware and OutboxConsumeMiddleware within a
-        // single dispatch scope. Register globally so that OutboxSendMiddleware can be resolved
-        // in any scope (including the bus-context scope where no consume middleware is active).
-        builder.Services.TryAddScoped<OutboxConsumeState>();
+        builder.AddOutbox(configure);
         builder.UsePublishMiddleware<OutboxSendMiddleware<TDbContext>>();
-
-        if (outboxBuilder.Options.RunOutboxProcessor)
-            builder.Services.AddHostedService<OutboxProcessor<TDbContext>>();
 
         return builder;
     }

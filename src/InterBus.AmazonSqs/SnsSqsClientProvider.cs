@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using Amazon;
 using Amazon.Runtime;
+using Amazon.Runtime.Credentials;
 using Amazon.SimpleNotificationService;
 using Amazon.SQS;
 
@@ -113,9 +114,7 @@ internal sealed class SnsSqsClientProvider : IAsyncDisposable
 
         // Use the standard AWS credential provider chain (environment variables,
         // shared credentials file, instance profile, etc.).
-#pragma warning disable CS0618 // FallbackCredentialsFactory is deprecated in SDK v4 but still functional
-        return FallbackCredentialsFactory.GetCredentials();
-#pragma warning restore CS0618
+        return DefaultAWSCredentialsIdentityResolver.GetCredentials();
     }
 
     private static IAmazonSimpleNotificationService BuildSnsClient(

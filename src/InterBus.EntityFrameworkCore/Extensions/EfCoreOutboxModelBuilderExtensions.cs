@@ -27,7 +27,7 @@ public static class EfCoreOutboxModelBuilderExtensions
             b.Property(g => g.CreatedAt).IsRequired();
             b.Property(g => g.VisibleAt).IsRequired();
 
-            b.HasIndex(g => new { g.VisibleAt });
+            b.HasIndex(g => new { g.VisibleAt, g.Id });
 
             b.HasMany<OutboxMessage>()
                 .WithOne(m => m.Group)

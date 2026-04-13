@@ -15,7 +15,7 @@ namespace InterBus.EntityFrameworkCore;
 /// </list>
 /// </para>
 /// </summary>
-public interface IOutboxLockProvider<in TDbContext> where TDbContext : DbContext, IOutboxDbContext
+public interface IOutboxLockProvider<in TDbContext> where TDbContext : DbContext
 {
     /// <summary>
     /// Claims and locks the next outbox group for processing.

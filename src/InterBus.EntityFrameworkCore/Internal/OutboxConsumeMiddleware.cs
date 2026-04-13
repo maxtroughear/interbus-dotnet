@@ -7,7 +7,7 @@ namespace InterBus.EntityFrameworkCore.Internal;
 
 /// <summary>
 /// Consume middleware that attempts immediate ("inline") delivery of outbox messages written by
-/// <see cref="OutboxSendMiddleware{TDbContext}"/> during the same consumer dispatch.
+/// <see cref="OutboxPublishMiddleware{TDbContext}"/> during the same consumer dispatch.
 /// <para>
 /// After the consumer's <c>Consume</c> handler returns (including any <c>SaveChangesAsync</c>
 /// call that commits the outbox group to the database), this middleware reads the group from the
@@ -24,7 +24,7 @@ namespace InterBus.EntityFrameworkCore.Internal;
 /// </para>
 /// <para>
 /// This middleware must be registered <b>together</b> with
-/// <see cref="OutboxSendMiddleware{TDbContext}"/> on the same consumer (via
+/// <see cref="OutboxPublishMiddleware{TDbContext}"/> on the same consumer (via
 /// <c>IConsumerBuilder.UseOutbox&lt;TDbContext&gt;()</c>) because it relies on
 /// <see cref="OutboxConsumeState"/> being populated by the publish middleware.
 /// </para>
@@ -35,7 +35,7 @@ internal sealed partial class OutboxConsumeMiddleware<TDbContext>(
     SendPipelineExecutor pipeline,
     ILogger<OutboxConsumeMiddleware<TDbContext>> logger)
     : IConsumeMiddleware
-    where TDbContext : DbContext, IOutboxDbContext
+    where TDbContext : DbContext
 {
     public async Task InvokeAsync<T>(ConsumeContext<T> context,
         Func<ConsumeContext<T>, CancellationToken, Task> next,
@@ -45,17 +45,7 @@ internal sealed partial class OutboxConsumeMiddleware<TDbContext>(
         // Consume, which commits any outbox entries written by OutboxSendMiddleware to the DB.
         await next(context, cancellationToken);
 
-        // If no group was written in this dispatch (consumer didn't publish anything), nothing to do.
-        if (consumeState.GroupId is not { } groupId)
-            return;
-
-        // Attempt to load the group. If the consumer did not commit (no SaveChangesAsync), the
-        // row will not be in the DB and outboxGroup will be null — nothing to deliver.
-        var outboxGroup = await dbContext.OutboxGroups
-            .Include(g => g.Messages)
-            .FirstOrDefaultAsync(g => g.Id == groupId, cancellationToken);
-
-        if (outboxGroup is null)
+        if (consumeState.OutboxGroup is not { } outboxGroup)
             return;
 
         LogInlineDelivery(outboxGroup.Id, outboxGroup.Messages.Count);
@@ -80,13 +70,13 @@ internal sealed partial class OutboxConsumeMiddleware<TDbContext>(
         }
         catch (Exception ex)
         {
-            // Inline delivery failed — leave the group for the background processor.
+            // Inline delivery failed - leave the group for the background processor.
             LogInlineDeliveryFailed(outboxGroup.Id, ex);
             return;
         }
 
-        // All messages delivered — delete the group so the processor does not re-deliver them.
-        dbContext.OutboxGroups.Remove(outboxGroup);
+        // All messages delivered - delete the group so the processor does not re-deliver them.
+        dbContext.Remove(outboxGroup);
 
         try
         {
@@ -94,7 +84,7 @@ internal sealed partial class OutboxConsumeMiddleware<TDbContext>(
         }
         catch (Exception ex)
         {
-            // The delete failed. The processor will pick up and re-deliver the group. Consumers
+            // Delete failed. The processor will pick up and re-deliver the group. Consumers
             // should be idempotent.
             LogInlineDeleteFailed(outboxGroup.Id, ex);
         }

@@ -4,7 +4,7 @@ using Microsoft.EntityFrameworkCore;
 namespace InterBus.EntityFrameworkCore.SqlServer.IntegrationTests;
 
 public sealed class TestDbContext(DbContextOptions<TestDbContext> options)
-    : DbContext(options), IOutboxDbContext
+    : DbContext(options)
 {
     public DbSet<OutboxGroup> OutboxGroups => Set<OutboxGroup>();
     public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();

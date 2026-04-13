@@ -13,6 +13,7 @@ using Xunit;
 namespace InterBus.EntityFrameworkCore.Tests;
 
 public record OrderPlaced(Guid OrderId, string CustomerEmail, decimal Total);
+
 public record OrderShipped(Guid OrderId);
 
 public sealed class OrderPlacedTracker
@@ -44,7 +45,8 @@ public sealed class OrderPlacedConsumer(OrderPlacedTracker tracker) : IConsumer<
 /// </summary>
 public sealed class OrderPlacedPublishingConsumer(TestDbContext dbContext) : IConsumer<OrderPlaced>
 {
-    public async Task Consume(OrderPlaced message, IConsumeContext context, CancellationToken cancellationToken = default)
+    public async Task Consume(OrderPlaced message, IConsumeContext context,
+        CancellationToken cancellationToken = default)
     {
         await context.Publish(new OrderShipped(message.OrderId), cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -61,7 +63,7 @@ public sealed class OrderShippedConsumer(OrderShippedTracker tracker) : IConsume
 }
 
 public sealed class TestDbContext(DbContextOptions<TestDbContext> options)
-    : DbContext(options), IOutboxDbContext
+    : DbContext(options)
 {
     public DbSet<OutboxGroup> OutboxGroups => Set<OutboxGroup>();
     public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
@@ -427,7 +429,7 @@ public class OutboxTests
     /// When a consumer opts into the outbox via <c>UseOutboxWithInlineDelivery&lt;TDbContext&gt;()</c>
     /// and publishes a message during its consume handler, the message is first written to the outbox
     /// atomically with the consumer's own database changes. After the consumer's <c>Consume</c>
-    /// handler returns, <see cref="OutboxConsumeMiddleware{TDbContext}"/> attempts inline
+    /// handler returns, <c>OutboxConsumeMiddleware{TDbContext}</c> attempts inline
     /// delivery: if delivery succeeds the group is deleted from the DB, so the outbox is empty
     /// after the execute pipeline completes. No outbox processor involvement is needed.
     /// </summary>
@@ -488,7 +490,7 @@ public class OutboxTests
 
     /// <summary>
     /// Consumer-published messages that are delivered inline are queued in the InMemory transport.
-    /// Once the message pump is started the downstream consumer receives the message.
+    /// Once the message pump is started, the downstream consumer receives the message.
     /// The outbox processor plays no role because inline delivery already forwarded the message.
     /// </summary>
     [Fact]

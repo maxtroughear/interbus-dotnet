@@ -1,3 +1,5 @@
+// ReSharper disable EntityFramework.ModelValidation.UnlimitedStringLength - set in ModelBuilder
+
 namespace InterBus.EntityFrameworkCore;
 
 /// <summary>
@@ -8,31 +10,31 @@ namespace InterBus.EntityFrameworkCore;
 public sealed class OutboxMessage
 {
     /// <summary>Unique identifier for this outbox entry.</summary>
-    public Guid Id { get; set; } = Guid.CreateVersion7();
+    public Guid Id { get; init; } = Guid.CreateVersion7();
 
     /// <summary>
     /// Foreign key to the outbox group/header row that owns this message.
     /// All messages in the same group are forwarded atomically.
     /// </summary>
-    public required Guid GroupId { get; set; }
+    public required Guid GroupId { get; init; }
 
-    public OutboxGroup Group { get; set; } = null!;
+    public OutboxGroup Group { get; init; } = null!;
 
     /// <summary>The serialized destination URI (e.g. <c>memorytopic://interbus/my-topic</c>).</summary>
-    public required string Destination { get; set; }
+    public required string Destination { get; init; }
 
     /// <summary>The serialized message payload.</summary>
-    public required byte[] Payload { get; set; }
+    public required byte[] Payload { get; init; }
 
     /// <summary>JSON-serialized message headers.</summary>
-    public required string HeadersJson { get; set; }
+    public required string HeadersJson { get; init; }
 
     /// <summary>
     /// Optional delay to pass to the transport when forwarding this message.
     /// The transport (not the outbox) is responsible for honouring the delay.
     /// </summary>
-    public TimeSpan? Delay { get; set; }
+    public TimeSpan? Delay { get; init; }
 
     /// <summary>When the message was added to the outbox (UTC).</summary>
-    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime CreatedAt { get; init; } = DateTime.UtcNow;
 }

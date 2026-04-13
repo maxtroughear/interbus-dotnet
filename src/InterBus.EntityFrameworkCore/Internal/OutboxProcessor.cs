@@ -31,7 +31,7 @@ internal sealed partial class OutboxProcessor<TDbContext>(
     IOutboxLockProvider<TDbContext> lockProvider,
     ILogger<OutboxProcessor<TDbContext>> logger)
     : BackgroundService
-    where TDbContext : DbContext, IOutboxDbContext
+    where TDbContext : DbContext
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {

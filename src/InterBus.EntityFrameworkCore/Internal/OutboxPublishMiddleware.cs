@@ -30,18 +30,15 @@ namespace InterBus.EntityFrameworkCore.Internal;
 /// single atomic group.
 /// </para>
 /// </summary>
-internal sealed class OutboxSendMiddleware<TDbContext>(
+internal sealed class OutboxPublishMiddleware<TDbContext>(
     TDbContext dbContext,
     IMessageSerializer serializer,
     OutboxOptions options,
     IConsumeContextAccessor contextAccessor,
     OutboxConsumeState consumeState)
     : IPublishMiddleware
-    where TDbContext : DbContext, IOutboxDbContext
+    where TDbContext : DbContext
 {
-    /// <summary>Shared by all Publish/Send calls within this DI scope.</summary>
-    private readonly Guid _groupId = Guid.CreateVersion7();
-
     private OutboxGroup? _outboxGroup;
 
     public Task InvokeAsync<T>(PublishContext<T> context, Func<PublishContext<T>, CancellationToken, Task> next,
@@ -50,43 +47,41 @@ internal sealed class OutboxSendMiddleware<TDbContext>(
         var payload = serializer.Serialize(context.Message);
         var headersJson = SerializeHeaders(context.Headers);
 
-        bool isConsumerContext = contextAccessor.ConsumeContext is not null;
-
-        EnsureGroupExists(isConsumerContext).Messages.Add(new OutboxMessage
+        EnsureGroupExists().Messages.Add(new OutboxMessage
         {
-            GroupId = _groupId,
+            GroupId = _outboxGroup!.Id,
             Destination = context.Destination.ToString(),
             Payload = payload,
             HeadersJson = headersJson,
             Delay = context.Delay,
         });
 
-        if (isConsumerContext)
-        {
-            // Notify the paired OutboxConsumeMiddleware so it can attempt inline delivery
-            // after the consumer's Consume handler (and its SaveChangesAsync) has finished.
-            consumeState.GroupId = _groupId;
-        }
-
         // Do not call next — messages are forwarded by OutboxProcessor (or inline delivery in
         // OutboxConsumeMiddleware for consumer-context publishes).
         return Task.CompletedTask;
     }
 
-    private OutboxGroup EnsureGroupExists(bool isConsumerContext)
+    private OutboxGroup EnsureGroupExists()
     {
         if (_outboxGroup is not null)
             return _outboxGroup;
 
+        var isConsumerContext = contextAccessor.ConsumeContext is not null;
+
         // Bus context: VisibleAt = UtcNow (immediately eligible).
         // Consumer context: VisibleAt = UtcNow + ConsumerVisibilityTimeout (may equal UtcNow when
-        // timeout is zero) — prevents the processor racing with inline delivery.
+        // timeout is zero) - prevents the processor racing with inline delivery.
         var visibleAt = isConsumerContext
             ? DateTime.UtcNow + options.ConsumerVisibilityTimeout
             : DateTime.UtcNow;
 
-        _outboxGroup = new OutboxGroup { Id = _groupId, VisibleAt = visibleAt };
-        dbContext.OutboxGroups.Add(_outboxGroup);
+        _outboxGroup = new OutboxGroup { Id = Guid.CreateVersion7(), VisibleAt = visibleAt };
+        dbContext.Add(_outboxGroup);
+
+        // Notify the paired OutboxConsumeMiddleware so it can attempt inline delivery
+        // after the consumer's Consume handler (and its SaveChangesAsync) has finished.
+        if (isConsumerContext) consumeState.OutboxGroup = _outboxGroup;
+
         return _outboxGroup;
     }
 

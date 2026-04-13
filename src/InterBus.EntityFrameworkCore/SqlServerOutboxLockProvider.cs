@@ -9,24 +9,24 @@ namespace InterBus.EntityFrameworkCore;
 /// then reads all messages in that group.
 /// </summary>
 public sealed class SqlServerOutboxLockProvider<TDbContext> : IOutboxLockProvider<TDbContext>
-    where TDbContext : DbContext, IOutboxDbContext
+    where TDbContext : DbContext
 {
     public async Task<OutboxGroup?> TryFetchGroupAsync(
         TDbContext context,
         CancellationToken cancellationToken)
     {
-        var (groupsFqn, groupIdCol) = GetTableInfo(context.OutboxGroups.EntityType, nameof(OutboxGroup.Id));
-        var (_, visibleAtCol) = GetTableInfo(context.OutboxGroups.EntityType, nameof(OutboxGroup.VisibleAt));
+        var (groupsFqn, visibleAtCol) =
+            GetTableInfo(context.Set<OutboxGroup>().EntityType, nameof(OutboxGroup.VisibleAt));
 
         // Lock one oldest eligible group row; empty groups are still claimable and will be cleaned up.
         var groupSql = $"""
                         SELECT TOP (1) g.*
                         FROM {groupsFqn} g WITH (UPDLOCK, READPAST)
                         WHERE g.{visibleAtCol} <= GETUTCDATE()
-                        ORDER BY g.{groupIdCol}
+                        ORDER BY g.{visibleAtCol}
                         """;
 
-        return await context.OutboxGroups
+        return await context.Set<OutboxGroup>()
             .FromSqlRaw(groupSql)
             .Include(g => g.Messages.OrderBy(m => m.Id))
             .FirstOrDefaultAsync(cancellationToken);

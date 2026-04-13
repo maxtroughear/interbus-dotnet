@@ -17,10 +17,10 @@ namespace InterBus.EntityFrameworkCore;
 /// </para>
 /// </summary>
 /// <typeparam name="TDbContext">
-/// The application's <see cref="DbContext"/>. Must implement <see cref="IOutboxDbContext"/>.
+/// The application's <see cref="DbContext"/>
 /// </typeparam>
 public sealed class OutboxBuilder<TDbContext>
-    where TDbContext : DbContext, IOutboxDbContext
+    where TDbContext : DbContext
 {
     /// <summary>The underlying service collection, used by lock-provider extension methods.</summary>
     public IServiceCollection Services { get; }

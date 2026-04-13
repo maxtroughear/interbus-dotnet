@@ -9,26 +9,26 @@ namespace InterBus.EntityFrameworkCore;
 /// then reads all messages in that group.
 /// </summary>
 public sealed class PostgreSqlOutboxLockProvider<TDbContext> : IOutboxLockProvider<TDbContext>
-    where TDbContext : DbContext, IOutboxDbContext
+    where TDbContext : DbContext
 {
     public async Task<OutboxGroup?> TryFetchGroupAsync(
         TDbContext context,
         CancellationToken cancellationToken)
     {
-        var (groupsFqn, groupIdCol) = GetTableInfo(context.OutboxGroups.EntityType, nameof(OutboxGroup.Id));
-        var (_, visibleAtCol) = GetTableInfo(context.OutboxGroups.EntityType, nameof(OutboxGroup.VisibleAt));
+        var (groupsFqn, visibleAtCol) =
+            GetTableInfo(context.Set<OutboxGroup>().EntityType, nameof(OutboxGroup.VisibleAt));
 
         // Lock one oldest eligible group row; empty groups are still claimable and will be cleaned up.
         var groupSql = $"""
                         SELECT g.*
                         FROM {groupsFqn} g
                         WHERE g.{visibleAtCol} <= NOW()
-                        ORDER BY g.{groupIdCol}
+                        ORDER BY g.{visibleAtCol}
                         LIMIT 1
                         FOR UPDATE SKIP LOCKED
                         """;
 
-        var group = await context.OutboxGroups
+        var group = await context.Set<OutboxGroup>()
             .FromSqlRaw(groupSql)
             .Include(g => g.Messages.OrderBy(m => m.Id))
             .FirstOrDefaultAsync(cancellationToken);

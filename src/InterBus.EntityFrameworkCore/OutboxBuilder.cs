@@ -17,10 +17,10 @@ namespace InterBus.EntityFrameworkCore;
 /// </para>
 /// </summary>
 /// <typeparam name="TDbContext">
-/// The application's <see cref="DbContext"/>. Must implement <see cref="IOutboxDbContext"/>.
+/// The application's <see cref="DbContext"/>
 /// </typeparam>
 public sealed class OutboxBuilder<TDbContext>
-    where TDbContext : DbContext, IOutboxDbContext
+    where TDbContext : DbContext
 {
     /// <summary>The underlying service collection, used by lock-provider extension methods.</summary>
     public IServiceCollection Services { get; }
@@ -40,6 +40,24 @@ public sealed class OutboxBuilder<TDbContext>
     public OutboxBuilder<TDbContext> WithPollInterval(TimeSpan interval)
     {
         Options.PollInterval = interval;
+        return this;
+    }
+
+    /// <summary>
+    /// Sets the visibility timeout for outbox groups created by consumer publish calls.
+    /// When a consumer publishes a message during its consume handler, the outbox group is
+    /// created with a <c>VisibleAt</c> timestamp of <c>UtcNow + timeout</c>, preventing the
+    /// outbox processor from picking it up until that time has elapsed.
+    /// <para>
+    /// Defaults to 5 seconds as a safe value when inline delivery is configured (via
+    /// <c>UseOutboxWithInlineDelivery&lt;TDbContext&gt;()</c>) to minimise the risk of the
+    /// background processor racing with inline delivery. Set to
+    /// <see cref="TimeSpan.Zero"/> to make consumer-published groups immediately eligible.
+    /// </para>
+    /// </summary>
+    public OutboxBuilder<TDbContext> WithConsumerVisibilityTimeout(TimeSpan timeout)
+    {
+        Options.ConsumerVisibilityTimeout = timeout;
         return this;
     }
 

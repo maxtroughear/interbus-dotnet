@@ -8,7 +8,7 @@ namespace InterBus.EntityFrameworkCore.Extensions;
 /// <summary>Extension methods for selecting a lock provider on <see cref="OutboxBuilder{TDbContext}"/>.</summary>
 public static class OutboxBuilderExtensions
 {
-    extension<TDbContext>(OutboxBuilder<TDbContext> builder) where TDbContext : DbContext, IOutboxDbContext
+    extension<TDbContext>(OutboxBuilder<TDbContext> builder) where TDbContext : DbContext
     {
         /// <summary>
         /// Configures the outbox to use the default EF Core lock provider.

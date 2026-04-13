@@ -72,15 +72,12 @@ public static class InterBusBuilderExtensions
                     var consumePipeline = sp.GetRequiredService<ConsumePipelineExecutor>();
                     var messageType = ctx.Headers[InterBusHeaders.MessageType];
 
-                    if (messageType == deliveryCommandTypeName)
-                    {
-                        var cmd = serializer.Deserialize<ScheduleDeliveryCommand>(ctx.Payload)!;
-                        var consumeContext =
-                            new ConsumeContext<ScheduleDeliveryCommand>(ctx.Descriptor, cmd, ctx.Headers);
-                        return consumePipeline.ExecuteAsync(consumeContext, consumer.Consume, ct);
-                    }
+                    if (messageType != deliveryCommandTypeName)
+                        return Task.CompletedTask;
 
-                    return Task.CompletedTask;
+                    var cmd = serializer.Deserialize<ScheduleDeliveryCommand>(ctx.Payload)!;
+                    var consumeContext = new ConsumeContext<ScheduleDeliveryCommand>(ctx.Descriptor, cmd, ctx.Headers);
+                    return consumePipeline.ExecuteAsync(consumeContext, consumer.Consume, ct);
                 });
 
             return builder;

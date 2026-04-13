@@ -3,7 +3,7 @@ using Microsoft.EntityFrameworkCore;
 namespace InterBus.EntityFrameworkCore.Extensions;
 
 /// <summary>Extension methods for configuring the InterBus outbox entity mapping.</summary>
-public static class ModelBuilderExtensions
+public static class EfCoreOutboxModelBuilderExtensions
 {
     /// <summary>
     /// Registers the <see cref="OutboxGroup"/> and <see cref="OutboxMessage"/> entity types
@@ -25,6 +25,9 @@ public static class ModelBuilderExtensions
             b.HasKey(g => g.Id);
             b.Property(g => g.Id).ValueGeneratedNever();
             b.Property(g => g.CreatedAt).IsRequired();
+            b.Property(g => g.VisibleAt).IsRequired();
+
+            b.HasIndex(g => new { g.VisibleAt, g.Id });
 
             b.HasMany<OutboxMessage>()
                 .WithOne(m => m.Group)
@@ -41,10 +44,9 @@ public static class ModelBuilderExtensions
             b.Property(m => m.GroupId).IsRequired();
             b.Property(m => m.Destination).IsRequired().HasMaxLength(2048);
             b.Property(m => m.Payload).IsRequired();
-            b.Property(m => m.HeadersJson).IsRequired();
+            b.Property(m => m.HeadersJson).IsRequired().HasMaxLength(4096);
             b.Property(m => m.CreatedAt).IsRequired();
 
-            // Supports provider queries: fetch oldest claimable group, then read messages.
             b.HasIndex(m => new { m.GroupId, m.CreatedAt });
         });
 

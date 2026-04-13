@@ -3,6 +3,7 @@ using InterBus.EntityFrameworkCore.Extensions;
 using InterBus.Extensions;
 using InterBus.Generated;
 using InterBus.InMemory.Extensions;
+using InterBus.Middleware;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -13,11 +14,20 @@ namespace InterBus.EntityFrameworkCore.Tests;
 
 public record OrderPlaced(Guid OrderId, string CustomerEmail, decimal Total);
 
+public record OrderShipped(Guid OrderId);
+
 public sealed class OrderPlacedTracker
 {
     private readonly ConcurrentBag<OrderPlaced> _messages = [];
     public IReadOnlyCollection<OrderPlaced> Messages => _messages;
     public void Track(OrderPlaced msg) => _messages.Add(msg);
+}
+
+public sealed class OrderShippedTracker
+{
+    private readonly ConcurrentBag<OrderShipped> _messages = [];
+    public IReadOnlyCollection<OrderShipped> Messages => _messages;
+    public void Track(OrderShipped msg) => _messages.Add(msg);
 }
 
 public sealed class OrderPlacedConsumer(OrderPlacedTracker tracker) : IConsumer<OrderPlaced>
@@ -29,8 +39,31 @@ public sealed class OrderPlacedConsumer(OrderPlacedTracker tracker) : IConsumer<
     }
 }
 
+/// <summary>
+/// Consumer that publishes <see cref="OrderShipped"/> to the outbox when it receives
+/// <see cref="OrderPlaced"/>. Saves the DbContext explicitly so the outbox row is committed.
+/// </summary>
+public sealed class OrderPlacedPublishingConsumer(TestDbContext dbContext) : IConsumer<OrderPlaced>
+{
+    public async Task Consume(OrderPlaced message, IConsumeContext context,
+        CancellationToken cancellationToken = default)
+    {
+        await context.Publish(new OrderShipped(message.OrderId), cancellationToken);
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+}
+
+public sealed class OrderShippedConsumer(OrderShippedTracker tracker) : IConsumer<OrderShipped>
+{
+    public Task Consume(OrderShipped message, IConsumeContext context, CancellationToken cancellationToken = default)
+    {
+        tracker.Track(message);
+        return Task.CompletedTask;
+    }
+}
+
 public sealed class TestDbContext(DbContextOptions<TestDbContext> options)
-    : DbContext(options), IOutboxDbContext
+    : DbContext(options)
 {
     public DbSet<OutboxGroup> OutboxGroups => Set<OutboxGroup>();
     public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
@@ -359,7 +392,7 @@ public class OutboxTests
             await using (var scope = provider.CreateAsyncScope())
             {
                 var dbContext = scope.ServiceProvider.GetRequiredService<TestDbContext>();
-                dbContext.OutboxGroups.Add(new OutboxGroup { Id = groupId });
+                dbContext.OutboxGroups.Add(new OutboxGroup { Id = groupId, VisibleAt = DateTime.UtcNow });
                 await dbContext.SaveChangesAsync(TestContext.Current.CancellationToken);
             }
 
@@ -385,6 +418,209 @@ public class OutboxTests
                     .AnyAsync(g => g.Id == groupId, TestContext.Current.CancellationToken);
                 Assert.False(exists);
             }
+        }
+        finally
+        {
+            await StopAsync(provider, cts, conn);
+        }
+    }
+
+    /// <summary>
+    /// When a consumer opts into the outbox via <c>UseOutboxWithInlineDelivery&lt;TDbContext&gt;()</c>
+    /// and publishes a message during its consume handler, the message is first written to the outbox
+    /// atomically with the consumer's own database changes. After the consumer's <c>Consume</c>
+    /// handler returns, <c>OutboxConsumeMiddleware{TDbContext}</c> attempts inline
+    /// delivery: if delivery succeeds the group is deleted from the DB, so the outbox is empty
+    /// after the execute pipeline completes. No outbox processor involvement is needed.
+    /// </summary>
+    [Fact]
+    public async Task ConsumerPublish_InlineDelivery_SucceedsWithoutOutboxEntry()
+    {
+        var shippedTracker = new OrderShippedTracker();
+
+        var (provider, cts, conn) = await StartAsync(bus =>
+        {
+            bus.AddInMemoryTransport();
+            bus.AddConsumer<OrderPlacedPublishingConsumer>(c => c.UseOutboxWithInlineDelivery<TestDbContext>());
+            bus.AddConsumer<OrderShippedConsumer>();
+            // Long poll interval so the outbox processor does not run during assertions.
+            bus.UseOutbox<TestDbContext>(o => o.WithPollInterval(TimeSpan.FromHours(1)));
+        }, services => services.AddSingleton(shippedTracker));
+
+        try
+        {
+            await using (var scope = provider.CreateAsyncScope())
+            {
+                var executor = scope.ServiceProvider.GetRequiredService<ConsumePipelineExecutor>();
+                var descriptor = scope.ServiceProvider.GetRequiredService<InterBusOptions>()
+                    .Consumers.Single(d => d.ConsumerType == typeof(OrderPlacedPublishingConsumer));
+
+                var orderId = Guid.NewGuid();
+                var headers = new MessageHeaders(new Dictionary<string, string>
+                {
+                    [InterBusHeaders.MessageType] = "OrderPlaced",
+                    [InterBusHeaders.MessageId] = Guid.NewGuid().ToString(),
+                });
+                var context = new ConsumeContext<OrderPlaced>(
+                    descriptor, new OrderPlaced(orderId, "consumer@example.com", 10m), headers);
+
+                await executor.ExecuteAsync(context, (msg, ctx, ct) =>
+                {
+                    var consumer = scope.ServiceProvider.GetRequiredService<OrderPlacedPublishingConsumer>();
+                    return consumer.Consume(msg, ctx, ct);
+                }, TestContext.Current.CancellationToken);
+
+                // Outbox entry was written then immediately delivered and deleted — DB should be empty.
+                var dbContext = scope.ServiceProvider.GetRequiredService<TestDbContext>();
+                var outboxCount = await dbContext.OutboxMessages.CountAsync(TestContext.Current.CancellationToken);
+                Assert.Equal(0, outboxCount);
+
+                var groupCount = await dbContext.OutboxGroups.CountAsync(TestContext.Current.CancellationToken);
+                Assert.Equal(0, groupCount);
+            }
+
+            // OrderShippedConsumer should NOT have received anything yet (pump not started).
+            Assert.Empty(shippedTracker.Messages);
+        }
+        finally
+        {
+            await StopAsync(provider, cts, conn);
+        }
+    }
+
+    /// <summary>
+    /// Consumer-published messages that are delivered inline are queued in the InMemory transport.
+    /// Once the message pump is started, the downstream consumer receives the message.
+    /// The outbox processor plays no role because inline delivery already forwarded the message.
+    /// </summary>
+    [Fact]
+    public async Task ConsumerPublish_InlineDelivery_MessageDeliveredByPump()
+    {
+        var shippedTracker = new OrderShippedTracker();
+
+        var (provider, cts, conn) = await StartAsync(bus =>
+        {
+            bus.AddInMemoryTransport();
+            bus.AddConsumer<OrderPlacedPublishingConsumer>(c => c.UseOutboxWithInlineDelivery<TestDbContext>());
+            bus.AddConsumer<OrderShippedConsumer>();
+            bus.UseOutbox<TestDbContext>(o => o.WithPollInterval(TimeSpan.FromMilliseconds(50)));
+        }, services => services.AddSingleton(shippedTracker));
+
+        try
+        {
+            await using (var scope = provider.CreateAsyncScope())
+            {
+                var executor = scope.ServiceProvider.GetRequiredService<ConsumePipelineExecutor>();
+                var descriptor = scope.ServiceProvider.GetRequiredService<InterBusOptions>()
+                    .Consumers.Single(d => d.ConsumerType == typeof(OrderPlacedPublishingConsumer));
+
+                var orderId = Guid.NewGuid();
+                var headers = new MessageHeaders(new Dictionary<string, string>
+                {
+                    [InterBusHeaders.MessageType] = "OrderPlaced",
+                    [InterBusHeaders.MessageId] = Guid.NewGuid().ToString(),
+                });
+                var context = new ConsumeContext<OrderPlaced>(
+                    descriptor, new OrderPlaced(orderId, "consumer@example.com", 10m), headers);
+
+                await executor.ExecuteAsync(context, (msg, ctx, ct) =>
+                {
+                    var consumer = scope.ServiceProvider.GetRequiredService<OrderPlacedPublishingConsumer>();
+                    return consumer.Consume(msg, ctx, ct);
+                }, TestContext.Current.CancellationToken);
+            }
+
+            await StartHostedServicesAsync(provider, cts.Token);
+
+            await WaitUntilAsync(() => shippedTracker.Messages.Count == 1);
+
+            Assert.Single(shippedTracker.Messages);
+        }
+        finally
+        {
+            await StopAsync(provider, cts, conn);
+        }
+    }
+
+    /// <summary>
+    /// When inline delivery fails (e.g. no transport registered), the outbox entry written
+    /// atomically during <c>Consume</c> is left in the database with <c>VisibleAt</c> set to a
+    /// future timestamp so the processor does not race with the remaining inline-delivery attempt.
+    /// </summary>
+    [Fact]
+    public async Task ConsumerPublish_InlineDeliveryFails_FallsBackToOutboxWithVisibleAt()
+    {
+        // No transport registered — inline delivery will throw, triggering the outbox fallback.
+        var (provider, cts, conn) = await StartAsync(bus =>
+        {
+            bus.AddConsumer<OrderPlacedPublishingConsumer>(c => c.UseOutboxWithInlineDelivery<TestDbContext>());
+            // Use the default ConsumerVisibilityTimeout (5 s); just suppress the background processor.
+            bus.UseOutbox<TestDbContext>(o => o.WithPollInterval(TimeSpan.FromHours(1)));
+        });
+
+        try
+        {
+            await using var scope = provider.CreateAsyncScope();
+            var executor = scope.ServiceProvider.GetRequiredService<ConsumePipelineExecutor>();
+            var descriptor = scope.ServiceProvider.GetRequiredService<InterBusOptions>()
+                .Consumers.Single(d => d.ConsumerType == typeof(OrderPlacedPublishingConsumer));
+
+            var orderId = Guid.NewGuid();
+            var headers = new MessageHeaders(new Dictionary<string, string>
+            {
+                [InterBusHeaders.MessageType] = "OrderPlaced",
+                [InterBusHeaders.MessageId] = Guid.NewGuid().ToString(),
+            });
+            var context = new ConsumeContext<OrderPlaced>(
+                descriptor, new OrderPlaced(orderId, "fallback@example.com", 10m), headers);
+
+            await executor.ExecuteAsync(context, (msg, ctx, ct) =>
+            {
+                var consumer = scope.ServiceProvider.GetRequiredService<OrderPlacedPublishingConsumer>();
+                return consumer.Consume(msg, ctx, ct);
+            }, TestContext.Current.CancellationToken);
+
+            // Inline delivery failed — outbox entry should remain with VisibleAt in the future.
+            var dbContext = scope.ServiceProvider.GetRequiredService<TestDbContext>();
+            var group = await dbContext.OutboxGroups.SingleAsync(TestContext.Current.CancellationToken);
+            Assert.True(group.VisibleAt > DateTime.UtcNow);
+        }
+        finally
+        {
+            await StopAsync(provider, cts, conn);
+        }
+    }
+
+    /// <summary>
+    /// Non-consumer publish calls (via <see cref="IMessagePublisher"/>) have
+    /// <c>VisibleAt</c> set to <c>UtcNow</c> (immediately eligible), even when
+    /// <see cref="OutboxOptions.ConsumerVisibilityTimeout"/> is configured.
+    /// </summary>
+    [Fact]
+    public async Task BusPublish_GroupHasImmediateVisibleAt()
+    {
+        var (provider, cts, conn) = await StartAsync(bus =>
+        {
+            bus.AddInMemoryTransport();
+            bus.UseOutbox<TestDbContext>(o => o
+                .WithPollInterval(TimeSpan.FromHours(1))
+                .WithConsumerVisibilityTimeout(TimeSpan.FromSeconds(5)));
+        });
+
+        try
+        {
+            await using var scope = provider.CreateAsyncScope();
+            var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
+            var dbContext = scope.ServiceProvider.GetRequiredService<TestDbContext>();
+
+            await publisher.Publish(
+                new OrderPlaced(Guid.NewGuid(), "bus@example.com", 1m),
+                TestContext.Current.CancellationToken);
+            await dbContext.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+            var group = await dbContext.OutboxGroups.SingleAsync(TestContext.Current.CancellationToken);
+            // Bus-context publishes are immediately eligible; VisibleAt should be <= UtcNow.
+            Assert.True(group.VisibleAt <= DateTime.UtcNow);
         }
         finally
         {

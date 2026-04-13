@@ -27,18 +27,6 @@ public interface IConsumerBuilder
     IConsumerBuilder WithConcurrency(int concurrencyCount);
 
     /// <summary>
-    /// Add a middleware step to the consume pipeline for this consumer only, specified as a
-    /// runtime <see cref="Type"/>. Use this overload when the middleware type is internal to
-    /// another assembly and cannot be named directly.
-    /// Steps are executed in registration order - the first registered step is outermost.
-    /// </summary>
-    /// <remarks>
-    /// The middleware type is automatically registered as a scoped service in the DI container.
-    /// </remarks>
-    IConsumerBuilder UseConsumeMiddleware(
-        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] Type middlewareType);
-
-    /// <summary>
     /// Add a middleware step to the consume pipeline for this consumer only.
     /// Steps are executed in registration order - the first registered step is outermost
     /// </summary>

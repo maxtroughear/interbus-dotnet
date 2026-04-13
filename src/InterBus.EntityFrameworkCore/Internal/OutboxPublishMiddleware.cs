@@ -80,7 +80,7 @@ internal sealed class OutboxPublishMiddleware<TDbContext>(
 
         // Notify the paired OutboxConsumeMiddleware so it can attempt inline delivery
         // after the consumer's Consume handler (and its SaveChangesAsync) has finished.
-        if (isConsumerContext) consumeState.OutboxGroup = _outboxGroup;
+        if (isConsumerContext) consumeState.GroupId = _outboxGroup.Id;
 
         return _outboxGroup;
     }

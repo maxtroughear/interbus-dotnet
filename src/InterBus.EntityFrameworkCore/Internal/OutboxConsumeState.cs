@@ -4,7 +4,7 @@ namespace InterBus.EntityFrameworkCore.Internal;
 /// Scoped state shared between <see cref="OutboxPublishMiddleware{TDbContext}"/> and
 /// <see cref="OutboxConsumeMiddleware{TDbContext}"/> within a single message-dispatch scope.
 /// <para>
-/// <see cref="OutboxPublishMiddleware{TDbContext}"/> sets <see cref="OutboxGroup"/> when it writes an
+/// <see cref="OutboxPublishMiddleware{TDbContext}"/> sets <see cref="GroupId"/> when it writes an
 /// outbox group, so that the paired consume middleware can immediately deliver that
 /// group after the consumer's surrounding transaction has committed.
 /// </para>
@@ -12,7 +12,8 @@ namespace InterBus.EntityFrameworkCore.Internal;
 internal sealed class OutboxConsumeState
 {
     /// <summary>
-    /// The outbox group that was written by the publish middleware during this dispatch.
+    /// The <see cref="OutboxGroup.Id"/> written by the publish middleware during this dispatch.
+    /// <c>null</c> if no outbox group was written in this scope
     /// </summary>
-    public OutboxGroup? OutboxGroup { get; set; }
+    public Guid? GroupId { get; internal set; }
 }

@@ -25,7 +25,7 @@ namespace InterBus.EntityFrameworkCore.Internal;
 /// <para>
 /// This middleware must be registered <b>together</b> with
 /// <see cref="OutboxPublishMiddleware{TDbContext}"/> on the same consumer (via
-/// <c>IConsumerBuilder.UseOutbox&lt;TDbContext&gt;()</c>) because it relies on
+/// <c>IConsumerBuilder.UseOutboxWithInlineDelivery&lt;TDbContext&gt;()</c>) because it relies on
 /// <see cref="OutboxConsumeState"/> being populated by the publish middleware.
 /// </para>
 /// </summary>
@@ -45,7 +45,15 @@ internal sealed partial class OutboxConsumeMiddleware<TDbContext>(
         // Consume, which commits any outbox entries written by OutboxSendMiddleware to the DB.
         await next(context, cancellationToken);
 
-        if (consumeState.OutboxGroup is not { } outboxGroup)
+        if (consumeState.GroupId is not { } groupId)
+            return;
+
+        var outboxGroup = await dbContext.Set<OutboxGroup>()
+            .AsNoTracking()
+            .Include(g => g.Messages)
+            .FirstOrDefaultAsync(g => g.Id == groupId, cancellationToken);
+
+        if (outboxGroup is null)
             return;
 
         LogInlineDelivery(outboxGroup.Id, outboxGroup.Messages.Count);
@@ -75,12 +83,11 @@ internal sealed partial class OutboxConsumeMiddleware<TDbContext>(
             return;
         }
 
-        // All messages delivered - delete the group so the processor does not re-deliver them.
-        dbContext.Remove(outboxGroup);
-
         try
         {
-            await dbContext.SaveChangesAsync(cancellationToken);
+            await dbContext.Set<OutboxGroup>()
+                .Where(g => g.Id == groupId)
+                .ExecuteDeleteAsync(cancellationToken);
         }
         catch (Exception ex)
         {

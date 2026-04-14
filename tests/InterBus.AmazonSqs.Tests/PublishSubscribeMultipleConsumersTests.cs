@@ -1,3 +1,6 @@
+using Amazon;
+using Amazon.Extensions.NETCore.Setup;
+using Amazon.Runtime;
 using InterBus.AmazonSqs.Extensions;
 using InterBus.Extensions;
 using InterBus.Generated;
@@ -40,14 +43,18 @@ public class PublishSubscribeMultipleConsumersTests
         services.AddLogging();
         services.AddSingleton(_orderTracker);
         services.AddSingleton(_auditTracker);
+
+        services.AddDefaultAWSOptions(new AWSOptions
+        {
+            Credentials = new BasicAWSCredentials("test", "test"),
+            Region = RegionEndpoint.USEast1,
+        });
+
         services.AddInterBus(bus =>
         {
             bus.AddAmazonSqsTransport(o =>
             {
                 o.ServiceUrl = Container.GetConnectionString();
-                o.AccessKey = "test";
-                o.SecretKey = "test";
-                o.Region = "us-east-1";
                 o.QueuePrefix = $"q-{_runId}-";
                 o.TopicPrefix = $"t-{_runId}-";
             });

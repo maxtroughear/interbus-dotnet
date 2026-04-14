@@ -4,32 +4,26 @@ namespace InterBus.AmazonSqs;
 
 /// <summary>
 /// Configuration options for the Amazon SNS/SQS transport.
+/// <para>
+/// AWS credentials and region are resolved by the AWS SDK using the standard provider chain
+/// (environment variables, shared credentials file, IAM instance profile, etc.). Use
+/// <see cref="Microsoft.Extensions.DependencyInjection.ServiceCollectionExtensions.AddDefaultAWSOptions"/>
+/// on the host's <c>IServiceCollection</c> before calling
+/// <c>AddAmazonSqsTransport</c> if you need to supply explicit credentials or a specific region.
+/// </para>
 /// </summary>
 public sealed class SnsSqsTransportOptions
 {
     /// <summary>
-    /// The AWS region endpoint name (e.g. <c>us-east-1</c>).
-    /// Defaults to <c>us-east-1</c>.
-    /// </summary>
-    public string Region { get; set; } = "us-east-1";
-
-    /// <summary>
     /// Optional service URL override. Use this to point at a local emulator such as
     /// LocalStack (<c>http://localhost:4566</c>). When <c>null</c> the default AWS
     /// regional endpoint is used.
+    /// <para>
+    /// Setting this property overrides the standard SDK endpoint resolution for both the
+    /// SNS and SQS clients created by this transport.
+    /// </para>
     /// </summary>
     public string? ServiceUrl { get; set; }
-
-    /// <summary>
-    /// Optional AWS access key. When <c>null</c> or empty the standard AWS credential
-    /// provider chain (environment variables, instance profile, etc.) is used.
-    /// </summary>
-    public string? AccessKey { get; set; }
-
-    /// <summary>
-    /// Optional AWS secret key. Ignored unless <see cref="AccessKey"/> is also set.
-    /// </summary>
-    public string? SecretKey { get; set; }
 
     /// <summary>
     /// Prefix applied to SNS topic names. Defaults to <c>interbus-topic-</c>.

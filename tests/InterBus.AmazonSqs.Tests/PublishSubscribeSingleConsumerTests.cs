@@ -1,3 +1,6 @@
+using Amazon;
+using Amazon.Extensions.NETCore.Setup;
+using Amazon.Runtime;
 using InterBus.AmazonSqs.Extensions;
 using InterBus.Extensions;
 using InterBus.Generated;
@@ -38,14 +41,21 @@ public class PublishSubscribeSingleConsumerTests
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddSingleton(_orderTracker);
+
+        // Provide explicit credentials and region for the LocalStack container.
+        // In production, omit this call and let the SDK resolve credentials from
+        // environment variables, instance profile, etc.
+        services.AddDefaultAWSOptions(new AWSOptions
+        {
+            Credentials = new BasicAWSCredentials("test", "test"),
+            Region = RegionEndpoint.USEast1,
+        });
+
         services.AddInterBus(bus =>
         {
             bus.AddAmazonSqsTransport(o =>
             {
                 o.ServiceUrl = Container.GetConnectionString();
-                o.AccessKey = "test";
-                o.SecretKey = "test";
-                o.Region = "us-east-1";
                 // Unique per-test prefix isolates queues and topics so tests sharing
                 // the same LocalStack container don't interfere with each other.
                 o.QueuePrefix = $"q-{_runId}-";

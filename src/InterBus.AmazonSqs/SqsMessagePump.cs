@@ -1,5 +1,7 @@
 using System.Text.Json;
+using Amazon.SimpleNotificationService;
 using Amazon.SimpleNotificationService.Model;
+using Amazon.SQS;
 using Amazon.SQS.Model;
 using InterBus.Middleware;
 using Microsoft.Extensions.DependencyInjection;
@@ -28,6 +30,8 @@ namespace InterBus.AmazonSqs;
 /// </para>
 /// </summary>
 internal sealed class SqsMessagePump(
+    IAmazonSimpleNotificationService snsClient,
+    IAmazonSQS sqsClient,
     SnsSqsClientProvider clientProvider,
     SnsSqsTransportOptions options,
     InterBusOptions busOptions,
@@ -102,7 +106,7 @@ internal sealed class SqsMessagePump(
                 queueName,
                 descriptor.ConsumerType.Name);
 
-            var queueResponse = await clientProvider.SqsClient.CreateQueueAsync(
+            var queueResponse = await sqsClient.CreateQueueAsync(
                 new CreateQueueRequest
                 {
                     QueueName = queueName,
@@ -117,7 +121,7 @@ internal sealed class SqsMessagePump(
             clientProvider.QueueUrls.TryAdd(queueName, queueUrl);
 
             // Retrieve the queue ARN needed for the SQS resource policy.
-            var attrs = await clientProvider.SqsClient.GetQueueAttributesAsync(
+            var attrs = await sqsClient.GetQueueAttributesAsync(
                 new GetQueueAttributesRequest
                 {
                     QueueUrl = queueUrl,
@@ -140,7 +144,7 @@ internal sealed class SqsMessagePump(
                     "InterBus AmazonSqs: declaring SNS topic {TopicName}",
                     topicName);
 
-                var topicResponse = await clientProvider.SnsClient.CreateTopicAsync(
+                var topicResponse = await snsClient.CreateTopicAsync(
                     topicName,
                     cancellationToken);
 
@@ -148,7 +152,7 @@ internal sealed class SqsMessagePump(
                 clientProvider.TopicArns.TryAdd(topicName, topicArn);
 
                 // Subscribe queue to topic.
-                var subscribeResponse = await clientProvider.SnsClient.SubscribeAsync(
+                var subscribeResponse = await snsClient.SubscribeAsync(
                     new SubscribeRequest
                     {
                         TopicArn = topicArn,
@@ -220,7 +224,7 @@ internal sealed class SqsMessagePump(
             $"\"Condition\":{conditionBlock}" +
             "}]}";
 
-        await clientProvider.SqsClient.SetQueueAttributesAsync(
+        await sqsClient.SetQueueAttributesAsync(
             new SetQueueAttributesRequest
             {
                 QueueUrl = queueUrl,
@@ -256,7 +260,7 @@ internal sealed class SqsMessagePump(
             List<Message> messages;
             try
             {
-                var response = await clientProvider.SqsClient.ReceiveMessageAsync(
+                var response = await sqsClient.ReceiveMessageAsync(
                     new ReceiveMessageRequest
                     {
                         QueueUrl = queueUrl,
@@ -343,7 +347,7 @@ internal sealed class SqsMessagePump(
             // ACK: delete the message from SQS.
             // Use CancellationToken.None so that a graceful shutdown does not leave
             // successfully-dispatched messages to be redelivered unnecessarily.
-            await clientProvider.SqsClient.DeleteMessageAsync(queueUrl, message.ReceiptHandle,
+            await sqsClient.DeleteMessageAsync(queueUrl, message.ReceiptHandle,
                 CancellationToken.None);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -366,7 +370,7 @@ internal sealed class SqsMessagePump(
     {
         await using var scope = scopeFactory.CreateAsyncScope();
         var executor = scope.ServiceProvider.GetRequiredService<DispatchPipelineExecutor>();
-        var headers = SnsTransport.ParseSqsMessageAttributes(message.MessageAttributes);
+        var headers = SqsTransport.ParseSqsMessageAttributes(message.MessageAttributes);
         var payload = System.Text.Encoding.UTF8.GetBytes(message.Body);
         var context = new DispatchContext(descriptor, payload, headers);
         await executor.ExecuteAsync(context, ct);

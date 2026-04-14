@@ -44,17 +44,20 @@ public class PublishSubscribeMultipleConsumersTests
         services.AddSingleton(_orderTracker);
         services.AddSingleton(_auditTracker);
 
-        services.AddDefaultAWSOptions(new AWSOptions
+        // Register AWS clients pointing at the LocalStack container.
+        var localStackOptions = new AWSOptions
         {
             Credentials = new BasicAWSCredentials("test", "test"),
             Region = RegionEndpoint.USEast1,
-        });
+        };
+        localStackOptions.DefaultClientConfig.ServiceURL = Container.GetConnectionString();
+        services.AddAWSService<Amazon.SimpleNotificationService.IAmazonSimpleNotificationService>(localStackOptions);
+        services.AddAWSService<Amazon.SQS.IAmazonSQS>(localStackOptions);
 
         services.AddInterBus(bus =>
         {
             bus.AddAmazonSqsTransport(o =>
             {
-                o.ServiceUrl = Container.GetConnectionString();
                 o.QueuePrefix = $"q-{_runId}-";
                 o.TopicPrefix = $"t-{_runId}-";
             });

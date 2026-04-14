@@ -63,7 +63,11 @@ public sealed class SnsTransport : IInterBusTransport
     {
         var topicArn = await GetOrCreateTopicArnAsync(rawTopicName, ct);
         var messageAttributes = BuildSnsMessageAttributes(context.Headers);
-        var body = System.Text.Encoding.UTF8.GetString(context.Payload);
+
+        // Base64-encode the raw payload bytes so that any serialisation format
+        // (JSON, MessagePack, gzip-compressed, etc.) round-trips without data loss
+        // through the SNS/SQS string message body.
+        var body = Convert.ToBase64String(context.Payload);
 
         await _snsClient.PublishAsync(
             new PublishRequest

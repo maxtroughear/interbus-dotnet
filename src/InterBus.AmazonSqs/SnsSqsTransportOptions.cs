@@ -5,26 +5,16 @@ namespace InterBus.AmazonSqs;
 /// <summary>
 /// Configuration options for the Amazon SNS/SQS transport.
 /// <para>
-/// AWS credentials and region are resolved by the AWS SDK using the standard provider chain
-/// (environment variables, shared credentials file, IAM instance profile, etc.). Use
-/// <see cref="Microsoft.Extensions.DependencyInjection.ServiceCollectionExtensions.AddDefaultAWSOptions"/>
-/// on the host's <c>IServiceCollection</c> before calling
-/// <c>AddAmazonSqsTransport</c> if you need to supply explicit credentials or a specific region.
+/// The transport requires <see cref="Amazon.SQS.IAmazonSQS"/> and
+/// <see cref="Amazon.SimpleNotificationService.IAmazonSimpleNotificationService"/> to be
+/// registered in the host's DI container <em>before</em> calling
+/// <c>AddAmazonSqsTransport</c>. Use the AWS SDK DI extensions
+/// (<c>AddAWSService&lt;T&gt;</c>) or a compatible library such as
+/// <c>LocalStack.Client.Extensions</c> to register clients.
 /// </para>
 /// </summary>
 public sealed class SnsSqsTransportOptions
 {
-    /// <summary>
-    /// Optional service URL override. Use this to point at a local emulator such as
-    /// LocalStack (<c>http://localhost:4566</c>). When <c>null</c> the default AWS
-    /// regional endpoint is used.
-    /// <para>
-    /// Setting this property overrides the standard SDK endpoint resolution for both the
-    /// SNS and SQS clients created by this transport.
-    /// </para>
-    /// </summary>
-    public string? ServiceUrl { get; set; }
-
     /// <summary>
     /// Prefix applied to SNS topic names. Defaults to <c>interbus-topic-</c>.
     /// </summary>
@@ -34,6 +24,30 @@ public sealed class SnsSqsTransportOptions
     /// Prefix applied to SQS queue names. Defaults to <c>interbus-queue-</c>.
     /// </summary>
     public string QueuePrefix { get; set; } = "interbus-queue-";
+
+    /// <summary>
+    /// SQS message visibility timeout in seconds. When a message is received its visibility
+    /// is set to this duration. The message pump automatically extends the visibility by
+    /// this amount at half-timeout intervals while the message is still being processed,
+    /// preventing redelivery for long-running consumers.
+    /// <para>
+    /// Defaults to <c>30</c> seconds. Minimum is <c>1</c> second; maximum is <c>43200</c>
+    /// seconds (12 hours).
+    /// </para>
+    /// </summary>
+    public int VisibilityTimeoutSeconds { get; set; } = 30;
+
+    /// <summary>
+    /// Number of additional messages to fetch beyond the number of currently available
+    /// processing slots. A value greater than zero allows the pump to prefetch messages
+    /// before all in-flight messages have finished, trading higher SQS visibility usage
+    /// for lower latency at high throughput.
+    /// <para>
+    /// Defaults to <c>0</c> (no prefetch; fetch exactly as many messages as there are
+    /// free processing slots).
+    /// </para>
+    /// </summary>
+    public int PrefetchCount { get; set; } = 0;
 
     /// <summary>
     /// Configures retry behaviour for topology-setup failures in hosted services such

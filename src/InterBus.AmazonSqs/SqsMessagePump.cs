@@ -257,6 +257,27 @@ internal sealed class SqsMessagePump(
 
         while (!stoppingToken.IsCancellationRequested)
         {
+            // Determine how many messages to fetch based on current processing capacity.
+            // Use the semaphore's available count so we don't over-fetch beyond what we
+            // can immediately process, plus any optional prefetch buffer.
+            var availableSlots = semaphore.CurrentCount;
+            var maxFetch = Math.Clamp(availableSlots + options.PrefetchCount, 1, 10);
+
+            // When all slots are busy and prefetch is disabled, wait briefly to avoid
+            // a tight poll loop before trying again.
+            if (availableSlots == 0 && options.PrefetchCount == 0)
+            {
+                try
+                {
+                    await Task.Delay(TimeSpan.FromMilliseconds(500), stoppingToken);
+                }
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                {
+                    break;
+                }
+                continue;
+            }
+
             List<Message> messages;
             try
             {
@@ -264,9 +285,12 @@ internal sealed class SqsMessagePump(
                     new ReceiveMessageRequest
                     {
                         QueueUrl = queueUrl,
-                        MaxNumberOfMessages = Math.Min(concurrency, 10),
+                        MaxNumberOfMessages = maxFetch,
                         WaitTimeSeconds = 20, // long-poll
                         MessageAttributeNames = ["All"],
+                        // Set the visibility timeout explicitly so the pump's renewal
+                        // timer knows how long to extend each cycle.
+                        VisibilityTimeout = options.VisibilityTimeoutSeconds,
                     },
                     stoppingToken);
 
@@ -340,9 +364,18 @@ internal sealed class SqsMessagePump(
         Message message,
         CancellationToken ct)
     {
+        // Start a background renewal task that extends the message's visibility timeout
+        // at half-interval cycles so SQS does not redeliver while the message is in
+        // flight through a long-running consumer.
+        using var renewalCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        var renewalTask = ExtendVisibilityAsync(queueUrl, message.ReceiptHandle, renewalCts.Token);
+
         try
         {
             await DispatchAsync(descriptor, message, ct);
+
+            // Processing succeeded – stop renewal before deleting.
+            await renewalCts.CancelAsync();
 
             // ACK: delete the message from SQS.
             // Use CancellationToken.None so that a graceful shutdown does not leave
@@ -352,6 +385,7 @@ internal sealed class SqsMessagePump(
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
+            await renewalCts.CancelAsync();
             // Dispatch was cancelled mid-flight; do not delete – SQS will redeliver.
         }
         catch (Exception ex)
@@ -362,7 +396,61 @@ internal sealed class SqsMessagePump(
                 descriptor.ConsumerType.Name,
                 descriptor.QueueName);
 
+            await renewalCts.CancelAsync();
             // Do not delete – SQS will redeliver after the visibility timeout.
+        }
+        finally
+        {
+            try { await renewalTask; } catch { }
+        }
+    }
+
+    /// <summary>
+    /// Periodically extends the visibility timeout of an in-flight SQS message so that
+    /// long-running consumers do not cause inadvertent redelivery. Runs until
+    /// <paramref name="ct"/> is cancelled (typically just before the message is deleted
+    /// or after a processing failure).
+    /// </summary>
+    private async Task ExtendVisibilityAsync(string queueUrl, string receiptHandle, CancellationToken ct)
+    {
+        // Extend at half the visibility window so there is always a safety margin.
+        var extensionInterval = TimeSpan.FromSeconds(
+            Math.Max(1, options.VisibilityTimeoutSeconds / 2));
+
+        while (!ct.IsCancellationRequested)
+        {
+            try
+            {
+                await Task.Delay(extensionInterval, ct);
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+
+            if (ct.IsCancellationRequested)
+                break;
+
+            try
+            {
+                await sqsClient.ChangeMessageVisibilityAsync(
+                    queueUrl,
+                    receiptHandle,
+                    options.VisibilityTimeoutSeconds,
+                    CancellationToken.None);
+
+                logger.LogTrace(
+                    "InterBus AmazonSqs: extended visibility timeout for message (receipt={ShortHandle}) by {Seconds}s",
+                    receiptHandle[..Math.Min(8, receiptHandle.Length)],
+                    options.VisibilityTimeoutSeconds);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(
+                    ex,
+                    "InterBus AmazonSqs: failed to extend visibility timeout for message (receipt={ShortHandle})",
+                    receiptHandle[..Math.Min(8, receiptHandle.Length)]);
+            }
         }
     }
 
@@ -371,7 +459,8 @@ internal sealed class SqsMessagePump(
         await using var scope = scopeFactory.CreateAsyncScope();
         var executor = scope.ServiceProvider.GetRequiredService<DispatchPipelineExecutor>();
         var headers = SqsTransport.ParseSqsMessageAttributes(message.MessageAttributes);
-        var payload = System.Text.Encoding.UTF8.GetBytes(message.Body);
+        // Decode the base64-encoded payload written by SnsTransport or SqsTransport.
+        var payload = Convert.FromBase64String(message.Body);
         var context = new DispatchContext(descriptor, payload, headers);
         await executor.ExecuteAsync(context, ct);
     }

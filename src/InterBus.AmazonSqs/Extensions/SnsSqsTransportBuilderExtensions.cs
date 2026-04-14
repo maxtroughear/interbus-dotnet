@@ -1,4 +1,3 @@
-using Amazon.Extensions.NETCore.Setup;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace InterBus.AmazonSqs.Extensions;
@@ -30,19 +29,20 @@ public static class SnsSqsTransportBuilderExtensions
     /// publishes do not support delay; the delay value is ignored for topic sends.
     /// </para>
     /// <para>
-    /// AWS credentials and region are resolved by the AWS SDK using the standard provider
-    /// chain (environment variables, shared credentials file, IAM instance profile, etc.).
-    /// To supply explicit credentials or a specific region, call
-    /// <see cref="Microsoft.Extensions.DependencyInjection.ServiceCollectionExtensions.AddDefaultAWSOptions"/>
-    /// on the host's <see cref="Microsoft.Extensions.DependencyInjection.IServiceCollection"/>
-    /// <em>before</em> calling this method.
+    /// <strong>Prerequisites:</strong> Register
+    /// <see cref="Amazon.SQS.IAmazonSQS"/> and
+    /// <see cref="Amazon.SimpleNotificationService.IAmazonSimpleNotificationService"/> in
+    /// the host's <see cref="Microsoft.Extensions.DependencyInjection.IServiceCollection"/>
+    /// <em>before</em> calling this method. Use the AWS SDK DI extensions
+    /// (<c>services.AddAWSService&lt;T&gt;()</c>) or a compatible library such as
+    /// <c>LocalStack.Client.Extensions</c> for LocalStack development. This lets the
+    /// application fully control client configuration, including credentials, region, and
+    /// endpoint overrides.
     /// </para>
     /// </summary>
     /// <param name="builder">The InterBus builder.</param>
     /// <param name="configure">
-    /// Optional delegate to configure <see cref="SnsSqsTransportOptions"/>. Set
-    /// <see cref="SnsSqsTransportOptions.ServiceUrl"/> when targeting a local emulator
-    /// such as LocalStack.
+    /// Optional delegate to configure <see cref="SnsSqsTransportOptions"/>.
     /// </param>
     public static IInterBusBuilder AddAmazonSqsTransport(
         this IInterBusBuilder builder,
@@ -56,31 +56,8 @@ public static class SnsSqsTransportBuilderExtensions
         builder.Options.SetTransportUriSchemes(SnsTransport.TopicScheme, SqsTransport.QueueScheme);
         builder.Services.AddSingleton(options);
 
-        // Register SNS and SQS clients via the AWS SDK DI extensions so that credentials and
-        // region are resolved automatically through the standard provider chain (environment
-        // variables, shared credentials file, IAM instance profile, etc.).
-        //
-        // When a ServiceUrl override is configured (e.g. LocalStack), a factory is used that
-        // inherits credentials and region from the DI-registered AWSOptions (if any) while
-        // applying the endpoint override. In the common case (no ServiceUrl) the simpler
-        // AddAWSService<T>() is used which reads AWSOptions from DI directly.
-        if (!string.IsNullOrWhiteSpace(options.ServiceUrl))
-        {
-            var serviceUrl = options.ServiceUrl;
-
-            builder.Services.AddSingleton<Amazon.SimpleNotificationService.IAmazonSimpleNotificationService>(
-                sp => CreateServiceClientWithServiceUrl<Amazon.SimpleNotificationService.IAmazonSimpleNotificationService>(sp, serviceUrl));
-
-            builder.Services.AddSingleton<Amazon.SQS.IAmazonSQS>(
-                sp => CreateServiceClientWithServiceUrl<Amazon.SQS.IAmazonSQS>(sp, serviceUrl));
-        }
-        else
-        {
-            builder.Services.AddAWSService<Amazon.SimpleNotificationService.IAmazonSimpleNotificationService>();
-            builder.Services.AddAWSService<Amazon.SQS.IAmazonSQS>();
-        }
-
-        // Client provider holds the DI-resolved clients and caches ARNs/URLs (singleton).
+        // Client provider holds name-sanitisation logic and caches ARNs/URLs (singleton).
+        // IAmazonSQS and IAmazonSimpleNotificationService must be registered by the caller.
         builder.Services.AddSingleton<SnsSqsClientProvider>();
 
         // SnsTransport handles snstopic:// sends (SNS fan-out publishes).
@@ -99,30 +76,5 @@ public static class SnsSqsTransportBuilderExtensions
         builder.Services.AddHostedService<SqsMessagePump>();
 
         return builder;
-    }
-
-    /// <summary>
-    /// Creates an AWS service client of type <typeparamref name="TClient"/>, inheriting
-    /// credentials and region from the DI-registered <see cref="AWSOptions"/> (if any) and
-    /// overriding the service endpoint URL. Used when a custom <c>ServiceUrl</c> is
-    /// configured (e.g. for LocalStack).
-    /// </summary>
-    private static TClient CreateServiceClientWithServiceUrl<TClient>(
-        IServiceProvider sp,
-        string serviceUrl)
-        where TClient : class, Amazon.Runtime.IAmazonService
-    {
-        // Inherit credentials/region from globally-registered AWSOptions, then apply
-        // the service endpoint override so LocalStack (or other custom endpoints) is targeted.
-        var baseOptions = sp.GetService<AWSOptions>() ?? new AWSOptions();
-        var overrideOptions = new AWSOptions
-        {
-            Credentials = baseOptions.Credentials,
-            Region = baseOptions.Region,
-            Profile = baseOptions.Profile,
-            ProfilesLocation = baseOptions.ProfilesLocation,
-        };
-        overrideOptions.DefaultClientConfig.ServiceURL = serviceUrl;
-        return overrideOptions.CreateServiceClient<TClient>();
     }
 }

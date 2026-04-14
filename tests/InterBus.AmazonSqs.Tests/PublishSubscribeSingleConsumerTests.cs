@@ -42,20 +42,22 @@ public class PublishSubscribeSingleConsumerTests
         services.AddLogging();
         services.AddSingleton(_orderTracker);
 
-        // Provide explicit credentials and region for the LocalStack container.
-        // In production, omit this call and let the SDK resolve credentials from
-        // environment variables, instance profile, etc.
-        services.AddDefaultAWSOptions(new AWSOptions
+        // Register AWS clients pointing at the LocalStack container.
+        // In production the app registers clients once (e.g. via AddAWSService<T>()) and
+        // InterBus simply resolves them from DI.
+        var localStackOptions = new AWSOptions
         {
             Credentials = new BasicAWSCredentials("test", "test"),
             Region = RegionEndpoint.USEast1,
-        });
+        };
+        localStackOptions.DefaultClientConfig.ServiceURL = Container.GetConnectionString();
+        services.AddAWSService<Amazon.SimpleNotificationService.IAmazonSimpleNotificationService>(localStackOptions);
+        services.AddAWSService<Amazon.SQS.IAmazonSQS>(localStackOptions);
 
         services.AddInterBus(bus =>
         {
             bus.AddAmazonSqsTransport(o =>
             {
-                o.ServiceUrl = Container.GetConnectionString();
                 // Unique per-test prefix isolates queues and topics so tests sharing
                 // the same LocalStack container don't interfere with each other.
                 o.QueuePrefix = $"q-{_runId}-";

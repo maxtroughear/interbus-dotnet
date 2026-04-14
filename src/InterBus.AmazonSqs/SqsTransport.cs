@@ -63,7 +63,11 @@ public sealed class SqsTransport : IInterBusTransport
     {
         var queueUrl = await GetOrCreateQueueUrlAsync(rawQueueName, ct);
         var messageAttributes = BuildSqsMessageAttributes(context.Headers);
-        var body = System.Text.Encoding.UTF8.GetString(context.Payload);
+
+        // Base64-encode the raw payload bytes so that any serialisation format
+        // (JSON, MessagePack, gzip-compressed, etc.) round-trips without data loss
+        // through the SQS string message body.
+        var body = Convert.ToBase64String(context.Payload);
 
         // SQS supports delay of 0-900 seconds; clamp accordingly.
         var delaySeconds = context.Delay.HasValue

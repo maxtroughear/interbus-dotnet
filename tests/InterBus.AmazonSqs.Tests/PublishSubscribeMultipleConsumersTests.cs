@@ -14,7 +14,7 @@ namespace InterBus.AmazonSqs.Tests;
 public class PublishSubscribeMultipleConsumersTests
 {
     private static readonly LocalStackContainer Container =
-        new LocalStackBuilder("localstack/localstack:3.8.1").Build();
+        new LocalStackBuilder("localstack/localstack:4").Build();
 
     private ServiceProvider _provider = null!;
     private CancellationTokenSource _cts = null!;

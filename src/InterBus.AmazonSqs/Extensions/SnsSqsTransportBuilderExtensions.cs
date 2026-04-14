@@ -60,6 +60,11 @@ public static class SnsSqsTransportBuilderExtensions
         // IAmazonSQS and IAmazonSimpleNotificationService must be registered by the caller.
         builder.Services.AddSingleton<SnsSqsClientProvider>();
 
+        // Topology setup is a singleton responsible for declaring SNS topics, SQS queues,
+        // and subscriptions at startup. Separating this from the message pump keeps each
+        // class focused on a single concern.
+        builder.Services.AddSingleton<SnsSqsTopologySetup>();
+
         // SnsTransport handles snstopic:// sends (SNS fan-out publishes).
         // SqsTransport handles sqsqueue:// sends (direct SQS point-to-point).
         // Both are scoped, consistent with the RabbitMQ transport pattern.

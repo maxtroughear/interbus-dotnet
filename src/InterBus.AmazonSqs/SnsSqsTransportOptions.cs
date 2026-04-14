@@ -26,16 +26,24 @@ public sealed class SnsSqsTransportOptions
     public string QueuePrefix { get; set; } = "interbus-queue-";
 
     /// <summary>
-    /// SQS message visibility timeout in seconds. When a message is received its visibility
-    /// is set to this duration. The message pump automatically extends the visibility by
-    /// this amount at half-timeout intervals while the message is still being processed,
-    /// preventing redelivery for long-running consumers.
+    /// SQS message visibility timeout. When a message is received its visibility is set to
+    /// this duration. The message pump automatically extends the visibility at
+    /// <see cref="LeaseRenewalInterval"/> intervals while the message is still being
+    /// processed, preventing redelivery for long-running consumers.
     /// <para>
-    /// Defaults to <c>30</c> seconds. Minimum is <c>1</c> second; maximum is <c>43200</c>
-    /// seconds (12 hours).
+    /// Defaults to <c>30</c> seconds. SQS accepts values from <c>0</c> to
+    /// <c>43200</c> seconds (12 hours); fractional seconds are truncated.
     /// </para>
     /// </summary>
-    public int VisibilityTimeoutSeconds { get; set; } = 30;
+    public TimeSpan VisibilityTimeout { get; set; } = TimeSpan.FromSeconds(30);
+
+    /// <summary>
+    /// How often the message pump extends the visibility timeout of in-flight messages to
+    /// prevent inadvertent redelivery during processing. When <c>null</c> (the default) the
+    /// interval is inferred as half of <see cref="VisibilityTimeout"/>, matching the
+    /// behaviour of the PostgreSQL lease-based pump.
+    /// </summary>
+    public TimeSpan? LeaseRenewalInterval { get; set; } = null;
 
     /// <summary>
     /// Number of additional messages to fetch beyond the number of currently available
@@ -62,4 +70,12 @@ public sealed class SnsSqsTransportOptions
         RetryCount = int.MaxValue,
         DelayProvider = RetryDelays.Exponential(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(30)),
     };
+
+    /// <summary>
+    /// Effective lease renewal interval: <see cref="LeaseRenewalInterval"/> when set,
+    /// otherwise half of <see cref="VisibilityTimeout"/> (minimum 1 second).
+    /// </summary>
+    internal TimeSpan EffectiveLeaseRenewalInterval =>
+        LeaseRenewalInterval
+        ?? TimeSpan.FromSeconds(Math.Max(1.0, VisibilityTimeout.TotalSeconds / 2.0));
 }

@@ -12,9 +12,11 @@ namespace InterBus.AmazonSqs;
 /// delivering the message to exactly one consumer.
 /// </para>
 /// <para>
-/// InterBus message headers are transmitted as SQS message attributes (string type). SQS
-/// supports up to 10 message attributes per message; ensure the number of InterBus headers
-/// does not exceed this limit.
+/// The message body is a JSON <see cref="SnsSqsMessageEnvelope"/> containing the full
+/// set of InterBus headers and the base-64 encoded payload. A small subset of core
+/// headers (<c>interbus-message-type</c>, <c>interbus-message-id</c>,
+/// <c>interbus-correlation-id</c>) are additionally promoted to SQS message attributes so
+/// that they are available for visibility without deserialising the envelope body.
 /// </para>
 /// <para>
 /// Delayed delivery is supported via <see cref="TransportSendContext.Delay"/>. Amazon SQS
@@ -30,6 +32,14 @@ public sealed class SqsTransport(IAmazonSQS sqsClient, SnsSqsClientProvider clie
 {
     /// <summary>URI scheme for SQS queue (point-to-point) destinations.</summary>
     public const string QueueScheme = "sqsqueue";
+
+    // Core headers promoted to SQS message attributes for observability and filter policy support.
+    private static readonly HashSet<string> CoreAttributeHeaders = new(StringComparer.Ordinal)
+    {
+        InterBusHeaders.MessageType,
+        InterBusHeaders.MessageId,
+        InterBusHeaders.CorrelationId,
+    };
 
     /// <inheritdoc/>
     public async Task SendAsync(TransportSendContext context, CancellationToken cancellationToken)
@@ -50,12 +60,15 @@ public sealed class SqsTransport(IAmazonSQS sqsClient, SnsSqsClientProvider clie
         CancellationToken ct)
     {
         var queueUrl = await GetOrCreateQueueUrlAsync(rawQueueName, ct);
-        var messageAttributes = BuildSqsMessageAttributes(context.Headers);
 
-        // Base64-encode the raw payload bytes so that any serialisation format
-        // (JSON, MessagePack, gzip-compressed, etc.) round-trips without data loss
-        // through the SQS string message body.
-        var body = Convert.ToBase64String(context.Payload);
+        // Serialise the full payload + headers into the envelope body so that any
+        // serialisation format (JSON, MessagePack, gzip, etc.) round-trips without
+        // data loss, and header count is never limited by SQS's 10-attribute cap.
+        var body = SnsSqsMessageEnvelope.Serialize(context.Payload, context.Headers);
+
+        // Promote a small subset of core headers to SQS message attributes so they are
+        // visible without parsing the envelope body.
+        var messageAttributes = BuildSqsMessageAttributes(context.Headers);
 
         // SQS supports delay of 0-900 seconds; clamp accordingly.
         var delaySeconds = context.Delay.HasValue
@@ -80,6 +93,8 @@ public sealed class SqsTransport(IAmazonSQS sqsClient, SnsSqsClientProvider clie
         if (clientProvider.QueueUrls.TryGetValue(queueName, out var cachedUrl))
             return cachedUrl;
 
+        // CreateQueueAsync is idempotent on SQS: concurrent callers with the same name all
+        // succeed and receive the same URL back.
         var response = await sqsClient.CreateQueueAsync(
             new CreateQueueRequest
             {
@@ -100,11 +115,13 @@ public sealed class SqsTransport(IAmazonSQS sqsClient, SnsSqsClientProvider clie
         MessageHeaders headers)
     {
         var result = new Dictionary<string, Amazon.SQS.Model.MessageAttributeValue>(
-            headers.Count,
             StringComparer.Ordinal);
 
         foreach (var kv in headers)
         {
+            if (!CoreAttributeHeaders.Contains(kv.Key))
+                continue;
+
             result[kv.Key] = new Amazon.SQS.Model.MessageAttributeValue
             {
                 DataType = "String",
@@ -113,22 +130,5 @@ public sealed class SqsTransport(IAmazonSQS sqsClient, SnsSqsClientProvider clie
         }
 
         return result;
-    }
-
-    internal static MessageHeaders ParseSqsMessageAttributes(
-        Dictionary<string, Amazon.SQS.Model.MessageAttributeValue>? sqsAttributes)
-    {
-        var dict = new Dictionary<string, string>(StringComparer.Ordinal);
-
-        if (sqsAttributes is not null)
-        {
-            foreach (var kv in sqsAttributes)
-            {
-                if (kv.Value.DataType == "String" && kv.Value.StringValue is not null)
-                    dict[kv.Key] = kv.Value.StringValue;
-            }
-        }
-
-        return new MessageHeaders(dict);
     }
 }

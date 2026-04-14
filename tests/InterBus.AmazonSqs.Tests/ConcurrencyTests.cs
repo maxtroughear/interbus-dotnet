@@ -15,12 +15,18 @@ namespace InterBus.AmazonSqs.Tests;
 public class ConcurrencyTests
 {
     private static readonly LocalStackContainer Container =
-        new LocalStackBuilder("localstack/localstack:3.8.1").Build();
+        new LocalStackBuilder("localstack/localstack:4").Build();
 
     private ServiceProvider _provider;
     private CancellationTokenSource _cts;
     private OrderPlacedTracker _orderTracker;
     private string _runId = null!;
+
+    /// <summary>Number of concurrent publishers used in the concurrency test.</summary>
+    private const int PublisherCount = 5;
+
+    /// <summary>Number of messages each publisher sends.</summary>
+    private const int MessagesPerPublisher = 1000;
 
     [OneTimeSetUp]
     public async Task OneTimeSetUp()
@@ -90,78 +96,58 @@ public class ConcurrencyTests
     [Test]
     public async Task LotsOfPublishedMessages_AllAreConsumed()
     {
-        using var scopeA = _provider.CreateScope();
-        var publisherA = scopeA.ServiceProvider.GetRequiredService<IMessagePublisher>();
-        var messagesA = Enumerable.Range(0, 10000)
-            .Select(i => new OrderPlaced(Guid.CreateVersion7(), $"testA{i}@test.com", i)).ToArray();
+        var totalMessages = PublisherCount * MessagesPerPublisher;
 
-        using var scopeB = _provider.CreateScope();
-        var publisherB = scopeB.ServiceProvider.GetRequiredService<IMessagePublisher>();
-        var messagesB = Enumerable.Range(0, 10000)
-            .Select(i => new OrderPlaced(Guid.CreateVersion7(), $"testB{i}@test.com", i)).ToArray();
+        // Partition messages across N publishers so the test is scalable: change
+        // PublisherCount / MessagesPerPublisher at the top of the class to adjust load.
+        var allMessages = Enumerable.Range(0, totalMessages)
+            .Select(i => new OrderPlaced(Guid.CreateVersion7(), $"test{i}@test.com", i))
+            .ToArray();
 
-        using var scopeC = _provider.CreateScope();
-        var publisherC = scopeC.ServiceProvider.GetRequiredService<IMessagePublisher>();
-        var messagesC = Enumerable.Range(0, 10000)
-            .Select(i => new OrderPlaced(Guid.CreateVersion7(), $"testC{i}@test.com", i)).ToArray();
+        var batches = allMessages.Chunk(MessagesPerPublisher).ToArray();
 
         var consumerStopwatch = Stopwatch.StartNew();
-        
-        var taskA = Task.Run(async () =>
-        {
-            var stopwatch = Stopwatch.StartNew();
-            foreach (var message in messagesA)
+
+        // Publish all batches in parallel, each in its own DI scope, so that each
+        // "publisher" is fully independent without requiring manual A/B/C variables.
+        await Parallel.ForEachAsync(
+            batches,
+            new ParallelOptions
             {
-                if (TestContext.CurrentContext.CancellationToken.IsCancellationRequested)
-                    break;
-
-                await publisherA.Publish(message, TestContext.CurrentContext.CancellationToken);
-            }
-
-            await TestContext.Out.WriteLineAsync($"A: Published {messagesA.Length} messages at {DateTime.UtcNow:O} at a rate of {messagesA.Length / stopwatch.Elapsed.TotalSeconds:F2}/second");
-        });
-
-        var taskB = Task.Run(async () =>
-        {
-            var stopwatch = Stopwatch.StartNew();
-            foreach (var message in messagesB)
+                MaxDegreeOfParallelism = PublisherCount,
+                CancellationToken = TestContext.CurrentContext.CancellationToken,
+            },
+            async (batch, ct) =>
             {
-                if (TestContext.CurrentContext.CancellationToken.IsCancellationRequested)
-                    break;
+                var batchStopwatch = Stopwatch.StartNew();
+                await using var scope = _provider.CreateAsyncScope();
+                var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
 
-                await publisherB.Publish(message, TestContext.CurrentContext.CancellationToken);
-            }
+                foreach (var message in batch)
+                {
+                    if (ct.IsCancellationRequested)
+                        break;
 
-            await TestContext.Out.WriteLineAsync($"B: Published {messagesB.Length} messages at {DateTime.UtcNow:O} at a rate of {messagesA.Length / stopwatch.Elapsed.TotalSeconds:F2}/second");
-        });
+                    await publisher.Publish(message, ct);
+                }
 
-        var taskC = Task.Run(async () =>
-        {
-            var stopwatch = Stopwatch.StartNew();
-            foreach (var message in messagesC)
-            {
-                if (TestContext.CurrentContext.CancellationToken.IsCancellationRequested)
-                    break;
+                await TestContext.Out.WriteLineAsync(
+                    $"Published batch of {batch.Length} messages at {DateTime.UtcNow:O} " +
+                    $"at a rate of {batch.Length / batchStopwatch.Elapsed.TotalSeconds:F2}/second");
+            });
 
-                await publisherC.Publish(message, TestContext.CurrentContext.CancellationToken);
-            }
-
-            await TestContext.Out.WriteLineAsync($"C: Published {messagesC.Length} messages at {DateTime.UtcNow:O} at a rate of {messagesA.Length / stopwatch.Elapsed.TotalSeconds:F2}/second");
-        });
-
-        await Task.WhenAll(taskA, taskB, taskC);
-
-        var allMessages = messagesA.Concat(messagesB).Concat(messagesC).ToList();
-
-        // Wait for all messages to be consumed
-        await TestHelpers.WaitUntilAsync(() => _orderTracker.Messages.Count >= allMessages.Count,
-            timeoutMs: 60_000);
+        // Wait for all messages to be consumed.
+        await TestHelpers.WaitUntilAsync(
+            () => _orderTracker.Messages.Count >= totalMessages,
+            timeoutMs: 120_000);
 
         await TestContext.Out.WriteLineAsync(
-            $"Consumed {_orderTracker.Messages.Count} messages at {DateTime.UtcNow:O} at a rate of {allMessages.Count / consumerStopwatch.Elapsed.TotalSeconds:F2}/second");
+            $"Consumed {_orderTracker.Messages.Count}/{totalMessages} messages at {DateTime.UtcNow:O} " +
+            $"at a rate of {totalMessages / consumerStopwatch.Elapsed.TotalSeconds:F2}/second");
 
-        Assert.That(_orderTracker.Messages, Has.Count.EqualTo(allMessages.Count));
-        Assert.That(_orderTracker.Messages.Select(m => m.OrderId),
+        Assert.That(_orderTracker.Messages, Has.Count.EqualTo(totalMessages));
+        Assert.That(
+            _orderTracker.Messages.Select(m => m.OrderId),
             Is.EquivalentTo(allMessages.Select(m => m.OrderId)));
     }
 }

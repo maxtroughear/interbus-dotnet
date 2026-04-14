@@ -8,37 +8,26 @@ namespace InterBus.PostgreSQL;
 /// Creates all tables, indexes, and stored functions inside the configured schema.
 /// Idempotent: safe to run on every start.
 /// </summary>
-internal sealed class PostgreSqlSchemaManager
+internal sealed class PostgreSqlSchemaManager(
+    NpgsqlDataSource dataSource,
+    PostgreSqlTransportOptions options,
+    ILogger<PostgreSqlSchemaManager> logger)
 {
-    private readonly NpgsqlDataSource _dataSource;
-    private readonly PostgreSqlTransportOptions _options;
-    private readonly string _schema;
-    private readonly ILogger<PostgreSqlSchemaManager> _logger;
-
-    public PostgreSqlSchemaManager(
-        NpgsqlDataSource dataSource,
-        PostgreSqlTransportOptions options,
-        ILogger<PostgreSqlSchemaManager> logger)
-    {
-        _dataSource = dataSource;
-        _options = options;
-        _schema = options.SchemaName;
-        _logger = logger;
-    }
+    private readonly string _schema = options.SchemaName;
 
     /// <summary>Ensures the schema, tables, indexes and stored functions exist. Idempotent.</summary>
     public Task MigrateAsync(CancellationToken cancellationToken = default) =>
         PostgreSqlConnectionRetry.ExecuteAsync(
             MigrateCoreAsync,
-            _options,
-            _logger,
+            options,
+            logger,
             cancellationToken);
 
     private async Task MigrateCoreAsync(CancellationToken cancellationToken)
     {
         var s = QuoteIdentifier(_schema);
 
-        await using var conn = await _dataSource.OpenConnectionAsync(cancellationToken);
+        await using var conn = await dataSource.OpenConnectionAsync(cancellationToken);
 
         // Step 1: schema, tables and indexes.
         await using (var cmd = conn.CreateCommand())

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using InterBus.Extensions;
 using InterBus.Generated;
 using InterBus.RabbitMQ.Extensions;
@@ -79,8 +80,11 @@ public class ConcurrencyTests(string imageTag)
         var messagesC = Enumerable.Range(0, 10000)
             .Select(i => new OrderPlaced(Guid.CreateVersion7(), $"testC{i}@test.com", i)).ToArray();
 
+        var consumerStopwatch = Stopwatch.StartNew();
+        
         var taskA = Task.Run(async () =>
         {
+            var stopwatch = Stopwatch.StartNew();
             foreach (var message in messagesA)
             {
                 if (TestContext.CurrentContext.CancellationToken.IsCancellationRequested)
@@ -89,11 +93,12 @@ public class ConcurrencyTests(string imageTag)
                 await publisherA.Publish(message, TestContext.CurrentContext.CancellationToken);
             }
 
-            await TestContext.Out.WriteLineAsync($"A: Published {messagesA.Length} messages at {DateTime.UtcNow:O}");
+            await TestContext.Out.WriteLineAsync($"A: Published {messagesA.Length} messages at {DateTime.UtcNow:O} at a rate of {messagesA.Length / stopwatch.Elapsed.TotalSeconds:F2}/second");
         });
 
         var taskB = Task.Run(async () =>
         {
+            var stopwatch = Stopwatch.StartNew();
             foreach (var message in messagesB)
             {
                 if (TestContext.CurrentContext.CancellationToken.IsCancellationRequested)
@@ -102,11 +107,12 @@ public class ConcurrencyTests(string imageTag)
                 await publisherB.Publish(message, TestContext.CurrentContext.CancellationToken);
             }
 
-            await TestContext.Out.WriteLineAsync($"B: Published {messagesB.Length} messages at {DateTime.UtcNow:O}");
+            await TestContext.Out.WriteLineAsync($"B: Published {messagesB.Length} messages at {DateTime.UtcNow:O} at a rate of {messagesA.Length / stopwatch.Elapsed.TotalSeconds:F2}/second");
         });
 
         var taskC = Task.Run(async () =>
         {
+            var stopwatch = Stopwatch.StartNew();
             foreach (var message in messagesC)
             {
                 if (TestContext.CurrentContext.CancellationToken.IsCancellationRequested)
@@ -115,7 +121,7 @@ public class ConcurrencyTests(string imageTag)
                 await publisherC.Publish(message, TestContext.CurrentContext.CancellationToken);
             }
 
-            await TestContext.Out.WriteLineAsync($"C: Published {messagesC.Length} messages at {DateTime.UtcNow:O}");
+            await TestContext.Out.WriteLineAsync($"C: Published {messagesC.Length} messages at {DateTime.UtcNow:O} at a rate of {messagesA.Length / stopwatch.Elapsed.TotalSeconds:F2}/second");
         });
 
         await Task.WhenAll(taskA, taskB, taskC);
@@ -127,7 +133,7 @@ public class ConcurrencyTests(string imageTag)
             timeoutMs: 60_000);
 
         await TestContext.Out.WriteLineAsync(
-            $"Consumed {_orderTracker.Messages.Count} messages at {DateTime.UtcNow:O}");
+            $"Consumed {_orderTracker.Messages.Count} messages at {DateTime.UtcNow:O} at a rate of {allMessages.Count / consumerStopwatch.Elapsed.TotalSeconds:F2}/second");
 
         Assert.That(_orderTracker.Messages, Has.Count.EqualTo(allMessages.Count));
         Assert.That(_orderTracker.Messages.Select(m => m.OrderId),

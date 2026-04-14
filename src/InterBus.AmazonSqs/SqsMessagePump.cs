@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Amazon.SimpleNotificationService;
 using Amazon.SimpleNotificationService.Model;
 using Amazon.SQS;
@@ -39,6 +38,17 @@ internal sealed class SqsMessagePump(
     ILogger<SqsMessagePump> logger)
     : BackgroundService
 {
+    private sealed class PrefetchedMessage(
+        Message message,
+        CancellationTokenSource renewalCts,
+        Task renewalTask)
+    {
+        public Message Message { get; } = message;
+        public CancellationTokenSource RenewalCts { get; } = renewalCts;
+        public Task RenewalTask { get; } = renewalTask;
+        public Task? DispatchTask { get; set; }
+    }
+
     public override async Task StartAsync(CancellationToken cancellationToken)
     {
         if (busOptions.Consumers.Count > 0)
@@ -196,14 +206,7 @@ internal sealed class SqsMessagePump(
                 ? custom
                 : RoutingConventions.TopicName(t);
 
-            if (clientProvider.TopicArns.TryGetValue(
-                    clientProvider.BuildSnsTopicName(rawName),
-                    out var arn))
-            {
-                return arn;
-            }
-
-            return null;
+            return clientProvider.TopicArns.GetValueOrDefault(clientProvider.BuildSnsTopicName(rawName));
         }).OfType<string>().Distinct().ToList();
 
         if (topicArns.Count == 0)
@@ -253,28 +256,21 @@ internal sealed class SqsMessagePump(
         var concurrency = Math.Max(1, descriptor.ConcurrencyCount);
 
         using var semaphore = new SemaphoreSlim(concurrency);
-        var activeTasks = new List<Task>();
+        var activeMessages = new List<PrefetchedMessage>();
 
         while (!stoppingToken.IsCancellationRequested)
         {
             // Determine how many messages to fetch based on current processing capacity.
             // Use the semaphore's available count so we don't over-fetch beyond what we
             // can immediately process, plus any optional prefetch buffer.
-            var availableSlots = semaphore.CurrentCount;
-            var maxFetch = Math.Clamp(availableSlots + options.PrefetchCount, 1, 10);
+            var maxFetch = semaphore.CurrentCount + options.PrefetchCount;
 
             // When all slots are busy and prefetch is disabled, wait briefly to avoid
             // a tight poll loop before trying again.
-            if (availableSlots == 0 && options.PrefetchCount == 0)
+            if (maxFetch == 0)
             {
-                try
-                {
-                    await Task.Delay(TimeSpan.FromMilliseconds(500), stoppingToken);
-                }
-                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-                {
-                    break;
-                }
+                await Task.Delay(TimeSpan.FromMilliseconds(10), stoppingToken);
+
                 continue;
             }
 
@@ -285,12 +281,10 @@ internal sealed class SqsMessagePump(
                     new ReceiveMessageRequest
                     {
                         QueueUrl = queueUrl,
-                        MaxNumberOfMessages = maxFetch,
-                        WaitTimeSeconds = 20, // long-poll
+                        MaxNumberOfMessages = Math.Clamp(maxFetch, 1, 10),
+                        WaitTimeSeconds = 20,
                         MessageAttributeNames = ["All"],
-                        // Set the visibility timeout explicitly so the pump's renewal
-                        // timer knows how long to extend each cycle.
-                        VisibilityTimeout = options.VisibilityTimeoutSeconds,
+                        VisibilityTimeout = options.VisibilityTimeoutSeconds
                     },
                     stoppingToken);
 
@@ -307,45 +301,35 @@ internal sealed class SqsMessagePump(
                     "InterBus AmazonSqs: error polling queue {QueueName}; retrying",
                     queueName);
 
-                await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken).ConfigureAwait(false);
+                await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
                 continue;
             }
 
-            foreach (var message in messages)
+            var prefetchedMessages =
+                messages.Select(message => StartPrefetchedMessage(queueUrl, message, stoppingToken)).ToList();
+            activeMessages.AddRange(prefetchedMessages);
+
+            foreach (var prefetched in prefetchedMessages)
             {
                 await semaphore.WaitAsync(stoppingToken);
 
-                // Capture for the lambda below.
-                var captured = message;
-                var task = Task.Run(
-                    async () =>
-                    {
-                        try
-                        {
-                            await ProcessMessageAsync(descriptor, queueUrl, captured, stoppingToken);
-                        }
-                        finally
-                        {
-                            semaphore.Release();
-                        }
-                    },
-                    CancellationToken.None);
-
-                activeTasks.Add(task);
-
-                // Remove completed tasks to prevent unbounded growth.
-                activeTasks.RemoveAll(t => t.IsCompleted);
+                prefetched.DispatchTask =
+                    ProcessMessageAsync(descriptor, queueUrl, prefetched, semaphore, stoppingToken);
             }
+
+            activeMessages.RemoveAll(m => m.DispatchTask?.IsCompleted ?? false);
         }
 
         // Wait for all in-flight processing tasks to complete before declaring the pump stopped.
         // This ensures that messages that were successfully dispatched are also deleted from SQS,
         // preventing unnecessary redelivery.
-        if (activeTasks.Count > 0)
+        if (activeMessages.Count > 0)
         {
             try
             {
-                await Task.WhenAll(activeTasks);
+                // Wait for all in-flight processing tasks to complete.
+                // If the dispatch task is not started, stop renewal directly
+                await Task.WhenAll(activeMessages.Select(m => m.DispatchTask ?? StopRenewalAsync(m)));
             }
             catch
             {
@@ -361,21 +345,18 @@ internal sealed class SqsMessagePump(
     private async Task ProcessMessageAsync(
         ConsumerDescriptor descriptor,
         string queueUrl,
-        Message message,
+        PrefetchedMessage prefetched,
+        SemaphoreSlim semaphore,
         CancellationToken ct)
     {
-        // Start a background renewal task that extends the message's visibility timeout
-        // at half-interval cycles so SQS does not redeliver while the message is in
-        // flight through a long-running consumer.
-        using var renewalCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        var renewalTask = ExtendVisibilityAsync(queueUrl, message.ReceiptHandle, renewalCts.Token);
+        var message = prefetched.Message;
 
         try
         {
             await DispatchAsync(descriptor, message, ct);
 
-            // Processing succeeded – stop renewal before deleting.
-            await renewalCts.CancelAsync();
+            // Stop renewing now
+            await prefetched.RenewalCts.CancelAsync();
 
             // ACK: delete the message from SQS.
             // Use CancellationToken.None so that a graceful shutdown does not leave
@@ -385,8 +366,7 @@ internal sealed class SqsMessagePump(
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            await renewalCts.CancelAsync();
-            // Dispatch was cancelled mid-flight; do not delete – SQS will redeliver.
+            // Dispatch was cancelled mid-flight; do not delete - SQS will redeliver.
         }
         catch (Exception ex)
         {
@@ -396,13 +376,40 @@ internal sealed class SqsMessagePump(
                 descriptor.ConsumerType.Name,
                 descriptor.QueueName);
 
-            await renewalCts.CancelAsync();
-            // Do not delete – SQS will redeliver after the visibility timeout.
+            // Do not delete - SQS will redeliver after the visibility timeout.
         }
         finally
         {
-            try { await renewalTask; } catch { }
+            await StopRenewalAsync(prefetched);
+            semaphore.Release();
         }
+    }
+
+    private static async Task StopRenewalAsync(PrefetchedMessage prefetched)
+    {
+        await prefetched.RenewalCts.CancelAsync();
+
+        try
+        {
+            await prefetched.RenewalTask;
+        }
+        catch
+        {
+            // ignored
+        }
+
+        prefetched.RenewalCts.Dispose();
+    }
+
+    private PrefetchedMessage StartPrefetchedMessage(
+        string queueUrl,
+        Message message,
+        CancellationToken stoppingToken)
+    {
+        // Start renewal immediately on receive so prefetched messages are also protected.
+        var renewalCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+        var renewalTask = ExtendVisibilityAsync(queueUrl, message.ReceiptHandle, renewalCts.Token);
+        return new PrefetchedMessage(message, renewalCts, renewalTask);
     }
 
     /// <summary>

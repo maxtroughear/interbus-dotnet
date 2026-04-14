@@ -49,8 +49,11 @@ public class PublishSubscribeMultipleConsumersTests
         {
             Credentials = new BasicAWSCredentials("test", "test"),
             Region = RegionEndpoint.USEast1,
+            DefaultClientConfig =
+            {
+                ServiceURL = Container.GetConnectionString()
+            }
         };
-        localStackOptions.DefaultClientConfig.ServiceURL = Container.GetConnectionString();
         services.AddAWSService<Amazon.SimpleNotificationService.IAmazonSimpleNotificationService>(localStackOptions);
         services.AddAWSService<Amazon.SQS.IAmazonSQS>(localStackOptions);
 

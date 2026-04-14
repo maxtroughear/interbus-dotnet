@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using InterBus;
 using InterBus.Extensions;
 using InterBus.Generated;
 using InterBus.InMemory.Extensions;

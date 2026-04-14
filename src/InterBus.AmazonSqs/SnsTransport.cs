@@ -26,22 +26,11 @@ namespace InterBus.AmazonSqs;
 /// <see cref="TransportSendContext.Delay"/> value is ignored.
 /// </para>
 /// </summary>
-public sealed class SnsTransport : IInterBusTransport
+public sealed class SnsTransport(IAmazonSimpleNotificationService snsClient, SnsSqsClientProvider clientProvider)
+    : IInterBusTransport
 {
     /// <summary>URI scheme for SNS topic (fan-out) destinations.</summary>
     public const string TopicScheme = "snstopic";
-
-    private readonly IAmazonSimpleNotificationService _snsClient;
-    private readonly SnsSqsClientProvider _clientProvider;
-
-    /// <summary>
-    /// Initialises a new instance of <see cref="SnsTransport"/>.
-    /// </summary>
-    public SnsTransport(IAmazonSimpleNotificationService snsClient, SnsSqsClientProvider clientProvider)
-    {
-        _snsClient = snsClient;
-        _clientProvider = clientProvider;
-    }
 
     /// <inheritdoc/>
     public async Task SendAsync(TransportSendContext context, CancellationToken cancellationToken)
@@ -69,7 +58,7 @@ public sealed class SnsTransport : IInterBusTransport
         // through the SNS/SQS string message body.
         var body = Convert.ToBase64String(context.Payload);
 
-        await _snsClient.PublishAsync(
+        await snsClient.PublishAsync(
             new PublishRequest
             {
                 TopicArn = topicArn,
@@ -81,14 +70,14 @@ public sealed class SnsTransport : IInterBusTransport
 
     private async Task<string> GetOrCreateTopicArnAsync(string rawTopicName, CancellationToken ct)
     {
-        var topicName = _clientProvider.BuildSnsTopicName(rawTopicName);
+        var topicName = clientProvider.BuildSnsTopicName(rawTopicName);
 
-        if (_clientProvider.TopicArns.TryGetValue(topicName, out var cachedArn))
+        if (clientProvider.TopicArns.TryGetValue(topicName, out var cachedArn))
             return cachedArn;
 
-        var response = await _snsClient.CreateTopicAsync(topicName, ct);
+        var response = await snsClient.CreateTopicAsync(topicName, ct);
         var arn = response.TopicArn;
-        _clientProvider.TopicArns.TryAdd(topicName, arn);
+        clientProvider.TopicArns.TryAdd(topicName, arn);
         return arn;
     }
 

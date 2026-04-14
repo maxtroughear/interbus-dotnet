@@ -1,4 +1,3 @@
-using InterBus.Middleware;
 using InterBus.Retry;
 using Microsoft.Extensions.DependencyInjection;
 

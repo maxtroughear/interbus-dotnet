@@ -26,22 +26,10 @@ namespace InterBus.AmazonSqs;
 /// are not repeated on every send.
 /// </para>
 /// </summary>
-public sealed class SqsTransport : IInterBusTransport
+public sealed class SqsTransport(IAmazonSQS sqsClient, SnsSqsClientProvider clientProvider) : IInterBusTransport
 {
     /// <summary>URI scheme for SQS queue (point-to-point) destinations.</summary>
     public const string QueueScheme = "sqsqueue";
-
-    private readonly IAmazonSQS _sqsClient;
-    private readonly SnsSqsClientProvider _clientProvider;
-
-    /// <summary>
-    /// Initialises a new instance of <see cref="SqsTransport"/>.
-    /// </summary>
-    public SqsTransport(IAmazonSQS sqsClient, SnsSqsClientProvider clientProvider)
-    {
-        _sqsClient = sqsClient;
-        _clientProvider = clientProvider;
-    }
 
     /// <inheritdoc/>
     public async Task SendAsync(TransportSendContext context, CancellationToken cancellationToken)
@@ -74,7 +62,7 @@ public sealed class SqsTransport : IInterBusTransport
             ? (int)Math.Clamp(context.Delay.Value.TotalSeconds, 0, 900)
             : 0;
 
-        await _sqsClient.SendMessageAsync(
+        await sqsClient.SendMessageAsync(
             new SendMessageRequest
             {
                 QueueUrl = queueUrl,
@@ -87,12 +75,12 @@ public sealed class SqsTransport : IInterBusTransport
 
     private async Task<string> GetOrCreateQueueUrlAsync(string rawQueueName, CancellationToken ct)
     {
-        var queueName = _clientProvider.BuildSqsQueueName(rawQueueName);
+        var queueName = clientProvider.BuildSqsQueueName(rawQueueName);
 
-        if (_clientProvider.QueueUrls.TryGetValue(queueName, out var cachedUrl))
+        if (clientProvider.QueueUrls.TryGetValue(queueName, out var cachedUrl))
             return cachedUrl;
 
-        var response = await _sqsClient.CreateQueueAsync(
+        var response = await sqsClient.CreateQueueAsync(
             new CreateQueueRequest
             {
                 QueueName = queueName,
@@ -104,7 +92,7 @@ public sealed class SqsTransport : IInterBusTransport
             ct);
 
         var url = response.QueueUrl;
-        _clientProvider.QueueUrls.TryAdd(queueName, url);
+        clientProvider.QueueUrls.TryAdd(queueName, url);
         return url;
     }
 

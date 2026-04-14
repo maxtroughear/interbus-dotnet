@@ -115,6 +115,7 @@ public sealed class SqsTransport(IAmazonSQS sqsClient, SnsSqsClientProvider clie
         MessageHeaders headers)
     {
         var result = new Dictionary<string, Amazon.SQS.Model.MessageAttributeValue>(
+            CoreAttributeHeaders.Count,
             StringComparer.Ordinal);
 
         foreach (var kv in headers)

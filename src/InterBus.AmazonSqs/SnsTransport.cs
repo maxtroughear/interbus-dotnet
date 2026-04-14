@@ -103,6 +103,7 @@ public sealed class SnsTransport(IAmazonSimpleNotificationService snsClient, Sns
     {
         var result =
             new Dictionary<string, Amazon.SimpleNotificationService.Model.MessageAttributeValue>(
+                CoreAttributeHeaders.Count,
                 StringComparer.Ordinal);
 
         foreach (var kv in headers)

@@ -19,11 +19,6 @@ internal sealed record SnsSqsMessageEnvelope(
     [property: JsonPropertyName("p")] string Payload,
     [property: JsonPropertyName("h")] Dictionary<string, string> Headers)
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-    };
-
     /// <summary>
     /// Serialises <paramref name="payload"/> and <paramref name="headers"/> into a JSON
     /// envelope string suitable for use as an SQS or SNS message body.
@@ -34,7 +29,7 @@ internal sealed record SnsSqsMessageEnvelope(
             Convert.ToBase64String(payload),
             new Dictionary<string, string>(headers, StringComparer.Ordinal));
 
-        return JsonSerializer.Serialize(envelope, JsonOptions);
+        return JsonSerializer.Serialize(envelope, SnsSqsJsonContext.Default.SnsSqsMessageEnvelope);
     }
 
     /// <summary>
@@ -43,7 +38,7 @@ internal sealed record SnsSqsMessageEnvelope(
     /// </summary>
     internal static (byte[] Payload, MessageHeaders Headers) Deserialize(string json)
     {
-        var envelope = JsonSerializer.Deserialize<SnsSqsMessageEnvelope>(json, JsonOptions)
+        var envelope = JsonSerializer.Deserialize(json, SnsSqsJsonContext.Default.SnsSqsMessageEnvelope)
             ?? throw new InvalidOperationException("Failed to deserialise SNS/SQS message envelope.");
 
         var payload = Convert.FromBase64String(envelope.Payload);

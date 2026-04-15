@@ -14,19 +14,44 @@ namespace InterBus.AmazonSqs;
 /// Separating topology setup from the message pump means the pump only needs to focus on
 /// polling, dispatching, and acknowledgement.
 /// </para>
+/// <para>
+/// When <see cref="SnsSqsTransportOptions.TopologyMode"/> is
+/// <see cref="TopologyMode.VerifyOnly"/> the setup only reads the existing resources to
+/// populate internal caches without attempting any create, subscribe, or policy operations.
+/// This suits applications that run under an IAM role without infrastructure-management
+/// permissions, where the topology is provisioned out-of-band (Terraform, CloudFormation,
+/// AWS CDK, etc.) or via a dedicated initialization step.
+/// </para>
 /// </summary>
 internal sealed class SnsSqsTopologySetup(
     IAmazonSimpleNotificationService snsClient,
     IAmazonSQS sqsClient,
     SnsSqsClientProvider clientProvider,
+    SnsSqsTransportOptions transportOptions,
     InterBusOptions busOptions,
     ILogger<SnsSqsTopologySetup> logger)
 {
     /// <summary>
+    /// Declares (or verifies) the topology for every registered consumer, then populates
+    /// the <see cref="SnsSqsClientProvider"/> caches with queue URLs and topic ARNs.
+    /// </summary>
+    internal async Task DeclareTopologyAsync(CancellationToken cancellationToken)
+    {
+        if (transportOptions.TopologyMode == TopologyMode.VerifyOnly)
+        {
+            await VerifyTopologyAsync(cancellationToken);
+        }
+        else
+        {
+            await CreateOrVerifyTopologyAsync(cancellationToken);
+        }
+    }
+
+    /// <summary>
     /// Creates SQS queues, SNS topics, subscriptions, and queue resource policies for every
     /// registered consumer. Idempotent: already-existing resources are silently accepted.
     /// </summary>
-    internal async Task DeclareTopologyAsync(CancellationToken cancellationToken)
+    private async Task CreateOrVerifyTopologyAsync(CancellationToken cancellationToken)
     {
         foreach (var descriptor in busOptions.Consumers)
         {
@@ -111,6 +136,84 @@ internal sealed class SnsSqsTopologySetup(
 
             // Allow SNS to send messages to this SQS queue.
             await SetQueuePolicyAsync(queueUrl, queueArn, descriptor, cancellationToken);
+        }
+    }
+
+    /// <summary>
+    /// Reads the existing SNS/SQS topology and populates the client-provider caches without
+    /// attempting any create, subscribe, or policy operations. Used when
+    /// <see cref="SnsSqsTransportOptions.TopologyMode"/> is
+    /// <see cref="TopologyMode.VerifyOnly"/>.
+    /// <para>
+    /// SNS topic ARNs are derived from the SQS queue ARN (which encodes the AWS partition,
+    /// region, and account ID), avoiding an additional STS call.
+    /// </para>
+    /// </summary>
+    private async Task VerifyTopologyAsync(CancellationToken cancellationToken)
+    {
+        foreach (var descriptor in busOptions.Consumers)
+        {
+            var queueName = clientProvider.BuildSqsQueueName(descriptor.QueueName);
+
+            logger.LogDebug(
+                "InterBus AmazonSqs: verifying queue {QueueName} for consumer {ConsumerType}",
+                queueName,
+                descriptor.ConsumerType.Name);
+
+            // Read-only: get the URL of the pre-existing queue.
+            var queueUrlResponse = await sqsClient.GetQueueUrlAsync(
+                new GetQueueUrlRequest { QueueName = queueName },
+                cancellationToken);
+
+            var queueUrl = queueUrlResponse.QueueUrl;
+            clientProvider.QueueUrls.TryAdd(queueName, queueUrl);
+
+            // Retrieve the queue ARN so we can derive the SNS topic ARNs for the same
+            // partition / region / account without an STS call.
+            var attrs = await sqsClient.GetQueueAttributesAsync(
+                new GetQueueAttributesRequest
+                {
+                    QueueUrl = queueUrl,
+                    AttributeNames = ["QueueArn"],
+                },
+                cancellationToken);
+
+            var queueArn = attrs.QueueARN;
+
+            // Queue ARN format: arn:{partition}:sqs:{region}:{account-id}:{name}
+            // We extract components to build SNS topic ARNs (same partition/region/account).
+            var arnParts = queueArn.Split(':');
+            if (arnParts.Length < 6)
+            {
+                throw new InvalidOperationException(
+                    $"Unexpected SQS queue ARN format '{queueArn}': " +
+                    "expected 'arn:{partition}:sqs:{region}:{account-id}:{name}'.");
+            }
+
+            foreach (var messageType in descriptor.MessageTypes)
+            {
+                var rawTopicName = busOptions.TryGetTopicName(messageType, out var custom)
+                    ? custom
+                    : RoutingConventions.TopicName(messageType);
+
+                var topicName = clientProvider.BuildSnsTopicName(rawTopicName);
+
+                // Construct the topic ARN from queue-ARN components instead of an STS call:
+                //   arn:{partition}:sns:{region}:{account-id}:{topic-name}
+                var topicArn = $"arn:{arnParts[1]}:sns:{arnParts[3]}:{arnParts[4]}:{topicName}";
+
+                logger.LogDebug(
+                    "InterBus AmazonSqs: verifying SNS topic {TopicName} (arn={TopicArn})",
+                    topicName,
+                    topicArn);
+
+                // Confirm the topic exists (throws NotFoundException if it doesn't).
+                await snsClient.GetTopicAttributesAsync(
+                    new GetTopicAttributesRequest { TopicArn = topicArn },
+                    cancellationToken);
+
+                clientProvider.TopicArns.TryAdd(topicName, topicArn);
+            }
         }
     }
 

@@ -72,6 +72,20 @@ public sealed class SnsSqsTransportOptions
     };
 
     /// <summary>
+    /// Controls whether the topology (SQS queues, SNS topics, subscriptions, and resource
+    /// policies) is created at startup or only verified against pre-existing resources.
+    /// <para>
+    /// Use <see cref="TopologyMode.VerifyOnly"/> when the runtime role does not have
+    /// create/subscribe permissions and the infrastructure is managed out-of-band (Terraform,
+    /// CloudFormation, AWS CDK, etc.) or by a separate initialization step.
+    /// </para>
+    /// <para>
+    /// Defaults to <see cref="TopologyMode.CreateOrVerify"/>.
+    /// </para>
+    /// </summary>
+    public TopologyMode TopologyMode { get; set; } = TopologyMode.CreateOrVerify;
+
+    /// <summary>
     /// Effective lease renewal interval: <see cref="LeaseRenewalInterval"/> when set,
     /// otherwise half of <see cref="VisibilityTimeout"/> (minimum 1 second).
     /// </summary>

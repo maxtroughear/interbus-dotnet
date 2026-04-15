@@ -75,7 +75,7 @@ internal sealed class SqsMessagePump(
         {
             try
             {
-                await topologySetup.DeclareTopologyAsync(cancellationToken);
+                await topologySetup.DeclareConsumerTopologyAsync(cancellationToken);
                 return;
             }
             catch (Exception ex) when (!cancellationToken.IsCancellationRequested)

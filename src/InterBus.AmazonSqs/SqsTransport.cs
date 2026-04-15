@@ -24,11 +24,11 @@ namespace InterBus.AmazonSqs;
 /// are clamped to 900 seconds.
 /// </para>
 /// <para>
-/// Queue URLs are resolved once and cached for the application lifetime so that create calls
-/// are not repeated on every send.
+/// Queue URLs are resolved once and cached for the application lifetime. URL resolution and
+/// topology mode enforcement are delegated to <see cref="SnsSqsTopologySetup"/>.
 /// </para>
 /// </summary>
-public sealed class SqsTransport(IAmazonSQS sqsClient, SnsSqsClientProvider clientProvider) : IInterBusTransport
+public sealed class SqsTransport(IAmazonSQS sqsClient, SnsSqsTopologySetup topologySetup) : IInterBusTransport
 {
     /// <summary>URI scheme for SQS queue (point-to-point) destinations.</summary>
     public const string QueueScheme = "sqsqueue";
@@ -59,7 +59,9 @@ public sealed class SqsTransport(IAmazonSQS sqsClient, SnsSqsClientProvider clie
         TransportSendContext context,
         CancellationToken ct)
     {
-        var queueUrl = await GetOrCreateQueueUrlAsync(rawQueueName, ct);
+        // Resolve the queue URL, creating or verifying the queue as configured by
+        // SnsSqsTransportOptions.TopologyMode.
+        var queueUrl = await topologySetup.EnsureQueueUrlAsync(rawQueueName, ct);
 
         // Serialise the full payload + headers into the envelope body so that any
         // serialisation format (JSON, MessagePack, gzip, etc.) round-trips without
@@ -84,31 +86,6 @@ public sealed class SqsTransport(IAmazonSQS sqsClient, SnsSqsClientProvider clie
                 DelaySeconds = delaySeconds,
             },
             ct);
-    }
-
-    private async Task<string> GetOrCreateQueueUrlAsync(string rawQueueName, CancellationToken ct)
-    {
-        var queueName = clientProvider.BuildSqsQueueName(rawQueueName);
-
-        if (clientProvider.QueueUrls.TryGetValue(queueName, out var cachedUrl))
-            return cachedUrl;
-
-        // CreateQueueAsync is idempotent on SQS: concurrent callers with the same name all
-        // succeed and receive the same URL back.
-        var response = await sqsClient.CreateQueueAsync(
-            new CreateQueueRequest
-            {
-                QueueName = queueName,
-                Attributes = new Dictionary<string, string>
-                {
-                    ["MessageRetentionPeriod"] = "1209600", // 14 days (max)
-                },
-            },
-            ct);
-
-        var url = response.QueueUrl;
-        clientProvider.QueueUrls.TryAdd(queueName, url);
-        return url;
     }
 
     internal static Dictionary<string, Amazon.SQS.Model.MessageAttributeValue> BuildSqsMessageAttributes(

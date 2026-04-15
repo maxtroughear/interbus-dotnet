@@ -86,6 +86,28 @@ public sealed class SnsSqsTransportOptions
     public TopologyMode TopologyMode { get; set; } = TopologyMode.CreateOrVerify;
 
     /// <summary>
+    /// When <c>true</c> (the default), SQS queues created by InterBus are encrypted at rest
+    /// using SSE-SQS (SQS-managed encryption keys). Set to <c>false</c> to opt out of
+    /// server-side encryption, or when encryption is managed out-of-band (Terraform,
+    /// CloudFormation, AWS CDK, etc.).
+    /// <para>
+    /// Has no effect when <see cref="TopologyMode"/> is <see cref="TopologyMode.VerifyOnly"/>.
+    /// </para>
+    /// </summary>
+    public bool EnableSqsEncryption { get; set; } = true;
+
+    /// <summary>
+    /// When <c>true</c> (the default), SNS topics created by InterBus are encrypted at rest
+    /// using the AWS managed key for SNS (<c>alias/aws/sns</c>). Set to <c>false</c> to opt
+    /// out of server-side encryption, or when encryption is managed out-of-band (Terraform,
+    /// CloudFormation, AWS CDK, etc.).
+    /// <para>
+    /// Has no effect when <see cref="TopologyMode"/> is <see cref="TopologyMode.VerifyOnly"/>.
+    /// </para>
+    /// </summary>
+    public bool EnableSnsEncryption { get; set; } = true;
+
+    /// <summary>
     /// Effective lease renewal interval: <see cref="LeaseRenewalInterval"/> when set,
     /// otherwise half of <see cref="VisibilityTimeout"/> (minimum 1 second).
     /// </summary>

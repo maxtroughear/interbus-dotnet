@@ -22,14 +22,17 @@ namespace InterBus.AmazonSqs;
 /// </para>
 /// <para>
 /// Topic ARNs are resolved once and cached for the application lifetime so that create calls
-/// are not repeated on every send.
+/// are not repeated on every send. ARN resolution and topology mode enforcement are delegated
+/// to <see cref="SnsSqsTopologySetup"/>.
 /// </para>
 /// <para>
 /// Delayed delivery is not supported for SNS topic publishes; any
 /// <see cref="TransportSendContext.Delay"/> value is ignored.
 /// </para>
 /// </summary>
-public sealed class SnsTransport(IAmazonSimpleNotificationService snsClient, SnsSqsClientProvider clientProvider)
+public sealed class SnsTransport(
+    IAmazonSimpleNotificationService snsClient,
+    SnsSqsTopologySetup topologySetup)
     : IInterBusTransport
 {
     /// <summary>URI scheme for SNS topic (fan-out) destinations.</summary>
@@ -61,7 +64,9 @@ public sealed class SnsTransport(IAmazonSimpleNotificationService snsClient, Sns
         TransportSendContext context,
         CancellationToken ct)
     {
-        var topicArn = await GetOrCreateTopicArnAsync(rawTopicName, ct);
+        // Resolve the topic ARN, creating or verifying the topic as configured by
+        // SnsSqsTransportOptions.TopologyMode.
+        var topicArn = await topologySetup.EnsureTopicArnAsync(rawTopicName, ct);
 
         // Serialise the full payload + headers into the envelope body so that any
         // serialisation format (JSON, MessagePack, gzip, etc.) round-trips without
@@ -81,21 +86,6 @@ public sealed class SnsTransport(IAmazonSimpleNotificationService snsClient, Sns
                 MessageAttributes = messageAttributes,
             },
             ct);
-    }
-
-    private async Task<string> GetOrCreateTopicArnAsync(string rawTopicName, CancellationToken ct)
-    {
-        var topicName = clientProvider.BuildSnsTopicName(rawTopicName);
-
-        if (clientProvider.TopicArns.TryGetValue(topicName, out var cachedArn))
-            return cachedArn;
-
-        // CreateTopicAsync is idempotent on SNS: concurrent callers with the same name all
-        // succeed and receive the same ARN back, so no duplicate topics are created.
-        var response = await snsClient.CreateTopicAsync(topicName, ct);
-        var arn = response.TopicArn;
-        clientProvider.TopicArns.TryAdd(topicName, arn);
-        return arn;
     }
 
     internal static Dictionary<string, Amazon.SimpleNotificationService.Model.MessageAttributeValue>

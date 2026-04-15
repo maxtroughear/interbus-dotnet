@@ -1,6 +1,4 @@
-using Amazon;
 using Amazon.Extensions.NETCore.Setup;
-using Amazon.Runtime;
 using InterBus.AmazonSqs.Extensions;
 using InterBus.Extensions;
 using InterBus.Generated;
@@ -13,8 +11,7 @@ namespace InterBus.AmazonSqs.Tests;
 [TestFixture]
 public class PublishSubscribeSingleConsumerTests
 {
-    private static readonly LocalStackContainer Container =
-        new LocalStackBuilder("localstack/localstack:4").Build();
+    private static readonly LocalStackContainer? Container = TestHelpers.CreateLocalStackContainer();
 
     private ServiceProvider _provider = null!;
     private CancellationTokenSource _cts = null!;
@@ -23,13 +20,20 @@ public class PublishSubscribeSingleConsumerTests
     private string _runId = null!;
 
     [OneTimeSetUp]
-    public static Task OneTimeSetUp() => Container.StartAsync();
+    public static async Task OneTimeSetUp()
+    {
+        if (Container is not null)
+            await Container.StartAsync();
+    }
 
     [OneTimeTearDown]
     public static async Task OneTimeTearDown()
     {
-        await Container.StopAsync();
-        await Container.DisposeAsync();
+        if (Container is not null)
+        {
+            await Container.StopAsync();
+            await Container.DisposeAsync();
+        }
     }
 
     [SetUp]
@@ -42,24 +46,19 @@ public class PublishSubscribeSingleConsumerTests
         services.AddLogging();
         services.AddSingleton(_orderTracker);
 
-        // Register AWS clients pointing at the LocalStack container.
-        // In production the app registers clients once (e.g. via AddAWSService<T>()) and
-        // InterBus simply resolves them from DI.
-        var localStackOptions = new AWSOptions
-        {
-            Credentials = new BasicAWSCredentials("test", "test"),
-            Region = RegionEndpoint.USEast1,
-        };
-        localStackOptions.DefaultClientConfig.ServiceURL = Container.GetConnectionString();
-        services.AddAWSService<Amazon.SimpleNotificationService.IAmazonSimpleNotificationService>(localStackOptions);
-        services.AddAWSService<Amazon.SQS.IAmazonSQS>(localStackOptions);
+        // Register AWS clients pointing at the LocalStack container (or real AWS when
+        // INTERBUS_USE_REAL_AWS=true). In production the app registers clients once
+        // (e.g. via AddAWSService<T>()) and InterBus simply resolves them from DI.
+        AWSOptions awsOptions = TestHelpers.CreateAwsOptions(Container);
+        services.AddAWSService<Amazon.SimpleNotificationService.IAmazonSimpleNotificationService>(awsOptions);
+        services.AddAWSService<Amazon.SQS.IAmazonSQS>(awsOptions);
 
         services.AddInterBus(bus =>
         {
             bus.AddAmazonSqsTransport(o =>
             {
                 // Unique per-test prefix isolates queues and topics so tests sharing
-                // the same LocalStack container don't interfere with each other.
+                // the same container don't interfere with each other.
                 o.QueuePrefix = $"q-{_runId}-";
                 o.TopicPrefix = $"t-{_runId}-";
             });

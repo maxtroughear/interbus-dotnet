@@ -1,7 +1,5 @@
 using System.Diagnostics;
-using Amazon;
 using Amazon.Extensions.NETCore.Setup;
-using Amazon.Runtime;
 using InterBus.AmazonSqs.Extensions;
 using InterBus.Extensions;
 using InterBus.Generated;
@@ -14,8 +12,7 @@ namespace InterBus.AmazonSqs.Tests;
 [TestFixture]
 public class ConcurrencyTests
 {
-    private static readonly LocalStackContainer Container =
-        new LocalStackBuilder("localstack/localstack:4").Build();
+    private static readonly LocalStackContainer? Container = TestHelpers.CreateLocalStackContainer();
 
     private ServiceProvider _provider;
     private CancellationTokenSource _cts;
@@ -23,22 +20,26 @@ public class ConcurrencyTests
     private string _runId = null!;
 
     /// <summary>Number of concurrent publishers used in the concurrency test.</summary>
-    private const int PublisherCount = 5;
+    private static readonly int PublisherCount = TestHelpers.UseRealAws ? 2 : 5;
 
     /// <summary>Number of messages each publisher sends.</summary>
-    private const int MessagesPerPublisher = 1000;
+    private static readonly int MessagesPerPublisher = TestHelpers.UseRealAws ? 50 : 1000;
 
     [OneTimeSetUp]
     public async Task OneTimeSetUp()
     {
-        await Container.StartAsync();
+        if (Container is not null)
+            await Container.StartAsync();
     }
 
     [OneTimeTearDown]
     public async Task OneTimeTearDown()
     {
-        await Container.StopAsync();
-        await Container.DisposeAsync();
+        if (Container is not null)
+        {
+            await Container.StopAsync();
+            await Container.DisposeAsync();
+        }
     }
 
     [SetUp]
@@ -51,18 +52,9 @@ public class ConcurrencyTests
         services.AddLogging();
         services.AddSingleton(_orderTracker);
 
-        // Register AWS clients pointing at the LocalStack container.
-        var localStackOptions = new AWSOptions
-        {
-            Credentials = new BasicAWSCredentials("test", "test"),
-            Region = RegionEndpoint.USEast1,
-            DefaultClientConfig =
-            {
-                ServiceURL = Container.GetConnectionString()
-            }
-        };
-        services.AddAWSService<Amazon.SimpleNotificationService.IAmazonSimpleNotificationService>(localStackOptions);
-        services.AddAWSService<Amazon.SQS.IAmazonSQS>(localStackOptions);
+        AWSOptions awsOptions = TestHelpers.CreateAwsOptions(Container);
+        services.AddAWSService<Amazon.SimpleNotificationService.IAmazonSimpleNotificationService>(awsOptions);
+        services.AddAWSService<Amazon.SQS.IAmazonSQS>(awsOptions);
 
         services.AddInterBus(bus =>
         {

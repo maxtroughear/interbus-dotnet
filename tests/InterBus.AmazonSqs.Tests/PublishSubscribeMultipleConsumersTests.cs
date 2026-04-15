@@ -1,6 +1,4 @@
-using Amazon;
 using Amazon.Extensions.NETCore.Setup;
-using Amazon.Runtime;
 using InterBus.AmazonSqs.Extensions;
 using InterBus.Extensions;
 using InterBus.Generated;
@@ -13,8 +11,7 @@ namespace InterBus.AmazonSqs.Tests;
 [TestFixture]
 public class PublishSubscribeMultipleConsumersTests
 {
-    private static readonly LocalStackContainer Container =
-        new LocalStackBuilder("localstack/localstack:4").Build();
+    private static readonly LocalStackContainer? Container = TestHelpers.CreateLocalStackContainer();
 
     private ServiceProvider _provider = null!;
     private CancellationTokenSource _cts = null!;
@@ -23,13 +20,20 @@ public class PublishSubscribeMultipleConsumersTests
     private string _runId = null!;
 
     [OneTimeSetUp]
-    public static Task OneTimeSetUp() => Container.StartAsync();
+    public static async Task OneTimeSetUp()
+    {
+        if (Container is not null)
+            await Container.StartAsync();
+    }
 
     [OneTimeTearDown]
     public static async Task OneTimeTearDown()
     {
-        await Container.StopAsync();
-        await Container.DisposeAsync();
+        if (Container is not null)
+        {
+            await Container.StopAsync();
+            await Container.DisposeAsync();
+        }
     }
 
     [SetUp]
@@ -44,18 +48,9 @@ public class PublishSubscribeMultipleConsumersTests
         services.AddSingleton(_orderTracker);
         services.AddSingleton(_auditTracker);
 
-        // Register AWS clients pointing at the LocalStack container.
-        var localStackOptions = new AWSOptions
-        {
-            Credentials = new BasicAWSCredentials("test", "test"),
-            Region = RegionEndpoint.USEast1,
-            DefaultClientConfig =
-            {
-                ServiceURL = Container.GetConnectionString()
-            }
-        };
-        services.AddAWSService<Amazon.SimpleNotificationService.IAmazonSimpleNotificationService>(localStackOptions);
-        services.AddAWSService<Amazon.SQS.IAmazonSQS>(localStackOptions);
+        AWSOptions awsOptions = TestHelpers.CreateAwsOptions(Container);
+        services.AddAWSService<Amazon.SimpleNotificationService.IAmazonSimpleNotificationService>(awsOptions);
+        services.AddAWSService<Amazon.SQS.IAmazonSQS>(awsOptions);
 
         services.AddInterBus(bus =>
         {

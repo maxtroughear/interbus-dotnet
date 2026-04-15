@@ -1,0 +1,41 @@
+name: Test – Amazon SQS (LocalStack)
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - 'src/InterBus/**'
+      - 'src/InterBus.AmazonSqs/**'
+      - 'tests/InterBus.AmazonSqs.Tests/**'
+      - '.github/workflows/test-amazon-sqs-localstack.yml'
+  pull_request:
+    branches: [ "main" ]
+    paths:
+      - 'src/InterBus/**'
+      - 'src/InterBus.AmazonSqs/**'
+      - 'tests/InterBus.AmazonSqs.Tests/**'
+      - '.github/workflows/test-amazon-sqs-localstack.yml'
+
+jobs:
+  test-amazon-sqs-localstack:
+    name: Test – Amazon SQS (LocalStack)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --no-restore --configuration Release
+
+      - name: Test
+        run: >
+          dotnet test tests/InterBus.AmazonSqs.Tests/InterBus.AmazonSqs.Tests.csproj
+          --no-build --configuration Release --verbosity normal

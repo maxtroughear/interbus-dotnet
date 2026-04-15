@@ -20,10 +20,10 @@ public class ConcurrencyTests
     private string _runId = null!;
 
     /// <summary>Number of concurrent publishers used in the concurrency test.</summary>
-    private static readonly int PublisherCount = TestHelpers.UseRealAws ? 2 : 5;
+    private const int PublisherCount = 5;
 
     /// <summary>Number of messages each publisher sends.</summary>
-    private static readonly int MessagesPerPublisher = TestHelpers.UseRealAws ? 50 : 1000;
+    private const int MessagesPerPublisher = 1000;
 
     [OneTimeSetUp]
     public async Task OneTimeSetUp()

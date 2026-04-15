@@ -1,0 +1,52 @@
+name: Test – Amazon SQS (AWS)
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - 'src/InterBus/**'
+      - 'src/InterBus.AmazonSqs/**'
+      - 'tests/InterBus.AmazonSqs.Tests/**'
+      - '.github/workflows/test-amazon-sqs-aws.yml'
+  pull_request:
+    branches: [ "main" ]
+    paths:
+      - 'src/InterBus/**'
+      - 'src/InterBus.AmazonSqs/**'
+      - 'tests/InterBus.AmazonSqs.Tests/**'
+      - '.github/workflows/test-amazon-sqs-aws.yml'
+
+jobs:
+  test-amazon-sqs-aws:
+    name: Test – Amazon SQS (AWS)
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v6.1.0
+        with:
+          role-to-assume: arn:aws:iam::404304993722:role/InterBus-GitHub-Actions
+          aws-region: us-east-1
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --no-restore --configuration Release
+
+      - name: Test
+        run: >
+          dotnet test tests/InterBus.AmazonSqs.Tests/InterBus.AmazonSqs.Tests.csproj
+          --no-build --configuration Release --verbosity normal
+        env:
+          INTERBUS_USE_REAL_AWS: 'true'

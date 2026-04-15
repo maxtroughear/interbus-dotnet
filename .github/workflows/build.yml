@@ -1,69 +1,34 @@
-name: Build and Test
+name: Build and Test (Core)
 
 on:
   push:
     branches: [ "main" ]
+    paths:
+      - 'src/InterBus/**'
+      - 'src/InterBus.InMemory/**'
+      - 'src/InterBus.SourceGenerator/**'
+      - 'tests/InterBus.Tests/**'
+      - 'tests/InterBus.InMemory.Tests/**'
+      - 'tests/InterBus.SourceGenerator.Tests/**'
+      - 'tests/InterBus.EntityFrameworkCore.Tests/**'
+      - 'tests/InterBus.TickerQ.Tests/**'
+      - '.github/workflows/build.yml'
   pull_request:
     branches: [ "main" ]
+    paths:
+      - 'src/InterBus/**'
+      - 'src/InterBus.InMemory/**'
+      - 'src/InterBus.SourceGenerator/**'
+      - 'tests/InterBus.Tests/**'
+      - 'tests/InterBus.InMemory.Tests/**'
+      - 'tests/InterBus.SourceGenerator.Tests/**'
+      - 'tests/InterBus.EntityFrameworkCore.Tests/**'
+      - 'tests/InterBus.TickerQ.Tests/**'
+      - '.github/workflows/build.yml'
 
 jobs:
-  # ---------------------------------------------------------------------------
-  # Detect which project areas changed so downstream jobs can be skipped when
-  # their sources are unmodified.
-  # ---------------------------------------------------------------------------
-  changes:
-    name: Detect changed paths
-    runs-on: ubuntu-latest
-    outputs:
-      core: ${{ steps.filter.outputs.core }}
-      amazon-sqs: ${{ steps.filter.outputs.amazon-sqs }}
-      postgresql: ${{ steps.filter.outputs.postgresql }}
-      rabbitmq: ${{ steps.filter.outputs.rabbitmq }}
-      efcore: ${{ steps.filter.outputs.efcore }}
-      tickerq: ${{ steps.filter.outputs.tickerq }}
-    steps:
-      - uses: actions/checkout@v6
-      - uses: dorny/paths-filter@v3
-        id: filter
-        with:
-          filters: |
-            core:
-              - 'src/InterBus/**'
-              - 'src/InterBus.InMemory/**'
-              - 'src/InterBus.SourceGenerator/**'
-              - 'tests/InterBus.Tests/**'
-              - 'tests/InterBus.InMemory.Tests/**'
-              - 'tests/InterBus.SourceGenerator.Tests/**'
-              - 'tests/InterBus.EntityFrameworkCore.Tests/**'
-              - 'tests/InterBus.TickerQ.Tests/**'
-              - '.github/workflows/**'
-            amazon-sqs:
-              - 'src/InterBus.AmazonSqs/**'
-              - 'tests/InterBus.AmazonSqs.Tests/**'
-            postgresql:
-              - 'src/InterBus.PostgreSQL/**'
-              - 'tests/InterBus.PostgreSQL.Tests/**'
-              - 'samples/Sample.PostgreSQL/**'
-            rabbitmq:
-              - 'src/InterBus.RabbitMQ/**'
-              - 'tests/InterBus.RabbitMQ.Tests/**'
-            efcore:
-              - 'src/InterBus.EntityFrameworkCore/**'
-              - 'tests/InterBus.EntityFrameworkCore.PostgreSQL.IntegrationTests/**'
-              - 'tests/InterBus.EntityFrameworkCore.SqlServer.IntegrationTests/**'
-            tickerq:
-              - 'src/InterBus.TickerQ/**'
-              - 'tests/InterBus.TickerQ.Tests/**'
-
-  # ---------------------------------------------------------------------------
-  # Core build + unit/integration tests that require no external services.
-  # Runs whenever core InterBus source, any lightweight test project, or the
-  # workflow itself changes.
-  # ---------------------------------------------------------------------------
   build-and-test:
     name: Build and Test (Core)
-    needs: changes
-    if: needs.changes.outputs.core == 'true'
     runs-on: ubuntu-latest
 
     steps:
@@ -92,240 +57,3 @@ jobs:
             --no-build --configuration Release --verbosity normal
           dotnet test tests/InterBus.TickerQ.Tests/InterBus.TickerQ.Tests.csproj \
             --no-build --configuration Release --verbosity normal
-
-  # ---------------------------------------------------------------------------
-  # Amazon SNS/SQS – LocalStack container
-  # ---------------------------------------------------------------------------
-  test-amazon-sqs-localstack:
-    name: Test – Amazon SQS (LocalStack)
-    needs: changes
-    if: needs.changes.outputs.amazon-sqs == 'true' || needs.changes.outputs.core == 'true'
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v5
-        with:
-          dotnet-version: '10.0.x'
-
-      - name: Restore
-        run: dotnet restore
-
-      - name: Build
-        run: dotnet build --no-restore --configuration Release
-
-      - name: Test
-        run: >
-          dotnet test tests/InterBus.AmazonSqs.Tests/InterBus.AmazonSqs.Tests.csproj
-          --no-build --configuration Release --verbosity normal
-
-  # ---------------------------------------------------------------------------
-  # Amazon SNS/SQS – real AWS via OIDC
-  # Authenticates with the InterBus-GitHub-Actions IAM role using GitHub OIDC.
-  # The tests use the same NUnit fixtures as the LocalStack job but switch to
-  # real AWS clients when INTERBUS_USE_REAL_AWS=true is set.
-  # ---------------------------------------------------------------------------
-  test-amazon-sqs-aws:
-    name: Test – Amazon SQS (AWS)
-    needs: changes
-    if: needs.changes.outputs.amazon-sqs == 'true' || needs.changes.outputs.core == 'true'
-    runs-on: ubuntu-latest
-    permissions:
-      id-token: write
-      contents: read
-
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v5
-        with:
-          dotnet-version: '10.0.x'
-
-      - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v6.1.0
-        with:
-          role-to-assume: arn:aws:iam::404304993722:role/InterBus-GitHub-Actions
-          aws-region: us-east-1
-
-      - name: Restore
-        run: dotnet restore
-
-      - name: Build
-        run: dotnet build --no-restore --configuration Release
-
-      - name: Test
-        run: >
-          dotnet test tests/InterBus.AmazonSqs.Tests/InterBus.AmazonSqs.Tests.csproj
-          --no-build --configuration Release --verbosity normal
-        env:
-          INTERBUS_USE_REAL_AWS: 'true'
-
-  # ---------------------------------------------------------------------------
-  # RabbitMQ transport (uses Testcontainers internally)
-  # ---------------------------------------------------------------------------
-  test-rabbitmq:
-    name: Test – RabbitMQ
-    needs: changes
-    if: needs.changes.outputs.rabbitmq == 'true' || needs.changes.outputs.core == 'true'
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v5
-        with:
-          dotnet-version: '10.0.x'
-
-      - name: Restore
-        run: dotnet restore
-
-      - name: Build
-        run: dotnet build --no-restore --configuration Release
-
-      - name: Test
-        run: >
-          dotnet test tests/InterBus.RabbitMQ.Tests/InterBus.RabbitMQ.Tests.csproj
-          --no-build --configuration Release --verbosity normal
-
-  # ---------------------------------------------------------------------------
-  # PostgreSQL transport (uses Testcontainers internally)
-  # ---------------------------------------------------------------------------
-  test-postgresql:
-    name: Test – PostgreSQL Transport
-    needs: changes
-    if: needs.changes.outputs.postgresql == 'true' || needs.changes.outputs.core == 'true'
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v5
-        with:
-          dotnet-version: '10.0.x'
-
-      - name: Restore
-        run: dotnet restore
-
-      - name: Build
-        run: dotnet build --no-restore --configuration Release
-
-      - name: Test
-        run: >
-          dotnet test tests/InterBus.PostgreSQL.Tests/InterBus.PostgreSQL.Tests.csproj
-          --no-build --configuration Release --verbosity normal
-
-  # ---------------------------------------------------------------------------
-  # EntityFrameworkCore integration tests (PostgreSQL + SQL Server via Testcontainers)
-  # ---------------------------------------------------------------------------
-  test-efcore:
-    name: Test – EntityFrameworkCore (integration)
-    needs: changes
-    if: needs.changes.outputs.efcore == 'true' || needs.changes.outputs.core == 'true'
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v5
-        with:
-          dotnet-version: '10.0.x'
-
-      - name: Restore
-        run: dotnet restore
-
-      - name: Build
-        run: dotnet build --no-restore --configuration Release
-
-      - name: Test
-        run: |
-          dotnet test tests/InterBus.EntityFrameworkCore.PostgreSQL.IntegrationTests/InterBus.EntityFrameworkCore.PostgreSQL.IntegrationTests.csproj \
-            --no-build --configuration Release --verbosity normal
-          dotnet test tests/InterBus.EntityFrameworkCore.SqlServer.IntegrationTests/InterBus.EntityFrameworkCore.SqlServer.IntegrationTests.csproj \
-            --no-build --configuration Release --verbosity normal
-
-  # ---------------------------------------------------------------------------
-  # Native AOT publish + smoke-run (InMemory sample)
-  # ---------------------------------------------------------------------------
-  aot-publish:
-    name: Native AOT Publish and Run
-    needs: changes
-    if: needs.changes.outputs.core == 'true'
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v5
-        with:
-          dotnet-version: '10.0.x'
-
-      - name: Install Native AOT prerequisites
-        run: sudo apt-get install -y clang zlib1g-dev
-
-      - name: Publish (Native AOT, linux-x64)
-        # Publishes the dedicated AOT sample which uses a source-generated JsonSerializerContext
-        # and manually registers consumers (no netstandard2.0 SourceGenerator dependency).
-        # A successful publish with zero warnings proves InterBus and the InMemory transport
-        # are fully AOT-compatible when configured correctly.
-        run: >
-          dotnet publish samples/Sample.InMemory.Aot/Sample.InMemory.Aot.csproj
-          --runtime linux-x64
-          --configuration Release
-
-      - name: Run native binary
-        # Run the published binary end-to-end to confirm message routing works at native speed.
-        run: samples/Sample.InMemory.Aot/bin/Release/net10.0/linux-x64/publish/Sample.InMemory.Aot
-
-  # ---------------------------------------------------------------------------
-  # PostgreSQL sample (Native AOT publish + end-to-end run)
-  # ---------------------------------------------------------------------------
-  sample-postgresql:
-    name: Sample – PostgreSQL (Postgres 18)
-    needs: changes
-    if: needs.changes.outputs.postgresql == 'true' || needs.changes.outputs.core == 'true'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-
-    services:
-      postgres:
-        image: postgres:18-alpine
-        env:
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: interbus
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v5
-        with:
-          dotnet-version: '10.0.x'
-
-      - name: Install Native AOT prerequisites
-        run: sudo apt-get install -y clang zlib1g-dev
-
-      - name: Publish Sample.PostgreSQL (Native AOT, linux-x64)
-        run: >
-          dotnet publish samples/Sample.PostgreSQL/Sample.PostgreSQL.csproj
-          --runtime linux-x64
-          --configuration Release
-
-      - name: Run Sample.PostgreSQL
-        run: samples/Sample.PostgreSQL/bin/Release/net10.0/linux-x64/publish/Sample.PostgreSQL
-        env:
-          CONNECTIONSTRINGS__INTERBUS: "Host=localhost;Port=5432;Database=interbus;Username=postgres;Password=postgres"

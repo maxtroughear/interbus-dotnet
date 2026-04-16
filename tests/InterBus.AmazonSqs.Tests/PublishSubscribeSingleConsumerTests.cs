@@ -52,6 +52,7 @@ public class PublishSubscribeSingleConsumerTests
         AWSOptions awsOptions = TestHelpers.CreateAwsOptions(Container);
         services.AddAWSService<Amazon.SimpleNotificationService.IAmazonSimpleNotificationService>(awsOptions);
         services.AddAWSService<Amazon.SQS.IAmazonSQS>(awsOptions);
+        services.AddAWSService<Amazon.SecurityToken.IAmazonSecurityTokenService>(awsOptions);
 
         services.AddInterBus(bus =>
         {

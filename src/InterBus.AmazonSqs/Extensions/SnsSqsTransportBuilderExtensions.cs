@@ -39,6 +39,13 @@ public static class SnsSqsTransportBuilderExtensions
     /// application fully control client configuration, including credentials, region, and
     /// endpoint overrides.
     /// </para>
+    /// <para>
+    /// When <see cref="SnsSqsTransportOptions.TopologyMode"/> is set to
+    /// <see cref="TopologyMode.VerifyOnly"/>, also register
+    /// <see cref="Amazon.SecurityToken.IAmazonSecurityTokenService"/>. It is used to
+    /// resolve the topic ARN deterministically via <c>STS GetCallerIdentity</c> without
+    /// requiring <c>sns:ListTopics</c> or any write permissions.
+    /// </para>
     /// </summary>
     /// <param name="builder">The InterBus builder.</param>
     /// <param name="configure">

@@ -1,3 +1,6 @@
+using Amazon.Runtime;
+using Amazon.SecurityToken;
+using Amazon.SecurityToken.Model;
 using Amazon.SimpleNotificationService;
 using Amazon.SimpleNotificationService.Model;
 using Amazon.SQS;
@@ -38,11 +41,14 @@ namespace InterBus.AmazonSqs;
 public sealed class SnsSqsTopologySetup(
     IAmazonSimpleNotificationService snsClient,
     IAmazonSQS sqsClient,
+    IAmazonSecurityTokenService stsClient,
     SnsSqsClientProvider clientProvider,
     SnsSqsTransportOptions transportOptions,
     InterBusOptions busOptions,
     ILogger<SnsSqsTopologySetup> logger)
 {
+    // Cached STS caller identity (account ID + partition), resolved once on first use.
+    private GetCallerIdentityResponse? _callerIdentity;
     // -------------------------------------------------------------------------
     // Consumer topology (called by SqsMessagePump at startup)
     // -------------------------------------------------------------------------
@@ -76,8 +82,9 @@ public sealed class SnsSqsTopologySetup(
     /// Ensures the SNS topic for <paramref name="rawTopicName"/> exists and returns its ARN.
     /// <para>
     /// In <see cref="TopologyMode.CreateOrVerify"/> mode the topic is created (idempotent) if
-    /// it is not already cached. In <see cref="TopologyMode.VerifyOnly"/> mode the topic is
-    /// located by paginating <c>ListTopicsAsync</c> — no create or write operations are issued.
+    /// it is not already cached. In <see cref="TopologyMode.VerifyOnly"/> mode the topic ARN
+    /// is built deterministically using STS <c>GetCallerIdentity</c> and its existence is
+    /// confirmed via <c>GetTopicAttributes</c> — no create or write operations are issued.
     /// </para>
     /// </summary>
     internal async Task<string> EnsureTopicArnAsync(string rawTopicName, CancellationToken cancellationToken)
@@ -280,38 +287,53 @@ public sealed class SnsSqsTopologySetup(
     }
 
     /// <summary>
-    /// Resolves the ARN for an existing SNS topic by paginating <c>ListTopicsAsync</c> until
-    /// a topic whose ARN ends with <c>:{topicName}</c> is found.
+    /// Resolves the ARN for an existing SNS topic using STS <c>GetCallerIdentity</c> to
+    /// build the ARN deterministically (no <c>ListTopics</c> pagination required), then
+    /// confirms the topic exists via <c>GetTopicAttributes</c>.
     /// Read-only — does not create the topic.
     /// </summary>
     private async Task<string> VerifyTopicArnAsync(string topicName, CancellationToken cancellationToken)
     {
-        logger.LogDebug("InterBus AmazonSqs: looking up SNS topic {TopicName}", topicName);
+        logger.LogDebug("InterBus AmazonSqs: verifying SNS topic {TopicName}", topicName);
 
-        string? nextToken = null;
-        do
+        // Resolve caller identity once; cache for subsequent calls.
+        _callerIdentity ??= await stsClient.GetCallerIdentityAsync(
+            new GetCallerIdentityRequest(),
+            cancellationToken);
+
+        var accountId = _callerIdentity.Account;
+
+        // Derive partition from the caller's ARN (e.g. "arn:aws:..." → "aws").
+        // Falls back to "aws" if the ARN is unexpectedly formatted.
+        var callerArn = _callerIdentity.Arn;
+        var partition = callerArn.Split(':') is { Length: >= 2 } parts ? parts[1] : "aws";
+
+        // Derive SNS region from the SNS client configuration.
+        var region = snsClient.Config.RegionEndpoint?.SystemName
+                     ?? throw new InvalidOperationException(
+                         "Cannot determine the AWS region from the IAmazonSimpleNotificationService " +
+                         "client configuration. Ensure a region has been configured on the AWS client " +
+                         "(e.g. via environment variable AWS_DEFAULT_REGION or AWSOptions.Region).");
+
+        var topicArn = $"arn:{partition}:sns:{region}:{accountId}:{topicName}";
+
+        // Validate the topic exists (GetTopicAttributes throws if it doesn't).
+        try
         {
-            var response = await snsClient.ListTopicsAsync(
-                new ListTopicsRequest { NextToken = nextToken },
+            await snsClient.GetTopicAttributesAsync(
+                new GetTopicAttributesRequest { TopicArn = topicArn },
                 cancellationToken);
-
-            var match = response.Topics.Find(
-                t => t.TopicArn[(t.TopicArn.LastIndexOf(':') + 1)..] == topicName);
-
-            if (match is not null)
-            {
-                clientProvider.TopicArns.TryAdd(topicName, match.TopicArn);
-                return match.TopicArn;
-            }
-
-            nextToken = response.NextToken;
         }
-        while (nextToken is not null);
+        catch (AmazonServiceException ex) when (ex.ErrorCode is "NotFound")
+        {
+            throw new InvalidOperationException(
+                $"SNS topic '{topicName}' (ARN: {topicArn}) was not found. " +
+                $"Ensure the topic has been created before starting the application in " +
+                $"{nameof(TopologyMode.VerifyOnly)} mode.", ex);
+        }
 
-        throw new InvalidOperationException(
-            $"SNS topic '{topicName}' was not found. " +
-            $"Ensure the topic has been created before starting the application in " +
-            $"{nameof(TopologyMode.VerifyOnly)} mode.");
+        clientProvider.TopicArns.TryAdd(topicName, topicArn);
+        return topicArn;
     }
 
     // -------------------------------------------------------------------------

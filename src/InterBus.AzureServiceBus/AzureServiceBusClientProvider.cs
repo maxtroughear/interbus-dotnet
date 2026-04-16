@@ -34,7 +34,7 @@ internal sealed class AzureServiceBusClientProvider : IAsyncDisposable
     /// on first use.
     /// </summary>
     public ServiceBusSender GetOrCreateSender(string entityPath) =>
-        _senders.GetOrAdd(entityPath, path => _client.CreateSender(path));
+        _senders.GetOrAdd(entityPath, _client.CreateSender);
 
     /// <summary>Creates a <see cref="ServiceBusProcessor"/> for the given queue.</summary>
     public ServiceBusProcessor CreateQueueProcessor(string queueName, ServiceBusProcessorOptions processorOptions) =>

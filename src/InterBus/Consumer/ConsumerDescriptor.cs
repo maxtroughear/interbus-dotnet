@@ -47,4 +47,9 @@ public sealed class ConsumerDescriptor(
     /// Defaults to <c>1</c> (sequential dispatch).
     /// </summary>
     public int ConcurrencyCount { get; internal set; } = 1;
+    
+    /// <summary>
+    /// 
+    /// </summary>
+    public TimeSpan? Timeout { get; internal set; }
 }

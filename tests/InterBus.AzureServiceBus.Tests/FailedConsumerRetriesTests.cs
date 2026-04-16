@@ -75,7 +75,7 @@ public class FailedConsumerRetriesTests
         using var scope = _provider.CreateScope();
         var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
         var msg = new OrderPlaced(Guid.NewGuid(), "retry@test.com", 10m);
-        await publisher.Publish(msg, TestContext.CurrentContext.CancellationToken);
+        await publisher.PublishAsync(msg, TestContext.CurrentContext.CancellationToken);
 
         // Wait for the second (successful) delivery.
         await TestHelpers.WaitUntilAsync(() => _tracker.Messages.Count == 1, timeoutMs: 60_000);

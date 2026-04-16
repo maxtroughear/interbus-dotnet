@@ -1,5 +1,6 @@
 using Azure.Messaging.ServiceBus;
 using Azure.Messaging.ServiceBus.Administration;
+using InterBus.Consumer;
 using InterBus.Middleware;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -123,7 +124,10 @@ internal sealed class AzureServiceBusMessagePump(
     {
         try
         {
-            await admin.CreateQueueAsync(queueName, cancellationToken);
+            await admin.CreateQueueAsync(new CreateQueueOptions(queueName)
+            {
+                LockDuration = TimeSpan.FromSeconds(60) // default
+            }, cancellationToken);
             logger.LogDebug(
                 "InterBus AzureServiceBus: created queue {QueueName}", queueName);
         }
@@ -194,6 +198,7 @@ internal sealed class AzureServiceBusMessagePump(
             {
                 MaxConcurrentCalls = concurrency,
                 AutoCompleteMessages = false,
+                MaxAutoLockRenewalDuration = TimeSpan.FromHours(12) // TODO: configurable by consumer
             };
 
             var processor = clientProvider.CreateQueueProcessor(consumerQueueName, processorOptions);
@@ -211,9 +216,7 @@ internal sealed class AzureServiceBusMessagePump(
         }
     }
 
-    private async Task HandleMessageAsync(
-        ConsumerDescriptor descriptor,
-        ProcessMessageEventArgs args)
+    private async Task HandleMessageAsync(ConsumerDescriptor descriptor, ProcessMessageEventArgs args)
     {
         if (args.CancellationToken.IsCancellationRequested)
         {

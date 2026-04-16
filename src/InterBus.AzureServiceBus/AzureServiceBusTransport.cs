@@ -1,4 +1,5 @@
 using Azure.Messaging.ServiceBus;
+using InterBus.Transport;
 
 namespace InterBus.AzureServiceBus;
 
@@ -84,7 +85,7 @@ public sealed class AzureServiceBusTransport : IInterBusTransport
     }
 
     internal static MessageHeaders ParseApplicationProperties(
-        IReadOnlyDictionary<string, object> applicationProperties)
+        IReadOnlyDictionary<string, object?> applicationProperties)
     {
         var dict = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var kv in applicationProperties)

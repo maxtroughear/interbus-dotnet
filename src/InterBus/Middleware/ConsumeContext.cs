@@ -1,3 +1,5 @@
+using InterBus.Consumer;
+
 namespace InterBus.Middleware;
 
 /// <summary>

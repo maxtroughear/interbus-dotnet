@@ -1,6 +1,6 @@
 using InterBus.Middleware;
 
-namespace InterBus;
+namespace InterBus.Consumer;
 
 /// <summary>
 /// Describes a registered consumer and all of the message types it handles.

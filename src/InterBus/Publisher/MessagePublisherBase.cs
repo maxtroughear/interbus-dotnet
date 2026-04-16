@@ -1,6 +1,6 @@
 using InterBus.Middleware;
 
-namespace InterBus.Internal;
+namespace InterBus.Publisher;
 
 /// <summary>
 /// Base class for <see cref="IMessagePublisher"/> implementations. Handles destination

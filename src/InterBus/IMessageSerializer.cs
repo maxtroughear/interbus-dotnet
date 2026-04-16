@@ -1,3 +1,5 @@
+using InterBus.Serialization;
+
 namespace InterBus;
 
 /// <summary>

@@ -1,4 +1,6 @@
 using System.Diagnostics.CodeAnalysis;
+using InterBus.Consumer;
+using InterBus.Logging;
 using InterBus.Middleware;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;

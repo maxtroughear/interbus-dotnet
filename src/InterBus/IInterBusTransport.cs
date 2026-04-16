@@ -1,3 +1,5 @@
+using InterBus.Transport;
+
 namespace InterBus;
 
 /// <summary>

@@ -1,6 +1,10 @@
 using System.Text.Json;
+using InterBus.Consumer;
 using InterBus.Internal;
 using InterBus.Middleware;
+using InterBus.Scheduler;
+using InterBus.Serialization;
+using InterBus.Transport;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 

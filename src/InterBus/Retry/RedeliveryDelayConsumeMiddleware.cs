@@ -1,5 +1,6 @@
 using System.Globalization;
 using InterBus.Middleware;
+using InterBus.Transport;
 using Microsoft.Extensions.Logging;
 
 namespace InterBus.Retry;

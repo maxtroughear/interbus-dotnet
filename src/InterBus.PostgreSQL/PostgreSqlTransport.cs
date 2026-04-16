@@ -1,4 +1,5 @@
 using System.Text.Json;
+using InterBus.Transport;
 using Npgsql;
 using NpgsqlTypes;
 

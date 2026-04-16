@@ -1,4 +1,4 @@
-namespace InterBus.Internal;
+namespace InterBus.Scheduler;
 
 /// <summary>
 /// Internal command message published to the bus to request that a message be scheduled

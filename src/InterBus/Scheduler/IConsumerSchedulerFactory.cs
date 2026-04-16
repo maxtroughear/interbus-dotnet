@@ -1,6 +1,6 @@
 using InterBus.Middleware;
 
-namespace InterBus.Internal;
+namespace InterBus.Scheduler;
 
 /// <summary>
 /// Factory registered when scheduling is configured (<c>AddScheduling()</c> or

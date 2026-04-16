@@ -1,4 +1,7 @@
+using InterBus.Consumer;
 using InterBus.Internal;
+using InterBus.Publisher;
+using InterBus.Scheduler;
 
 namespace InterBus.Middleware;
 

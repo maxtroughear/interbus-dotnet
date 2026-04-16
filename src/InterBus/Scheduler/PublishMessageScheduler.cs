@@ -1,6 +1,6 @@
 using InterBus.Middleware;
 
-namespace InterBus.Internal;
+namespace InterBus.Scheduler;
 
 /// <summary>
 /// <see cref="IMessageScheduler"/> implementation that asynchronously schedules messages by

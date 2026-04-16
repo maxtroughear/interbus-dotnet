@@ -1,4 +1,5 @@
 using System.Threading.Channels;
+using InterBus.Consumer;
 
 namespace InterBus.InMemory;
 

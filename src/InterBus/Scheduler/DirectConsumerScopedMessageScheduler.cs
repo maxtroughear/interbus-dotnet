@@ -1,6 +1,6 @@
 using InterBus.Middleware;
 
-namespace InterBus.Internal;
+namespace InterBus.Scheduler;
 
 /// <summary>
 /// Consumer-scoped <see cref="IMessageScheduler"/> for the direct scheduling path

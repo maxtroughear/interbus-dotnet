@@ -1,6 +1,6 @@
 using InterBus.Middleware;
 
-namespace InterBus.Internal;
+namespace InterBus.Publisher;
 
 /// <summary>
 /// Bus scoped <see cref="IMessagePublisher"/> implementation. Serializes each message and routes it

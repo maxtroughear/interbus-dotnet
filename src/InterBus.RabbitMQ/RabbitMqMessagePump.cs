@@ -1,3 +1,4 @@
+using InterBus.Consumer;
 using InterBus.Middleware;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;

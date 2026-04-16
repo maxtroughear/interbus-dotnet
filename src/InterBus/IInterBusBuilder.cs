@@ -1,5 +1,6 @@
 using System.Diagnostics.CodeAnalysis;
 using InterBus.Middleware;
+using InterBus.Serialization;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace InterBus;

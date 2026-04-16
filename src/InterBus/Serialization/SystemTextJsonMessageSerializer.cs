@@ -2,7 +2,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
 
-namespace InterBus;
+namespace InterBus.Serialization;
 
 /// <summary>
 /// <see cref="IMessageSerializer"/> implementation backed by <see cref="JsonSerializer"/>.

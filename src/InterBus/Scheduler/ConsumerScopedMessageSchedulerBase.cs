@@ -1,6 +1,6 @@
 using InterBus.Middleware;
 
-namespace InterBus.Internal;
+namespace InterBus.Scheduler;
 
 /// <summary>
 /// Abstract base for consumer-scoped <see cref="IMessageScheduler"/> implementations.

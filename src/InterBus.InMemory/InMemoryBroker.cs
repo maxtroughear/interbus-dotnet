@@ -1,3 +1,4 @@
+using InterBus.Transport;
 using Microsoft.Extensions.Logging;
 
 namespace InterBus.InMemory;

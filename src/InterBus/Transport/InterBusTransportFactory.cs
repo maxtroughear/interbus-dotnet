@@ -1,6 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 
-namespace InterBus.Internal;
+namespace InterBus.Transport;
 
 /// <summary>
 /// Default <see cref="IInterBusTransportFactory"/> implementation. Resolves an

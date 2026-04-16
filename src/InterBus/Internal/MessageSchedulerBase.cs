@@ -14,11 +14,11 @@ internal abstract class MessageSchedulerBase(InterBusOptions options, IMessageSe
     /// <summary>The serializer used to produce the wire payload.</summary>
     protected IMessageSerializer Serializer { get; } = serializer;
 
-    public Task SchedulePublish<T>(T message, DateTimeOffset scheduledAt,
+    public Task SchedulePublishAsync<T>(T message, DateTimeOffset scheduledAt,
         CancellationToken cancellationToken = default) where T : class =>
-        SchedulePublish(message, scheduledAt, _ => { }, cancellationToken);
+        SchedulePublishAsync(message, scheduledAt, _ => { }, cancellationToken);
 
-    public Task SchedulePublish<T>(T message, DateTimeOffset scheduledAt, Action<PublishContext<T>> configure,
+    public Task SchedulePublishAsync<T>(T message, DateTimeOffset scheduledAt, Action<PublishContext<T>> configure,
         CancellationToken cancellationToken = default) where T : class
     {
         var topicName = options.TryGetTopicName(typeof(T), out var customName)
@@ -30,13 +30,13 @@ internal abstract class MessageSchedulerBase(InterBusOptions options, IMessageSe
         return ScheduleInternalAsync(context, scheduledAt, cancellationToken);
     }
 
-    public Task ScheduleSend<TConsumer, T>(T message, DateTimeOffset scheduledAt,
+    public Task ScheduleSendAsync<TConsumer, T>(T message, DateTimeOffset scheduledAt,
         CancellationToken cancellationToken = default)
         where TConsumer : IConsumer<T>
         where T : class =>
-        ScheduleSend<TConsumer, T>(message, scheduledAt, _ => { }, cancellationToken);
+        ScheduleSendAsync<TConsumer, T>(message, scheduledAt, _ => { }, cancellationToken);
 
-    public Task ScheduleSend<TConsumer, T>(T message, DateTimeOffset scheduledAt,
+    public Task ScheduleSendAsync<TConsumer, T>(T message, DateTimeOffset scheduledAt,
         Action<PublishContext<T>> configure,
         CancellationToken cancellationToken = default)
         where TConsumer : IConsumer<T>
@@ -48,11 +48,11 @@ internal abstract class MessageSchedulerBase(InterBusOptions options, IMessageSe
         return ScheduleInternalAsync(context, scheduledAt, cancellationToken);
     }
 
-    public Task ScheduleSend<T>(string queueName, T message, DateTimeOffset scheduledAt,
+    public Task ScheduleSendAsync<T>(string queueName, T message, DateTimeOffset scheduledAt,
         CancellationToken cancellationToken = default) where T : class =>
-        ScheduleSend(queueName, message, scheduledAt, _ => { }, cancellationToken);
+        ScheduleSendAsync(queueName, message, scheduledAt, _ => { }, cancellationToken);
 
-    public Task ScheduleSend<T>(string queueName, T message, DateTimeOffset scheduledAt,
+    public Task ScheduleSendAsync<T>(string queueName, T message, DateTimeOffset scheduledAt,
         Action<PublishContext<T>> configure,
         CancellationToken cancellationToken = default) where T : class
     {

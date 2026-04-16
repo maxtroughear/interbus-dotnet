@@ -81,7 +81,7 @@ public class PublishConsumeTests
             using var scope = provider.CreateScope();
             var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
             var msg = new OrderPlaced(Guid.NewGuid(), "test@example.com", 99.99m);
-            await publisher.Publish(msg, TestContext.Current.CancellationToken);
+            await publisher.PublishAsync(msg, TestContext.Current.CancellationToken);
 
             await WaitUntilAsync(() => tracker.Messages.Count == 1);
 
@@ -118,7 +118,7 @@ public class PublishConsumeTests
             using var scope = provider.CreateScope();
             var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
             var msg = new OrderPlaced(Guid.NewGuid(), "fan@out.test", 50m);
-            await publisher.Publish(msg, TestContext.Current.CancellationToken);
+            await publisher.PublishAsync(msg, TestContext.Current.CancellationToken);
 
             // Both consumers should receive the message via topic fan-out.
             await WaitUntilAsync(() => orderTracker.Messages.Count == 1 && auditTracker.Messages.Count == 1);
@@ -160,7 +160,7 @@ public class PublishConsumeTests
             var msg = new OrderPlaced(Guid.NewGuid(), "direct@send.test", 25m);
 
             // Send directly to OrderPlacedConsumer only - AuditConsumer should NOT receive.
-            await publisher.Send<OrderPlacedConsumer, OrderPlaced>(msg, TestContext.Current.CancellationToken);
+            await publisher.SendAsync<OrderPlacedConsumer, OrderPlaced>(msg, TestContext.Current.CancellationToken);
 
             await WaitUntilAsync(() => orderTracker.Messages.Count == 1);
 
@@ -199,7 +199,7 @@ public class PublishConsumeTests
             using var scope = provider.CreateScope();
             var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
             var msg = new OrderPlaced(Guid.NewGuid(), "generated@test.com", 75m);
-            await publisher.Publish(msg, TestContext.Current.CancellationToken);
+            await publisher.PublishAsync(msg, TestContext.Current.CancellationToken);
 
             // Both explicitly registered consumers should receive.
             await WaitUntilAsync(() =>
@@ -254,8 +254,8 @@ public class PublishConsumeTests
             var orderMsg = new OrderPlaced(Guid.NewGuid(), "multi@test.com", 100m);
             var shippedMsg = new OrderShipped(Guid.NewGuid(), "TRK-001");
 
-            await publisher.Publish(orderMsg, TestContext.Current.CancellationToken);
-            await publisher.Publish(shippedMsg, TestContext.Current.CancellationToken);
+            await publisher.PublishAsync(orderMsg, TestContext.Current.CancellationToken);
+            await publisher.PublishAsync(shippedMsg, TestContext.Current.CancellationToken);
 
             await WaitUntilAsync(() =>
                 orderTracker.Messages.Count == 1 && shippedTracker.Messages.Count == 1);

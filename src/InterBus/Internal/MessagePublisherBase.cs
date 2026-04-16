@@ -9,10 +9,10 @@ namespace InterBus.Internal;
 /// </summary>
 internal abstract class MessagePublisherBase(InterBusOptions options) : IMessagePublisher
 {
-    public Task Publish<T>(T message, CancellationToken cancellationToken = default) where T : class =>
-        Publish(message, _ => { }, cancellationToken);
+    public Task PublishAsync<T>(T message, CancellationToken cancellationToken = default) where T : class =>
+        PublishAsync(message, _ => { }, cancellationToken);
 
-    public Task Publish<T>(T message, Action<PublishContext<T>> configure,
+    public Task PublishAsync<T>(T message, Action<PublishContext<T>> configure,
         CancellationToken cancellationToken = default)
         where T : class
     {
@@ -26,12 +26,12 @@ internal abstract class MessagePublisherBase(InterBusOptions options) : IMessage
         return BuildPublishPipeline<T>()(context, cancellationToken);
     }
 
-    public Task Send<TConsumer, T>(T message, CancellationToken cancellationToken = default)
+    public Task SendAsync<TConsumer, T>(T message, CancellationToken cancellationToken = default)
         where TConsumer : IConsumer<T>
         where T : class =>
-        Send<TConsumer, T>(message, _ => { }, cancellationToken);
+        SendAsync<TConsumer, T>(message, _ => { }, cancellationToken);
 
-    public Task Send<TConsumer, T>(T message, Action<PublishContext<T>> configure,
+    public Task SendAsync<TConsumer, T>(T message, Action<PublishContext<T>> configure,
         CancellationToken cancellationToken = default)
         where TConsumer : IConsumer<T>
         where T : class
@@ -43,11 +43,11 @@ internal abstract class MessagePublisherBase(InterBusOptions options) : IMessage
         return BuildPublishPipeline<T>()(context, cancellationToken);
     }
 
-    public Task Send<T>(string queueName, T message, CancellationToken cancellationToken = default)
+    public Task SendAsync<T>(string queueName, T message, CancellationToken cancellationToken = default)
         where T : class =>
-        Send(queueName, message, _ => { }, cancellationToken);
+        SendAsync(queueName, message, _ => { }, cancellationToken);
 
-    public Task Send<T>(string queueName, T message, Action<PublishContext<T>> configure,
+    public Task SendAsync<T>(string queueName, T message, Action<PublishContext<T>> configure,
         CancellationToken cancellationToken = default)
         where T : class
     {

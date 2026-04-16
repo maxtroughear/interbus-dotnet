@@ -43,7 +43,7 @@ public class LeasePumpTests(string imageTag)
         using var scope = host.CreateScope();
         var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
         var msg = new OrderPlaced(Guid.NewGuid(), "lease@test.com", 50m);
-        await publisher.Publish(msg, TestContext.CurrentContext.CancellationToken);
+        await publisher.PublishAsync(msg, TestContext.CurrentContext.CancellationToken);
 
         await TestHelpers.WaitUntilAsync(() => tracker.Messages.Count == 1);
         Assert.That(tracker.Messages.Single().OrderId, Is.EqualTo(msg.OrderId));
@@ -79,7 +79,7 @@ public class LeasePumpTests(string imageTag)
         using var scope = host.CreateScope();
         var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
         var msg = new OrderPlaced(Guid.NewGuid(), "release@test.com", 5m);
-        await publisher.Publish(msg, TestContext.CurrentContext.CancellationToken);
+        await publisher.PublishAsync(msg, TestContext.CurrentContext.CancellationToken);
 
         await TestHelpers.WaitUntilAsync(
             () => tracker.Messages.Count == 1,
@@ -125,7 +125,7 @@ public class LeasePumpTests(string imageTag)
         using var scope = host.CreateScope();
         var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
         var msg = new OrderPlaced(Guid.NewGuid(), "expire@test.com", 99m);
-        await publisher.Publish(msg, TestContext.CurrentContext.CancellationToken);
+        await publisher.PublishAsync(msg, TestContext.CurrentContext.CancellationToken);
 
         await TestHelpers.WaitUntilAsync(
             () => tracker.Messages.Count == 1,

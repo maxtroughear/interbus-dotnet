@@ -171,7 +171,7 @@ public sealed class ScheduleMiddlewareTests
         using var scope = provider.CreateScope();
         var scheduler = scope.ServiceProvider.GetRequiredService<IMessageScheduler>();
 
-        await scheduler.SchedulePublish(new TestMessage(Guid.NewGuid()), DateTimeOffset.UtcNow.AddMinutes(5),
+        await scheduler.SchedulePublishAsync(new TestMessage(Guid.NewGuid()), DateTimeOffset.UtcNow.AddMinutes(5),
             TestContext.Current.CancellationToken);
 
         // Middleware should NOT have been invoked at schedule time
@@ -198,7 +198,7 @@ public sealed class ScheduleMiddlewareTests
         var scheduler = scope.ServiceProvider.GetRequiredService<IMessageScheduler>();
         var scheduledAt = DateTimeOffset.UtcNow.AddMinutes(5);
 
-        await scheduler.SchedulePublish(new TestMessage(Guid.NewGuid()), scheduledAt,
+        await scheduler.SchedulePublishAsync(new TestMessage(Guid.NewGuid()), scheduledAt,
             TestContext.Current.CancellationToken);
 
         var call = Assert.Single(schedulingProvider.Calls);

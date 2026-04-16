@@ -170,7 +170,7 @@ public class OutboxTests
             var msg = new OrderPlaced(Guid.NewGuid(), "test@example.com", 42m);
 
             // Publish adds the outbox row but does NOT save changes yet.
-            await publisher.Publish(msg, TestContext.Current.CancellationToken);
+            await publisher.PublishAsync(msg, TestContext.Current.CancellationToken);
 
             // Row is tracked but not yet persisted.
             Assert.Single(dbContext.OutboxMessages.Local);
@@ -218,7 +218,7 @@ public class OutboxTests
                 var dbContext = scope.ServiceProvider.GetRequiredService<TestDbContext>();
 
                 var msg = new OrderPlaced(Guid.NewGuid(), "deliver@example.com", 99m);
-                await publisher.Publish(msg, TestContext.Current.CancellationToken);
+                await publisher.PublishAsync(msg, TestContext.Current.CancellationToken);
                 await dbContext.SaveChangesAsync(TestContext.Current.CancellationToken);
             }
 
@@ -260,7 +260,7 @@ public class OutboxTests
                 var dbContext = scope.ServiceProvider.GetRequiredService<TestDbContext>();
 
                 for (var i = 0; i < count; i++)
-                    await publisher.Publish(
+                    await publisher.PublishAsync(
                         new OrderPlaced(Guid.NewGuid(), $"user{i}@example.com", i * 10m),
                         TestContext.Current.CancellationToken);
 
@@ -305,7 +305,7 @@ public class OutboxTests
                 var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
                 var dbContext = scope.ServiceProvider.GetRequiredService<TestDbContext>();
 
-                await publisher.Publish(
+                await publisher.PublishAsync(
                     new OrderPlaced(Guid.NewGuid(), "clean@example.com", 1m),
                     TestContext.Current.CancellationToken);
                 await dbContext.SaveChangesAsync(TestContext.Current.CancellationToken);
@@ -357,7 +357,7 @@ public class OutboxTests
             var dbContext = scope.ServiceProvider.GetRequiredService<TestDbContext>();
 
             var delay = TimeSpan.FromMinutes(5);
-            await publisher.Publish(
+            await publisher.PublishAsync(
                 new OrderPlaced(Guid.NewGuid(), "delay@example.com", 1m),
                 ctx => ctx.Delay = delay,
                 TestContext.Current.CancellationToken);

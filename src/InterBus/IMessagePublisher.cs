@@ -12,7 +12,7 @@ public interface IMessagePublisher
     /// Publish a message to the topic for <typeparamref name="T"/>. All registered consumers for this
     /// message type will receive the message (Publish-Subscribe Channel / fan-out).
     /// </summary>
-    Task Publish<T>(T message, CancellationToken cancellationToken = default) where T : class;
+    Task PublishAsync<T>(T message, CancellationToken cancellationToken = default) where T : class;
 
     /// <summary>
     /// Publish a message to the topic for <typeparamref name="T"/>, applying the supplied
@@ -21,7 +21,7 @@ public interface IMessagePublisher
     /// optional send delay (via <see cref="PublishContext{T}.Delay"/>).
     /// All registered consumers will receive the message.
     /// </summary>
-    Task Publish<T>(T message, Action<PublishContext<T>> configure,
+    Task PublishAsync<T>(T message, Action<PublishContext<T>> configure,
         CancellationToken cancellationToken = default)
         where T : class;
 
@@ -29,7 +29,7 @@ public interface IMessagePublisher
     /// Send a message directly to the queue of <typeparamref name="TConsumer"/>, bypassing topic fan-out.
     /// Only <typeparamref name="TConsumer"/> will receive the message (Point-to-Point Channel).
     /// </summary>
-    Task Send<TConsumer, T>(T message, CancellationToken cancellationToken = default)
+    Task SendAsync<TConsumer, T>(T message, CancellationToken cancellationToken = default)
         where TConsumer : IConsumer<T>
         where T : class;
 
@@ -39,7 +39,7 @@ public interface IMessagePublisher
     /// Use the delegate to set headers and/or an optional send delay.
     /// Only <typeparamref name="TConsumer"/> will receive the message.
     /// </summary>
-    Task Send<TConsumer, T>(T message, Action<PublishContext<T>> configure,
+    Task SendAsync<TConsumer, T>(T message, Action<PublishContext<T>> configure,
         CancellationToken cancellationToken = default)
         where TConsumer : IConsumer<T>
         where T : class;
@@ -48,7 +48,7 @@ public interface IMessagePublisher
     /// Send a message directly to the named <paramref name="queueName"/>, bypassing topic fan-out.
     /// Use this overload when the consumer type is not available at the call site (e.g. cross-project sends).
     /// </summary>
-    Task Send<T>(string queueName, T message, CancellationToken cancellationToken = default) where T : class;
+    Task SendAsync<T>(string queueName, T message, CancellationToken cancellationToken = default) where T : class;
 
     /// <summary>
     /// Send a message directly to the named <paramref name="queueName"/>, applying the supplied
@@ -56,7 +56,7 @@ public interface IMessagePublisher
     /// Use the delegate to set headers and/or an optional send delay.
     /// Use this overload when the consumer type is not available at the call site.
     /// </summary>
-    Task Send<T>(string queueName, T message, Action<PublishContext<T>> configure,
+    Task SendAsync<T>(string queueName, T message, Action<PublishContext<T>> configure,
         CancellationToken cancellationToken = default)
         where T : class;
 }

@@ -1,4 +1,4 @@
-name: Build and Test
+name: CI
 
 on:
   push:
@@ -8,7 +8,7 @@ on:
 
 jobs:
   build-and-test:
-    name: Build and Test
+    name: Build and Test (Core)
     runs-on: ubuntu-latest
 
     steps:
@@ -26,7 +26,145 @@ jobs:
         run: dotnet build --no-restore --configuration Release
 
       - name: Test
-        run: dotnet test --no-build --configuration Release --verbosity normal
+        run: |
+          dotnet test tests/InterBus.Tests/InterBus.Tests.csproj \
+            --no-build --configuration Release --verbosity normal
+          dotnet test tests/InterBus.InMemory.Tests/InterBus.InMemory.Tests.csproj \
+            --no-build --configuration Release --verbosity normal
+          dotnet test tests/InterBus.SourceGenerator.Tests/InterBus.SourceGenerator.Tests.csproj \
+            --no-build --configuration Release --verbosity normal
+          dotnet test tests/InterBus.EntityFrameworkCore.Tests/InterBus.EntityFrameworkCore.Tests.csproj \
+            --no-build --configuration Release --verbosity normal
+          dotnet test tests/InterBus.TickerQ.Tests/InterBus.TickerQ.Tests.csproj \
+            --no-build --configuration Release --verbosity normal
+
+  test-amazon-sqs-localstack:
+    name: Test – Amazon SQS (LocalStack)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --no-restore --configuration Release
+
+      - name: Test
+        run: >
+          dotnet test tests/InterBus.AmazonSqs.Tests/InterBus.AmazonSqs.Tests.csproj
+          --no-build --configuration Release --verbosity normal
+
+  test-amazon-sqs-aws:
+    name: Test – Amazon SQS (AWS)
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v6.1.0
+        with:
+          role-to-assume: arn:aws:iam::404304993722:role/InterBus-GitHub-Actions
+          aws-region: us-east-1
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --no-restore --configuration Release
+
+      - name: Test
+        run: >
+          dotnet test tests/InterBus.AmazonSqs.Tests/InterBus.AmazonSqs.Tests.csproj
+          --no-build --configuration Release --verbosity normal
+        env:
+          INTERBUS_USE_REAL_AWS: 'true'
+
+  test-rabbitmq:
+    name: Test – RabbitMQ
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --no-restore --configuration Release
+
+      - name: Test
+        run: >
+          dotnet test tests/InterBus.RabbitMQ.Tests/InterBus.RabbitMQ.Tests.csproj
+          --no-build --configuration Release --verbosity normal
+
+  test-postgresql:
+    name: Test – PostgreSQL Transport
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --no-restore --configuration Release
+
+      - name: Test
+        run: >
+          dotnet test tests/InterBus.PostgreSQL.Tests/InterBus.PostgreSQL.Tests.csproj
+          --no-build --configuration Release --verbosity normal
+
+  test-efcore:
+    name: Test – EntityFrameworkCore (integration)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --no-restore --configuration Release
+
+      - name: Test
+        run: |
+          dotnet test tests/InterBus.EntityFrameworkCore.PostgreSQL.IntegrationTests/InterBus.EntityFrameworkCore.PostgreSQL.IntegrationTests.csproj \
+            --no-build --configuration Release --verbosity normal
+          dotnet test tests/InterBus.EntityFrameworkCore.SqlServer.IntegrationTests/InterBus.EntityFrameworkCore.SqlServer.IntegrationTests.csproj \
+            --no-build --configuration Release --verbosity normal
 
   aot-publish:
     name: Native AOT Publish and Run
@@ -44,17 +182,12 @@ jobs:
         run: sudo apt-get install -y clang zlib1g-dev
 
       - name: Publish (Native AOT, linux-x64)
-        # Publishes the dedicated AOT sample which uses a source-generated JsonSerializerContext
-        # and manually registers consumers (no netstandard2.0 SourceGenerator dependency).
-        # A successful publish with zero warnings proves InterBus and the InMemory transport
-        # are fully AOT-compatible when configured correctly.
         run: >
           dotnet publish samples/Sample.InMemory.Aot/Sample.InMemory.Aot.csproj
           --runtime linux-x64
           --configuration Release
 
       - name: Run native binary
-        # Run the published binary end-to-end to confirm message routing works at native speed.
         run: samples/Sample.InMemory.Aot/bin/Release/net10.0/linux-x64/publish/Sample.InMemory.Aot
 
   sample-postgresql:

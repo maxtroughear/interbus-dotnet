@@ -1,0 +1,168 @@
+using Amazon;
+using Amazon.Extensions.NETCore.Setup;
+using Amazon.Runtime;
+using Amazon.SimpleNotificationService;
+using Amazon.SQS;
+using Amazon.SQS.Model;
+using Microsoft.Extensions.Logging;
+using Testcontainers.LocalStack;
+
+namespace InterBus.AmazonSqs.Tests;
+
+public static class TestHelpers
+{
+    /// <summary>
+    /// When <c>INTERBUS_USE_REAL_AWS=true</c> the tests skip LocalStack and authenticate
+    /// via credentials already present in the environment (e.g. OIDC-injected env vars).
+    /// </summary>
+    internal static bool UseRealAws =>
+        string.Equals(
+            Environment.GetEnvironmentVariable("INTERBUS_USE_REAL_AWS"),
+            "true",
+            StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Returns a new LocalStack container, or <c>null</c> when using real AWS.</summary>
+    internal static LocalStackContainer? CreateLocalStackContainer() =>
+        UseRealAws ? null : new LocalStackBuilder("localstack/localstack:4").Build();
+
+    /// <summary>
+    /// Builds <see cref="AWSOptions"/> for either LocalStack or real AWS.
+    /// When <paramref name="container"/> is <c>null</c> the SDK credential chain resolves
+    /// credentials from the environment (suitable for OIDC / IAM role scenarios).
+    /// </summary>
+    internal static AWSOptions CreateAwsOptions(LocalStackContainer? container)
+    {
+        if (container is null)
+            return new AWSOptions { Region = RegionEndpoint.USEast1 };
+
+        return new AWSOptions
+        {
+            Credentials = new BasicAWSCredentials("test", "test"),
+            Region = RegionEndpoint.USEast1,
+            DefaultClientConfig = { ServiceURL = container.GetConnectionString() }
+        };
+    }
+
+    internal static async Task WaitUntilAsync(
+        Func<bool> condition,
+        int timeoutMs = 30_000,
+        int intervalMs = 200)
+    {
+        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+        while (!condition() && DateTime.UtcNow < deadline)
+            await Task.Delay(intervalMs);
+    }
+
+    /// <summary>
+    /// Cleans up AWS resources (SQS queues and SNS topics) matching the specified prefix.
+    /// This is useful for test cleanup to remove test-specific queues and topics.
+    /// </summary>
+    internal static async Task CleanupResourcesByPrefixAsync(
+        IAmazonSQS sqsClient,
+        IAmazonSimpleNotificationService snsClient,
+        string queuePrefix,
+        string topicPrefix,
+        ILogger? logger = null)
+    {
+        try
+        {
+            // Delete SQS queues matching the prefix
+            await DeleteQueuesWithPrefixAsync(sqsClient, queuePrefix, logger);
+
+            // Delete SNS topics matching the prefix
+            await DeleteTopicsWithPrefixAsync(snsClient, topicPrefix, logger);
+        }
+        catch (Exception ex)
+        {
+            logger?.LogError(ex, "Error cleaning up AWS resources with prefixes queue={QueuePrefix}, topic={TopicPrefix}", queuePrefix, topicPrefix);
+            // Don't rethrow - cleanup failures shouldn't fail tests
+        }
+    }
+
+    /// <summary>
+    /// Deletes all SQS queues whose names start with the specified prefix.
+    /// </summary>
+    private static async Task DeleteQueuesWithPrefixAsync(
+        IAmazonSQS sqsClient,
+        string queuePrefix,
+        ILogger? logger = null)
+    {
+        try
+        {
+            var response = await sqsClient.ListQueuesAsync(new ListQueuesRequest { QueueNamePrefix = queuePrefix });
+
+            if (response.QueueUrls == null || response.QueueUrls.Count == 0)
+            {
+                logger?.LogDebug("No SQS queues found with prefix {QueuePrefix}", queuePrefix);
+                return;
+            }
+
+            foreach (var queueUrl in response.QueueUrls)
+            {
+                try
+                {
+                    logger?.LogDebug("Deleting SQS queue: {QueueUrl}", queueUrl);
+                    await sqsClient.DeleteQueueAsync(queueUrl);
+                }
+                catch (Exception ex)
+                {
+                    logger?.LogWarning(ex, "Failed to delete SQS queue {QueueUrl}", queueUrl);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            logger?.LogWarning(ex, "Error listing SQS queues with prefix {QueuePrefix}", queuePrefix);
+        }
+    }
+
+    /// <summary>
+    /// Deletes all SNS topics whose names start with the specified prefix.
+    /// </summary>
+    private static async Task DeleteTopicsWithPrefixAsync(
+        IAmazonSimpleNotificationService snsClient,
+        string topicPrefix,
+        ILogger? logger = null)
+    {
+        try
+        {
+            string? nextToken = null;
+            do
+            {
+                var response = await snsClient.ListTopicsAsync(nextToken);
+                
+                if (response.Topics == null || response.Topics.Count == 0)
+                    break;
+
+                var topicsToDelete = response.Topics
+                    .Where(t => t.TopicArn.Contains($":{topicPrefix}", StringComparison.Ordinal))
+                    .ToList();
+
+                if (topicsToDelete.Count == 0 && string.IsNullOrEmpty(nextToken))
+                {
+                    logger?.LogDebug("No SNS topics found with prefix {TopicPrefix}", topicPrefix);
+                    break;
+                }
+
+                foreach (var topic in topicsToDelete)
+                {
+                    try
+                    {
+                        logger?.LogDebug("Deleting SNS topic: {TopicArn}", topic.TopicArn);
+                        await snsClient.DeleteTopicAsync(topic.TopicArn);
+                    }
+                    catch (Exception ex)
+                    {
+                        logger?.LogWarning(ex, "Failed to delete SNS topic {TopicArn}", topic.TopicArn);
+                    }
+                }
+
+                nextToken = response.NextToken;
+            } while (!string.IsNullOrEmpty(nextToken));
+        }
+        catch (Exception ex)
+        {
+            logger?.LogWarning(ex, "Error listing SNS topics with prefix {TopicPrefix}", topicPrefix);
+        }
+    }
+}

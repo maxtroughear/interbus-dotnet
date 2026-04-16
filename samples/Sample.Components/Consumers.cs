@@ -13,7 +13,7 @@ public class GreetingConsumer(IMessagePublisher publisher) : IConsumer<GreetingM
         var farewell = new FarewellMessage($"Goodbye from In-Memory Transport!");
         Console.WriteLine($"[GreetingConsumer] Publishing farewell message: {farewell.Text}");
 
-        await publisher.Publish(farewell, cancellationToken);
+        await publisher.PublishAsync(farewell, cancellationToken);
     }
 }
 

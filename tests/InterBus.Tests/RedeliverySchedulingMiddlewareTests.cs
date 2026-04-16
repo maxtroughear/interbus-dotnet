@@ -204,26 +204,26 @@ public sealed class RedeliverySchedulingMiddlewareTests
     {
         public List<SentMessage<object>> Sent { get; } = [];
 
-        public Task Publish<T>(T message, CancellationToken cancellationToken = default) where T : class
+        public Task PublishAsync<T>(T message, CancellationToken cancellationToken = default) where T : class
             => Task.CompletedTask;
 
-        public Task Publish<T>(T message, Action<PublishContext<T>> configure,
+        public Task PublishAsync<T>(T message, Action<PublishContext<T>> configure,
             CancellationToken cancellationToken = default) where T : class
             => Task.CompletedTask;
 
-        public Task Send<TConsumer, T>(T message, CancellationToken cancellationToken = default)
+        public Task SendAsync<TConsumer, T>(T message, CancellationToken cancellationToken = default)
             where TConsumer : IConsumer<T> where T : class
             => Task.CompletedTask;
 
-        public Task Send<TConsumer, T>(T message, Action<PublishContext<T>> configure,
+        public Task SendAsync<TConsumer, T>(T message, Action<PublishContext<T>> configure,
             CancellationToken cancellationToken = default)
             where TConsumer : IConsumer<T> where T : class
             => Task.CompletedTask;
 
-        public Task Send<T>(string queueName, T message, CancellationToken cancellationToken = default) where T : class
+        public Task SendAsync<T>(string queueName, T message, CancellationToken cancellationToken = default) where T : class
             => Task.CompletedTask;
 
-        public Task Send<T>(string queueName, T message, Action<PublishContext<T>> configure,
+        public Task SendAsync<T>(string queueName, T message, Action<PublishContext<T>> configure,
             CancellationToken cancellationToken = default) where T : class
         {
             var ctx = new PublishContext<T>(new Uri("queue://interbus/" + queueName), message, new MessageHeaders());
@@ -237,26 +237,26 @@ public sealed class RedeliverySchedulingMiddlewareTests
     {
         public List<ScheduledMessage<object>> Scheduled { get; } = [];
 
-        public Task SchedulePublish<T>(T message, DateTimeOffset scheduledAt,
+        public Task SchedulePublishAsync<T>(T message, DateTimeOffset scheduledAt,
             CancellationToken cancellationToken = default) where T : class => Task.CompletedTask;
 
-        public Task SchedulePublish<T>(T message, DateTimeOffset scheduledAt, Action<PublishContext<T>> configure,
+        public Task SchedulePublishAsync<T>(T message, DateTimeOffset scheduledAt, Action<PublishContext<T>> configure,
             CancellationToken cancellationToken = default) where T : class => Task.CompletedTask;
 
-        public Task ScheduleSend<TConsumer, T>(T message, DateTimeOffset scheduledAt,
+        public Task ScheduleSendAsync<TConsumer, T>(T message, DateTimeOffset scheduledAt,
             CancellationToken cancellationToken = default) where TConsumer : IConsumer<T> where T : class
             => Task.CompletedTask;
 
-        public Task ScheduleSend<TConsumer, T>(T message, DateTimeOffset scheduledAt,
+        public Task ScheduleSendAsync<TConsumer, T>(T message, DateTimeOffset scheduledAt,
             Action<PublishContext<T>> configure,
             CancellationToken cancellationToken = default) where TConsumer : IConsumer<T> where T : class
             => Task.CompletedTask;
 
-        public Task ScheduleSend<T>(string queueName, T message, DateTimeOffset scheduledAt,
+        public Task ScheduleSendAsync<T>(string queueName, T message, DateTimeOffset scheduledAt,
             CancellationToken cancellationToken = default) where T : class
             => Task.CompletedTask;
 
-        public Task ScheduleSend<T>(string queueName, T message, DateTimeOffset scheduledAt,
+        public Task ScheduleSendAsync<T>(string queueName, T message, DateTimeOffset scheduledAt,
             Action<PublishContext<T>> configure,
             CancellationToken cancellationToken = default) where T : class
         {

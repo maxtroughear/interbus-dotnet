@@ -108,7 +108,7 @@ public class OutboxSqlServerIntegrationTests(string imageTag)
 
         var msg = new OrderPlaced(Guid.NewGuid(), "ss-store@example.com", 10m);
 
-        await publisher.Publish(msg, TestContext.CurrentContext.CancellationToken);
+        await publisher.PublishAsync(msg, TestContext.CurrentContext.CancellationToken);
 
         // Row is tracked locally, not yet persisted.
         Assert.That(dbContext.OutboxMessages.Local, Has.Count.EqualTo(1));
@@ -130,7 +130,7 @@ public class OutboxSqlServerIntegrationTests(string imageTag)
             var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
             var dbContext = scope.ServiceProvider.GetRequiredService<TestDbContext>();
 
-            await publisher.Publish(
+            await publisher.PublishAsync(
                 new OrderPlaced(Guid.NewGuid(), "ss-deliver@example.com", 50m),
                 TestContext.CurrentContext.CancellationToken);
 
@@ -174,7 +174,7 @@ public class OutboxSqlServerIntegrationTests(string imageTag)
             var dbContext = scope.ServiceProvider.GetRequiredService<TestDbContext>();
 
             for (var i = 0; i < count; i++)
-                await publisher.Publish(
+                await publisher.PublishAsync(
                     new OrderPlaced(Guid.NewGuid(), $"ss-user{i}@example.com", i * 10m),
                     TestContext.CurrentContext.CancellationToken);
 
@@ -203,7 +203,7 @@ public class OutboxSqlServerIntegrationTests(string imageTag)
             var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
             var dbContext = scope.ServiceProvider.GetRequiredService<TestDbContext>();
 
-            await publisher.Publish(
+            await publisher.PublishAsync(
                 new OrderPlaced(Guid.NewGuid(), "ss-group1@example.com", 1m),
                 TestContext.CurrentContext.CancellationToken);
             await dbContext.SaveChangesAsync(TestContext.CurrentContext.CancellationToken);
@@ -215,7 +215,7 @@ public class OutboxSqlServerIntegrationTests(string imageTag)
             var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
             var dbContext = scope.ServiceProvider.GetRequiredService<TestDbContext>();
 
-            await publisher.Publish(
+            await publisher.PublishAsync(
                 new OrderPlaced(Guid.NewGuid(), "ss-group2@example.com", 2m),
                 TestContext.CurrentContext.CancellationToken);
             await dbContext.SaveChangesAsync(TestContext.CurrentContext.CancellationToken);

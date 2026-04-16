@@ -46,7 +46,7 @@ using (var scope = host.Services.CreateScope())
     var message = new GreetingMessage("Hello from PostgreSQL Transport!");
     Console.WriteLine($"[Publisher] Publishing message: {message.Text}");
 
-    await publisher.Publish(message);
+    await publisher.PublishAsync(message);
 }
 
 // Allow time for the consumers to process the messages

@@ -43,7 +43,7 @@ public sealed class SchedulingTests
         var scheduledAt = DateTimeOffset.UtcNow.AddMinutes(5);
         var msg = new TestMessage(Guid.NewGuid());
 
-        await publisher.SchedulePublish(msg, scheduledAt, TestContext.Current.CancellationToken);
+        await publisher.SchedulePublishAsync(msg, scheduledAt, TestContext.Current.CancellationToken);
 
         var call = Assert.Single(schedulingProvider.Calls);
         Assert.Equal("topic", call.Destination.Scheme);
@@ -57,7 +57,7 @@ public sealed class SchedulingTests
         var (publisher, schedulingProvider) = BuildPublisher();
         var scheduledAt = DateTimeOffset.UtcNow.AddMinutes(1);
 
-        await publisher.SchedulePublish(new TestMessage(Guid.NewGuid()), scheduledAt,
+        await publisher.SchedulePublishAsync(new TestMessage(Guid.NewGuid()), scheduledAt,
             ctx => ctx.Headers["x-custom"] = "value",
             TestContext.Current.CancellationToken);
 
@@ -76,7 +76,7 @@ public sealed class SchedulingTests
         var delay = TimeSpan.FromMinutes(10);
         var before = DateTimeOffset.UtcNow;
 
-        await publisher.SchedulePublish(new TestMessage(Guid.NewGuid()), delay,
+        await publisher.SchedulePublishAsync(new TestMessage(Guid.NewGuid()), delay,
             TestContext.Current.CancellationToken);
 
         var after = DateTimeOffset.UtcNow;
@@ -95,7 +95,7 @@ public sealed class SchedulingTests
         var (publisher, schedulingProvider) = BuildPublisher();
         var scheduledAt = DateTimeOffset.UtcNow.AddSeconds(30);
 
-        await publisher.ScheduleSend<TestConsumer, TestMessage>(
+        await publisher.ScheduleSendAsync<TestConsumer, TestMessage>(
             new TestMessage(Guid.NewGuid()), scheduledAt, TestContext.Current.CancellationToken);
 
         var call = Assert.Single(schedulingProvider.Calls);
@@ -110,7 +110,7 @@ public sealed class SchedulingTests
     {
         var (publisher, schedulingProvider) = BuildPublisher();
 
-        await publisher.ScheduleSend<TestConsumer, TestMessage>(
+        await publisher.ScheduleSendAsync<TestConsumer, TestMessage>(
             new TestMessage(Guid.NewGuid()), DateTimeOffset.UtcNow.AddSeconds(5),
             ctx => ctx.Headers["x-trace"] = "abc",
             TestContext.Current.CancellationToken);
@@ -129,7 +129,7 @@ public sealed class SchedulingTests
         var (publisher, schedulingProvider) = BuildPublisher();
         var scheduledAt = DateTimeOffset.UtcNow.AddHours(1);
 
-        await publisher.ScheduleSend("my-queue", new TestMessage(Guid.NewGuid()), scheduledAt,
+        await publisher.ScheduleSendAsync("my-queue", new TestMessage(Guid.NewGuid()), scheduledAt,
             TestContext.Current.CancellationToken);
 
         var call = Assert.Single(schedulingProvider.Calls);
@@ -143,7 +143,7 @@ public sealed class SchedulingTests
     {
         var (publisher, schedulingProvider) = BuildPublisher();
 
-        await publisher.ScheduleSend("q", new TestMessage(Guid.NewGuid()),
+        await publisher.ScheduleSendAsync("q", new TestMessage(Guid.NewGuid()),
             DateTimeOffset.UtcNow.AddMinutes(2),
             ctx => ctx.Headers["x-source"] = "unit-test",
             TestContext.Current.CancellationToken);
@@ -161,7 +161,7 @@ public sealed class SchedulingTests
     {
         var (publisher, schedulingProvider) = BuildPublisher();
 
-        await publisher.SchedulePublish(new TestMessage(Guid.NewGuid()),
+        await publisher.SchedulePublishAsync(new TestMessage(Guid.NewGuid()),
             DateTimeOffset.UtcNow.AddSeconds(1), TestContext.Current.CancellationToken);
 
         var call = Assert.Single(schedulingProvider.Calls);

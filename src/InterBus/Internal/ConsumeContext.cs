@@ -11,53 +11,53 @@ internal sealed class ConsumeContext(
     public string? CorrelationId { get; } = headers.GetValueOrDefault(InterBusHeaders.CorrelationId);
     public string MessageType { get; } = headers[InterBusHeaders.MessageType];
 
-    public Task Publish<T>(T message, CancellationToken cancellationToken = default) where T : class =>
-        publisher.Publish(message, cancellationToken);
+    public Task PublishAsync<T>(T message, CancellationToken cancellationToken = default) where T : class =>
+        publisher.PublishAsync(message, cancellationToken);
 
-    public Task Publish<T>(T message, Action<PublishContext<T>> configure,
+    public Task PublishAsync<T>(T message, Action<PublishContext<T>> configure,
         CancellationToken cancellationToken = default) where T : class =>
-        publisher.Publish(message, configure, cancellationToken);
+        publisher.PublishAsync(message, configure, cancellationToken);
 
-    public Task Send<TConsumer, T>(T message, CancellationToken cancellationToken = default)
+    public Task SendAsync<TConsumer, T>(T message, CancellationToken cancellationToken = default)
         where TConsumer : IConsumer<T> where T : class =>
-        publisher.Send<TConsumer, T>(message, cancellationToken);
+        publisher.SendAsync<TConsumer, T>(message, cancellationToken);
 
-    public Task Send<TConsumer, T>(T message, Action<PublishContext<T>> configure,
+    public Task SendAsync<TConsumer, T>(T message, Action<PublishContext<T>> configure,
         CancellationToken cancellationToken = default) where TConsumer : IConsumer<T> where T : class =>
-        publisher.Send<TConsumer, T>(message, configure, cancellationToken);
+        publisher.SendAsync<TConsumer, T>(message, configure, cancellationToken);
 
-    public Task Send<T>(string queueName, T message, CancellationToken cancellationToken = default) where T : class =>
-        publisher.Send(queueName, message, cancellationToken);
+    public Task SendAsync<T>(string queueName, T message, CancellationToken cancellationToken = default) where T : class =>
+        publisher.SendAsync(queueName, message, cancellationToken);
 
-    public Task Send<T>(string queueName, T message, Action<PublishContext<T>> configure,
+    public Task SendAsync<T>(string queueName, T message, Action<PublishContext<T>> configure,
         CancellationToken cancellationToken = default) where T : class =>
-        publisher.Send(queueName, message, configure, cancellationToken);
+        publisher.SendAsync(queueName, message, configure, cancellationToken);
 
-    public Task SchedulePublish<T>(T message, DateTimeOffset scheduledAt,
+    public Task SchedulePublishAsync<T>(T message, DateTimeOffset scheduledAt,
         CancellationToken cancellationToken = default) where T : class =>
-        RequireScheduler().SchedulePublish(message, scheduledAt, cancellationToken);
+        RequireScheduler().SchedulePublishAsync(message, scheduledAt, cancellationToken);
 
-    public Task SchedulePublish<T>(T message, DateTimeOffset scheduledAt, Action<PublishContext<T>> configure,
+    public Task SchedulePublishAsync<T>(T message, DateTimeOffset scheduledAt, Action<PublishContext<T>> configure,
         CancellationToken cancellationToken = default) where T : class =>
-        RequireScheduler().SchedulePublish(message, scheduledAt, configure, cancellationToken);
+        RequireScheduler().SchedulePublishAsync(message, scheduledAt, configure, cancellationToken);
 
-    public Task ScheduleSend<TConsumer, T>(T message, DateTimeOffset scheduledAt,
+    public Task ScheduleSendAsync<TConsumer, T>(T message, DateTimeOffset scheduledAt,
         CancellationToken cancellationToken = default)
         where TConsumer : IConsumer<T> where T : class =>
-        RequireScheduler().ScheduleSend<TConsumer, T>(message, scheduledAt, cancellationToken);
+        RequireScheduler().ScheduleSendAsync<TConsumer, T>(message, scheduledAt, cancellationToken);
 
-    public Task ScheduleSend<TConsumer, T>(T message, DateTimeOffset scheduledAt,
+    public Task ScheduleSendAsync<TConsumer, T>(T message, DateTimeOffset scheduledAt,
         Action<PublishContext<T>> configure, CancellationToken cancellationToken = default)
         where TConsumer : IConsumer<T> where T : class =>
-        RequireScheduler().ScheduleSend<TConsumer, T>(message, scheduledAt, configure, cancellationToken);
+        RequireScheduler().ScheduleSendAsync<TConsumer, T>(message, scheduledAt, configure, cancellationToken);
 
-    public Task ScheduleSend<T>(string queueName, T message, DateTimeOffset scheduledAt,
+    public Task ScheduleSendAsync<T>(string queueName, T message, DateTimeOffset scheduledAt,
         CancellationToken cancellationToken = default) where T : class =>
-        RequireScheduler().ScheduleSend(queueName, message, scheduledAt, cancellationToken);
+        RequireScheduler().ScheduleSendAsync(queueName, message, scheduledAt, cancellationToken);
 
-    public Task ScheduleSend<T>(string queueName, T message, DateTimeOffset scheduledAt,
+    public Task ScheduleSendAsync<T>(string queueName, T message, DateTimeOffset scheduledAt,
         Action<PublishContext<T>> configure, CancellationToken cancellationToken = default) where T : class =>
-        RequireScheduler().ScheduleSend(queueName, message, scheduledAt, configure, cancellationToken);
+        RequireScheduler().ScheduleSendAsync(queueName, message, scheduledAt, configure, cancellationToken);
 
     private IMessageScheduler RequireScheduler() =>
         scheduler ?? throw new InvalidOperationException(

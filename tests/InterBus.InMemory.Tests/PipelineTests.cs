@@ -119,7 +119,7 @@ public class PipelineTests
             using var scope = provider.CreateScope();
             var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
             var msg = new OrderPlaced(Guid.NewGuid(), "pipeline@test.com", 10m);
-            await publisher.Publish(msg, TestContext.Current.CancellationToken);
+            await publisher.PublishAsync(msg, TestContext.Current.CancellationToken);
 
             await WaitUntilAsync(() => orderTracker.Messages.Count == 1);
 
@@ -160,7 +160,7 @@ public class PipelineTests
             using var scope = provider.CreateScope();
             var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
             var msg = new OrderPlaced(Guid.NewGuid(), "header@test.com", 5m);
-            await publisher.Publish(msg, TestContext.Current.CancellationToken);
+            await publisher.PublishAsync(msg, TestContext.Current.CancellationToken);
 
             await WaitUntilAsync(() => headerCapture.CapturedHeaders.Count == 1);
 
@@ -198,7 +198,7 @@ public class PipelineTests
             using var scope = provider.CreateScope();
             var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
             var msg = new OrderPlaced(Guid.NewGuid(), "order@test.com", 1m);
-            await publisher.Publish(msg, TestContext.Current.CancellationToken);
+            await publisher.PublishAsync(msg, TestContext.Current.CancellationToken);
 
             // Allow async completion.
             await Task.Delay(50, TestContext.Current.CancellationToken);
@@ -243,7 +243,7 @@ public class PipelineTests
             using var scope = provider.CreateScope();
             var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
             var msg = new OrderPlaced(Guid.NewGuid(), "consume@test.com", 20m);
-            await publisher.Publish(msg, TestContext.Current.CancellationToken);
+            await publisher.PublishAsync(msg, TestContext.Current.CancellationToken);
 
             await WaitUntilAsync(() => orderTracker.Messages.Count >= 1);
 
@@ -282,13 +282,13 @@ public class PipelineTests
             var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
 
             // Send directly to FaultingConsumer.
-            await publisher.Send<FaultingConsumer, OrderPlaced>(
+            await publisher.SendAsync<FaultingConsumer, OrderPlaced>(
                 new OrderPlaced(Guid.NewGuid(), "fault@test.com", 0m),
                 TestContext.Current.CancellationToken);
 
             // Send a normal message to OrderPlacedConsumer to prove the pump is alive.
             var normalMsg = new OrderPlaced(Guid.NewGuid(), "ok@test.com", 5m);
-            await publisher.Publish(normalMsg, TestContext.Current.CancellationToken);
+            await publisher.PublishAsync(normalMsg, TestContext.Current.CancellationToken);
 
             await WaitUntilAsync(() => orderTracker.Messages.Count >= 1 && faultingCount.Count >= 1);
 
@@ -336,7 +336,7 @@ public class PipelineTests
             using var scope = provider.CreateScope();
             var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
             var msg = new OrderPlaced(Guid.NewGuid(), "per-consumer@test.com", 10m);
-            await publisher.Publish(msg, TestContext.Current.CancellationToken);
+            await publisher.PublishAsync(msg, TestContext.Current.CancellationToken);
 
             await WaitUntilAsync(() => orderTracker.Messages.Count >= 1 && auditTracker.Messages.Count >= 1);
 
@@ -377,7 +377,7 @@ public class PipelineTests
             using var scope = provider.CreateScope();
             var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
             var msg = new OrderPlaced(Guid.NewGuid(), "all-consumers@test.com", 5m);
-            await publisher.Publish(msg, TestContext.Current.CancellationToken);
+            await publisher.PublishAsync(msg, TestContext.Current.CancellationToken);
 
             await WaitUntilAsync(() => orderTracker.Messages.Count >= 1 && auditTracker.Messages.Count >= 1);
 
@@ -518,7 +518,7 @@ public class PipelineTests
         {
             using var scope = provider.CreateScope();
             var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
-            await publisher.Send<PublishingOrderPlacedConsumer, OrderPlaced>(
+            await publisher.SendAsync<PublishingOrderPlacedConsumer, OrderPlaced>(
                 new OrderPlaced(Guid.NewGuid(), "chain@test.com", 1m),
                 TestContext.Current.CancellationToken);
 
@@ -558,7 +558,7 @@ public class PipelineTests
         {
             using var scope = provider.CreateScope();
             var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
-            await publisher.Send<PublishingOrderPlacedConsumer, OrderPlaced>(
+            await publisher.SendAsync<PublishingOrderPlacedConsumer, OrderPlaced>(
                 new OrderPlaced(Guid.NewGuid(), "scoped-publish@test.com", 1m),
                 TestContext.Current.CancellationToken);
 
@@ -602,7 +602,7 @@ public class PipelineTests
             var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
 
             // Drain any recorded calls from the initial Publish via the bus publisher.
-            await publisher.Send<PublishingOrderPlacedConsumer, OrderPlaced>(
+            await publisher.SendAsync<PublishingOrderPlacedConsumer, OrderPlaced>(
                 new OrderPlaced(Guid.NewGuid(), "bus-level@test.com", 1m),
                 TestContext.Current.CancellationToken);
 
@@ -657,7 +657,7 @@ public class PipelineTests
         {
             using var scope = provider.CreateScope();
             var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
-            await publisher.Send<PublishingOrderPlacedConsumer, OrderPlaced>(
+            await publisher.SendAsync<PublishingOrderPlacedConsumer, OrderPlaced>(
                 new OrderPlaced(Guid.NewGuid(), "scoped-send@test.com", 1m),
                 TestContext.Current.CancellationToken);
 
@@ -706,7 +706,7 @@ public class PipelineTests
         {
             using var scope = provider.CreateScope();
             var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
-            await publisher.Send<SchedulingOrderPlacedConsumer, OrderPlaced>(
+            await publisher.SendAsync<SchedulingOrderPlacedConsumer, OrderPlaced>(
                 new OrderPlaced(Guid.NewGuid(), "sched-send@test.com", 1m),
                 TestContext.Current.CancellationToken);
 
@@ -745,7 +745,7 @@ public class PipelineTests
         {
             using var scope = provider.CreateScope();
             var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
-            await publisher.Send<SchedulingOrderPlacedConsumer, OrderPlaced>(
+            await publisher.SendAsync<SchedulingOrderPlacedConsumer, OrderPlaced>(
                 new OrderPlaced(Guid.NewGuid(), "sched-deliver@test.com", 1m),
                 TestContext.Current.CancellationToken);
 
@@ -790,7 +790,7 @@ public class PipelineTests
             using var scope = provider.CreateScope();
             var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
 
-            await publisher.Send<SchedulingOrderPlacedConsumer, OrderPlaced>(
+            await publisher.SendAsync<SchedulingOrderPlacedConsumer, OrderPlaced>(
                 new OrderPlaced(Guid.NewGuid(), "bus-sched@test.com", 1m),
                 TestContext.Current.CancellationToken);
 
@@ -849,7 +849,7 @@ public class PipelineTests
         {
             using var scope = provider.CreateScope();
             var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
-            await publisher.Send<SchedulingOrderPlacedConsumer, OrderPlaced>(
+            await publisher.SendAsync<SchedulingOrderPlacedConsumer, OrderPlaced>(
                 new OrderPlaced(Guid.NewGuid(), "sched-mw@test.com", 1m),
                 TestContext.Current.CancellationToken);
 
@@ -902,7 +902,7 @@ public class PipelineTests
             var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
 
             // Send with explicit CorrelationId and MessageId headers on the triggering message.
-            await publisher.Send<SchedulingOrderPlacedConsumer, OrderPlaced>(
+            await publisher.SendAsync<SchedulingOrderPlacedConsumer, OrderPlaced>(
                 new OrderPlaced(Guid.NewGuid(), "header-prop@test.com", 1m),
                 ctx =>
                 {
@@ -960,7 +960,7 @@ public class PipelineTests
     public sealed class PublishingOrderPlacedConsumer : IConsumer<OrderPlaced>
     {
         public Task Consume(OrderPlaced message, IConsumeContext context, CancellationToken cancellationToken = default) =>
-            context.Publish(new OrderShipped(message.OrderId, "TRK-CHAIN"), cancellationToken);
+            context.PublishAsync(new OrderShipped(message.OrderId, "TRK-CHAIN"), cancellationToken);
     }
 
     public sealed class DownstreamOrderShippedConsumer(OrderShippedTracker tracker) : IConsumer<OrderShipped>
@@ -998,7 +998,7 @@ public class PipelineTests
     public sealed class SchedulingOrderPlacedConsumer : IConsumer<OrderPlaced>
     {
         public Task Consume(OrderPlaced message, IConsumeContext context, CancellationToken cancellationToken = default) =>
-            context.SchedulePublish(
+            context.SchedulePublishAsync(
                 new OrderShipped(message.OrderId, "TRK-SCHEDULED"),
                 DateTimeOffset.UtcNow,
                 cancellationToken);

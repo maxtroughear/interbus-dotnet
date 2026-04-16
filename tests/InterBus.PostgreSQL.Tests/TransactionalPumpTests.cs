@@ -53,7 +53,7 @@ public class TransactionalPumpTests(string imageTag)
         using var scope = host.CreateScope();
         var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
         var msg = new OrderPlaced(Guid.NewGuid(), "tx@test.com", 10m);
-        await publisher.Publish(msg, TestContext.CurrentContext.CancellationToken);
+        await publisher.PublishAsync(msg, TestContext.CurrentContext.CancellationToken);
 
         await TestHelpers.WaitUntilAsync(() => orderTracker.Messages.Count == 1 && auditTracker.Messages.Count == 1);
 
@@ -85,7 +85,7 @@ public class TransactionalPumpTests(string imageTag)
         using var scope = host.CreateScope();
         var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
         var msg = new OrderPlaced(Guid.NewGuid(), "tx-retry@test.com", 20m);
-        await publisher.Publish(msg, TestContext.CurrentContext.CancellationToken);
+        await publisher.PublishAsync(msg, TestContext.CurrentContext.CancellationToken);
 
         await TestHelpers.WaitUntilAsync(
             () => retryTracker.Messages.Count == 1,
@@ -113,7 +113,7 @@ public class TransactionalPumpTests(string imageTag)
 
         using var scope = host.CreateScope();
         var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
-        await publisher.Publish(new OrderPlaced(Guid.NewGuid(), "tx-access@test.com", 5m),
+        await publisher.PublishAsync(new OrderPlaced(Guid.NewGuid(), "tx-access@test.com", 5m),
             TestContext.CurrentContext.CancellationToken);
 
         await TestHelpers.WaitUntilAsync(() => transactionTracker.ReceivedTransaction is not null);
@@ -141,8 +141,8 @@ public class TransactionalPumpTests(string imageTag)
         var ct = TestContext.CurrentContext.CancellationToken;
 
         // Publish two messages so we get two dispatches.
-        await publisher.Publish(new OrderPlaced(Guid.NewGuid(), "slot1@test.com", 1m), ct);
-        await publisher.Publish(new OrderPlaced(Guid.NewGuid(), "slot2@test.com", 2m), ct);
+        await publisher.PublishAsync(new OrderPlaced(Guid.NewGuid(), "slot1@test.com", 1m), ct);
+        await publisher.PublishAsync(new OrderPlaced(Guid.NewGuid(), "slot2@test.com", 2m), ct);
 
         await TestHelpers.WaitUntilAsync(() => transactionSlots.Snapshots.Count >= 2);
 

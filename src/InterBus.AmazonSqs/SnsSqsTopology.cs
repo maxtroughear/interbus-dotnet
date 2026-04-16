@@ -10,7 +10,7 @@ namespace InterBus.AmazonSqs;
 /// caches resolved topic ARNs and queue URLs so that the AWS describe/create calls are
 /// not repeated on every send.
 /// </summary>
-public sealed class SnsSqsClientProvider(SnsSqsTransportOptions options)
+public sealed class SnsSqsTopology(SnsSqsTransportOptions options)
 {
     private static readonly Regex InvalidNameChars =
         new(@"[^A-Za-z0-9\-_]", RegexOptions.Compiled, TimeSpan.FromSeconds(1));

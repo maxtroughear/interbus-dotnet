@@ -27,7 +27,7 @@ namespace InterBus.AmazonSqs;
 internal sealed class SqsMessagePump(
     IAmazonSQS sqsClient,
     SnsSqsTopologySetup topologySetup,
-    SnsSqsClientProvider clientProvider,
+    SnsSqsTopology topology,
     SnsSqsTransportOptions options,
     InterBusOptions busOptions,
     IServiceScopeFactory scopeFactory,
@@ -98,9 +98,9 @@ internal sealed class SqsMessagePump(
 
     private async Task ConsumeQueueAsync(ConsumerDescriptor descriptor, CancellationToken stoppingToken)
     {
-        var queueName = clientProvider.BuildSqsQueueName(descriptor.QueueName);
+        var queueName = topology.BuildSqsQueueName(descriptor.QueueName);
 
-        if (!clientProvider.QueueUrls.TryGetValue(queueName, out var queueUrl))
+        if (!topology.QueueUrls.TryGetValue(queueName, out var queueUrl))
         {
             logger.LogError(
                 "InterBus AmazonSqs: queue URL not found for {QueueName}; consumer {ConsumerType} will not start",

@@ -78,7 +78,7 @@ public sealed class RedeliveryRetryIntegrationTests
             var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
             var message = new RedeliveryTestMessage(Guid.NewGuid());
 
-            await publisher.Send<RedeliveryTestConsumer, RedeliveryTestMessage>(
+            await publisher.SendAsync<RedeliveryTestConsumer, RedeliveryTestMessage>(
                 message,
                 TestContext.Current.CancellationToken);
 
@@ -113,7 +113,7 @@ public sealed class RedeliveryRetryIntegrationTests
             var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
             var message = new RedeliveryTestMessage(Guid.NewGuid());
 
-            await publisher.Send<RedeliveryDelayTestConsumer, RedeliveryTestMessage>(
+            await publisher.SendAsync<RedeliveryDelayTestConsumer, RedeliveryTestMessage>(
                 message,
                 TestContext.Current.CancellationToken);
 
@@ -152,7 +152,7 @@ public sealed class RedeliveryRetryIntegrationTests
             var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
             var message = new RedeliveryTestMessage(Guid.NewGuid());
 
-            await publisher.Send<RedeliveryDelayTestConsumer, RedeliveryTestMessage>(
+            await publisher.SendAsync<RedeliveryDelayTestConsumer, RedeliveryTestMessage>(
                 message,
                 TestContext.Current.CancellationToken);
 

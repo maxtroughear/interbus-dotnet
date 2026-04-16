@@ -65,7 +65,7 @@ public static class SnsSqsTransportBuilderExtensions
 
         // Client provider holds name-sanitisation logic and caches ARNs/URLs (singleton).
         // IAmazonSQS and IAmazonSimpleNotificationService must be registered by the caller.
-        builder.Services.AddSingleton<SnsSqsClientProvider>();
+        builder.Services.AddSingleton<SnsSqsTopology>();
 
         // Topology setup is a singleton responsible for declaring SNS topics, SQS queues,
         // and subscriptions at startup. Separating this from the message pump keeps each

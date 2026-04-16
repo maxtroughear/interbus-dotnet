@@ -45,7 +45,7 @@ todosApi.MapPost("/", async Task<Created<Todo>> ([FromServices] IMessagePublishe
     {
         sampleTodos.Add(todo);
 
-        await publisher.Publish(new TaskAdded(todo.Id, todo.Title));
+        await publisher.PublishAsync(new TaskAdded(todo.Id, todo.Title));
 
         return TypedResults.Created($"/todos/{todo.Id}", todo);
     })
@@ -67,7 +67,7 @@ todosApi.MapPut("/{id}/complete",
         sampleTodos.Remove(todo);
         sampleTodos.Add(completedTodo);
 
-        await publisher.Publish(new TaskCompleted(id));
+        await publisher.PublishAsync(new TaskCompleted(id));
 
         return TypedResults.Ok();
     });

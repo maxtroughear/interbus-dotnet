@@ -29,6 +29,6 @@ internal sealed class PublishConsumerScopedMessageScheduler(
                 Headers = new Dictionary<string, string>(ctx.Headers),
                 ScheduledAt = scheduledAt
             };
-            return consumerPublisher.Send<SchedulingConsumer, ScheduleDeliveryCommand>(command, ct);
+            return consumerPublisher.SendAsync<SchedulingConsumer, ScheduleDeliveryCommand>(command, ct);
         };
 }

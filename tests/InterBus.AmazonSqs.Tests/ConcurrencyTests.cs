@@ -1,10 +1,13 @@
 using System.Diagnostics;
 using Amazon.Extensions.NETCore.Setup;
+using Amazon.SimpleNotificationService;
+using Amazon.SQS;
 using InterBus.AmazonSqs.Extensions;
 using InterBus.Extensions;
 using InterBus.Generated;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Testcontainers.LocalStack;
 
 namespace InterBus.AmazonSqs.Tests;
@@ -18,6 +21,8 @@ public class ConcurrencyTests
     private CancellationTokenSource _cts;
     private OrderPlacedTracker _orderTracker;
     private string _runId = null!;
+    private string _queuePrefix = null!;
+    private string _topicPrefix = null!;
 
     /// <summary>Number of concurrent publishers used in the concurrency test.</summary>
     private const int PublisherCount = 5;
@@ -46,6 +51,8 @@ public class ConcurrencyTests
     public async Task Setup()
     {
         _runId = Guid.NewGuid().ToString("N")[..8];
+        _queuePrefix = $"q-{_runId}-";
+        _topicPrefix = $"t-{_runId}-";
         _orderTracker = new OrderPlacedTracker();
 
         var services = new ServiceCollection();
@@ -61,8 +68,8 @@ public class ConcurrencyTests
         {
             bus.AddAmazonSqsTransport(o =>
             {
-                o.QueuePrefix = $"q-{_runId}-";
-                o.TopicPrefix = $"t-{_runId}-";
+                o.QueuePrefix = _queuePrefix;
+                o.TopicPrefix = _topicPrefix;
             });
             bus.AddConsumer<ConcurrencyTestConsumer>(cfg => cfg.WithConcurrency(20));
         });
@@ -84,6 +91,13 @@ public class ConcurrencyTests
 
         _cts.Dispose();
         await _provider.DisposeAsync();
+
+        // Clean up AWS resources created during this test
+        var sqsClient = _provider.GetRequiredService<IAmazonSQS>();
+        var snsClient = _provider.GetRequiredService<IAmazonSimpleNotificationService>();
+        var logger = _provider.GetRequiredService<ILogger<ConcurrencyTests>>();
+
+        await TestHelpers.CleanupResourcesByPrefixAsync(sqsClient, snsClient, _queuePrefix, _topicPrefix, logger);
     }
 
     [Test]
@@ -121,7 +135,7 @@ public class ConcurrencyTests
                     if (ct.IsCancellationRequested)
                         break;
 
-                    await publisher.Publish(message, ct);
+                    await publisher.PublishAsync(message, ct);
                 }
 
                 await TestContext.Out.WriteLineAsync(

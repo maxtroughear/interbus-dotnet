@@ -131,7 +131,7 @@ public sealed class TransportDelaySchedulingTests
         var (scheduler, transport) = BuildScheduler();
         var scheduledAt = DateTimeOffset.UtcNow.AddMinutes(10);
 
-        await scheduler.SchedulePublish(new TestMessage(Guid.NewGuid()), scheduledAt,
+        await scheduler.SchedulePublishAsync(new TestMessage(Guid.NewGuid()), scheduledAt,
             TestContext.Current.CancellationToken);
 
         var sent = Assert.Single(transport.Sent);
@@ -146,7 +146,7 @@ public sealed class TransportDelaySchedulingTests
         var (scheduler, transport) = BuildScheduler();
         var scheduledAt = DateTimeOffset.UtcNow.AddSeconds(30);
 
-        await scheduler.ScheduleSend<TestConsumer, TestMessage>(
+        await scheduler.ScheduleSendAsync<TestConsumer, TestMessage>(
             new TestMessage(Guid.NewGuid()), scheduledAt, TestContext.Current.CancellationToken);
 
         var sent = Assert.Single(transport.Sent);
@@ -161,7 +161,7 @@ public sealed class TransportDelaySchedulingTests
         var (scheduler, transport) = BuildScheduler();
         var scheduledAt = DateTimeOffset.UtcNow.AddHours(1);
 
-        await scheduler.ScheduleSend("my-queue", new TestMessage(Guid.NewGuid()), scheduledAt,
+        await scheduler.ScheduleSendAsync("my-queue", new TestMessage(Guid.NewGuid()), scheduledAt,
             TestContext.Current.CancellationToken);
 
         var sent = Assert.Single(transport.Sent);

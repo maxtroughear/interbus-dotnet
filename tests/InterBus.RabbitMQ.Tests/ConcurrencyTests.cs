@@ -90,7 +90,7 @@ public class ConcurrencyTests(string imageTag)
                 if (TestContext.CurrentContext.CancellationToken.IsCancellationRequested)
                     break;
 
-                await publisherA.Publish(message, TestContext.CurrentContext.CancellationToken);
+                await publisherA.PublishAsync(message, TestContext.CurrentContext.CancellationToken);
             }
 
             await TestContext.Out.WriteLineAsync($"A: Published {messagesA.Length} messages at {DateTime.UtcNow:O} at a rate of {messagesA.Length / stopwatch.Elapsed.TotalSeconds:F2}/second");
@@ -104,7 +104,7 @@ public class ConcurrencyTests(string imageTag)
                 if (TestContext.CurrentContext.CancellationToken.IsCancellationRequested)
                     break;
 
-                await publisherB.Publish(message, TestContext.CurrentContext.CancellationToken);
+                await publisherB.PublishAsync(message, TestContext.CurrentContext.CancellationToken);
             }
 
             await TestContext.Out.WriteLineAsync($"B: Published {messagesB.Length} messages at {DateTime.UtcNow:O} at a rate of {messagesA.Length / stopwatch.Elapsed.TotalSeconds:F2}/second");
@@ -118,7 +118,7 @@ public class ConcurrencyTests(string imageTag)
                 if (TestContext.CurrentContext.CancellationToken.IsCancellationRequested)
                     break;
 
-                await publisherC.Publish(message, TestContext.CurrentContext.CancellationToken);
+                await publisherC.PublishAsync(message, TestContext.CurrentContext.CancellationToken);
             }
 
             await TestContext.Out.WriteLineAsync($"C: Published {messagesC.Length} messages at {DateTime.UtcNow:O} at a rate of {messagesA.Length / stopwatch.Elapsed.TotalSeconds:F2}/second");

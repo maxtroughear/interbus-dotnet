@@ -1,4 +1,5 @@
 using InterBus.Retry;
+using Microsoft.Extensions.Hosting;
 
 namespace InterBus.AmazonSqs;
 
@@ -16,14 +17,14 @@ namespace InterBus.AmazonSqs;
 public sealed class SnsSqsTransportOptions
 {
     /// <summary>
-    /// Prefix applied to SNS topic names. Defaults to <c>interbus-topic-</c>.
+    /// Prefix applied to SNS topic names. Defaults to <c>interbus-</c>.
     /// </summary>
-    public string TopicPrefix { get; set; } = "interbus-topic-";
+    public string TopicPrefix { get; set; } = "interbus-";
 
     /// <summary>
-    /// Prefix applied to SQS queue names. Defaults to <c>interbus-queue-</c>.
+    /// Prefix applied to SQS queue names. Defaults to <c>interbus-</c>.
     /// </summary>
-    public string QueuePrefix { get; set; } = "interbus-queue-";
+    public string QueuePrefix { get; set; } = "interbus-";
 
     /// <summary>
     /// SQS message visibility timeout. When a message is received its visibility is set to

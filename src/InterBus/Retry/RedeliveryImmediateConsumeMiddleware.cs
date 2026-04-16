@@ -37,7 +37,7 @@ public sealed class RedeliveryImmediateConsumeMiddleware(
                 [RetryCountHeader] = nextAttempt.ToString(CultureInfo.InvariantCulture)
             };
 
-            await publisher.Send(
+            await publisher.SendAsync(
                 context.Descriptor.QueueName,
                 context.Message,
                 ctx =>

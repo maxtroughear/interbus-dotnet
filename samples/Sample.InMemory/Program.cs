@@ -32,7 +32,7 @@ using (var scope = host.Services.CreateScope())
     var message = new GreetingMessage("Hello from In-Memory Transport!");
     Console.WriteLine($"[Publisher] Publishing message: {message.Text}");
 
-    await publisher.Publish(message);
+    await publisher.PublishAsync(message);
 }
 
 await Task.Delay(1000);

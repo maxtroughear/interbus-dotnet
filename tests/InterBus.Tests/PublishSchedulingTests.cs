@@ -80,7 +80,7 @@ public sealed class PublishSchedulingTests
         var scheduledAt = DateTimeOffset.UtcNow.AddMinutes(5);
         var msg = new TestMessage(Guid.NewGuid());
 
-        await scheduler.SchedulePublish(msg, scheduledAt, TestContext.Current.CancellationToken);
+        await scheduler.SchedulePublishAsync(msg, scheduledAt, TestContext.Current.CancellationToken);
 
         var call = Assert.Single(transport.Sends);
         Assert.Contains("SchedulingConsumer", call.Destination.AbsolutePath);
@@ -91,7 +91,7 @@ public sealed class PublishSchedulingTests
     {
         var (scheduler, transport) = BuildScheduler();
 
-        await scheduler.SchedulePublish(new TestMessage(Guid.NewGuid()),
+        await scheduler.SchedulePublishAsync(new TestMessage(Guid.NewGuid()),
             DateTimeOffset.UtcNow.AddMinutes(1),
             ctx => ctx.Headers["x-custom"] = "test-value",
             TestContext.Current.CancellationToken);
@@ -105,7 +105,7 @@ public sealed class PublishSchedulingTests
         var (scheduler, transport) = BuildScheduler();
         var delay = TimeSpan.FromMinutes(10);
 
-        await scheduler.SchedulePublish(new TestMessage(Guid.NewGuid()), delay,
+        await scheduler.SchedulePublishAsync(new TestMessage(Guid.NewGuid()), delay,
             TestContext.Current.CancellationToken);
 
         Assert.Single(transport.Sends);
@@ -120,7 +120,7 @@ public sealed class PublishSchedulingTests
     {
         var (scheduler, transport) = BuildScheduler();
 
-        await scheduler.ScheduleSend<TestConsumer, TestMessage>(
+        await scheduler.ScheduleSendAsync<TestConsumer, TestMessage>(
             new TestMessage(Guid.NewGuid()), DateTimeOffset.UtcNow.AddSeconds(30),
             TestContext.Current.CancellationToken);
 
@@ -133,7 +133,7 @@ public sealed class PublishSchedulingTests
     {
         var (scheduler, transport) = BuildScheduler();
 
-        await scheduler.ScheduleSend("my-queue", new TestMessage(Guid.NewGuid()),
+        await scheduler.ScheduleSendAsync("my-queue", new TestMessage(Guid.NewGuid()),
             DateTimeOffset.UtcNow.AddHours(1), TestContext.Current.CancellationToken);
 
         var call = Assert.Single(transport.Sends);

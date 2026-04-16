@@ -31,7 +31,7 @@ using (var scope = host.Services.CreateScope())
     var message = new GreetingMessage("Hello from Native AOT!");
     Console.WriteLine($"[Publisher] Publishing: {message.Text}");
 
-    await publisher.Publish(message);
+    await publisher.PublishAsync(message);
 }
 
 // Allow the background pump to deliver the messages before stopping.
@@ -49,7 +49,7 @@ public class GreetingConsumer(IMessagePublisher publisher) : IConsumer<GreetingM
         CancellationToken cancellationToken = default)
     {
         Console.WriteLine($"[GreetingConsumer] Received: {message.Text}");
-        await publisher.Publish(new FarewellMessage("Goodbye from Native AOT!"), cancellationToken);
+        await publisher.PublishAsync(new FarewellMessage("Goodbye from Native AOT!"), cancellationToken);
     }
 }
 

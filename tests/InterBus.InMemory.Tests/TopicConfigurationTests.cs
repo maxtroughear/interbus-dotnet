@@ -73,7 +73,7 @@ public class TopicConfigurationTests
             using var scope = provider.CreateScope();
             var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
             var msg = new OrderPlaced(Guid.NewGuid(), "custom@topic.test", 10m);
-            await publisher.Publish(msg, TestContext.Current.CancellationToken);
+            await publisher.PublishAsync(msg, TestContext.Current.CancellationToken);
 
             await WaitUntilAsync(() => tracker.Messages.Count == 1);
 
@@ -112,7 +112,7 @@ public class TopicConfigurationTests
             using var scope = provider.CreateScope();
             var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
             var msg = new OrderPlaced(Guid.NewGuid(), "fanout@custom.test", 20m);
-            await publisher.Publish(msg, TestContext.Current.CancellationToken);
+            await publisher.PublishAsync(msg, TestContext.Current.CancellationToken);
 
             await WaitUntilAsync(() => orderTracker.Messages.Count == 1 && auditTracker.Messages.Count == 1);
 
@@ -152,7 +152,7 @@ public class TopicConfigurationTests
             var msg = new OrderPlaced(Guid.NewGuid(), "send@resolve.test", 30m);
 
             // Send directly to OrderPlacedConsumer - queue is resolved from the registered descriptor.
-            await publisher.Send<OrderPlacedConsumer, OrderPlaced>(msg, TestContext.Current.CancellationToken);
+            await publisher.SendAsync<OrderPlacedConsumer, OrderPlaced>(msg, TestContext.Current.CancellationToken);
 
             await WaitUntilAsync(() => orderTracker.Messages.Count == 1);
 
@@ -200,7 +200,7 @@ public class TopicConfigurationTests
             var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
             var msg = new OrderPlaced(Guid.NewGuid(), "queue@name.test", 40m);
 
-            await publisher.Send(queueName, msg, TestContext.Current.CancellationToken);
+            await publisher.SendAsync(queueName, msg, TestContext.Current.CancellationToken);
 
             await WaitUntilAsync(() => orderTracker.Messages.Count == 1);
 
@@ -246,7 +246,7 @@ public class TopicConfigurationTests
             var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
             var msg = new OrderPlaced(Guid.NewGuid(), "hdr@queue.test", 5m);
 
-            await publisher.Send(queueName, msg, ctx => ctx.Headers["x-source"] = "cross-project",
+            await publisher.SendAsync(queueName, msg, ctx => ctx.Headers["x-source"] = "cross-project",
                 TestContext.Current.CancellationToken);
 
             await WaitUntilAsync(() => orderTracker.Messages.Count == 1);

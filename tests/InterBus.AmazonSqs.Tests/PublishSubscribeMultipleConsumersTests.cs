@@ -1,9 +1,12 @@
 using Amazon.Extensions.NETCore.Setup;
+using Amazon.SimpleNotificationService;
+using Amazon.SQS;
 using InterBus.AmazonSqs.Extensions;
 using InterBus.Extensions;
 using InterBus.Generated;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Testcontainers.LocalStack;
 
 namespace InterBus.AmazonSqs.Tests;
@@ -18,6 +21,8 @@ public class PublishSubscribeMultipleConsumersTests
     private OrderPlacedTracker _orderTracker = null!;
     private AuditTracker _auditTracker = null!;
     private string _runId = null!;
+    private string _queuePrefix = null!;
+    private string _topicPrefix = null!;
 
     [OneTimeSetUp]
     public static async Task OneTimeSetUp()
@@ -40,6 +45,8 @@ public class PublishSubscribeMultipleConsumersTests
     public async Task Setup()
     {
         _runId = Guid.NewGuid().ToString("N")[..8];
+        _queuePrefix = $"q-{_runId}-";
+        _topicPrefix = $"t-{_runId}-";
         _orderTracker = new OrderPlacedTracker();
         _auditTracker = new AuditTracker();
 
@@ -57,8 +64,8 @@ public class PublishSubscribeMultipleConsumersTests
         {
             bus.AddAmazonSqsTransport(o =>
             {
-                o.QueuePrefix = $"q-{_runId}-";
-                o.TopicPrefix = $"t-{_runId}-";
+                o.QueuePrefix = _queuePrefix;
+                o.TopicPrefix = _topicPrefix;
             });
             bus.AddConsumer<OrderPlacedConsumer>();
             bus.AddConsumer<AuditConsumer>();
@@ -81,6 +88,13 @@ public class PublishSubscribeMultipleConsumersTests
 
         _cts.Dispose();
         await _provider.DisposeAsync();
+
+        // Clean up AWS resources created during this test
+        var sqsClient = _provider.GetRequiredService<IAmazonSQS>();
+        var snsClient = _provider.GetRequiredService<IAmazonSimpleNotificationService>();
+        var logger = _provider.GetRequiredService<ILogger<PublishSubscribeMultipleConsumersTests>>();
+
+        await TestHelpers.CleanupResourcesByPrefixAsync(sqsClient, snsClient, _queuePrefix, _topicPrefix, logger);
     }
 
     [Test]
@@ -89,7 +103,7 @@ public class PublishSubscribeMultipleConsumersTests
         using var scope = _provider.CreateScope();
         var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
         var msg = new OrderPlaced(Guid.NewGuid(), "fan@example.com", 150.00m);
-        await publisher.Publish(msg, TestContext.CurrentContext.CancellationToken);
+        await publisher.PublishAsync(msg, TestContext.CurrentContext.CancellationToken);
 
         await TestHelpers.WaitUntilAsync(
             () => _orderTracker.Messages.Count >= 1 && _auditTracker.Messages.Count >= 1);

@@ -61,7 +61,7 @@ public sealed class RedeliverySchedulingConsumeMiddleware(
 
             if (delay > TimeSpan.Zero)
             {
-                await scheduler.ScheduleSend(
+                await scheduler.ScheduleSendAsync(
                     context.Descriptor.QueueName,
                     context.Message,
                     delay,
@@ -74,7 +74,7 @@ public sealed class RedeliverySchedulingConsumeMiddleware(
             }
             else
             {
-                await publisher.Send(
+                await publisher.SendAsync(
                     context.Descriptor.QueueName,
                     context.Message,
                     ctx =>

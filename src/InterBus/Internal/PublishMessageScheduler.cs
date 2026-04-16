@@ -30,6 +30,6 @@ internal sealed class PublishMessageScheduler(
             Headers = new Dictionary<string, string>(context.Headers),
             ScheduledAt = scheduledAt
         };
-        return publisher.Send<SchedulingConsumer, ScheduleDeliveryCommand>(command, cancellationToken);
+        return publisher.SendAsync<SchedulingConsumer, ScheduleDeliveryCommand>(command, cancellationToken);
     }
 }

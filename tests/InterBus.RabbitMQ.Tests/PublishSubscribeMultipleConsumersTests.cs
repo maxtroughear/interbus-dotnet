@@ -71,7 +71,7 @@ public class PublishSubscribeMultipleConsumersTests(string imageTag)
         using var scope = _provider.CreateScope();
         var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
         var msg = new OrderPlaced(Guid.NewGuid(), "fan@out.test", 50m);
-        await publisher.Publish(msg, TestContext.CurrentContext.CancellationToken);
+        await publisher.PublishAsync(msg, TestContext.CurrentContext.CancellationToken);
 
         await TestHelpers.WaitUntilAsync(() => _orderTracker.Messages.Count == 1 && _auditTracker.Messages.Count == 1);
 
@@ -91,7 +91,7 @@ public class PublishSubscribeMultipleConsumersTests(string imageTag)
         var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
         var msg = new OrderPlaced(Guid.NewGuid(), "direct@send.test", 25m);
 
-        await publisher.Send<OrderPlacedConsumer, OrderPlaced>(msg, TestContext.CurrentContext.CancellationToken);
+        await publisher.SendAsync<OrderPlacedConsumer, OrderPlaced>(msg, TestContext.CurrentContext.CancellationToken);
 
         await TestHelpers.WaitUntilAsync(() => _orderTracker.Messages.Count == 1);
 

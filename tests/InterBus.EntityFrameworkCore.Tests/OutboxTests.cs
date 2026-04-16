@@ -48,7 +48,7 @@ public sealed class OrderPlacedPublishingConsumer(TestDbContext dbContext) : ICo
     public async Task Consume(OrderPlaced message, IConsumeContext context,
         CancellationToken cancellationToken = default)
     {
-        await context.Publish(new OrderShipped(message.OrderId), cancellationToken);
+        await context.PublishAsync(new OrderShipped(message.OrderId), cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
     }
 }
@@ -613,7 +613,7 @@ public class OutboxTests
             var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
             var dbContext = scope.ServiceProvider.GetRequiredService<TestDbContext>();
 
-            await publisher.Publish(
+            await publisher.PublishAsync(
                 new OrderPlaced(Guid.NewGuid(), "bus@example.com", 1m),
                 TestContext.Current.CancellationToken);
             await dbContext.SaveChangesAsync(TestContext.Current.CancellationToken);

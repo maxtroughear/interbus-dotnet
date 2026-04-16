@@ -2,7 +2,7 @@ using System.Diagnostics.CodeAnalysis;
 using InterBus.Middleware;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace InterBus.Internal;
+namespace InterBus.Consumer;
 
 /// <inheritdoc/>
 internal sealed class ConsumerBuilder(ConsumerDescriptor descriptor, IServiceCollection services) : IConsumerBuilder

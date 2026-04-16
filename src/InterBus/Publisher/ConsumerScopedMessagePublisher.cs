@@ -1,6 +1,8 @@
+using InterBus.Consumer;
 using InterBus.Middleware;
+using InterBus.Transport;
 
-namespace InterBus.Internal;
+namespace InterBus.Publisher;
 
 /// <summary>
 /// Consumer-scoped <see cref="IMessagePublisher"/> implementation. Routes publish and send

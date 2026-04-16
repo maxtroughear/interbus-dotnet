@@ -1,6 +1,6 @@
 using InterBus.Middleware;
 
-namespace InterBus.Internal;
+namespace InterBus.Scheduler;
 
 /// <summary>
 /// Base class for <see cref="IMessageScheduler"/> implementations. Handles destination

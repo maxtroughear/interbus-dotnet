@@ -1,6 +1,7 @@
 using InterBus.Middleware;
+using InterBus.Transport;
 
-namespace InterBus.Internal;
+namespace InterBus.Scheduler;
 
 /// <summary>
 /// <see cref="IMessageSchedulingProvider"/> implementation that uses transport-level delay support

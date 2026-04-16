@@ -1,6 +1,6 @@
 using InterBus.Middleware;
 
-namespace InterBus.Internal;
+namespace InterBus.Scheduler;
 
 /// <summary>
 /// <see cref="IConsumerSchedulerFactory"/> for the direct scheduling path

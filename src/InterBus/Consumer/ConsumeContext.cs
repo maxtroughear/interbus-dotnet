@@ -1,6 +1,6 @@
 using InterBus.Middleware;
 
-namespace InterBus.Internal;
+namespace InterBus.Consumer;
 
 internal sealed class ConsumeContext(
     MessageHeaders headers,

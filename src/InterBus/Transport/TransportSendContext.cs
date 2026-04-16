@@ -1,6 +1,6 @@
 using InterBus.Middleware;
 
-namespace InterBus;
+namespace InterBus.Transport;
 
 /// <summary>
 /// Carries all the data required for a single transport send operation. Passed to

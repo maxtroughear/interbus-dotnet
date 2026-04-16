@@ -88,7 +88,6 @@ public class PublishSubscribeSingleConsumerTests
             await svc.StopAsync(CancellationToken.None);
 
         _cts.Dispose();
-        await _provider.DisposeAsync();
 
         // Clean up AWS resources created during this test
         var sqsClient = _provider.GetRequiredService<IAmazonSQS>();
@@ -96,6 +95,8 @@ public class PublishSubscribeSingleConsumerTests
         var logger = _provider.GetRequiredService<ILogger<PublishSubscribeSingleConsumerTests>>();
 
         await TestHelpers.CleanupResourcesByPrefixAsync(sqsClient, snsClient, _queuePrefix, _topicPrefix, logger);
+
+        await _provider.DisposeAsync();
     }
 
     [Test]

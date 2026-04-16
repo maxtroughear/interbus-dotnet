@@ -1,4 +1,4 @@
-namespace InterBus.Internal;
+namespace InterBus.Scheduler;
 
 /// <summary>
 /// Consumer that processes <see cref="ScheduleDeliveryCommand"/> messages published by

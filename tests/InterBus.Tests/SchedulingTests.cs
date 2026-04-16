@@ -1,4 +1,5 @@
 using InterBus.Extensions;
+using InterBus.Transport;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 

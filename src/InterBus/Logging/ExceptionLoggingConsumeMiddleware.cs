@@ -1,7 +1,7 @@
 using InterBus.Middleware;
 using Microsoft.Extensions.Logging;
 
-namespace InterBus;
+namespace InterBus.Logging;
 
 /// <summary>
 /// Default outermost consume middleware. Catches all non-cancellation exceptions thrown by

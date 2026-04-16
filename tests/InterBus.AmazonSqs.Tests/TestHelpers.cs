@@ -2,6 +2,7 @@ using Amazon;
 using Amazon.Extensions.NETCore.Setup;
 using Amazon.Runtime;
 using Amazon.SimpleNotificationService;
+using Amazon.SimpleNotificationService.Model;
 using Amazon.SQS;
 using Amazon.SQS.Model;
 using Microsoft.Extensions.Logging;
@@ -54,7 +55,8 @@ public static class TestHelpers
     }
 
     /// <summary>
-    /// Cleans up AWS resources (SQS queues and SNS topics) matching the specified prefix.
+    /// Cleans up AWS resources (SQS queues, SNS subscriptions, and SNS topics)
+    /// matching the specified prefix.
     /// This is useful for test cleanup to remove test-specific queues and topics.
     /// </summary>
     internal static async Task CleanupResourcesByPrefixAsync(
@@ -148,6 +150,8 @@ public static class TestHelpers
                 {
                     try
                     {
+                        await DeleteSubscriptionsByTopicAsync(snsClient, topic.TopicArn, logger);
+
                         logger?.LogDebug("Deleting SNS topic: {TopicArn}", topic.TopicArn);
                         await snsClient.DeleteTopicAsync(topic.TopicArn);
                     }
@@ -164,5 +168,59 @@ public static class TestHelpers
         {
             logger?.LogWarning(ex, "Error listing SNS topics with prefix {TopicPrefix}", topicPrefix);
         }
+    }
+
+    /// <summary>
+    /// Deletes all subscriptions for a topic. Pending subscriptions are skipped because
+    /// they do not have a real ARN that can be unsubscribed.
+    /// </summary>
+    private static async Task DeleteSubscriptionsByTopicAsync(
+        IAmazonSimpleNotificationService snsClient,
+        string topicArn,
+        ILogger? logger = null)
+    {
+        string? nextToken = null;
+
+        do
+        {
+            ListSubscriptionsByTopicResponse response;
+            try
+            {
+                response = await snsClient.ListSubscriptionsByTopicAsync(
+                    new ListSubscriptionsByTopicRequest
+                    {
+                        TopicArn = topicArn,
+                        NextToken = nextToken,
+                    });
+            }
+            catch (Exception ex)
+            {
+                logger?.LogWarning(ex, "Error listing subscriptions for SNS topic {TopicArn}", topicArn);
+                return;
+            }
+
+            foreach (var subscription in response.Subscriptions)
+            {
+                if (string.Equals(subscription.SubscriptionArn, "PendingConfirmation", StringComparison.Ordinal))
+                    continue;
+
+                try
+                {
+                    logger?.LogDebug("Deleting SNS subscription: {SubscriptionArn}", subscription.SubscriptionArn);
+                    await snsClient.UnsubscribeAsync(
+                        new UnsubscribeRequest { SubscriptionArn = subscription.SubscriptionArn });
+                }
+                catch (Exception ex)
+                {
+                    logger?.LogWarning(
+                        ex,
+                        "Failed to delete SNS subscription {SubscriptionArn} for topic {TopicArn}",
+                        subscription.SubscriptionArn,
+                        topicArn);
+                }
+            }
+
+            nextToken = response.NextToken;
+        } while (!string.IsNullOrEmpty(nextToken));
     }
 }

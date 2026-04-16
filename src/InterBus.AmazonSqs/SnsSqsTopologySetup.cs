@@ -55,8 +55,8 @@ public sealed class SnsSqsTopologySetup(
     /// raw-delivery subscriptions, and queue resource policies (idempotent).
     /// </para>
     /// <para>
-    /// In <see cref="TopologyMode.VerifyOnly"/> mode only the queue URL and queue ARN are
-    /// resolved. Topic verification is deferred until the first publish via
+    /// In <see cref="TopologyMode.VerifyOnly"/> mode only the queue URL is resolved.
+    /// Topic verification is deferred until the first publish via
     /// <see cref="EnsureTopicArnAsync"/>.
     /// </para>
     /// </summary>
@@ -76,9 +76,8 @@ public sealed class SnsSqsTopologySetup(
     /// Ensures the SNS topic for <paramref name="rawTopicName"/> exists and returns its ARN.
     /// <para>
     /// In <see cref="TopologyMode.CreateOrVerify"/> mode the topic is created (idempotent) if
-    /// it is not already cached. In <see cref="TopologyMode.VerifyOnly"/> mode the ARN is
-    /// derived from a cached SQS queue ARN (same partition/region/account) and the topic's
-    /// existence is confirmed via <c>GetTopicAttributesAsync</c>.
+    /// it is not already cached. In <see cref="TopologyMode.VerifyOnly"/> mode the topic is
+    /// located by paginating <c>ListTopicsAsync</c> — no create or write operations are issued.
     /// </para>
     /// </summary>
     internal async Task<string> EnsureTopicArnAsync(string rawTopicName, CancellationToken cancellationToken)
@@ -144,7 +143,6 @@ public sealed class SnsSqsTopologySetup(
                 cancellationToken);
 
             var queueArn = attrs.QueueARN;
-            clientProvider.QueueArns.TryAdd(queueName, queueArn);
 
             // Subscribe the queue to each SNS topic the consumer handles.
             foreach (var messageType in descriptor.MessageTypes)
@@ -248,8 +246,8 @@ public sealed class SnsSqsTopologySetup(
     // -------------------------------------------------------------------------
 
     /// <summary>
-    /// Reads the existing SQS queue URL and ARN for every registered consumer and populates
-    /// the <see cref="SnsSqsClientProvider"/> caches. Does not verify SNS topics — that is
+    /// Reads the existing SQS queue URL for every registered consumer and populates the
+    /// <see cref="SnsSqsClientProvider"/> cache. Does not verify SNS topics — that is
     /// deferred to the first publish via <see cref="EnsureTopicArnAsync"/>.
     /// </summary>
     private async Task VerifyConsumerTopologyAsync(CancellationToken cancellationToken)
@@ -263,19 +261,7 @@ public sealed class SnsSqsTopologySetup(
                 queueName,
                 descriptor.ConsumerType.Name);
 
-            var queueUrl = await VerifyQueueUrlAsync(queueName, cancellationToken);
-
-            // Retrieve and cache the queue ARN so that EnsureTopicArnAsync can derive SNS
-            // topic ARNs (same partition/region/account) without an STS call.
-            var attrs = await sqsClient.GetQueueAttributesAsync(
-                new GetQueueAttributesRequest
-                {
-                    QueueUrl = queueUrl,
-                    AttributeNames = ["QueueArn"],
-                },
-                cancellationToken);
-
-            clientProvider.QueueArns.TryAdd(queueName, attrs.QueueARN);
+            await VerifyQueueUrlAsync(queueName, cancellationToken);
         }
     }
 
@@ -294,44 +280,38 @@ public sealed class SnsSqsTopologySetup(
     }
 
     /// <summary>
-    /// Resolves the ARN for an existing SNS topic by deriving the ARN from any cached SQS
-    /// queue ARN (same partition/region/account) and confirming existence via
-    /// <c>GetTopicAttributesAsync</c>. Read-only — does not create the topic.
+    /// Resolves the ARN for an existing SNS topic by paginating <c>ListTopicsAsync</c> until
+    /// a topic whose ARN ends with <c>:{topicName}</c> is found.
+    /// Read-only — does not create the topic.
     /// </summary>
     private async Task<string> VerifyTopicArnAsync(string topicName, CancellationToken cancellationToken)
     {
-        // Derive partition/region/account from any cached queue ARN to avoid an STS call.
-        // Queue ARN format: arn:{partition}:sqs:{region}:{account-id}:{name}
-        var queueArn = clientProvider.QueueArns.Values.FirstOrDefault()
-            ?? throw new InvalidOperationException(
-                $"Cannot derive SNS topic ARN for '{topicName}' in {nameof(TopologyMode.VerifyOnly)} mode: " +
-                "no SQS queue ARNs are cached. Register at least one consumer so that the " +
-                $"message pump populates the queue ARN cache before the first publish, or " +
-                $"switch to {nameof(TopologyMode.CreateOrVerify)} topology mode.");
+        logger.LogDebug("InterBus AmazonSqs: looking up SNS topic {TopicName}", topicName);
 
-        var arnParts = queueArn.Split(':');
-        if (arnParts.Length < 6)
+        string? nextToken = null;
+        do
         {
-            throw new InvalidOperationException(
-                $"Unexpected SQS queue ARN format '{queueArn}': " +
-                "expected 'arn:{partition}:sqs:{region}:{account-id}:{name}'.");
+            var response = await snsClient.ListTopicsAsync(
+                new ListTopicsRequest { NextToken = nextToken },
+                cancellationToken);
+
+            var match = response.Topics.Find(
+                t => t.TopicArn[(t.TopicArn.LastIndexOf(':') + 1)..] == topicName);
+
+            if (match is not null)
+            {
+                clientProvider.TopicArns.TryAdd(topicName, match.TopicArn);
+                return match.TopicArn;
+            }
+
+            nextToken = response.NextToken;
         }
+        while (nextToken is not null);
 
-        // Construct: arn:{partition}:sns:{region}:{account-id}:{topic-name}
-        var topicArn = $"arn:{arnParts[1]}:sns:{arnParts[3]}:{arnParts[4]}:{topicName}";
-
-        logger.LogDebug(
-            "InterBus AmazonSqs: verifying SNS topic {TopicName} (arn={TopicArn})",
-            topicName,
-            topicArn);
-
-        // Confirm the topic exists (throws NotFoundException if it doesn't).
-        await snsClient.GetTopicAttributesAsync(
-            new GetTopicAttributesRequest { TopicArn = topicArn },
-            cancellationToken);
-
-        clientProvider.TopicArns.TryAdd(topicName, topicArn);
-        return topicArn;
+        throw new InvalidOperationException(
+            $"SNS topic '{topicName}' was not found. " +
+            $"Ensure the topic has been created before starting the application in " +
+            $"{nameof(TopologyMode.VerifyOnly)} mode.");
     }
 
     // -------------------------------------------------------------------------

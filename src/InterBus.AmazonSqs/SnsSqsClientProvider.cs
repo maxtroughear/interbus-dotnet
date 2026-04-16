@@ -34,14 +34,6 @@ public sealed class SnsSqsClientProvider(SnsSqsTransportOptions options)
         new(StringComparer.Ordinal);
 
     /// <summary>
-    /// Application-level cache: sanitised queue name → SQS Queue ARN.
-    /// Used in <see cref="TopologyMode.VerifyOnly"/> mode to derive SNS topic ARNs for the
-    /// same AWS partition, region, and account without an additional STS call.
-    /// </summary>
-    internal ConcurrentDictionary<string, string> QueueArns { get; } =
-        new(StringComparer.Ordinal);
-
-    /// <summary>
     /// Converts a raw InterBus topic name (e.g. a fully-qualified .NET type name) into a
     /// valid SNS topic name, replacing dots and other invalid characters with hyphens and
     /// trimming to the 256-character limit.

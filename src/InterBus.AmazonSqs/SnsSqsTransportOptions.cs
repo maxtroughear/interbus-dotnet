@@ -1,5 +1,4 @@
 using InterBus.Retry;
-using Microsoft.Extensions.Hosting;
 
 namespace InterBus.AmazonSqs;
 

@@ -199,6 +199,14 @@ public sealed class TickerQSchedulerTests
 
         public Task<TickerResult<TimeTickerEntity>> DeleteBatchAsync(List<Guid> ids,
             CancellationToken cancellationToken) => Task.FromResult(EmptyResult<TimeTickerEntity>());
+
+        public Task<TickerResult<TimeTickerEntity>> AddAsync<TFunction>(DateTime? executionTime = null,
+            CancellationToken cancellationToken = new()) where TFunction : class, ITickerFunction
+            => Task.FromResult(EmptyResult<TimeTickerEntity>());
+
+        public Task<TickerResult<TimeTickerEntity>> AddAsync<TFunction, TRequest>(DateTime? executionTime,
+            TRequest request, CancellationToken cancellationToken = new())
+            where TFunction : class, ITickerFunction<TRequest> => Task.FromResult(EmptyResult<TimeTickerEntity>());
     }
 
     private sealed class NoOpHostScheduler : ITickerQHostScheduler

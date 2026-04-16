@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using Amazon.Extensions.NETCore.Setup;
 using Amazon.SimpleNotificationService;
 using Amazon.SQS;
 using InterBus.AmazonSqs.Extensions;
@@ -25,7 +24,7 @@ public class ConcurrencyTests
     private string _topicPrefix = null!;
 
     /// <summary>Number of concurrent publishers used in the concurrency test.</summary>
-    private const int PublisherCount = 5;
+    private const int PublisherCount = 10;
 
     /// <summary>Number of messages each publisher sends.</summary>
     private const int MessagesPerPublisher = 1000;
@@ -59,7 +58,7 @@ public class ConcurrencyTests
         services.AddLogging();
         services.AddSingleton(_orderTracker);
 
-        AWSOptions awsOptions = TestHelpers.CreateAwsOptions(Container);
+        var awsOptions = TestHelpers.CreateAwsOptions(Container);
         services.AddAWSService<Amazon.SimpleNotificationService.IAmazonSimpleNotificationService>(awsOptions);
         services.AddAWSService<Amazon.SQS.IAmazonSQS>(awsOptions);
         services.AddAWSService<Amazon.SecurityToken.IAmazonSecurityTokenService>(awsOptions);

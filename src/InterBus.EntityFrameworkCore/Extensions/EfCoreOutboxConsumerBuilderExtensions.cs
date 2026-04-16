@@ -1,6 +1,5 @@
 using InterBus.EntityFrameworkCore.Internal;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace InterBus.EntityFrameworkCore.Extensions;

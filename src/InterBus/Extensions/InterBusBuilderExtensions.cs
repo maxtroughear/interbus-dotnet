@@ -1,6 +1,5 @@
 using System.Text.Json;
 using InterBus.Consumer;
-using InterBus.Internal;
 using InterBus.Middleware;
 using InterBus.Scheduler;
 using InterBus.Serialization;

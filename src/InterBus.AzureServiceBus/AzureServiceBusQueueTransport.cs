@@ -24,39 +24,27 @@ namespace InterBus.AzureServiceBus;
 /// <see cref="ServiceBusMessage.ApplicationProperties"/>.
 /// </para>
 /// </summary>
-internal sealed class AzureServiceBusTransport(
+internal sealed class AzureServiceBusQueueTransport(
     AzureServiceBusClientProvider clientProvider,
     AzureServiceBusTopology topology)
     : IInterBusTransport
 {
-    /// <summary>URI scheme for Azure Service Bus topic (fan-out) destinations.</summary>
-    public const string TopicScheme = "azureservicebustopic";
-
     /// <summary>URI scheme for Azure Service Bus queue (point-to-point) destinations.</summary>
     public const string QueueScheme = "azureservicebusqueue";
 
     /// <inheritdoc/>
     public async Task SendAsync(TransportSendContext context, CancellationToken cancellationToken)
     {
-        string entityPath;
-
-        if (context.Destination.Scheme == TopicScheme)
-        {
-            var rawTopicName = RoutingConventions.GetDestinationName(context.Destination);
-            entityPath = await topology.EnsureTopicEntityPathAsync(rawTopicName, cancellationToken);
-        }
-        else if (context.Destination.Scheme == QueueScheme)
-        {
-            var rawQueueName = RoutingConventions.GetDestinationName(context.Destination);
-            entityPath = await topology.EnsureQueueEntityPathAsync(rawQueueName, cancellationToken);
-        }
-        else
+        if (context.Destination.Scheme != QueueScheme)
         {
             throw new ArgumentException(
                 $"Unsupported destination URI scheme '{context.Destination.Scheme}'. " +
-                $"Expected '{TopicScheme}' or '{QueueScheme}'.",
+                $"Expected '{QueueScheme}'.",
                 nameof(context));
         }
+        
+        var rawQueueName = RoutingConventions.GetDestinationName(context.Destination);
+        var entityPath = await topology.EnsureQueueEntityPathAsync(rawQueueName, cancellationToken);
 
         var sender = clientProvider.GetOrCreateSender(entityPath);
         var message = BuildMessage(context);
@@ -74,23 +62,5 @@ internal sealed class AzureServiceBusTransport(
             message.ScheduledEnqueueTime = DateTimeOffset.UtcNow + context.Delay.Value;
 
         return message;
-    }
-
-    internal static MessageHeaders ParseApplicationProperties(
-        IReadOnlyDictionary<string, object?> applicationProperties)
-    {
-        var dict = new Dictionary<string, string>(StringComparer.Ordinal);
-        foreach (var kv in applicationProperties)
-        {
-            var value = kv.Value switch
-            {
-                string str => str,
-                _ => kv.Value?.ToString(),
-            };
-            if (value is not null)
-                dict[kv.Key] = value;
-        }
-
-        return new MessageHeaders(dict);
     }
 }

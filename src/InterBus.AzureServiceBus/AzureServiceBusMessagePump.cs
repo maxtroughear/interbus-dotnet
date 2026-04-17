@@ -52,6 +52,19 @@ internal sealed class AzureServiceBusMessagePump(
 
         await base.StartAsync(cancellationToken);
     }
+    
+    public override async Task StopAsync(CancellationToken cancellationToken)
+    {
+        await base.StopAsync(cancellationToken);
+
+        foreach (var processor in _processors)
+        {
+            await processor.StopProcessingAsync(CancellationToken.None);
+            await processor.DisposeAsync();
+        }
+
+        _processors.Clear();
+    }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -186,21 +199,26 @@ internal sealed class AzureServiceBusMessagePump(
     {
         await using var scope = scopeFactory.CreateAsyncScope();
         var executor = scope.ServiceProvider.GetRequiredService<DispatchPipelineExecutor>();
-        var headers = AzureServiceBusTransport.ParseApplicationProperties(message.ApplicationProperties);
+        var headers = ParseApplicationProperties(message.ApplicationProperties);
         var context = new DispatchContext(descriptor, message.Body.ToArray(), headers);
         await executor.ExecuteAsync(context, ct);
     }
 
-    public override async Task StopAsync(CancellationToken cancellationToken)
+    private static MessageHeaders ParseApplicationProperties(
+        IReadOnlyDictionary<string, object?> applicationProperties)
     {
-        await base.StopAsync(cancellationToken);
-
-        foreach (var processor in _processors)
+        var dict = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var kv in applicationProperties)
         {
-            await processor.StopProcessingAsync(CancellationToken.None);
-            await processor.DisposeAsync();
+            var value = kv.Value switch
+            {
+                string str => str,
+                _ => kv.Value?.ToString(),
+            };
+            if (value is not null)
+                dict[kv.Key] = value;
         }
 
-        _processors.Clear();
+        return new MessageHeaders(dict);
     }
 }

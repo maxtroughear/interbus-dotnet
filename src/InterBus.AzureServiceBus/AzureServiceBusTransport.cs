@@ -24,24 +24,16 @@ namespace InterBus.AzureServiceBus;
 /// <see cref="ServiceBusMessage.ApplicationProperties"/>.
 /// </para>
 /// </summary>
-public sealed class AzureServiceBusTransport : IInterBusTransport
+internal sealed class AzureServiceBusTransport(
+    AzureServiceBusClientProvider clientProvider,
+    AzureServiceBusTopology topology)
+    : IInterBusTransport
 {
     /// <summary>URI scheme for Azure Service Bus topic (fan-out) destinations.</summary>
     public const string TopicScheme = "azureservicebustopic";
 
     /// <summary>URI scheme for Azure Service Bus queue (point-to-point) destinations.</summary>
     public const string QueueScheme = "azureservicebusqueue";
-
-    private readonly AzureServiceBusClientProvider _clientProvider;
-    private readonly AzureServiceBusTransportOptions _options;
-
-    internal AzureServiceBusTransport(
-        AzureServiceBusClientProvider clientProvider,
-        AzureServiceBusTransportOptions options)
-    {
-        _clientProvider = clientProvider;
-        _options = options;
-    }
 
     /// <inheritdoc/>
     public async Task SendAsync(TransportSendContext context, CancellationToken cancellationToken)
@@ -50,13 +42,13 @@ public sealed class AzureServiceBusTransport : IInterBusTransport
 
         if (context.Destination.Scheme == TopicScheme)
         {
-            var topicName = RoutingConventions.GetDestinationName(context.Destination);
-            entityPath = AzureServiceBusNaming.SanitizeEntityName(_options.TopicPrefix + topicName);
+            var rawTopicName = RoutingConventions.GetDestinationName(context.Destination);
+            entityPath = await topology.EnsureTopicEntityPathAsync(rawTopicName, cancellationToken);
         }
         else if (context.Destination.Scheme == QueueScheme)
         {
-            var queueName = RoutingConventions.GetDestinationName(context.Destination);
-            entityPath = AzureServiceBusNaming.SanitizeEntityName(_options.QueuePrefix + queueName);
+            var rawQueueName = RoutingConventions.GetDestinationName(context.Destination);
+            entityPath = await topology.EnsureQueueEntityPathAsync(rawQueueName, cancellationToken);
         }
         else
         {
@@ -66,7 +58,7 @@ public sealed class AzureServiceBusTransport : IInterBusTransport
                 nameof(context));
         }
 
-        var sender = _clientProvider.GetOrCreateSender(entityPath);
+        var sender = clientProvider.GetOrCreateSender(entityPath);
         var message = BuildMessage(context);
         await sender.SendMessageAsync(message, cancellationToken);
     }

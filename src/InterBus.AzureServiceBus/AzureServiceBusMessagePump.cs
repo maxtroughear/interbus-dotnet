@@ -1,5 +1,4 @@
 using Azure.Messaging.ServiceBus;
-using Azure.Messaging.ServiceBus.Administration;
 using InterBus.Consumer;
 using InterBus.Middleware;
 using Microsoft.Extensions.DependencyInjection;
@@ -30,6 +29,7 @@ namespace InterBus.AzureServiceBus;
 /// </summary>
 internal sealed class AzureServiceBusMessagePump(
     AzureServiceBusClientProvider clientProvider,
+    AzureServiceBusTopology topology,
     AzureServiceBusTransportOptions options,
     InterBusOptions busOptions,
     IServiceScopeFactory scopeFactory,
@@ -46,7 +46,7 @@ internal sealed class AzureServiceBusMessagePump(
     {
         if (busOptions.Consumers.Count > 0)
         {
-            await DeclareTopologyAsync(cancellationToken);
+            await SetupTopologyWithRetryAsync(cancellationToken);
             await StartProcessorsAsync(cancellationToken);
         }
 
@@ -75,110 +75,33 @@ internal sealed class AzureServiceBusMessagePump(
     }
 
     /// <summary>
-    /// Declares topics, queues, and subscriptions for all registered consumers. Entities that
-    /// already exist are left unchanged.
+    /// Declares consumer topology with retry behavior for transient startup failures.
     /// </summary>
-    private async Task DeclareTopologyAsync(CancellationToken cancellationToken)
+    private async Task SetupTopologyWithRetryAsync(CancellationToken cancellationToken)
     {
-        var admin = clientProvider.AdminClient;
-
-        foreach (var descriptor in busOptions.Consumers)
+        var attempt = 0;
+        while (true)
         {
-            var consumerQueueName = AzureServiceBusNaming.SanitizeEntityName(
-                options.QueuePrefix + descriptor.QueueName);
-
-            // Create the consumer's queue for direct (point-to-point) sends.
-            await EnsureQueueExistsAsync(admin, consumerQueueName, cancellationToken);
-
-            // For each message type, ensure the topic exists and create a forwarding subscription.
-            foreach (var messageType in descriptor.MessageTypes)
+            try
             {
-                var rawTopicName = busOptions.TryGetTopicName(messageType, out var custom)
-                    ? custom
-                    : RoutingConventions.TopicName(messageType);
-
-                var topicName = AzureServiceBusNaming.SanitizeEntityName(
-                    options.TopicPrefix + rawTopicName);
-
-                await EnsureTopicExistsAsync(admin, topicName, cancellationToken);
-
-                var subscriptionName = AzureServiceBusNaming.SanitizeSubscriptionName(
-                    options.QueuePrefix + descriptor.QueueName);
-
-                await EnsureForwardingSubscriptionExistsAsync(
-                    admin, topicName, subscriptionName, consumerQueueName, cancellationToken);
-
-                logger.LogDebug(
-                    "InterBus AzureServiceBus: subscription {SubscriptionName} on topic {TopicName} forwards to queue {QueueName}",
-                    subscriptionName,
-                    topicName,
-                    consumerQueueName);
+                await topology.DeclareConsumerTopologyAsync(cancellationToken);
+                return;
             }
-        }
-    }
-
-    private async Task EnsureQueueExistsAsync(
-        ServiceBusAdministrationClient admin,
-        string queueName,
-        CancellationToken cancellationToken)
-    {
-        try
-        {
-            await admin.CreateQueueAsync(new CreateQueueOptions(queueName)
+            catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
             {
-                LockDuration = TimeSpan.FromSeconds(60) // default
-            }, cancellationToken);
-            logger.LogDebug(
-                "InterBus AzureServiceBus: created queue {QueueName}", queueName);
-        }
-        catch (ServiceBusException ex)
-            when (ex.Reason == ServiceBusFailureReason.MessagingEntityAlreadyExists)
-        {
-            // Queue already exists — nothing to do.
-        }
-    }
+                attempt++;
+                if (attempt > options.ConnectionRetry.RetryCount)
+                    throw;
 
-    private async Task EnsureTopicExistsAsync(
-        ServiceBusAdministrationClient admin,
-        string topicName,
-        CancellationToken cancellationToken)
-    {
-        try
-        {
-            await admin.CreateTopicAsync(topicName, cancellationToken);
-            logger.LogDebug(
-                "InterBus AzureServiceBus: created topic {TopicName}", topicName);
-        }
-        catch (ServiceBusException ex)
-            when (ex.Reason == ServiceBusFailureReason.MessagingEntityAlreadyExists)
-        {
-            // Topic already exists — nothing to do.
-        }
-    }
+                var delay = options.ConnectionRetry.DelayProvider(attempt);
+                logger.LogWarning(
+                    ex,
+                    "InterBus AzureServiceBus: topology setup failed (attempt {Attempt}); retrying in {Delay}",
+                    attempt,
+                    delay);
 
-    private async Task EnsureForwardingSubscriptionExistsAsync(
-        ServiceBusAdministrationClient admin,
-        string topicName,
-        string subscriptionName,
-        string forwardToQueue,
-        CancellationToken cancellationToken)
-    {
-        try
-        {
-            var subscriptionOptions = new CreateSubscriptionOptions(topicName, subscriptionName)
-            {
-                ForwardTo = forwardToQueue,
-            };
-            await admin.CreateSubscriptionAsync(subscriptionOptions, cancellationToken);
-            logger.LogDebug(
-                "InterBus AzureServiceBus: created subscription {SubscriptionName} on topic {TopicName}",
-                subscriptionName,
-                topicName);
-        }
-        catch (ServiceBusException ex)
-            when (ex.Reason == ServiceBusFailureReason.MessagingEntityAlreadyExists)
-        {
-            // Subscription already exists — nothing to do.
+                await Task.Delay(delay, cancellationToken);
+            }
         }
     }
 

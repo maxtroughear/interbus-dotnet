@@ -58,6 +58,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "InterBus.AzureServiceBus", 
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "InterBus.AzureServiceBus.Tests", "tests\InterBus.AzureServiceBus.Tests\InterBus.AzureServiceBus.Tests.csproj", "{C577EB43-FCD8-4AEB-A9A4-3BC2D2E1D83C}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sample.AzureServiceBus", "samples\Sample.AzureServiceBus\Sample.AzureServiceBus.csproj", "{B266FA0A-5586-4DEC-884D-5AC6732B52CE}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -380,6 +382,18 @@ Global
 		{C577EB43-FCD8-4AEB-A9A4-3BC2D2E1D83C}.Release|x64.Build.0 = Release|Any CPU
 		{C577EB43-FCD8-4AEB-A9A4-3BC2D2E1D83C}.Release|x86.ActiveCfg = Release|Any CPU
 		{C577EB43-FCD8-4AEB-A9A4-3BC2D2E1D83C}.Release|x86.Build.0 = Release|Any CPU
+		{B266FA0A-5586-4DEC-884D-5AC6732B52CE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B266FA0A-5586-4DEC-884D-5AC6732B52CE}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B266FA0A-5586-4DEC-884D-5AC6732B52CE}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{B266FA0A-5586-4DEC-884D-5AC6732B52CE}.Debug|x64.Build.0 = Debug|Any CPU
+		{B266FA0A-5586-4DEC-884D-5AC6732B52CE}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{B266FA0A-5586-4DEC-884D-5AC6732B52CE}.Debug|x86.Build.0 = Debug|Any CPU
+		{B266FA0A-5586-4DEC-884D-5AC6732B52CE}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B266FA0A-5586-4DEC-884D-5AC6732B52CE}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B266FA0A-5586-4DEC-884D-5AC6732B52CE}.Release|x64.ActiveCfg = Release|Any CPU
+		{B266FA0A-5586-4DEC-884D-5AC6732B52CE}.Release|x64.Build.0 = Release|Any CPU
+		{B266FA0A-5586-4DEC-884D-5AC6732B52CE}.Release|x86.ActiveCfg = Release|Any CPU
+		{B266FA0A-5586-4DEC-884D-5AC6732B52CE}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -411,5 +425,6 @@ Global
 		{E5CB62CB-33FE-49CA-993D-05710CF23C41} = {11FB39A0-9DB6-4513-BE75-CE888F5F7F22}
 		{FFFEB54F-3984-4249-B877-D6F60779E06B} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{C577EB43-FCD8-4AEB-A9A4-3BC2D2E1D83C} = {11FB39A0-9DB6-4513-BE75-CE888F5F7F22}
+		{B266FA0A-5586-4DEC-884D-5AC6732B52CE} = {5D20AA90-6969-D8BD-9DCD-8634F4692FDA}
 	EndGlobalSection
 EndGlobal

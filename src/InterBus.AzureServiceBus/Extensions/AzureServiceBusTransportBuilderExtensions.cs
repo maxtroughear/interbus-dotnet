@@ -50,28 +50,15 @@ public static class AzureServiceBusTransportBuilderExtensions
 
             builder.Services.AddSingleton(options);
 
-            // Client provider manages the ServiceBusClient, sender cache, and admin client.
             builder.Services.AddSingleton<AzureServiceBusClientProvider>();
+            builder.Services.AddSingleton<AzureServiceBusTopology>();
 
-            // Transport is scoped so each DI scope gets its own instance, consistent with the
-            // RabbitMQ transport pattern.
-            builder.Services.AddScoped<AzureServiceBusTransport>(sp => new AzureServiceBusTransport(
-                sp.GetRequiredService<AzureServiceBusClientProvider>(),
-                sp.GetRequiredService<AzureServiceBusTransportOptions>()));
+            builder.Services.AddKeyedScoped<IInterBusTransport, AzureServiceBusTransport>(
+                AzureServiceBusTransport.TopicScheme);
+            builder.Services.AddKeyedScoped<IInterBusTransport, AzureServiceBusTransport>(
+                AzureServiceBusTransport.QueueScheme);
 
-            // Keyed registrations for transport factory scheme-based resolution.
-            builder.Services.AddKeyedScoped<IInterBusTransport>(AzureServiceBusTransport.TopicScheme,
-                (sp, _) => sp.GetRequiredService<AzureServiceBusTransport>());
-            builder.Services.AddKeyedScoped<IInterBusTransport>(AzureServiceBusTransport.QueueScheme,
-                (sp, _) => sp.GetRequiredService<AzureServiceBusTransport>());
-
-            // Message pump declares topology and runs processors as a background service.
-            builder.Services.AddHostedService(sp => new AzureServiceBusMessagePump(
-                sp.GetRequiredService<AzureServiceBusClientProvider>(),
-                sp.GetRequiredService<AzureServiceBusTransportOptions>(),
-                sp.GetRequiredService<InterBusOptions>(),
-                sp.GetRequiredService<IServiceScopeFactory>(),
-                sp.GetRequiredService<ILogger<AzureServiceBusMessagePump>>()));
+            builder.Services.AddHostedService<AzureServiceBusMessagePump>();
 
             return builder;
         }

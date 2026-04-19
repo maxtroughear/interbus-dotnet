@@ -51,7 +51,6 @@ public class ConcurrencyTests
             bus.AddAzureServiceBusTransport(o =>
             {
                 o.ConnectionString = _container.GetConnectionString();
-                //"Endpoint=sb://interbuslocal.servicebus.windows.net/;SharedAccessKeyName=Local;SharedAccessKey=eV6NP2PJv+mapEYpp7aiodKw2ife6pqTE+ASbOj3USI=";
                 o.AdminConnectionString = _container.GetHttpConnectionString();
             });
             bus.AddConsumer<ConcurrencyTestConsumer>(cfg => cfg.WithConcurrency(ConsumerCount));

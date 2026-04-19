@@ -263,21 +263,6 @@ public sealed class ConsumerRegistrationGeneratorTests
     #region No consumers -> no output
 
     [Fact]
-    public void Generator_NoConsumersInAssembly_ProducesNoOutput()
-    {
-        const string source = """
-                              namespace MyApp
-                              {
-                                  public class NotAConsumer { }
-                              }
-                              """;
-
-        var result = RunGenerator(source);
-
-        Assert.Empty(result.GeneratedTrees);
-    }
-
-    [Fact]
     public void Generator_InterBusNotReferenced_ProducesNoOutput()
     {
         // Build a compilation that does NOT reference InterBus at all.

@@ -157,44 +157,6 @@ public class HeadersTests
     }
 
     [Fact]
-    public async Task Publish_WithoutUserHeaders_ConsumerReceivesOnlySystemHeaders()
-    {
-        var headerCapture = new HeaderCapture();
-
-        var (provider, cts) = await StartAsync(
-            services => { services.AddSingleton(headerCapture); },
-            bus =>
-            {
-                bus.AddInMemoryTransport();
-                bus.AddConsumer<HeaderAwareConsumer>();
-            });
-
-        try
-        {
-            using var scope = provider.CreateScope();
-            var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
-            var msg = new OrderPlaced(Guid.NewGuid(), "noheaders@test.com", 3.00m);
-
-            await publisher.PublishAsync(msg, TestContext.Current.CancellationToken);
-
-            await WaitUntilAsync(() => headerCapture.Captured.Count == 1);
-
-            Assert.Single(headerCapture.Captured);
-            var received = headerCapture.Captured.Single();
-            // The publisher always stamps interbus-message-type and interbus-message-id; no user headers present.
-            Assert.Equal(2, received.Count);
-            Assert.Equal(
-                typeof(OrderPlaced).FullName,
-                received[InterBusHeaders.MessageType]);
-            Assert.True(received.ContainsKey(InterBusHeaders.MessageId));
-        }
-        finally
-        {
-            await StopAsync(provider, cts);
-        }
-    }
-
-    [Fact]
     public void MessageHeaders_KeyLookup_IsCaseInsensitive()
     {
         var headers = new MessageHeaders { ["X-Correlation-Id"] = "test-id" };

@@ -1,7 +1,6 @@
 using System.Diagnostics.CodeAnalysis;
 using InterBus.Dispatch;
 using InterBus.Publisher;
-using InterBus.Scheduler;
 using InterBus.Send;
 using InterBus.Serialization;
 using Microsoft.Extensions.DependencyInjection;
@@ -116,20 +115,4 @@ public interface IInterBusBuilder
         [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
         TMiddleware>()
         where TMiddleware : class, ISendMiddleware;
-
-    /// <summary>
-    /// Add a middleware step to the schedule pipeline.
-    /// Steps are executed in registration order - the first registered step is outermost
-    /// and runs first. The terminal step forwards the serialized payload to the configured
-    /// <see cref="IMessageSchedulingProvider"/>.
-    /// </summary>
-    /// <remarks>
-    /// The schedule pipeline runs on already-serialized messages, unlike the publish pipeline.
-    /// This makes it suitable for cross-cutting concerns that operate on raw bytes, such as
-    /// the Claim Check pattern for large scheduled payloads.
-    /// </remarks>
-    IInterBusBuilder UseScheduleMiddleware<
-        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
-        TMiddleware>()
-        where TMiddleware : class, IScheduleMiddleware;
 }

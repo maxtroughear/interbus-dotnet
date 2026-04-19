@@ -155,8 +155,7 @@ public sealed class TickerQSchedulerTests
         services.AddInterBus(bus =>
         {
             bus.AddInMemoryTransport();
-            bus.AddScheduling();
-            bus.AddTickerQScheduler();
+            bus.AddScheduling(builder => builder.Directly().AddTickerQScheduler());
         });
         services.AddTickerQ(options => options.DisableBackgroundServices());
 

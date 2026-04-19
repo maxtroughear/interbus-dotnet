@@ -148,49 +148,6 @@ public sealed class TransportDelaySchedulingTests
 
     #endregion
 
-    #region ScheduleContext.Delay forwarded through middleware pipeline
-
-    [Fact]
-    public async Task SchedulePipelineExecutor_ForwardsDelay_ToTransportSendContext()
-    {
-        var transport = new RecordingTransport();
-        var services = new ServiceCollection();
-        services.AddLogging();
-        services.AddInterBus(bus => { bus.Services.AddKeyedSingleton<IInterBusTransport>("queue", transport); });
-
-        var provider = services.BuildServiceProvider();
-        using var scope = provider.CreateScope();
-        var executor = scope.ServiceProvider.GetRequiredService<SchedulePipelineExecutor>();
-        var expectedDelay = TimeSpan.FromMinutes(3);
-        var ctx = new ScheduleContext(new Uri("queue://interbus/my-queue"), [1], new MessageHeaders(), expectedDelay);
-
-        await executor.ExecuteAsync(ctx, TestContext.Current.CancellationToken);
-
-        var sent = Assert.Single(transport.Sent);
-        Assert.Equal(expectedDelay, sent.Delay);
-    }
-
-    [Fact]
-    public async Task SchedulePipelineExecutor_NullDelay_PassesNullToTransport()
-    {
-        var transport = new RecordingTransport();
-        var services = new ServiceCollection();
-        services.AddLogging();
-        services.AddInterBus(bus => { bus.Services.AddKeyedSingleton<IInterBusTransport>("queue", transport); });
-
-        var provider = services.BuildServiceProvider();
-        using var scope = provider.CreateScope();
-        var executor = scope.ServiceProvider.GetRequiredService<SchedulePipelineExecutor>();
-        var ctx = new ScheduleContext(new Uri("queue://interbus/my-queue"), [1], new MessageHeaders(), null);
-
-        await executor.ExecuteAsync(ctx, TestContext.Current.CancellationToken);
-
-        var sent = Assert.Single(transport.Sent);
-        Assert.Null(sent.Delay);
-    }
-
-    #endregion
-
     #region Support types
 
     private sealed record TestMessage;

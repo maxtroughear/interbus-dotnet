@@ -3,7 +3,6 @@ using InterBus.Consumer;
 using InterBus.Dispatch;
 using InterBus.Logging;
 using InterBus.Publisher;
-using InterBus.Scheduler;
 using InterBus.Send;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -109,16 +108,6 @@ internal sealed class InterBusBuilder : IInterBusBuilder
     {
         // Keyed to bus
         Services.AddKeyedScoped<ISendMiddleware, TMiddleware>(InterBusConstants.BusContext);
-        return this;
-    }
-
-    /// <inheritdoc/>
-    public IInterBusBuilder UseScheduleMiddleware<
-        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
-        TMiddleware>()
-        where TMiddleware : class, IScheduleMiddleware
-    {
-        Services.AddScoped<IScheduleMiddleware, TMiddleware>();
         return this;
     }
 }

@@ -1,4 +1,3 @@
-using InterBus.Extensions;
 using InterBus.Generated;
 using InterBus.Transport;
 using Microsoft.Extensions.DependencyInjection;

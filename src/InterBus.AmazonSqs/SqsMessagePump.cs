@@ -1,7 +1,7 @@
 using Amazon.SQS;
 using Amazon.SQS.Model;
 using InterBus.Consumer;
-using InterBus.Middleware;
+using InterBus.Dispatch;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -226,7 +226,7 @@ internal sealed class SqsMessagePump(
                 ex,
                 "InterBus AmazonSqs: consumer {ConsumerType} failed for queue {QueueName}; message will be redelivered after visibility timeout",
                 descriptor.ConsumerType.Name,
-                descriptor.QueueName);
+                descriptor.Queue);
         }
         finally
         {

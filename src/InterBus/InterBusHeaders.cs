@@ -12,14 +12,14 @@ public static class InterBusHeaders
 
     /// <summary>
     /// Header key for the fully-qualified message type name (e.g. <c>MyApp.OrderPlaced</c>).
-    /// Set automatically by <see cref="IMessagePublisher"/> on every published and sent message.
+    /// Set automatically by <see cref="IPublisher"/> on every published and sent message.
     /// Source-generated consumer dispatch delegates read this header to select the correct
     /// <c>Consume</c> overload without runtime reflection.
     /// </summary>
     public const string MessageType = "interbus-message-type";
 
     /// <summary>
-    /// Header key for the message identifier. Set automatically by <see cref="IMessagePublisher"/>
+    /// Header key for the message identifier. Set automatically by <see cref="IPublisher"/>
     /// on every published and sent message
     /// </summary>
     public const string MessageId = "interbus-message-id";
@@ -30,10 +30,18 @@ public static class InterBusHeaders
     /// redelivered to the queue for later processing. The value is a UTC timestamp in ISO 8601 format
     /// (e.g. <c>2024-06-01T12:00:00Z</c>).
     /// </summary>
-    /// /// <remarks>
+    /// <remarks>
     /// The value is a UTC timestamp in ISO 8601 format (e.g. <c>2024-06-01T12:00:00Z</c>)
     /// </remarks>
     public const string ScheduledDeliveryTime = "interbus-scheduled-delivery-time";
+    
+    /// <summary>
+    /// Header key for the time the message was sent. Set automatically by <see cref="IPublisher"/> on every published and sent message.
+    /// </summary>
+    /// <remarks>
+    /// The value is a UTC timestamp in ISO 8601 format (e.g. <c>2024-06-01T12:00:00Z</c>)
+    /// </remarks>
+    public const string SentTime = "interbus-sent-time";
 
     /// <summary>
     /// Header key indicating the expiration time of a message.

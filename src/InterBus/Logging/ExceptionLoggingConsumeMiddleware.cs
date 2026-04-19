@@ -1,4 +1,4 @@
-using InterBus.Middleware;
+using InterBus.Consumer;
 using Microsoft.Extensions.Logging;
 
 namespace InterBus.Logging;

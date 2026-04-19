@@ -41,7 +41,7 @@ todosApi.MapGet("/{id}", Results<Ok<Todo>, NotFound> (int id) =>
             : TypedResults.NotFound())
     .WithName("GetTodoById");
 
-todosApi.MapPost("/", async Task<Created<Todo>> ([FromServices] IMessagePublisher publisher, Todo todo) =>
+todosApi.MapPost("/", async Task<Created<Todo>> ([FromServices] IPublisher publisher, Todo todo) =>
     {
         sampleTodos.Add(todo);
 
@@ -52,7 +52,7 @@ todosApi.MapPost("/", async Task<Created<Todo>> ([FromServices] IMessagePublishe
     .WithName("CreateTodo");
 
 todosApi.MapPut("/{id}/complete",
-    async Task<Results<Ok, NotFound>> ([FromServices] IMessagePublisher publisher, int id) =>
+    async Task<Results<Ok, NotFound>> ([FromServices] IPublisher publisher, int id) =>
     {
         var todo = sampleTodos.FirstOrDefault(x => x.Id == id);
 

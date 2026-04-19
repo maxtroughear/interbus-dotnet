@@ -16,7 +16,7 @@ public static class EfCoreOutboxBuilderExtensions
         /// shared options, <see cref="OutboxConsumeState"/>, and the background
         /// <see cref="OutboxProcessor{TDbContext}"/>. Does <b>not</b> add the bus-level publish
         /// middleware — call <see cref="EfCoreOutboxBuilderExtensions.UseOutbox{TDbContext}"/>
-        /// to also route <see cref="InterBus.IMessagePublisher"/> calls through the outbox.
+        /// to also route <see cref="IPublisher"/> calls through the outbox.
         /// <para>
         /// Call this method when you only want consumers (not the global bus publisher) to write to
         /// the outbox. Consumers opt in individually via
@@ -58,7 +58,7 @@ public static class EfCoreOutboxBuilderExtensions
         /// Enables the transactional outbox pattern for InterBus using an existing EF Core
         /// <typeparamref name="TDbContext"/> as the outbox store.
         /// <para>
-        /// When enabled, every <see cref="InterBus.IMessagePublisher"/> call writes the message
+        /// When enabled, every <see cref="IPublisher"/> call writes the message
         /// to the outbox table in the caller's <typeparamref name="TDbContext"/> instead of
         /// forwarding it to the transport directly. The message is only sent once the caller
         /// commits its database transaction (i.e. calls

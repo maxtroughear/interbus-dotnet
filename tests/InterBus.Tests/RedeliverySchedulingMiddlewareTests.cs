@@ -1,5 +1,5 @@
 using InterBus.Consumer;
-using InterBus.Middleware;
+using InterBus.Publisher;
 using InterBus.Retry;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
@@ -17,7 +17,7 @@ public sealed class RedeliverySchedulingMiddlewareTests
         BuildContext<TestMessage>(
             new ConsumerDescriptor(
                 typeof(NoOpConsumer),
-                "test-queue",
+                RoutingConventions.QueueUri("queue", "test-queue"),
                 [typeof(TestMessage)],
                 (_, _, _) => Task.CompletedTask),
             headers ?? []);
@@ -27,8 +27,8 @@ public sealed class RedeliverySchedulingMiddlewareTests
 
     private static RedeliverySchedulingConsumeMiddleware CreateMiddleware(
         RedeliveryOptions options,
-        IMessageScheduler scheduler,
-        IMessagePublisher publisher) =>
+        IScheduler scheduler,
+        IPublisher publisher) =>
         new(options, scheduler, publisher, NullLogger<RedeliverySchedulingConsumeMiddleware>.Instance);
 
     #endregion
@@ -201,7 +201,7 @@ public sealed class RedeliverySchedulingMiddlewareTests
             => Task.CompletedTask;
     }
 
-    private sealed class TestPublisher : IMessagePublisher
+    private sealed class TestPublisher : IPublisher
     {
         public List<SentMessage<object>> Sent { get; } = [];
 
@@ -221,20 +221,28 @@ public sealed class RedeliverySchedulingMiddlewareTests
             where TConsumer : IConsumer<T> where T : class
             => Task.CompletedTask;
 
-        public Task SendAsync<T>(string queueName, T message, CancellationToken cancellationToken = default) where T : class
+        public Task SendAsync<T>(string queueName, T message, CancellationToken cancellationToken = default)
+            where T : class
             => Task.CompletedTask;
 
         public Task SendAsync<T>(string queueName, T message, Action<PublishContext<T>> configure,
             CancellationToken cancellationToken = default) where T : class
+            => SendAsync(new Uri("queue://interbus/" + queueName), message, configure, cancellationToken);
+
+        public Task SendAsync<T>(Uri queue, T message, CancellationToken cancellationToken = default) where T : class =>
+            Task.CompletedTask;
+
+        public Task SendAsync<T>(Uri queue, T message, Action<PublishContext<T>> configure,
+            CancellationToken cancellationToken = default) where T : class
         {
-            var ctx = new PublishContext<T>(new Uri("queue://interbus/" + queueName), message, new MessageHeaders());
+            var ctx = new PublishContext<T>(queue, message, new MessageHeaders());
             configure(ctx);
-            Sent.Add(new SentMessage<object>(queueName, message, ctx.Headers));
+            Sent.Add(new SentMessage<object>(RoutingConventions.GetDestinationName(queue), message, ctx.Headers));
             return Task.CompletedTask;
         }
     }
 
-    private sealed class TestScheduler : IMessageScheduler
+    private sealed class TestScheduler : IScheduler
     {
         public List<ScheduledMessage<object>> Scheduled { get; } = [];
 
@@ -245,26 +253,32 @@ public sealed class RedeliverySchedulingMiddlewareTests
             CancellationToken cancellationToken = default) where T : class => Task.CompletedTask;
 
         public Task ScheduleSendAsync<TConsumer, T>(T message, DateTimeOffset scheduledAt,
-            CancellationToken cancellationToken = default) where TConsumer : IConsumer<T> where T : class
-            => Task.CompletedTask;
+            CancellationToken cancellationToken = default) where TConsumer : IConsumer<T> where T : class =>
+            Task.CompletedTask;
 
         public Task ScheduleSendAsync<TConsumer, T>(T message, DateTimeOffset scheduledAt,
             Action<PublishContext<T>> configure,
-            CancellationToken cancellationToken = default) where TConsumer : IConsumer<T> where T : class
-            => Task.CompletedTask;
+            CancellationToken cancellationToken = default) where TConsumer : IConsumer<T> where T : class =>
+            Task.CompletedTask;
 
         public Task ScheduleSendAsync<T>(string queueName, T message, DateTimeOffset scheduledAt,
-            CancellationToken cancellationToken = default) where T : class
-            => Task.CompletedTask;
+            CancellationToken cancellationToken = default) where T : class => Task.CompletedTask;
 
         public Task ScheduleSendAsync<T>(string queueName, T message, DateTimeOffset scheduledAt,
             Action<PublishContext<T>> configure,
+            CancellationToken cancellationToken = default) where T : class =>
+            ScheduleSendAsync(new Uri("queue://interbus/" + queueName), message, scheduledAt, configure,
+                cancellationToken);
+
+
+        public Task ScheduleSendAsync<T>(Uri queue, T message, DateTimeOffset scheduledAt,
+            Action<PublishContext<T>> configure,
             CancellationToken cancellationToken = default) where T : class
         {
-            var context = new PublishContext<T>(
-                new Uri("queue://interbus/" + queueName), message, new MessageHeaders());
+            var context = new PublishContext<T>(queue, message, new MessageHeaders());
             configure(context);
-            Scheduled.Add(new ScheduledMessage<object>(queueName, message, context.Headers, scheduledAt));
+            Scheduled.Add(new ScheduledMessage<object>(RoutingConventions.GetDestinationName(queue), message,
+                context.Headers, scheduledAt));
             return Task.CompletedTask;
         }
     }

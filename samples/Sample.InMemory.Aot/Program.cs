@@ -26,7 +26,7 @@ await host.StartAsync();
 
 using (var scope = host.Services.CreateScope())
 {
-    var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
+    var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
 
     var message = new GreetingMessage("Hello from Native AOT!");
     Console.WriteLine($"[Publisher] Publishing: {message.Text}");
@@ -43,7 +43,7 @@ public record GreetingMessage(string Text);
 
 public record FarewellMessage(string Text);
 
-public class GreetingConsumer(IMessagePublisher publisher) : IConsumer<GreetingMessage>
+public class GreetingConsumer(IPublisher publisher) : IConsumer<GreetingMessage>
 {
     public async Task Consume(GreetingMessage message, IConsumeContext context,
         CancellationToken cancellationToken = default)

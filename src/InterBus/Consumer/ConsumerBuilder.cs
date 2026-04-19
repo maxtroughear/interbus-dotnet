@@ -1,5 +1,6 @@
 using System.Diagnostics.CodeAnalysis;
-using InterBus.Middleware;
+using InterBus.Publisher;
+using InterBus.Send;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace InterBus.Consumer;
@@ -47,16 +48,6 @@ internal sealed class ConsumerBuilder(ConsumerDescriptor descriptor, IServiceCol
         where TMiddleware : class, IPublishMiddleware
     {
         services.AddKeyedScoped<IPublishMiddleware, TMiddleware>(descriptor.ConsumerType);
-        return this;
-    }
-
-    /// <inheritdoc/>
-    public IConsumerBuilder UseScheduleMiddleware<
-        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
-        TMiddleware>()
-        where TMiddleware : class, IScheduleMiddleware
-    {
-        services.AddKeyedScoped<IScheduleMiddleware, TMiddleware>(descriptor.ConsumerType);
         return this;
     }
 }

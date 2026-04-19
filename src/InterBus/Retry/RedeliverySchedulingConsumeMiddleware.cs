@@ -1,5 +1,5 @@
 using System.Globalization;
-using InterBus.Middleware;
+using InterBus.Consumer;
 using Microsoft.Extensions.Logging;
 
 namespace InterBus.Retry;
@@ -15,8 +15,8 @@ namespace InterBus.Retry;
 /// </remarks>
 public sealed class RedeliverySchedulingConsumeMiddleware(
     RedeliveryOptions options,
-    IMessageScheduler scheduler,
-    IMessagePublisher publisher,
+    IScheduler scheduler,
+    IPublisher publisher,
     ILogger<RedeliverySchedulingConsumeMiddleware> logger) : IConsumeMiddleware
 {
     /// <summary>
@@ -46,7 +46,7 @@ public sealed class RedeliverySchedulingConsumeMiddleware(
                 nextAttempt,
                 options.RetryCount,
                 context.Descriptor.ConsumerType.Name,
-                context.Descriptor.QueueName);
+                context.Descriptor.Queue);
 
             var delay = options.DelayProvider(nextAttempt);
 
@@ -62,7 +62,7 @@ public sealed class RedeliverySchedulingConsumeMiddleware(
             if (delay > TimeSpan.Zero)
             {
                 await scheduler.ScheduleSendAsync(
-                    context.Descriptor.QueueName,
+                    context.Descriptor.Queue,
                     context.Message,
                     delay,
                     ctx =>
@@ -75,7 +75,7 @@ public sealed class RedeliverySchedulingConsumeMiddleware(
             else
             {
                 await publisher.SendAsync(
-                    context.Descriptor.QueueName,
+                    context.Descriptor.Queue,
                     context.Message,
                     ctx =>
                     {

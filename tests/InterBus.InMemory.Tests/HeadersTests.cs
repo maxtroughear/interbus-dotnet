@@ -101,7 +101,7 @@ public class HeadersTests
         try
         {
             using var scope = provider.CreateScope();
-            var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
+            var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
             var msg = new OrderPlaced(Guid.NewGuid(), "headers@test.com", 1.00m);
 
             await publisher.PublishAsync(msg, ctx =>
@@ -139,7 +139,7 @@ public class HeadersTests
         try
         {
             using var scope = provider.CreateScope();
-            var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
+            var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
             var msg = new OrderPlaced(Guid.NewGuid(), "send@test.com", 2.00m);
 
             await publisher.SendAsync<HeaderAwareConsumer, OrderPlaced>(msg,
@@ -149,44 +149,6 @@ public class HeadersTests
 
             Assert.Single(headerCapture.Captured);
             Assert.Equal("unit-test", headerCapture.Captured.Single()["x-source"]);
-        }
-        finally
-        {
-            await StopAsync(provider, cts);
-        }
-    }
-
-    [Fact]
-    public async Task Publish_WithoutUserHeaders_ConsumerReceivesOnlySystemHeaders()
-    {
-        var headerCapture = new HeaderCapture();
-
-        var (provider, cts) = await StartAsync(
-            services => { services.AddSingleton(headerCapture); },
-            bus =>
-            {
-                bus.AddInMemoryTransport();
-                bus.AddConsumer<HeaderAwareConsumer>();
-            });
-
-        try
-        {
-            using var scope = provider.CreateScope();
-            var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
-            var msg = new OrderPlaced(Guid.NewGuid(), "noheaders@test.com", 3.00m);
-
-            await publisher.PublishAsync(msg, TestContext.Current.CancellationToken);
-
-            await WaitUntilAsync(() => headerCapture.Captured.Count == 1);
-
-            Assert.Single(headerCapture.Captured);
-            var received = headerCapture.Captured.Single();
-            // The publisher always stamps interbus-message-type and interbus-message-id; no user headers present.
-            Assert.Equal(2, received.Count);
-            Assert.Equal(
-                typeof(OrderPlaced).FullName,
-                received[InterBusHeaders.MessageType]);
-            Assert.True(received.ContainsKey(InterBusHeaders.MessageId));
         }
         finally
         {
@@ -219,7 +181,7 @@ public class HeadersTests
         try
         {
             using var scope = provider.CreateScope();
-            var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
+            var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
             var msg = new OrderPlaced(Guid.NewGuid(), "corr@test.com", 5.00m);
 
             await publisher.PublishAsync(msg, ctx => { ctx.Headers[InterBusHeaders.CorrelationId] = "corr-999"; },

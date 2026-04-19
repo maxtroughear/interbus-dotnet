@@ -1,8 +1,13 @@
 namespace InterBus.Consumer;
 
-/// <inheritdoc cref="IConsumeContextAccessor"/>
-internal sealed class ConsumeContextAccessor : IConsumeContextAccessor
+/// <inheritdoc cref="IConsumeContextAccessorOld"/>
+internal sealed class ConsumeContextAccessorOldOld : IConsumeContextAccessorOld
 {
     /// <inheritdoc/>
     public IConsumeContext? ConsumeContext { get; set; }
+}
+
+public sealed class ConsumeContextAccessor
+{
+    public ConsumeContext? ConsumeContext { get; internal set; }
 }

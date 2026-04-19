@@ -1,4 +1,4 @@
-using InterBus.Middleware;
+using InterBus.Dispatch;
 
 namespace InterBus.Consumer;
 
@@ -14,7 +14,7 @@ namespace InterBus.Consumer;
 /// </summary>
 public sealed class ConsumerDescriptor(
     Type consumerType,
-    string queueName,
+    Uri queue,
     IReadOnlyList<Type> messageTypes,
     Func<DispatchContext, IServiceProvider, CancellationToken, Task> dispatch)
 {
@@ -22,10 +22,12 @@ public sealed class ConsumerDescriptor(
     public Type ConsumerType { get; } = consumerType;
 
     /// <summary>
-    /// The queue name for this consumer (derived from the consumer type by convention).
+    /// The queue for this consumer (derived from the consumer type by convention).
     /// Each consumer class has exactly one queue.
     /// </summary>
-    public string QueueName { get; } = queueName;
+    public Uri Queue { get; } = queue;
+    
+    public string QueueName => RoutingConventions.GetDestinationName(Queue);
 
     /// <summary>
     /// The message types this consumer handles
@@ -38,7 +40,7 @@ public sealed class ConsumerDescriptor(
     /// and invokes the correct <c>Consume</c> overload on the consumer. If the message type is
     /// not handled by this consumer it logs an error and returns without throwing.
     /// </summary>
-    public Func<DispatchContext, IServiceProvider, CancellationToken, Task> Dispatch { get; } = dispatch;
+    internal Func<DispatchContext, IServiceProvider, CancellationToken, Task> Dispatch { get; } = dispatch;
 
     /// <summary>
     /// The number of concurrent message handlers for this consumer's queue.
@@ -47,4 +49,9 @@ public sealed class ConsumerDescriptor(
     /// Defaults to <c>1</c> (sequential dispatch).
     /// </summary>
     public int ConcurrencyCount { get; internal set; } = 1;
+    
+    /// <summary>
+    /// 
+    /// </summary>
+    public TimeSpan? Timeout { get; internal set; }
 }

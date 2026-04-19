@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
 using InterBus.Extensions;
 using InterBus.InMemory.Extensions;
+using InterBus.Scheduler.Extensions;
 using InterBus.TickerQ.Extensions;
 using Microsoft.Extensions.DependencyInjection;
 using TickerQ.DependencyInjection;
@@ -135,8 +136,7 @@ public sealed class TickerQSchedulerTests
         services.AddInterBus(bus =>
         {
             bus.AddInMemoryTransport();
-            bus.AddScheduling();
-            bus.AddTickerQScheduler();
+            bus.AddScheduling(builder => builder.Directly().AddTickerQScheduler());
         });
         services.AddTickerQ(options => options.DisableBackgroundServices());
 
@@ -155,14 +155,13 @@ public sealed class TickerQSchedulerTests
         services.AddInterBus(bus =>
         {
             bus.AddInMemoryTransport();
-            bus.AddScheduling();
-            bus.AddTickerQScheduler();
+            bus.AddScheduling(builder => builder.Directly().AddTickerQScheduler());
         });
         services.AddTickerQ(options => options.DisableBackgroundServices());
 
         var provider = services.BuildServiceProvider();
         using var scope = provider.CreateScope();
-        var publisher = scope.ServiceProvider.GetService<IMessageScheduler>();
+        var publisher = scope.ServiceProvider.GetService<IScheduler>();
 
         Assert.NotNull(publisher);
     }

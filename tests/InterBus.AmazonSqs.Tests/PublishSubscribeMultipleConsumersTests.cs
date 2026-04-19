@@ -56,8 +56,8 @@ public class PublishSubscribeMultipleConsumersTests
         services.AddSingleton(_auditTracker);
 
         AWSOptions awsOptions = TestHelpers.CreateAwsOptions(Container);
-        services.AddAWSService<Amazon.SimpleNotificationService.IAmazonSimpleNotificationService>(awsOptions);
-        services.AddAWSService<Amazon.SQS.IAmazonSQS>(awsOptions);
+        services.AddAWSService<IAmazonSimpleNotificationService>(awsOptions);
+        services.AddAWSService<IAmazonSQS>(awsOptions);
         services.AddAWSService<Amazon.SecurityToken.IAmazonSecurityTokenService>(awsOptions);
 
         services.AddInterBus(bus =>
@@ -102,7 +102,7 @@ public class PublishSubscribeMultipleConsumersTests
     public async Task Publish_MultipleConsumers_BothReceiveMessage()
     {
         using var scope = _provider.CreateScope();
-        var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
+        var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
         var msg = new OrderPlaced(Guid.NewGuid(), "fan@example.com", 150.00m);
         await publisher.PublishAsync(msg, TestContext.CurrentContext.CancellationToken);
 

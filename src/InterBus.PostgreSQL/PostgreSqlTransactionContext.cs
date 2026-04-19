@@ -11,15 +11,9 @@ namespace InterBus.PostgreSQL;
 /// </summary>
 internal static class PostgreSqlTransactionContext
 {
-    private static readonly AsyncLocal<NpgsqlTransaction?> _current = new();
-
     /// <summary>
     /// The ambient transaction for the current message dispatch, or <c>null</c> if the
     /// message pump is not in transactional mode or no dispatch is currently active.
     /// </summary>
-    internal static NpgsqlTransaction? Current
-    {
-        get => _current.Value;
-        set => _current.Value = value;
-    }
+    internal static readonly AsyncLocal<NpgsqlTransaction?> Current = new();
 }

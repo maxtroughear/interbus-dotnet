@@ -1,5 +1,4 @@
 using InterBus.Consumer;
-using InterBus.Middleware;
 
 namespace InterBus.Tests;
 

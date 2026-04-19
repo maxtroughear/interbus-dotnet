@@ -89,11 +89,11 @@ public sealed class SnsTransport(
             ct);
     }
 
-    internal static Dictionary<string, Amazon.SimpleNotificationService.Model.MessageAttributeValue>
+    private static Dictionary<string, MessageAttributeValue>
         BuildSnsMessageAttributes(MessageHeaders headers)
     {
         var result =
-            new Dictionary<string, Amazon.SimpleNotificationService.Model.MessageAttributeValue>(
+            new Dictionary<string, MessageAttributeValue>(
                 CoreAttributeHeaders.Count,
                 StringComparer.Ordinal);
 
@@ -103,7 +103,7 @@ public sealed class SnsTransport(
                 continue;
 
             result[kv.Key] =
-                new Amazon.SimpleNotificationService.Model.MessageAttributeValue
+                new MessageAttributeValue
                 {
                     DataType = "String",
                     StringValue = kv.Value,

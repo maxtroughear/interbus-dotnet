@@ -1,3 +1,4 @@
+using InterBus.Extensions;
 using InterBus.Serialization;
 
 namespace InterBus;
@@ -9,7 +10,7 @@ namespace InterBus;
 /// <remarks>
 /// The default implementation is <see cref="SystemTextJsonMessageSerializer"/>, which
 /// uses <see cref="System.Text.Json.JsonSerializer"/>. Register a custom implementation
-/// via <see cref="InterBusOptions.Serializer"/> before calling <c>AddConsumers()</c>.
+/// via <see cref="InterBusBuilderExtensions.UseSystemTextJsonSerializer"/> before calling <c>AddConsumers()</c>.
 /// </remarks>
 public interface IMessageSerializer
 {

@@ -73,7 +73,7 @@ public class PublishSubscribeMultipleConsumersTests(string imageTag)
     public async Task Publish_MultipleConsumers_AllReceiveMessage()
     {
         using var scope = _provider.CreateScope();
-        var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
+        var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
         var msg = new OrderPlaced(Guid.NewGuid(), "fan@out.test", 50m);
         await publisher.PublishAsync(msg, TestContext.CurrentContext.CancellationToken);
 
@@ -92,7 +92,7 @@ public class PublishSubscribeMultipleConsumersTests(string imageTag)
     public async Task Send_DirectToQueue_OnlyTargetConsumerReceives()
     {
         using var scope = _provider.CreateScope();
-        var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
+        var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
         var msg = new OrderPlaced(Guid.NewGuid(), "direct@send.test", 25m);
 
         await publisher.SendAsync<OrderPlacedConsumer, OrderPlaced>(msg, TestContext.CurrentContext.CancellationToken);

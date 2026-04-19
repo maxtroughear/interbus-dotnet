@@ -62,27 +62,11 @@ public static class SnsSqsTransportBuilderExtensions
 
         builder.Options.SetTransportUriSchemes(SnsTransport.TopicScheme, SqsTransport.QueueScheme);
         builder.Services.AddSingleton(options);
-
-        // Client provider holds name-sanitisation logic and caches ARNs/URLs (singleton).
-        // IAmazonSQS and IAmazonSimpleNotificationService must be registered by the caller.
         builder.Services.AddSingleton<SnsSqsTopology>();
-
-        // Topology setup is a singleton responsible for declaring SNS topics, SQS queues,
-        // and subscriptions at startup. Separating this from the message pump keeps each
-        // class focused on a single concern.
         builder.Services.AddSingleton<SnsSqsTopologySetup>();
-
-        // SnsTransport handles snstopic:// sends (SNS fan-out publishes).
-        // SqsTransport handles sqsqueue:// sends (direct SQS point-to-point).
-        // Both are scoped, consistent with the RabbitMQ transport pattern.
-        builder.Services.AddScoped<SnsTransport>();
-        builder.Services.AddScoped<SqsTransport>();
-
-        // Keyed registrations for transport factory scheme-based resolution.
-        builder.Services.AddKeyedScoped<IInterBusTransport>(SnsTransport.TopicScheme,
-            (sp, _) => sp.GetRequiredService<SnsTransport>());
-        builder.Services.AddKeyedScoped<IInterBusTransport>(SqsTransport.QueueScheme,
-            (sp, _) => sp.GetRequiredService<SqsTransport>());
+        
+        builder.Services.AddKeyedScoped<IInterBusTransport, SnsTransport>(SnsTransport.TopicScheme);
+        builder.Services.AddKeyedScoped<IInterBusTransport, SqsTransport>(SqsTransport.QueueScheme);
 
         // Message pump runs as a background service.
         builder.Services.AddHostedService<SqsMessagePump>();

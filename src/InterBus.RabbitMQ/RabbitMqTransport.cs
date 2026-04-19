@@ -24,9 +24,8 @@ namespace InterBus.RabbitMQ;
 /// lifetime.
 /// </para>
 /// <para>
-/// Publisher confirms are enabled on the channel so that every
-/// <see cref="BasicPublishAsync"/> call waits for a broker acknowledgement before returning,
-/// preventing silent message loss.
+/// Publisher confirms are enabled on the channel so that every publish call waits for a broker
+/// acknowledgement before returning, preventing silent message loss.
 /// </para>
 /// <para>
 /// Topology (exchanges and queues) is declared at most once per application lifetime, tracked
@@ -97,12 +96,6 @@ public sealed class RabbitMqTransport : IInterBusTransport, IAsyncDisposable
         }
     }
 
-    /// <summary>
-    /// Declares the exchange at most once per application lifetime (tracked in the singleton
-    /// <see cref="RabbitMqConnectionProvider.DeclaredTopology"/>), then publishes the message.
-    /// If the channel is closed by the broker (e.g., the exchange was deleted), removes the
-    /// tracking entry, reopens the channel, redeclares, and retries the publish once.
-    /// </summary>
     private async Task PublishToExchangeAsync(
         IChannel channel,
         string exchangeName,
@@ -139,12 +132,6 @@ public sealed class RabbitMqTransport : IInterBusTransport, IAsyncDisposable
         }
     }
 
-    /// <summary>
-    /// Declares the queue at most once per application lifetime (tracked in the singleton
-    /// <see cref="RabbitMqConnectionProvider.DeclaredTopology"/>), then publishes the message.
-    /// If the channel is closed by the broker (e.g., the queue was deleted), removes the
-    /// tracking entry, reopens the channel, redeclares, and retries the publish once.
-    /// </summary>
     private async Task PublishToQueueAsync(
         IChannel channel,
         string queueName,
@@ -181,11 +168,6 @@ public sealed class RabbitMqTransport : IInterBusTransport, IAsyncDisposable
         }
     }
 
-    /// <summary>
-    /// Declares <paramref name="exchangeName"/> on the broker if not already recorded in the
-    /// application-lifetime <see cref="RabbitMqConnectionProvider.DeclaredTopology"/> set.
-    /// Idempotent: safe to call even if the exchange already exists on the broker.
-    /// </summary>
     private async Task EnsureExchangeDeclaredAsync(IChannel channel, string exchangeName, CancellationToken ct)
     {
         if (!_connectionProvider.DeclaredTopology.TryAdd(exchangeName, true))
@@ -201,11 +183,6 @@ public sealed class RabbitMqTransport : IInterBusTransport, IAsyncDisposable
             cancellationToken: ct);
     }
 
-    /// <summary>
-    /// Declares <paramref name="queueName"/> on the broker if not already recorded in the
-    /// application-lifetime <see cref="RabbitMqConnectionProvider.DeclaredTopology"/> set.
-    /// Idempotent: safe to call even if the queue already exists on the broker.
-    /// </summary>
     private async Task EnsureQueueDeclaredAsync(IChannel channel, string queueName, CancellationToken ct)
     {
         if (!_connectionProvider.DeclaredTopology.TryAdd(queueName, true))
@@ -221,12 +198,6 @@ public sealed class RabbitMqTransport : IInterBusTransport, IAsyncDisposable
             cancellationToken: ct);
     }
 
-    /// <summary>
-    /// Returns the publish channel, creating it on first call within this scope.
-    /// No locking is needed because each scope is used sequentially.
-    /// Publisher confirms are enabled so every <see cref="BasicPublishAsync"/> waits for
-    /// a broker acknowledgement.
-    /// </summary>
     private async Task<IChannel> EnsureChannelAsync(CancellationToken cancellationToken)
     {
         if (_publishChannel is { IsOpen: true })
@@ -243,7 +214,7 @@ public sealed class RabbitMqTransport : IInterBusTransport, IAsyncDisposable
         return _publishChannel;
     }
 
-    internal static Dictionary<string, object?> BuildAmqpHeaders(MessageHeaders headers)
+    private static Dictionary<string, object?> BuildAmqpHeaders(MessageHeaders headers)
     {
         var result = new Dictionary<string, object?>(headers.Count, StringComparer.Ordinal);
         foreach (var kv in headers)
@@ -254,19 +225,19 @@ public sealed class RabbitMqTransport : IInterBusTransport, IAsyncDisposable
     internal static MessageHeaders ParseAmqpHeaders(IDictionary<string, object?>? amqpHeaders)
     {
         var dict = new Dictionary<string, string>(StringComparer.Ordinal);
-        if (amqpHeaders is not null)
+
+        if (amqpHeaders is null) return new MessageHeaders(dict);
+
+        foreach (var kv in amqpHeaders)
         {
-            foreach (var kv in amqpHeaders)
+            var value = kv.Value switch
             {
-                string? value = kv.Value switch
-                {
-                    byte[] bytes => System.Text.Encoding.UTF8.GetString(bytes),
-                    string str => str,
-                    _ => kv.Value?.ToString(),
-                };
-                if (value is not null)
-                    dict[kv.Key] = value;
-            }
+                byte[] bytes => System.Text.Encoding.UTF8.GetString(bytes),
+                string str => str,
+                _ => kv.Value?.ToString(),
+            };
+            if (value is not null)
+                dict[kv.Key] = value;
         }
 
         return new MessageHeaders(dict);

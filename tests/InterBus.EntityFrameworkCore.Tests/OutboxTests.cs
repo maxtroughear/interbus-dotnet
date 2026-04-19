@@ -1,9 +1,9 @@
 using System.Collections.Concurrent;
+using InterBus.Consumer;
 using InterBus.EntityFrameworkCore.Extensions;
 using InterBus.Extensions;
 using InterBus.Generated;
 using InterBus.InMemory.Extensions;
-using InterBus.Middleware;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -43,12 +43,12 @@ public sealed class OrderPlacedConsumer(OrderPlacedTracker tracker) : IConsumer<
 /// Consumer that publishes <see cref="OrderShipped"/> to the outbox when it receives
 /// <see cref="OrderPlaced"/>. Saves the DbContext explicitly so the outbox row is committed.
 /// </summary>
-public sealed class OrderPlacedPublishingConsumer(TestDbContext dbContext) : IConsumer<OrderPlaced>
+public sealed class OrderPlacedPublishingConsumer(TestDbContext dbContext, IPublisher publisher) : IConsumer<OrderPlaced>
 {
     public async Task Consume(OrderPlaced message, IConsumeContext context,
         CancellationToken cancellationToken = default)
     {
-        await context.PublishAsync(new OrderShipped(message.OrderId), cancellationToken);
+        await publisher.PublishAsync(new OrderShipped(message.OrderId), cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
     }
 }
@@ -164,7 +164,7 @@ public class OutboxTests
         try
         {
             await using var scope = provider.CreateAsyncScope();
-            var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
+            var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
             var dbContext = scope.ServiceProvider.GetRequiredService<TestDbContext>();
 
             var msg = new OrderPlaced(Guid.NewGuid(), "test@example.com", 42m);
@@ -214,7 +214,7 @@ public class OutboxTests
         {
             await using (var scope = provider.CreateAsyncScope())
             {
-                var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
+                var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
                 var dbContext = scope.ServiceProvider.GetRequiredService<TestDbContext>();
 
                 var msg = new OrderPlaced(Guid.NewGuid(), "deliver@example.com", 99m);
@@ -256,7 +256,7 @@ public class OutboxTests
 
             await using (var scope = provider.CreateAsyncScope())
             {
-                var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
+                var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
                 var dbContext = scope.ServiceProvider.GetRequiredService<TestDbContext>();
 
                 for (var i = 0; i < count; i++)
@@ -302,7 +302,7 @@ public class OutboxTests
         {
             await using (var scope = provider.CreateAsyncScope())
             {
-                var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
+                var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
                 var dbContext = scope.ServiceProvider.GetRequiredService<TestDbContext>();
 
                 await publisher.PublishAsync(
@@ -353,7 +353,7 @@ public class OutboxTests
         try
         {
             await using var scope = provider.CreateAsyncScope();
-            var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
+            var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
             var dbContext = scope.ServiceProvider.GetRequiredService<TestDbContext>();
 
             var delay = TimeSpan.FromMinutes(5);
@@ -592,7 +592,7 @@ public class OutboxTests
     }
 
     /// <summary>
-    /// Non-consumer publish calls (via <see cref="IMessagePublisher"/>) have
+    /// Non-consumer publish calls (via <see cref="IPublisher"/>) have
     /// <c>VisibleAt</c> set to <c>UtcNow</c> (immediately eligible), even when
     /// <see cref="OutboxOptions.ConsumerVisibilityTimeout"/> is configured.
     /// </summary>
@@ -610,7 +610,7 @@ public class OutboxTests
         try
         {
             await using var scope = provider.CreateAsyncScope();
-            var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
+            var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
             var dbContext = scope.ServiceProvider.GetRequiredService<TestDbContext>();
 
             await publisher.PublishAsync(

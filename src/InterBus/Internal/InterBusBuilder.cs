@@ -1,7 +1,9 @@
 using System.Diagnostics.CodeAnalysis;
 using InterBus.Consumer;
+using InterBus.Dispatch;
 using InterBus.Logging;
-using InterBus.Middleware;
+using InterBus.Publisher;
+using InterBus.Send;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
@@ -37,17 +39,8 @@ internal sealed class InterBusBuilder : IInterBusBuilder
         Type[] messageTypes,
         Func<DispatchContext, IServiceProvider, CancellationToken, Task> dispatch)
         where TConsumer : class, IConsumer =>
-        AddConsumer<TConsumer>(messageTypes, RoutingConventions.QueueName(typeof(TConsumer)), dispatch, null);
-
-    /// <inheritdoc/>
-    public IInterBusBuilder AddConsumer<
-        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
-        TConsumer>(
-        Type[] messageTypes,
-        Func<DispatchContext, IServiceProvider, CancellationToken, Task> dispatch,
-        Action<IConsumerBuilder>? configure)
-        where TConsumer : class, IConsumer =>
-        AddConsumer<TConsumer>(messageTypes, RoutingConventions.QueueName(typeof(TConsumer)), dispatch, configure);
+        AddConsumer<TConsumer>(messageTypes, RoutingConventions.QueueUri(Options.QueueUriScheme, typeof(TConsumer)),
+            dispatch, null);
 
     /// <inheritdoc/>
     /// <remarks>
@@ -59,22 +52,22 @@ internal sealed class InterBusBuilder : IInterBusBuilder
         [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
         TConsumer>(
         Type[] messageTypes,
-        string queueName,
-        Func<DispatchContext, IServiceProvider, CancellationToken, Task> dispatch)
+        Func<DispatchContext, IServiceProvider, CancellationToken, Task> dispatch,
+        Action<IConsumerBuilder>? configure)
         where TConsumer : class, IConsumer =>
-        AddConsumer<TConsumer>(messageTypes, queueName, dispatch, null);
-
+        AddConsumer<TConsumer>(messageTypes, RoutingConventions.QueueUri(Options.QueueUriScheme, typeof(TConsumer)), dispatch, configure);
+    
     /// <inheritdoc/>
     public IInterBusBuilder AddConsumer<
         [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
         TConsumer>(
         Type[] messageTypes,
-        string queueName,
+        Uri queue,
         Func<DispatchContext, IServiceProvider, CancellationToken, Task> dispatch,
         Action<IConsumerBuilder>? configure)
         where TConsumer : class, IConsumer
     {
-        var descriptor = new ConsumerDescriptor(typeof(TConsumer), queueName, messageTypes, dispatch);
+        var descriptor = new ConsumerDescriptor(typeof(TConsumer), queue, messageTypes, dispatch);
         var consumerBuilder = new ConsumerBuilder(descriptor, Services);
 
         consumerBuilder.UseConsumeMiddleware<ExceptionLoggingConsumeMiddleware>();
@@ -115,16 +108,6 @@ internal sealed class InterBusBuilder : IInterBusBuilder
     {
         // Keyed to bus
         Services.AddKeyedScoped<ISendMiddleware, TMiddleware>(InterBusConstants.BusContext);
-        return this;
-    }
-
-    /// <inheritdoc/>
-    public IInterBusBuilder UseScheduleMiddleware<
-        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
-        TMiddleware>()
-        where TMiddleware : class, IScheduleMiddleware
-    {
-        Services.AddScoped<IScheduleMiddleware, TMiddleware>();
         return this;
     }
 }

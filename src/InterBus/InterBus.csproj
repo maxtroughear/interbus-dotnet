@@ -12,6 +12,9 @@
         <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.*"/>
         <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.*"/>
     </ItemGroup>
+    <ItemGroup>
+        <ProjectReference Include="..\InterBus.SourceGenerator\InterBus.SourceGenerator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false"/>
+    </ItemGroup>
     <Target Name="CopyAnalyzer" AfterTargets="Build">
         <MakeDir Directories="$(OutputPath)analyzers/dotnet/cs"/>
     </Target>

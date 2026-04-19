@@ -102,7 +102,7 @@ public class OutboxPostgreSqlIntegrationTests(string imageTag)
     public async Task Publish_StoresOutboxRowsInDatabase()
     {
         await using var scope = _provider.CreateAsyncScope();
-        var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
+        var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
         var dbContext = scope.ServiceProvider.GetRequiredService<TestDbContext>();
 
         var msg = new OrderPlaced(Guid.NewGuid(), "pg-store@example.com", 10m);
@@ -126,7 +126,7 @@ public class OutboxPostgreSqlIntegrationTests(string imageTag)
     {
         await using (var scope = _provider.CreateAsyncScope())
         {
-            var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
+            var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
             var dbContext = scope.ServiceProvider.GetRequiredService<TestDbContext>();
 
             await publisher.PublishAsync(
@@ -169,7 +169,7 @@ public class OutboxPostgreSqlIntegrationTests(string imageTag)
 
         await using (var scope = _provider.CreateAsyncScope())
         {
-            var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
+            var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
             var dbContext = scope.ServiceProvider.GetRequiredService<TestDbContext>();
 
             for (var i = 0; i < count; i++)
@@ -199,7 +199,7 @@ public class OutboxPostgreSqlIntegrationTests(string imageTag)
         // First group
         await using (var scope = _provider.CreateAsyncScope())
         {
-            var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
+            var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
             var dbContext = scope.ServiceProvider.GetRequiredService<TestDbContext>();
 
             await publisher.PublishAsync(
@@ -211,7 +211,7 @@ public class OutboxPostgreSqlIntegrationTests(string imageTag)
         // Second group
         await using (var scope = _provider.CreateAsyncScope())
         {
-            var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
+            var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
             var dbContext = scope.ServiceProvider.GetRequiredService<TestDbContext>();
 
             await publisher.PublishAsync(

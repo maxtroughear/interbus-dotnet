@@ -59,8 +59,8 @@ public class ConcurrencyTests
         services.AddSingleton(_orderTracker);
 
         var awsOptions = TestHelpers.CreateAwsOptions(Container);
-        services.AddAWSService<Amazon.SimpleNotificationService.IAmazonSimpleNotificationService>(awsOptions);
-        services.AddAWSService<Amazon.SQS.IAmazonSQS>(awsOptions);
+        services.AddAWSService<IAmazonSimpleNotificationService>(awsOptions);
+        services.AddAWSService<IAmazonSQS>(awsOptions);
         services.AddAWSService<Amazon.SecurityToken.IAmazonSecurityTokenService>(awsOptions);
 
         services.AddInterBus(bus =>
@@ -128,7 +128,7 @@ public class ConcurrencyTests
             {
                 var batchStopwatch = Stopwatch.StartNew();
                 await using var scope = _provider.CreateAsyncScope();
-                var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
+                var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
 
                 foreach (var message in batch)
                 {

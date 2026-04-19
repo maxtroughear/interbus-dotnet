@@ -1,5 +1,6 @@
 using InterBus.Extensions;
-using InterBus.Middleware;
+using InterBus.Scheduler;
+using InterBus.Scheduler.Extensions;
 using InterBus.Transport;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
@@ -165,14 +166,14 @@ public sealed class ScheduleMiddlewareTests
             bus.Services.AddSingleton<IInterBusTransport, NoOpTransport>();
             bus.Services.AddSingleton<IMessageSchedulingProvider>(schedulingProvider);
             bus.Services.AddScoped<IScheduleMiddleware>(_ => middleware);
-            bus.AddScheduling();
+            bus.AddScheduling(builder => builder.Directly());
         });
 
         var provider = services.BuildServiceProvider();
         using var scope = provider.CreateScope();
-        var scheduler = scope.ServiceProvider.GetRequiredService<IMessageScheduler>();
+        var scheduler = scope.ServiceProvider.GetRequiredService<IScheduler>();
 
-        await scheduler.SchedulePublishAsync(new TestMessage(Guid.NewGuid()), DateTimeOffset.UtcNow.AddMinutes(5),
+        await scheduler.SchedulePublishAsync(new TestMessage(), DateTimeOffset.UtcNow.AddMinutes(5),
             TestContext.Current.CancellationToken);
 
         // Middleware should NOT have been invoked at schedule time
@@ -191,15 +192,15 @@ public sealed class ScheduleMiddlewareTests
         {
             bus.Services.AddSingleton<IInterBusTransport, NoOpTransport>();
             bus.Services.AddSingleton<IMessageSchedulingProvider>(schedulingProvider);
-            bus.AddScheduling();
+            bus.AddScheduling(builder => builder.Directly());
         });
 
         var provider = services.BuildServiceProvider();
         using var scope = provider.CreateScope();
-        var scheduler = scope.ServiceProvider.GetRequiredService<IMessageScheduler>();
+        var scheduler = scope.ServiceProvider.GetRequiredService<IScheduler>();
         var scheduledAt = DateTimeOffset.UtcNow.AddMinutes(5);
 
-        await scheduler.SchedulePublishAsync(new TestMessage(Guid.NewGuid()), scheduledAt,
+        await scheduler.SchedulePublishAsync(new TestMessage(), scheduledAt,
             TestContext.Current.CancellationToken);
 
         var call = Assert.Single(schedulingProvider.Calls);
@@ -213,7 +214,7 @@ public sealed class ScheduleMiddlewareTests
 
     #region Support types
 
-    private sealed record TestMessage(Guid Id);
+    private sealed record TestMessage;
 
     private sealed class NoOpTransport : IInterBusTransport
     {

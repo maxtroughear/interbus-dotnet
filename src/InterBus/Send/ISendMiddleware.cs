@@ -1,4 +1,6 @@
-namespace InterBus.Middleware;
+using InterBus.Middleware;
+
+namespace InterBus.Send;
 
 public interface ISendMiddleware : IMiddleware
 {

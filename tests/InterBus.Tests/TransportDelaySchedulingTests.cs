@@ -1,5 +1,7 @@
 using InterBus.Extensions;
-using InterBus.Middleware;
+using InterBus.Publisher;
+using InterBus.Scheduler;
+using InterBus.Scheduler.Extensions;
 using InterBus.Transport;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
@@ -14,7 +16,7 @@ public sealed class TransportDelaySchedulingTests
 {
     #region Helpers
 
-    private static (IMessageScheduler Scheduler, RecordingTransport Transport) BuildScheduler(
+    private static (IScheduler Scheduler, RecordingTransport Transport) BuildScheduler(
         Action<IInterBusBuilder>? configureBus = null)
     {
         var transport = new RecordingTransport();
@@ -24,37 +26,14 @@ public sealed class TransportDelaySchedulingTests
         {
             bus.Services.AddKeyedSingleton<IInterBusTransport>("topic", transport);
             bus.Services.AddKeyedSingleton<IInterBusTransport>("queue", transport);
-            bus.AddScheduling();
-            bus.AddTransportDelayScheduler();
+            bus.AddScheduling(builder => builder.OnTransport());
             configureBus?.Invoke(bus);
         });
 
         var provider = services.BuildServiceProvider();
-        using var scope = provider.CreateScope();
-        var scheduler = scope.ServiceProvider.GetRequiredService<IMessageScheduler>();
+        var scope = provider.CreateScope();
+        var scheduler = scope.ServiceProvider.GetRequiredService<IScheduler>();
         return (scheduler, transport);
-    }
-
-    #endregion
-
-    #region Registration
-
-    [Fact]
-    public void AddTransportDelayScheduler_RegistersIMessageSchedulingProvider()
-    {
-        var services = new ServiceCollection();
-        services.AddLogging();
-        services.AddInterBus(bus =>
-        {
-            bus.Services.AddSingleton<IInterBusTransport, NoOpTransport>();
-            bus.AddTransportDelayScheduler();
-        });
-
-        var provider = services.BuildServiceProvider();
-        using var scope = provider.CreateScope();
-        var schedulingProvider = scope.ServiceProvider.GetService<IMessageSchedulingProvider>();
-
-        Assert.NotNull(schedulingProvider);
     }
 
     #endregion
@@ -70,20 +49,18 @@ public sealed class TransportDelaySchedulingTests
         services.AddInterBus(bus =>
         {
             bus.Services.AddKeyedSingleton<IInterBusTransport>("queue", transport);
-            bus.AddTransportDelayScheduler();
+            bus.AddScheduling(builder => builder.OnTransport());
         });
 
         var provider = services.BuildServiceProvider();
         using var scope = provider.CreateScope();
-        var schedulingProvider = scope.ServiceProvider.GetRequiredService<IMessageSchedulingProvider>();
+        var schedulingProvider = scope.ServiceProvider.GetRequiredService<IMessageScheduler>();
 
         var delay = TimeSpan.FromMinutes(5);
         var scheduledAt = DateTimeOffset.UtcNow + delay;
 
-        await schedulingProvider.ScheduleAsync(
-            new Uri("queue://interbus/my-queue"),
-            [1, 2, 3],
-            new MessageHeaders(),
+        await schedulingProvider.ScheduleInternalAsync(
+            new PublishContext<string>(new Uri("queue://interbus/my-queue"), "payload", new MessageHeaders()),
             scheduledAt,
             TestContext.Current.CancellationToken);
 
@@ -102,19 +79,17 @@ public sealed class TransportDelaySchedulingTests
         services.AddInterBus(bus =>
         {
             bus.Services.AddKeyedSingleton<IInterBusTransport>("queue", transport);
-            bus.AddTransportDelayScheduler();
+            bus.AddScheduling(builder => builder.OnTransport());
         });
 
         var provider = services.BuildServiceProvider();
         using var scope = provider.CreateScope();
-        var schedulingProvider = scope.ServiceProvider.GetRequiredService<IMessageSchedulingProvider>();
+        var schedulingProvider = scope.ServiceProvider.GetRequiredService<IMessageScheduler>();
 
         var scheduledAt = DateTimeOffset.UtcNow.AddMinutes(-10); // already in the past
 
-        await schedulingProvider.ScheduleAsync(
-            new Uri("queue://interbus/my-queue"),
-            [1, 2, 3],
-            new MessageHeaders(),
+        await schedulingProvider.ScheduleInternalAsync(
+            new PublishContext<string>(new Uri("queue://interbus/my-queue"), "payload", new MessageHeaders()),
             scheduledAt,
             TestContext.Current.CancellationToken);
 
@@ -132,7 +107,7 @@ public sealed class TransportDelaySchedulingTests
         var (scheduler, transport) = BuildScheduler();
         var scheduledAt = DateTimeOffset.UtcNow.AddMinutes(10);
 
-        await scheduler.SchedulePublishAsync(new TestMessage(Guid.NewGuid()), scheduledAt,
+        await scheduler.SchedulePublishAsync(new TestMessage(), scheduledAt,
             TestContext.Current.CancellationToken);
 
         var sent = Assert.Single(transport.Sent);
@@ -148,7 +123,7 @@ public sealed class TransportDelaySchedulingTests
         var scheduledAt = DateTimeOffset.UtcNow.AddSeconds(30);
 
         await scheduler.ScheduleSendAsync<TestConsumer, TestMessage>(
-            new TestMessage(Guid.NewGuid()), scheduledAt, TestContext.Current.CancellationToken);
+            new TestMessage(), scheduledAt, TestContext.Current.CancellationToken);
 
         var sent = Assert.Single(transport.Sent);
         Assert.Equal("queue", sent.Destination.Scheme);
@@ -162,7 +137,7 @@ public sealed class TransportDelaySchedulingTests
         var (scheduler, transport) = BuildScheduler();
         var scheduledAt = DateTimeOffset.UtcNow.AddHours(1);
 
-        await scheduler.ScheduleSendAsync("my-queue", new TestMessage(Guid.NewGuid()), scheduledAt,
+        await scheduler.ScheduleSendAsync("my-queue", new TestMessage(), scheduledAt,
             TestContext.Current.CancellationToken);
 
         var sent = Assert.Single(transport.Sent);
@@ -218,7 +193,7 @@ public sealed class TransportDelaySchedulingTests
 
     #region Support types
 
-    private sealed record TestMessage(Guid Id);
+    private sealed record TestMessage;
 
     private sealed class TestConsumer : IConsumer<TestMessage>
     {

@@ -1,6 +1,6 @@
 using Azure.Messaging.ServiceBus;
 using InterBus.Consumer;
-using InterBus.Middleware;
+using InterBus.Dispatch;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -127,7 +127,7 @@ internal sealed class AzureServiceBusMessagePump(
         foreach (var descriptor in busOptions.Consumers)
         {
             var consumerQueueName = AzureServiceBusNaming.SanitizeEntityName(
-                options.QueuePrefix + descriptor.QueueName);
+                options.QueuePrefix + descriptor.Queue);
 
             var concurrency = Math.Max(1, descriptor.ConcurrencyCount);
             var processorOptions = new ServiceBusProcessorOptions
@@ -175,7 +175,7 @@ internal sealed class AzureServiceBusMessagePump(
                 ex,
                 "InterBus AzureServiceBus: consumer {ConsumerType} failed for queue {QueueName}; abandoning message for redelivery",
                 descriptor.ConsumerType.Name,
-                descriptor.QueueName);
+                descriptor.Queue);
 
             await args.AbandonMessageAsync(args.Message, cancellationToken: CancellationToken.None);
         }

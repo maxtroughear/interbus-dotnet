@@ -1,9 +1,11 @@
 using System.Diagnostics.CodeAnalysis;
 using InterBus.Consumer;
+using InterBus.Dispatch;
 using InterBus.Internal;
 using InterBus.Middleware;
 using InterBus.Middleware.Internal;
 using InterBus.Publisher;
+using InterBus.Send;
 using InterBus.Serialization;
 using InterBus.Transport;
 using Microsoft.Extensions.DependencyInjection;
@@ -52,19 +54,17 @@ public static class ServiceCollectionExtensions
         services.TryAddSingleton<IMessageSerializer, SystemTextJsonMessageSerializer>();
 
         services.AddScoped<IMiddlewareFactory, MiddlewareFactory>();
-        services.AddScoped<IConsumeContextAccessor, ConsumeContextAccessor>();
+        services.AddScoped<IConsumeContextAccessorOld, ConsumeContextAccessorOldOld>();
+        services.AddScoped<ConsumeContextAccessor>();
 
         services.AddScoped<DispatchPipelineExecutor>();
         services.AddScoped<ConsumePipelineExecutor>();
-        services.AddScoped<SchedulePipelineExecutor>();
+        services.AddScoped<PublishPipelineExecutor>();
         services.AddScoped<SendPipelineExecutor>();
 
         // Register the transport factory and the scoped publisher.
         services.AddSingleton<IInterBusTransportFactory, InterBusTransportFactory>();
-        services.AddScoped<IMessagePublisher, BusMessagePublisher>();
-
-        // Register final steps in middleware pipelines
-        builder.UsePublishMiddleware<PublishToSendPipeline>();
+        services.AddScoped<IPublisher, Publisher.Publisher>();
 
         return services;
     }

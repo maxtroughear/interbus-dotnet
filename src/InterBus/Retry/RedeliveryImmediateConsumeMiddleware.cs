@@ -1,12 +1,12 @@
 using System.Globalization;
-using InterBus.Middleware;
+using InterBus.Consumer;
 using Microsoft.Extensions.Logging;
 
 namespace InterBus.Retry;
 
 public sealed class RedeliveryImmediateConsumeMiddleware(
     RedeliveryOptions options,
-    IMessagePublisher publisher,
+    IPublisher publisher,
     ILogger<RedeliveryImmediateConsumeMiddleware> logger) : IConsumeMiddleware
 {
     public const string RetryCountHeader = "interbus-redelivery-immediate-retry-count";
@@ -30,7 +30,7 @@ public sealed class RedeliveryImmediateConsumeMiddleware(
                 nextAttempt,
                 options.RetryCount,
                 context.Descriptor.ConsumerType.Name,
-                context.Descriptor.QueueName);
+                context.Descriptor.Queue);
 
             var redeliveryHeaders = new MessageHeaders(context.Headers)
             {
@@ -38,7 +38,7 @@ public sealed class RedeliveryImmediateConsumeMiddleware(
             };
 
             await publisher.SendAsync(
-                context.Descriptor.QueueName,
+                context.Descriptor.Queue,
                 context.Message,
                 ctx =>
                 {

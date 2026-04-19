@@ -1,5 +1,6 @@
 using System.Text.Json;
-using InterBus.Middleware;
+using InterBus.Consumer;
+using InterBus.Publisher;
 using Microsoft.EntityFrameworkCore;
 
 namespace InterBus.EntityFrameworkCore.Internal;
@@ -9,7 +10,7 @@ namespace InterBus.EntityFrameworkCore.Internal;
 /// forwarding it to the transport directly. The message is only sent once the caller commits its
 /// database transaction, guaranteeing atomicity with any surrounding business-logic writes.
 /// <para>
-/// <b>Bus context</b> (message published via <see cref="InterBus.IMessagePublisher"/>):
+/// <b>Bus context</b> (message published via <see cref="IPublisher"/>):
 /// the message is written to the outbox table with <see cref="OutboxGroup.VisibleAt"/> set to
 /// <c>UtcNow</c> (immediately eligible) and will be forwarded by the
 /// <see cref="OutboxProcessor{TDbContext}"/> background service once the caller commits.
@@ -34,7 +35,7 @@ internal sealed class OutboxPublishMiddleware<TDbContext>(
     TDbContext dbContext,
     IMessageSerializer serializer,
     OutboxOptions options,
-    IConsumeContextAccessor contextAccessor,
+    ConsumeContextAccessor contextAccessor,
     OutboxConsumeState consumeState)
     : IPublishMiddleware
     where TDbContext : DbContext

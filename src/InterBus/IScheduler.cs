@@ -1,4 +1,4 @@
-using InterBus.Middleware;
+using InterBus.Publisher;
 
 namespace InterBus;
 
@@ -8,7 +8,7 @@ namespace InterBus;
 /// Requires an <see cref="IMessageSchedulingProvider"/> to be registered in DI
 /// (e.g. via the <c>InterBus.TickerQ</c> package).
 /// </summary>
-public interface IMessageScheduler
+public interface IScheduler
 {
     /// <summary>
     /// Schedule a message to be published to the topic for <typeparamref name="T"/> at the
@@ -103,6 +103,13 @@ public interface IMessageScheduler
         CancellationToken cancellationToken = default) where T : class;
 
     /// <summary>
+    /// Schedule a message of type <typeparamref name="T"/> to be sent to a queue at the specified
+    /// absolute UTC time <paramref name="scheduledAt"/>
+    /// </summary>
+    Task ScheduleSendAsync<T>(Uri queue, T message, DateTimeOffset scheduledAt, Action<PublishContext<T>> configure,
+        CancellationToken cancellationToken = default) where T : class;
+
+    /// <summary>
     /// Schedule a message to be sent directly to the named <paramref name="queueName"/> after
     /// the specified <paramref name="delay"/>.
     /// </summary>
@@ -119,4 +126,14 @@ public interface IMessageScheduler
     Task ScheduleSendAsync<T>(string queueName, T message, TimeSpan delay, Action<PublishContext<T>> configure,
         CancellationToken cancellationToken = default) where T : class =>
         ScheduleSendAsync(queueName, message, DateTimeOffset.UtcNow + delay, configure, cancellationToken);
+    
+    /// <summary>
+    /// Schedule a message to be sent directly to the <paramref name="queue"/> after
+    /// the specified <paramref name="delay"/>, applying the supplied <paramref name="configure"/>
+    /// delegate to the <see cref="PublishContext{T}"/> before scheduling.
+    /// Use the delegate to set headers (via <see cref="PublishContext{T}.Headers"/>).
+    /// </summary>
+    Task ScheduleSendAsync<T>(Uri queue, T message, TimeSpan delay, Action<PublishContext<T>> configure,
+        CancellationToken cancellationToken = default) where T : class =>
+        ScheduleSendAsync(queue, message, DateTimeOffset.UtcNow + delay, configure, cancellationToken);
 }

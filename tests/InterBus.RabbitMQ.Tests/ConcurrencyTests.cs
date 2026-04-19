@@ -94,7 +94,7 @@ public class ConcurrencyTests(string imageTag)
             {
                 var batchStopwatch = Stopwatch.StartNew();
                 await using var scope = _provider.CreateAsyncScope();
-                var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
+                var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
 
                 foreach (var message in batch)
                 {

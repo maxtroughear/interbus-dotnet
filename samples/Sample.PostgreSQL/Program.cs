@@ -41,7 +41,7 @@ await host.StartAsync();
 // Resolve the publisher and send a message
 using (var scope = host.Services.CreateScope())
 {
-    var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
+    var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
 
     var message = new GreetingMessage("Hello from PostgreSQL Transport!");
     Console.WriteLine($"[Publisher] Publishing message: {message.Text}");

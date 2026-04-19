@@ -71,7 +71,7 @@ public class TopicConfigurationTests
         {
             // Act: publish using the same configured topic name (resolved from options).
             using var scope = provider.CreateScope();
-            var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
+            var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
             var msg = new OrderPlaced(Guid.NewGuid(), "custom@topic.test", 10m);
             await publisher.PublishAsync(msg, TestContext.Current.CancellationToken);
 
@@ -110,7 +110,7 @@ public class TopicConfigurationTests
         try
         {
             using var scope = provider.CreateScope();
-            var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
+            var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
             var msg = new OrderPlaced(Guid.NewGuid(), "fanout@custom.test", 20m);
             await publisher.PublishAsync(msg, TestContext.Current.CancellationToken);
 
@@ -148,7 +148,7 @@ public class TopicConfigurationTests
         try
         {
             using var scope = provider.CreateScope();
-            var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
+            var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
             var msg = new OrderPlaced(Guid.NewGuid(), "send@resolve.test", 30m);
 
             // Send directly to OrderPlacedConsumer - queue is resolved from the registered descriptor.
@@ -194,10 +194,10 @@ public class TopicConfigurationTests
             // the name once at startup and passes it as a string).
             var queueName = capturedOptions!.Consumers
                 .Single(c => c.ConsumerType == typeof(OrderPlacedConsumer))
-                .QueueName;
+                .Queue;
 
             using var scope = provider.CreateScope();
-            var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
+            var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
             var msg = new OrderPlaced(Guid.NewGuid(), "queue@name.test", 40m);
 
             await publisher.SendAsync(queueName, msg, TestContext.Current.CancellationToken);
@@ -240,10 +240,10 @@ public class TopicConfigurationTests
         {
             var queueName = capturedOptions!.Consumers
                 .Single(c => c.ConsumerType == typeof(OrderPlacedConsumer))
-                .QueueName;
+                .Queue;
 
             using var scope = provider.CreateScope();
-            var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
+            var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
             var msg = new OrderPlaced(Guid.NewGuid(), "hdr@queue.test", 5m);
 
             await publisher.SendAsync(queueName, msg, ctx => ctx.Headers["x-source"] = "cross-project",

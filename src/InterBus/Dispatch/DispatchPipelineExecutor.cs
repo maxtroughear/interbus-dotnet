@@ -1,4 +1,4 @@
-namespace InterBus.Middleware;
+namespace InterBus.Dispatch;
 
 public sealed class DispatchPipelineExecutor(
     IEnumerable<IDispatchMiddleware> middlewares,

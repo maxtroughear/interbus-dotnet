@@ -3,9 +3,8 @@ namespace InterBus.InMemory;
 /// <summary>
 /// Publish-Subscribe Channel. Fans out every published payload to all registered subscriber queues.
 /// </summary>
-internal sealed class InMemoryTopic(string name)
+internal sealed class InMemoryTopic
 {
-    private readonly string _name = name;
     private readonly List<InMemoryQueue> _subscribers = [];
 
     /// <summary>Subscribe a queue to this topic. Called at startup.</summary>

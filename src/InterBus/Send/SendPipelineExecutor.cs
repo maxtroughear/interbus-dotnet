@@ -1,6 +1,7 @@
+using InterBus.Middleware;
 using InterBus.Transport;
 
-namespace InterBus.Middleware;
+namespace InterBus.Send;
 
 public sealed class SendPipelineExecutor(
     IInterBusTransportFactory transportFactory,
@@ -10,11 +11,11 @@ public sealed class SendPipelineExecutor(
     /// Builds and runs the send pipeline for the given <paramref name="context"/>,
     /// forwarding to the correct <see cref="IInterBusTransport"/> as the terminal step.
     /// </summary>
-    public Task ExecuteAsync(SendContext context, CancellationToken cancellationToken = default)
+    public Task ExecuteAsync(SendContext context, Type? key = null, CancellationToken cancellationToken = default)
     {
-        var pipeline = TerminalDeliverDelegate;
+        var pipeline = DeliverDelegate;
 
-        var middlewares = middlewareFactory.Resolve<ISendMiddleware>();
+        var middlewares = middlewareFactory.Resolve<ISendMiddleware>(key);
         foreach (var middleware in middlewares)
         {
             var next = pipeline;
@@ -23,7 +24,7 @@ public sealed class SendPipelineExecutor(
 
         return pipeline(context, cancellationToken);
 
-        Task TerminalDeliverDelegate(SendContext ctx, CancellationToken ct)
+        Task DeliverDelegate(SendContext ctx, CancellationToken ct)
         {
             var transport = transportFactory.Resolve(ctx.Destination);
             var sendContext = new TransportSendContext(ctx.Destination, ctx.Payload, ctx.Headers, ctx.Delay);

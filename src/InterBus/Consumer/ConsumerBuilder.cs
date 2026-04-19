@@ -1,5 +1,7 @@
 using System.Diagnostics.CodeAnalysis;
-using InterBus.Middleware;
+using InterBus.Publisher;
+using InterBus.Scheduler;
+using InterBus.Send;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace InterBus.Consumer;

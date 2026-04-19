@@ -1,6 +1,6 @@
 using System.Text.Json;
 using InterBus.Consumer;
-using InterBus.Middleware;
+using InterBus.Generated;
 using InterBus.Scheduler;
 using InterBus.Serialization;
 using InterBus.Transport;
@@ -17,94 +17,19 @@ public static class InterBusBuilderExtensions
     {
         /// <summary>
         /// Register the InterBus scheduling infrastructure. This enables injecting
-        /// <see cref="IMessageScheduler"/> to schedule messages for deferred delivery.
+        /// <see cref="IScheduler"/> to schedule messages for deferred delivery.
         /// <para>
         /// A concrete <see cref="IMessageSchedulingProvider"/> must also be registered (e.g. via
         /// <c>AddTickerQScheduler()</c>) to supply the underlying delivery mechanism.
         /// </para>
         /// </summary>
-        public IInterBusBuilder AddScheduling()
+        public IInterBusBuilder AddScheduling(Action<ISchedulerBuilder> configure)
         {
             ArgumentNullException.ThrowIfNull(builder);
-            builder.Services.AddScoped<IMessageScheduler, MessageScheduler>();
-            builder.Services.AddSingleton<IConsumerSchedulerFactory, DirectConsumerSchedulerFactory>();
-            return builder;
-        }
-
-        /// <summary>
-        /// Register a publish-based <see cref="IMessageScheduler"/> that schedules messages by
-        /// publishing a concrete command message to the bus. The command is consumed by a
-        /// <see cref="SchedulingConsumer"/> (registered via <see cref="AddSchedulingConsumer"/>),
-        /// which enlists the registered <see cref="IMessageSchedulingProvider"/> to perform the
-        /// actual deferred delivery.
-        /// <para>
-        /// Use <see cref="AddSchedulingConsumer"/> in the same application or in a dedicated
-        /// consumer service to process the scheduling commands.
-        /// </para>
-        /// </summary>
-        public IInterBusBuilder AddPublishScheduling()
-        {
-            ArgumentNullException.ThrowIfNull(builder);
-            builder.Services.AddScoped<IMessageScheduler, PublishMessageScheduler>();
-            builder.Services.AddSingleton<IConsumerSchedulerFactory, PublishConsumerSchedulerFactory>();
-            return builder;
-        }
-
-        /// <summary>
-        /// Register the <see cref="SchedulingConsumer"/> that processes scheduling command messages
-        /// published by <see cref="AddPublishScheduling"/> and enlists the registered
-        /// <see cref="IMessageSchedulingProvider"/> to perform the actual deferred delivery.
-        /// <para>
-        /// Requires an <see cref="IMessageSchedulingProvider"/> to be registered in DI
-        /// (e.g. via <c>AddTickerQScheduler()</c>).
-        /// </para>
-        /// </summary>
-        public IInterBusBuilder AddSchedulingConsumer()
-        {
-            ArgumentNullException.ThrowIfNull(builder);
-
-            var deliveryCommandTypeName = typeof(ScheduleDeliveryCommand).FullName
-                                          ?? nameof(ScheduleDeliveryCommand);
-
-            builder.AddConsumer<SchedulingConsumer>(
-                [typeof(ScheduleDeliveryCommand)],
-                (ctx, sp, ct) =>
-                {
-                    var consumer = sp.GetRequiredService<SchedulingConsumer>();
-                    var serializer = sp.GetRequiredService<IMessageSerializer>();
-                    var consumePipeline = sp.GetRequiredService<ConsumePipelineExecutor>();
-                    var messageType = ctx.Headers[InterBusHeaders.MessageType];
-
-                    if (messageType != deliveryCommandTypeName)
-                        return Task.CompletedTask;
-
-                    var cmd = serializer.Deserialize<ScheduleDeliveryCommand>(ctx.Payload)!;
-                    var consumeContext = new ConsumeContext<ScheduleDeliveryCommand>(ctx.Descriptor, cmd, ctx.Headers);
-                    return consumePipeline.ExecuteAsync(consumeContext, consumer.Consume, ct);
-                });
-
-            return builder;
-        }
-
-        /// <summary>
-        /// Register the transport-delay scheduling provider. Scheduled messages are delivered
-        /// immediately via the configured transport with a <see cref="TransportSendContext.Delay"/>
-        /// equal to the requested deferral duration. Transports that support deferred visibility
-        /// (e.g. PostgreSQL <c>visible_at</c>) will honour the delay; transports that do not will
-        /// deliver the message immediately.
-        /// <para>
-        /// This provider requires no additional dependencies beyond the configured transport and
-        /// is suitable for environments where a dedicated scheduler (e.g. TickerQ) is not available.
-        /// </para>
-        /// <para>
-        /// Call <c>bus.AddScheduling()</c> before calling this method to register the
-        /// <see cref="IMessageScheduler"/> infrastructure.
-        /// </para>
-        /// </summary>
-        public IInterBusBuilder AddTransportDelayScheduler()
-        {
-            ArgumentNullException.ThrowIfNull(builder);
-            builder.Services.AddScoped<IMessageSchedulingProvider, TransportDelaySchedulingProvider>();
+            builder.Services.AddScoped<IScheduler, Scheduler.Scheduler>();
+            
+            configure(new SchedulerBuilder(builder, builder.Services));
+            
             return builder;
         }
 

@@ -1,13 +1,15 @@
-using InterBus.Middleware;
+using InterBus.Consumer;
 
 namespace InterBus.Publisher;
 
 /// <summary>
-/// Base class for <see cref="IMessagePublisher"/> implementations. Handles destination
-/// resolution, header stamping, and pipeline invocation. Subclasses provide the
-/// specific publish pipeline by implementing <see cref="BuildPublishPipeline{TMessage}"/>.
+/// Base class for <see cref="IPublisher"/> implementations. Handles destination
+/// resolution, header stamping, and pipeline invocation
 /// </summary>
-internal abstract class MessagePublisherBase(InterBusOptions options) : IMessagePublisher
+internal class Publisher(
+    InterBusOptions options,
+    ConsumeContextAccessor contextAccessor,
+    PublishPipelineExecutor pipelineExecutor) : IPublisher
 {
     public Task PublishAsync<T>(T message, CancellationToken cancellationToken = default) where T : class =>
         PublishAsync(message, _ => { }, cancellationToken);
@@ -23,7 +25,7 @@ internal abstract class MessagePublisherBase(InterBusOptions options) : IMessage
         var context = new PublishContext<T>(destination, message, Stamp<T>());
         configure(context);
 
-        return BuildPublishPipeline<T>()(context, cancellationToken);
+        return pipelineExecutor.ExecuteAsync(context, cancellationToken);
     }
 
     public Task SendAsync<TConsumer, T>(T message, CancellationToken cancellationToken = default)
@@ -40,7 +42,7 @@ internal abstract class MessagePublisherBase(InterBusOptions options) : IMessage
         var context = new PublishContext<T>(destination, message, Stamp<T>());
         configure(context);
 
-        return BuildPublishPipeline<T>()(context, cancellationToken);
+        return pipelineExecutor.ExecuteAsync(context, cancellationToken);
     }
 
     public Task SendAsync<T>(string queueName, T message, CancellationToken cancellationToken = default)
@@ -49,13 +51,21 @@ internal abstract class MessagePublisherBase(InterBusOptions options) : IMessage
 
     public Task SendAsync<T>(string queueName, T message, Action<PublishContext<T>> configure,
         CancellationToken cancellationToken = default)
+        where T : class =>
+        SendAsync(RoutingConventions.QueueUri(options.QueueUriScheme, queueName), message, configure,
+            cancellationToken);
+
+    public Task SendAsync<T>(Uri queue, T message, CancellationToken cancellationToken = default) where T : class =>
+        SendAsync(queue, message, _ => { }, cancellationToken);
+
+    public Task SendAsync<T>(Uri queue, T message, Action<PublishContext<T>> configure,
+        CancellationToken cancellationToken = default)
         where T : class
     {
-        var destination = RoutingConventions.QueueUri(options.QueueUriScheme, queueName);
-        var context = new PublishContext<T>(destination, message, Stamp<T>());
+        var context = new PublishContext<T>(queue, message, Stamp<T>());
         configure(context);
 
-        return BuildPublishPipeline<T>()(context, cancellationToken);
+        return pipelineExecutor.ExecuteAsync(context, cancellationToken);
     }
 
     /// <summary>
@@ -64,18 +74,24 @@ internal abstract class MessagePublisherBase(InterBusOptions options) : IMessage
     /// new <see cref="InterBusHeaders.MessageId"/> set to a V7 <see cref="Guid"/>.
     /// Subclasses may override this method to stamp additional headers.
     /// </summary>
-    protected virtual MessageHeaders Stamp<T>() where T : class =>
-        new()
+    private MessageHeaders Stamp<T>() where T : class
+    {
+        var headers = new MessageHeaders
         {
             [InterBusHeaders.MessageType] = typeof(T).FullName ?? typeof(T).Name,
-            [InterBusHeaders.MessageId] = Guid.CreateVersion7().ToString()
+            [InterBusHeaders.MessageId] = Guid.CreateVersion7().ToString(),
+            [InterBusHeaders.CorrelationId] = Guid.CreateVersion7().ToString(),
+            [InterBusHeaders.SentTime] = DateTimeOffset.UtcNow.ToString("O"),
         };
 
-    /// <summary>
-    /// Builds the publish pipeline to invoke for a message of type <typeparamref name="TMessage"/>.
-    /// The returned delegate is the outermost step of the pipeline, which ultimately delivers
-    /// the message to the transport.
-    /// </summary>
-    protected abstract Func<PublishContext<TMessage>, CancellationToken, Task>
-        BuildPublishPipeline<TMessage>() where TMessage : class;
+        var consumeHeaders = contextAccessor.ConsumeContext?.Headers;
+
+        if (consumeHeaders?.TryGetValue(InterBusHeaders.CorrelationId, out var correlationId) == true)
+            headers[InterBusHeaders.CorrelationId] = correlationId;
+
+        if (consumeHeaders?.TryGetValue(InterBusHeaders.MessageId, out var messageId) == true)
+            headers[InterBusHeaders.CausationId] = messageId;
+
+        return headers;
+    }
 }

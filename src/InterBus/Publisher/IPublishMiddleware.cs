@@ -1,9 +1,11 @@
-namespace InterBus.Middleware;
+using InterBus.Middleware;
+
+namespace InterBus.Publisher;
 
 /// <summary>
 /// A step in the publish middleware pipeline.
 /// Implementations are resolved from the DI container for each
-/// <see cref="IMessagePublisher"/> scope and executed in registration order
+/// <see cref="IPublisher"/> scope and executed in registration order
 /// (first registered = outermost).
 /// </summary>
 /// <remarks>

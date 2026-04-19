@@ -1,19 +1,17 @@
-using InterBus.Middleware;
+using InterBus.Consumer;
+using InterBus.Publisher;
 
 namespace InterBus.Scheduler;
 
 /// <summary>
-/// Base class for <see cref="IMessageScheduler"/> implementations. Handles destination
+/// Base class for <see cref="IScheduler"/> implementations. Handles destination
 /// resolution, header stamping, and <see cref="PublishContext{T}"/> construction.
 /// Subclasses provide the specific delivery step by implementing
-/// <see cref="ScheduleInternalAsync{T}"/>.
+/// <see cref="IMessageScheduler.ScheduleInternalAsync{T}"/>.
 /// </summary>
-internal abstract class MessageSchedulerBase(InterBusOptions options, IMessageSerializer serializer)
-    : IMessageScheduler
+internal class Scheduler(InterBusOptions options, IMessageScheduler messageScheduler, ConsumeContextAccessor contextAccessor)
+    : IScheduler
 {
-    /// <summary>The serializer used to produce the wire payload.</summary>
-    protected IMessageSerializer Serializer { get; } = serializer;
-
     public Task SchedulePublishAsync<T>(T message, DateTimeOffset scheduledAt,
         CancellationToken cancellationToken = default) where T : class =>
         SchedulePublishAsync(message, scheduledAt, _ => { }, cancellationToken);
@@ -25,9 +23,9 @@ internal abstract class MessageSchedulerBase(InterBusOptions options, IMessageSe
             ? customName
             : RoutingConventions.TopicName(typeof(T));
         var destination = RoutingConventions.TopicUri(options.TopicUriScheme, topicName);
-        var context = new PublishContext<T>(destination, message, Stamp<T>());
+        var context = new PublishContext<T>(destination, message, Stamp<T>(scheduledAt));
         configure(context);
-        return ScheduleInternalAsync(context, scheduledAt, cancellationToken);
+        return messageScheduler.ScheduleInternalAsync(context, scheduledAt, cancellationToken);
     }
 
     public Task ScheduleSendAsync<TConsumer, T>(T message, DateTimeOffset scheduledAt,
@@ -40,13 +38,9 @@ internal abstract class MessageSchedulerBase(InterBusOptions options, IMessageSe
         Action<PublishContext<T>> configure,
         CancellationToken cancellationToken = default)
         where TConsumer : IConsumer<T>
-        where T : class
-    {
-        var destination = RoutingConventions.QueueUri(options.QueueUriScheme, typeof(TConsumer));
-        var context = new PublishContext<T>(destination, message, Stamp<T>());
-        configure(context);
-        return ScheduleInternalAsync(context, scheduledAt, cancellationToken);
-    }
+        where T : class =>
+        ScheduleSendAsync(RoutingConventions.QueueUri(options.QueueUriScheme, typeof(TConsumer)), message, scheduledAt,
+            configure, cancellationToken);
 
     public Task ScheduleSendAsync<T>(string queueName, T message, DateTimeOffset scheduledAt,
         CancellationToken cancellationToken = default) where T : class =>
@@ -54,12 +48,17 @@ internal abstract class MessageSchedulerBase(InterBusOptions options, IMessageSe
 
     public Task ScheduleSendAsync<T>(string queueName, T message, DateTimeOffset scheduledAt,
         Action<PublishContext<T>> configure,
+        CancellationToken cancellationToken = default) where T : class =>
+        ScheduleSendAsync(RoutingConventions.QueueUri(options.QueueUriScheme, queueName), message, scheduledAt,
+            configure, cancellationToken);
+
+    public Task ScheduleSendAsync<T>(Uri queue, T message, DateTimeOffset scheduledAt,
+        Action<PublishContext<T>> configure,
         CancellationToken cancellationToken = default) where T : class
     {
-        var destination = RoutingConventions.QueueUri(options.QueueUriScheme, queueName);
-        var context = new PublishContext<T>(destination, message, Stamp<T>());
+        var context = new PublishContext<T>(queue, message, Stamp<T>(scheduledAt));
         configure(context);
-        return ScheduleInternalAsync(context, scheduledAt, cancellationToken);
+        return messageScheduler.ScheduleInternalAsync(context, scheduledAt, cancellationToken);
     }
 
     /// <summary>
@@ -68,20 +67,25 @@ internal abstract class MessageSchedulerBase(InterBusOptions options, IMessageSe
     /// <see cref="InterBusHeaders.MessageId"/> set to a V7 <see cref="Guid"/>.
     /// Subclasses may override to stamp additional headers.
     /// </summary>
-    protected virtual MessageHeaders Stamp<T>() where T : class =>
-        new()
+    private MessageHeaders Stamp<T>(DateTimeOffset scheduledAt) where T : class
+    {
+        var headers = new MessageHeaders
         {
             [InterBusHeaders.MessageType] = typeof(T).FullName ?? typeof(T).Name,
-            [InterBusHeaders.MessageId] = Guid.CreateVersion7().ToString()
+            [InterBusHeaders.MessageId] = Guid.CreateVersion7().ToString(),
+            [InterBusHeaders.CorrelationId] = Guid.CreateVersion7().ToString(),
+            [InterBusHeaders.SentTime] = DateTimeOffset.UtcNow.ToString("O"),
+            [InterBusHeaders.ScheduledDeliveryTime] = scheduledAt.ToString("O")
         };
+        
+        var consumeHeaders = contextAccessor.ConsumeContext?.Headers;
 
-    /// <summary>
-    /// Performs the delivery-specific scheduling step for the given fully-configured
-    /// <paramref name="context"/>.
-    /// </summary>
-    protected abstract Task ScheduleInternalAsync<T>(
-        PublishContext<T> context,
-        DateTimeOffset scheduledAt,
-        CancellationToken cancellationToken)
-        where T : class;
+        if (consumeHeaders?.TryGetValue(InterBusHeaders.CorrelationId, out var correlationId) == true)
+            headers[InterBusHeaders.CorrelationId] = correlationId;
+
+        if (consumeHeaders?.TryGetValue(InterBusHeaders.MessageId, out var messageId) == true)
+            headers[InterBusHeaders.CausationId] = messageId;
+        
+        return headers;
+    }
 }

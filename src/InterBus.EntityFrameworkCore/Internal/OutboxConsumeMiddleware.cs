@@ -1,5 +1,6 @@
 using System.Text.Json;
-using InterBus.Middleware;
+using InterBus.Consumer;
+using InterBus.Send;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -69,7 +70,7 @@ internal sealed partial class OutboxConsumeMiddleware<TDbContext>(
                 var destination = new Uri(msg.Destination);
                 var headers = DeserializeHeaders(msg.HeadersJson);
                 var sendContext = new SendContext(destination, msg.Payload, headers, msg.Delay);
-                await pipeline.ExecuteAsync(sendContext, cancellationToken);
+                await pipeline.ExecuteAsync(sendContext, cancellationToken: cancellationToken);
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)

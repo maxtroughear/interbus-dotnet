@@ -43,7 +43,7 @@ public sealed class InMemoryBroker : IInterBusTransport, IDisposable
 
                 if (!_topics.TryGetValue(topicName, out var topic))
                 {
-                    topic = new InMemoryTopic(topicName);
+                    topic = new InMemoryTopic();
                     _topics[topicName] = topic;
                 }
 

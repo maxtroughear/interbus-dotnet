@@ -75,7 +75,7 @@ public class ProducerOnlyTopologyTests
     public async Task Publish_NoConsumers_TopicIsEnsured()
     {
         using var scope = _provider.CreateScope();
-        var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
+        var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
 
         var msg = new OrderPlaced(Guid.NewGuid(), "publish-only@test.com", 42m);
         await publisher.PublishAsync(msg, TestContext.CurrentContext.CancellationToken);
@@ -95,7 +95,7 @@ public class ProducerOnlyTopologyTests
     public async Task Send_NoConsumers_QueueIsEnsuredAndReceivesMessage()
     {
         using var scope = _provider.CreateScope();
-        var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
+        var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
 
         const string rawQueueName = "direct-no-consumer";
         var expectedQueueName = _queuePrefix + rawQueueName;

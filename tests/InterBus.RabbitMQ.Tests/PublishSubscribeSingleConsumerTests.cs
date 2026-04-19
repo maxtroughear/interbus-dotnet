@@ -65,7 +65,7 @@ public class PublishSubscribeSingleConsumerTests(string imageTag)
     public async Task Publish_SingleConsumer_MessageIsDelivered()
     {
         using var scope = _provider.CreateScope();
-        var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
+        var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
         var msg = new OrderPlaced(Guid.NewGuid(), "test@example.com", 99.99m);
         await publisher.PublishAsync(msg, TestContext.CurrentContext.CancellationToken);
 

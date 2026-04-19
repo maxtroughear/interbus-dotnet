@@ -51,7 +51,7 @@ public class TransactionalPumpTests(string imageTag)
             });
 
         using var scope = host.CreateScope();
-        var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
+        var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
         var msg = new OrderPlaced(Guid.NewGuid(), "tx@test.com", 10m);
         await publisher.PublishAsync(msg, TestContext.CurrentContext.CancellationToken);
 
@@ -83,7 +83,7 @@ public class TransactionalPumpTests(string imageTag)
             bus => bus.AddConsumer<TransactionalFailingConsumer>());
 
         using var scope = host.CreateScope();
-        var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
+        var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
         var msg = new OrderPlaced(Guid.NewGuid(), "tx-retry@test.com", 20m);
         await publisher.PublishAsync(msg, TestContext.CurrentContext.CancellationToken);
 
@@ -112,7 +112,7 @@ public class TransactionalPumpTests(string imageTag)
             bus => bus.AddConsumer<TransactionAccessConsumer>());
 
         using var scope = host.CreateScope();
-        var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
+        var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
         await publisher.PublishAsync(new OrderPlaced(Guid.NewGuid(), "tx-access@test.com", 5m),
             TestContext.CurrentContext.CancellationToken);
 
@@ -137,7 +137,7 @@ public class TransactionalPumpTests(string imageTag)
             bus => bus.AddConsumer<TransactionSlotConsumer>());
 
         using var scope = host.CreateScope();
-        var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
+        var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
         var ct = TestContext.CurrentContext.CancellationToken;
 
         // Publish two messages so we get two dispatches.
@@ -228,7 +228,7 @@ public class TransactionalPumpTests(string imageTag)
     internal sealed class TransactionSlotTracker
     {
         private readonly System.Collections.Concurrent.ConcurrentBag<NpgsqlTransaction?> _snapshots = [];
-        public System.Collections.Generic.IReadOnlyCollection<NpgsqlTransaction?> Snapshots => _snapshots;
+        public IReadOnlyCollection<NpgsqlTransaction?> Snapshots => _snapshots;
         public void Record(NpgsqlTransaction? tx) => _snapshots.Add(tx);
     }
 

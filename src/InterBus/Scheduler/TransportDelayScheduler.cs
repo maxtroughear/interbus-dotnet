@@ -1,10 +1,10 @@
-using InterBus.Middleware;
+using InterBus.Publisher;
 using InterBus.Transport;
 
 namespace InterBus.Scheduler;
 
 /// <summary>
-/// <see cref="IMessageSchedulingProvider"/> implementation that uses transport-level delay support
+/// <see cref="IScheduler"/> implementation that uses transport-level delay support
 /// to schedule message delivery. The delay is computed from <c>scheduledAt - UtcNow</c> and
 /// passed to the transport via <see cref="TransportSendContext.Delay"/>.
 /// <para>
@@ -12,16 +12,12 @@ namespace InterBus.Scheduler;
 /// that support deferred visibility (e.g. PostgreSQL <c>visible_at</c>) will honour the delay;
 /// transports that do not may deliver the message immediately.
 /// </para>
-/// <para>
-/// Register via <c>builder.AddTransportDelayScheduler()</c> on the <see cref="IInterBusBuilder"/>.
-/// </para>
 /// </summary>
-internal sealed class TransportDelaySchedulingProvider(SchedulePipelineExecutor schedulePipeline)
-    : IMessageSchedulingProvider
+internal sealed class TransportDelayScheduler(InterBusOptions options, PublishPipelineExecutor publishPipeline)
+    : IMessageScheduler
 {
-    /// <inheritdoc/>
-    public Task ScheduleAsync(Uri destination, byte[] payload, MessageHeaders headers,
-        DateTimeOffset scheduledAt, CancellationToken cancellationToken)
+    public Task ScheduleInternalAsync<T>(PublishContext<T> context, DateTimeOffset scheduledAt,
+        CancellationToken cancellationToken) where T : class
     {
         var delay = scheduledAt - DateTimeOffset.UtcNow;
 
@@ -29,7 +25,8 @@ internal sealed class TransportDelaySchedulingProvider(SchedulePipelineExecutor 
         if (delay < TimeSpan.Zero)
             delay = TimeSpan.Zero;
 
-        var ctx = new ScheduleContext(destination, payload, headers, delay);
-        return schedulePipeline.ExecuteAsync(ctx, cancellationToken);
+        context.Delay = delay;
+
+        return publishPipeline.ExecuteAsync(context, cancellationToken: cancellationToken);
     }
 }

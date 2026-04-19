@@ -59,6 +59,6 @@ public static class PostgreSqlConsumeContextExtensions
     public static NpgsqlTransaction? GetPostgreSqlTransaction(this IConsumeContext context)
     {
         ArgumentNullException.ThrowIfNull(context);
-        return PostgreSqlTransactionContext.Current;
+        return PostgreSqlTransactionContext.Current.Value;
     }
 }

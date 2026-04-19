@@ -73,7 +73,7 @@ public class FailedConsumerRetriesTests
     public async Task FailedConsumer_MessageIsRetried()
     {
         using var scope = _provider.CreateScope();
-        var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
+        var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
         var msg = new OrderPlaced(Guid.NewGuid(), "retry@test.com", 10m);
         await publisher.PublishAsync(msg, TestContext.CurrentContext.CancellationToken);
 

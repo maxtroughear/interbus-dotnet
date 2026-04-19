@@ -1,4 +1,4 @@
-using InterBus.Middleware;
+using InterBus.Send;
 
 namespace InterBus.Transport;
 

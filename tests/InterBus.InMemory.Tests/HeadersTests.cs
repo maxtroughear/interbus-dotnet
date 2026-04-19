@@ -101,7 +101,7 @@ public class HeadersTests
         try
         {
             using var scope = provider.CreateScope();
-            var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
+            var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
             var msg = new OrderPlaced(Guid.NewGuid(), "headers@test.com", 1.00m);
 
             await publisher.PublishAsync(msg, ctx =>
@@ -139,7 +139,7 @@ public class HeadersTests
         try
         {
             using var scope = provider.CreateScope();
-            var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
+            var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
             var msg = new OrderPlaced(Guid.NewGuid(), "send@test.com", 2.00m);
 
             await publisher.SendAsync<HeaderAwareConsumer, OrderPlaced>(msg,
@@ -172,7 +172,7 @@ public class HeadersTests
         try
         {
             using var scope = provider.CreateScope();
-            var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
+            var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
             var msg = new OrderPlaced(Guid.NewGuid(), "noheaders@test.com", 3.00m);
 
             await publisher.PublishAsync(msg, TestContext.Current.CancellationToken);
@@ -219,7 +219,7 @@ public class HeadersTests
         try
         {
             using var scope = provider.CreateScope();
-            var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
+            var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
             var msg = new OrderPlaced(Guid.NewGuid(), "corr@test.com", 5.00m);
 
             await publisher.PublishAsync(msg, ctx => { ctx.Headers[InterBusHeaders.CorrelationId] = "corr-999"; },

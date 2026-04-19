@@ -27,18 +27,14 @@ public class ConcurrencyTests
     [OneTimeSetUp]
     public async Task OneTimeSetUp()
     {
-        if (_container is not null)
-            await _container.StartAsync();
+        await _container.StartAsync();
     }
 
     [OneTimeTearDown]
     public async Task OneTimeTearDown()
     {
-        if (_container is not null)
-        {
-            await _container.StopAsync();
-            await _container.DisposeAsync();
-        }
+        await _container.StopAsync();
+        await _container.DisposeAsync();
     }
 
     [SetUp]
@@ -108,7 +104,7 @@ public class ConcurrencyTests
             {
                 var batchStopwatch = Stopwatch.StartNew();
                 await using var scope = _provider.CreateAsyncScope();
-                var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
+                var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
 
                 foreach (var message in batch)
                 {

@@ -89,10 +89,10 @@ public sealed class SqsTransport(IAmazonSQS sqsClient, SnsSqsTopologySetup topol
             ct);
     }
 
-    internal static Dictionary<string, Amazon.SQS.Model.MessageAttributeValue> BuildSqsMessageAttributes(
+    private static Dictionary<string, MessageAttributeValue> BuildSqsMessageAttributes(
         MessageHeaders headers)
     {
-        var result = new Dictionary<string, Amazon.SQS.Model.MessageAttributeValue>(
+        var result = new Dictionary<string, MessageAttributeValue>(
             CoreAttributeHeaders.Count,
             StringComparer.Ordinal);
 
@@ -101,7 +101,7 @@ public sealed class SqsTransport(IAmazonSQS sqsClient, SnsSqsTopologySetup topol
             if (!CoreAttributeHeaders.Contains(kv.Key))
                 continue;
 
-            result[kv.Key] = new Amazon.SQS.Model.MessageAttributeValue
+            result[kv.Key] = new MessageAttributeValue
             {
                 DataType = "String",
                 StringValue = kv.Value,

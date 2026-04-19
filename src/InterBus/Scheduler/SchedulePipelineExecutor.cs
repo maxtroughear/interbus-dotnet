@@ -1,6 +1,6 @@
 using InterBus.Transport;
 
-namespace InterBus.Middleware;
+namespace InterBus.Scheduler;
 
 /// <summary>
 /// Executes the schedule middleware pipeline for a single scheduled-message delivery.

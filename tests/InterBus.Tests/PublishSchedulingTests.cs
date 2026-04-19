@@ -1,20 +1,16 @@
 using InterBus.Extensions;
+using InterBus.Scheduler.Extensions;
 using InterBus.Transport;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
 namespace InterBus.Tests;
 
-/// <summary>
-/// Unit tests for <see cref="PublishMessageScheduler"/> - the publish-based
-/// <see cref="IMessageScheduler"/> implementation registered via
-/// <see cref="InterBusBuilderExtensions.AddPublishScheduling"/>.
-/// </summary>
 public sealed class PublishSchedulingTests
 {
     #region Helpers
 
-    private static (IMessageScheduler Scheduler, CapturingTransport Transport) BuildScheduler(
+    private static (IScheduler Scheduler, CapturingTransport Transport) BuildScheduler(
         Action<IInterBusBuilder>? configureBus = null)
     {
         var transport = new CapturingTransport();
@@ -24,14 +20,13 @@ public sealed class PublishSchedulingTests
         {
             bus.Services.AddKeyedSingleton<IInterBusTransport>("topic", transport);
             bus.Services.AddKeyedSingleton<IInterBusTransport>("queue", transport);
-            bus.AddPublishScheduling();
-            bus.AddSchedulingConsumer();
+            bus.AddScheduling(builder => builder.ViaPublish().AddSchedulingConsumer());
             configureBus?.Invoke(bus);
         });
 
         var provider = services.BuildServiceProvider();
         var scope = provider.CreateScope();
-        var scheduler = scope.ServiceProvider.GetRequiredService<IMessageScheduler>();
+        var scheduler = scope.ServiceProvider.GetRequiredService<IScheduler>();
         return (scheduler, transport);
     }
 
@@ -47,12 +42,12 @@ public sealed class PublishSchedulingTests
         services.AddInterBus(bus =>
         {
             bus.Services.AddSingleton<IInterBusTransport, NoOpTransport>();
-            bus.AddPublishScheduling();
+            bus.AddScheduling(builder => builder.ViaPublish());
         });
 
         var provider = services.BuildServiceProvider();
         using var scope = provider.CreateScope();
-        var scheduler = scope.ServiceProvider.GetService<IMessageScheduler>();
+        var scheduler = scope.ServiceProvider.GetService<IScheduler>();
 
         Assert.NotNull(scheduler);
     }
@@ -65,7 +60,7 @@ public sealed class PublishSchedulingTests
         services.AddInterBus(bus => { bus.Services.AddSingleton<IInterBusTransport, NoOpTransport>(); });
 
         var provider = services.BuildServiceProvider();
-        var scheduler = provider.GetService<IMessageScheduler>();
+        var scheduler = provider.GetService<IScheduler>();
 
         Assert.Null(scheduler);
     }
@@ -79,7 +74,7 @@ public sealed class PublishSchedulingTests
     {
         var (scheduler, transport) = BuildScheduler();
         var scheduledAt = DateTimeOffset.UtcNow.AddMinutes(5);
-        var msg = new TestMessage(Guid.NewGuid());
+        var msg = new TestMessage();
 
         await scheduler.SchedulePublishAsync(msg, scheduledAt, TestContext.Current.CancellationToken);
 
@@ -92,7 +87,7 @@ public sealed class PublishSchedulingTests
     {
         var (scheduler, transport) = BuildScheduler();
 
-        await scheduler.SchedulePublishAsync(new TestMessage(Guid.NewGuid()),
+        await scheduler.SchedulePublishAsync(new TestMessage(),
             DateTimeOffset.UtcNow.AddMinutes(1),
             ctx => ctx.Headers["x-custom"] = "test-value",
             TestContext.Current.CancellationToken);
@@ -106,7 +101,7 @@ public sealed class PublishSchedulingTests
         var (scheduler, transport) = BuildScheduler();
         var delay = TimeSpan.FromMinutes(10);
 
-        await scheduler.SchedulePublishAsync(new TestMessage(Guid.NewGuid()), delay,
+        await scheduler.SchedulePublishAsync(new TestMessage(), delay,
             TestContext.Current.CancellationToken);
 
         Assert.Single(transport.Sends);
@@ -122,7 +117,7 @@ public sealed class PublishSchedulingTests
         var (scheduler, transport) = BuildScheduler();
 
         await scheduler.ScheduleSendAsync<TestConsumer, TestMessage>(
-            new TestMessage(Guid.NewGuid()), DateTimeOffset.UtcNow.AddSeconds(30),
+            new TestMessage(), DateTimeOffset.UtcNow.AddSeconds(30),
             TestContext.Current.CancellationToken);
 
         var call = Assert.Single(transport.Sends);
@@ -134,7 +129,7 @@ public sealed class PublishSchedulingTests
     {
         var (scheduler, transport) = BuildScheduler();
 
-        await scheduler.ScheduleSendAsync("my-queue", new TestMessage(Guid.NewGuid()),
+        await scheduler.ScheduleSendAsync("my-queue", new TestMessage(),
             DateTimeOffset.UtcNow.AddHours(1), TestContext.Current.CancellationToken);
 
         var call = Assert.Single(transport.Sends);
@@ -154,7 +149,7 @@ public sealed class PublishSchedulingTests
         services.AddInterBus(bus =>
         {
             bus.Services.AddSingleton<IInterBusTransport, NoOpTransport>();
-            bus.AddSchedulingConsumer();
+            bus.AddScheduling(builder => builder.AddSchedulingConsumer());
             capturedOptions = bus.Options;
         });
 
@@ -171,7 +166,7 @@ public sealed class PublishSchedulingTests
 
     #region Support types
 
-    private sealed record TestMessage(Guid Id);
+    private sealed record TestMessage;
 
     private sealed class TestConsumer : IConsumer<TestMessage>
     {

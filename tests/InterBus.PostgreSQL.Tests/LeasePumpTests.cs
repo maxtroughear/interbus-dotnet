@@ -41,7 +41,7 @@ public class LeasePumpTests(string imageTag)
             bus => bus.AddConsumer<OrderPlacedConsumer>());
 
         using var scope = host.CreateScope();
-        var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
+        var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
         var msg = new OrderPlaced(Guid.NewGuid(), "lease@test.com", 50m);
         await publisher.PublishAsync(msg, TestContext.CurrentContext.CancellationToken);
 
@@ -77,7 +77,7 @@ public class LeasePumpTests(string imageTag)
             bus => bus.AddConsumer<LeaseFailThenSucceedConsumer>());
 
         using var scope = host.CreateScope();
-        var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
+        var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
         var msg = new OrderPlaced(Guid.NewGuid(), "release@test.com", 5m);
         await publisher.PublishAsync(msg, TestContext.CurrentContext.CancellationToken);
 
@@ -123,7 +123,7 @@ public class LeasePumpTests(string imageTag)
             bus => bus.AddConsumer<LeaseStallingConsumer>());
 
         using var scope = host.CreateScope();
-        var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
+        var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
         var msg = new OrderPlaced(Guid.NewGuid(), "expire@test.com", 99m);
         await publisher.PublishAsync(msg, TestContext.CurrentContext.CancellationToken);
 

@@ -1,4 +1,6 @@
-namespace InterBus.Middleware;
+using InterBus.Middleware;
+
+namespace InterBus.Consumer;
 
 /// <summary>
 /// A step in the consume middleware pipeline.

@@ -56,8 +56,8 @@ public class PublishSubscribeSingleConsumerTests
         // INTERBUS_USE_REAL_AWS=true). In production the app registers clients once
         // (e.g. via AddAWSService<T>()) and InterBus simply resolves them from DI.
         AWSOptions awsOptions = TestHelpers.CreateAwsOptions(Container);
-        services.AddAWSService<Amazon.SimpleNotificationService.IAmazonSimpleNotificationService>(awsOptions);
-        services.AddAWSService<Amazon.SQS.IAmazonSQS>(awsOptions);
+        services.AddAWSService<IAmazonSimpleNotificationService>(awsOptions);
+        services.AddAWSService<IAmazonSQS>(awsOptions);
         services.AddAWSService<Amazon.SecurityToken.IAmazonSecurityTokenService>(awsOptions);
 
         services.AddInterBus(bus =>
@@ -103,7 +103,7 @@ public class PublishSubscribeSingleConsumerTests
     public async Task Publish_SingleConsumer_MessageIsDelivered()
     {
         using var scope = _provider.CreateScope();
-        var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
+        var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
         var msg = new OrderPlaced(Guid.NewGuid(), "test@example.com", 99.99m);
         await publisher.PublishAsync(msg, TestContext.CurrentContext.CancellationToken);
 
@@ -120,7 +120,7 @@ public class PublishSubscribeSingleConsumerTests
     public async Task Send_DirectQueue_MessageIsDelivered()
     {
         using var scope = _provider.CreateScope();
-        var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
+        var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
         var msg = new OrderPlaced(Guid.NewGuid(), "direct@example.com", 49.99m);
         await publisher.SendAsync<OrderPlacedConsumer, OrderPlaced>(msg, TestContext.CurrentContext.CancellationToken);
 

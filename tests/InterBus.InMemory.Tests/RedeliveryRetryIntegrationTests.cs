@@ -68,14 +68,13 @@ public sealed class RedeliveryRetryIntegrationTests
             {
                 bus.AddInMemoryTransport();
                 bus.AddConsumer<RedeliveryTestConsumer>();
-                bus.AddScheduling();
                 bus.WithConsumers(b => b.UseRedeliveryImmediateMiddleware(options => options.RetryCount = 3));
             });
 
         try
         {
             using var scope = provider.CreateScope();
-            var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
+            var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
             var message = new RedeliveryTestMessage(Guid.NewGuid());
 
             await publisher.SendAsync<RedeliveryTestConsumer, RedeliveryTestMessage>(
@@ -110,7 +109,7 @@ public sealed class RedeliveryRetryIntegrationTests
         try
         {
             using var scope = provider.CreateScope();
-            var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
+            var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
             var message = new RedeliveryTestMessage(Guid.NewGuid());
 
             await publisher.SendAsync<RedeliveryDelayTestConsumer, RedeliveryTestMessage>(
@@ -149,7 +148,7 @@ public sealed class RedeliveryRetryIntegrationTests
         try
         {
             using var scope = provider.CreateScope();
-            var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
+            var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
             var message = new RedeliveryTestMessage(Guid.NewGuid());
 
             await publisher.SendAsync<RedeliveryDelayTestConsumer, RedeliveryTestMessage>(

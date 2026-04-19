@@ -79,7 +79,7 @@ public class PublishConsumeTests
         try
         {
             using var scope = provider.CreateScope();
-            var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
+            var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
             var msg = new OrderPlaced(Guid.NewGuid(), "test@example.com", 99.99m);
             await publisher.PublishAsync(msg, TestContext.Current.CancellationToken);
 
@@ -116,7 +116,7 @@ public class PublishConsumeTests
         try
         {
             using var scope = provider.CreateScope();
-            var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
+            var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
             var msg = new OrderPlaced(Guid.NewGuid(), "fan@out.test", 50m);
             await publisher.PublishAsync(msg, TestContext.Current.CancellationToken);
 
@@ -156,7 +156,7 @@ public class PublishConsumeTests
         try
         {
             using var scope = provider.CreateScope();
-            var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
+            var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
             var msg = new OrderPlaced(Guid.NewGuid(), "direct@send.test", 25m);
 
             // Send directly to OrderPlacedConsumer only - AuditConsumer should NOT receive.
@@ -197,7 +197,7 @@ public class PublishConsumeTests
         try
         {
             using var scope = provider.CreateScope();
-            var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
+            var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
             var msg = new OrderPlaced(Guid.NewGuid(), "generated@test.com", 75m);
             await publisher.PublishAsync(msg, TestContext.Current.CancellationToken);
 
@@ -249,7 +249,7 @@ public class PublishConsumeTests
             Assert.Equal(2, descriptor.MessageTypes.Count);
 
             using var scope = provider.CreateScope();
-            var publisher = scope.ServiceProvider.GetRequiredService<IMessagePublisher>();
+            var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
 
             var orderMsg = new OrderPlaced(Guid.NewGuid(), "multi@test.com", 100m);
             var shippedMsg = new OrderShipped(Guid.NewGuid(), "TRK-001");

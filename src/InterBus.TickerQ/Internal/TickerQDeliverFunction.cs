@@ -1,4 +1,4 @@
-using InterBus.Middleware;
+using InterBus.Send;
 using TickerQ.Utilities.Base;
 
 namespace InterBus.TickerQ.Internal;
@@ -8,27 +8,20 @@ namespace InterBus.TickerQ.Internal;
 /// point-to-point queue send). Resolved from DI via constructor injection; called by TickerQ
 /// when the scheduled job fires.
 /// </summary>
-internal sealed class TickerQDeliverFunction(SchedulePipelineExecutor schedulePipeline)
+internal sealed class TickerQDeliverFunction(SendPipelineExecutor sendPipeline)
 {
     /// <summary>
-    /// TickerQ function name registered for all scheduled InterBus message delivery.
+    /// TickerQ function name registered for all scheduled InterBus message deliveries
     /// </summary>
     public const string FunctionName = "interbus-deliver";
 
-    /// <summary>
-    /// Called by TickerQ when a scheduled delivery job fires. The typed context carries
-    /// the <see cref="ScheduledDeliveryRequest"/> deserialized from the persisted request bytes.
-    /// The message is passed through the <see cref="SchedulePipelineExecutor"/> so that any
-    /// registered <see cref="IScheduleMiddleware"/> steps run before the message is forwarded
-    /// to the correct <see cref="IInterBusTransport"/> via <see cref="IInterBusTransportFactory"/>.
-    /// </summary>
     public Task InvokeAsync(TickerFunctionContext<ScheduledDeliveryRequest> context,
         CancellationToken cancellationToken)
     {
         var request = context.Request;
         var destination = new Uri(request.Destination);
         var headers = new MessageHeaders(request.Headers);
-        var scheduleContext = new ScheduleContext(destination, request.Payload, headers, delay: null);
-        return schedulePipeline.ExecuteAsync(scheduleContext, cancellationToken);
+        var scheduleContext = new SendContext(destination, request.Payload, headers, delay: null);
+        return sendPipeline.ExecuteAsync(scheduleContext, cancellationToken: cancellationToken);
     }
 }

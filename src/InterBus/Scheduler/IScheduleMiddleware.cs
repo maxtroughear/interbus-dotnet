@@ -1,9 +1,12 @@
-namespace InterBus.Middleware;
+using InterBus.Middleware;
+using InterBus.Publisher;
+
+namespace InterBus.Scheduler;
 
 /// <summary>
 /// A step in the schedule middleware pipeline.
 /// Implementations are resolved from the DI container for each
-/// <see cref="IMessageScheduler"/> scope and executed in registration order
+/// <see cref="IScheduler"/> scope and executed in registration order
 /// (first registered = outermost).
 /// </summary>
 /// <remarks>

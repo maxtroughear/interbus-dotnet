@@ -1,4 +1,4 @@
-using InterBus.Middleware;
+using InterBus.Consumer;
 using Microsoft.Extensions.Logging;
 
 namespace InterBus.Retry;
@@ -48,7 +48,7 @@ public sealed class RetryConsumeMiddleware(
 
                 logger.LogWarning(
                     ex,
-                    "InterBus: exception on attempt {Attempt}/{MaxAttempts} for consumer {ConsumerType}. Retrying.",
+                    "InterBus: exception on attempt {Attempt}/{MaxAttempts} for consumer {ConsumerType}. Retrying",
                     attempt,
                     options.RetryCount + 1,
                     context.Descriptor.ConsumerType.Name);

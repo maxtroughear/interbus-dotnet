@@ -1,5 +1,4 @@
 using InterBus.Consumer;
-using InterBus.Middleware;
 using InterBus.Retry;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
@@ -20,7 +19,7 @@ public sealed class RetryMiddlewareTests
     private static ConsumeContext<TestMessage> BuildContext() =>
         BuildContext<TestMessage>(new ConsumerDescriptor(
             typeof(NoOpConsumer),
-            "test-queue",
+            RoutingConventions.QueueUri("queue", "test-queue"),
             [typeof(TestMessage)],
             (_, _, _) => Task.CompletedTask));
 
@@ -104,7 +103,7 @@ public sealed class RetryMiddlewareTests
             middleware.InvokeAsync(BuildContext(), (_, _) =>
             {
                 callCount++;
-                throw new OperationCanceledException(cts.Token);
+                throw new OperationCanceledException();
             }, cts.Token));
 
         Assert.Equal(1, callCount);
@@ -143,7 +142,7 @@ public sealed class RetryMiddlewareTests
             middleware.InvokeAsync(BuildContext(), (_, _) =>
             {
                 callCount++;
-                throw new OperationCanceledException(internalCts.Token);
+                throw new OperationCanceledException();
             }, TestContext.Current.CancellationToken));
 
         // Initial attempt + retryCount retries
@@ -341,12 +340,7 @@ public sealed class RetryMiddlewareTests
 
     #region Support types
 
-    private sealed record TestMessage(Guid Id)
-    {
-        public TestMessage() : this(Guid.NewGuid())
-        {
-        }
-    };
+    private sealed record TestMessage;
 
     private sealed class NoOpConsumer : IConsumer<TestMessage>
     {

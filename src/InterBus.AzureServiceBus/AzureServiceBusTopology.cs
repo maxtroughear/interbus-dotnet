@@ -24,7 +24,9 @@ internal sealed class AzureServiceBusTopology(
     {
         foreach (var descriptor in busOptions.Consumers)
         {
-            var queueName = BuildQueueName(descriptor.QueueName);
+            var rawQueueName = descriptor.QueueName;
+            
+            var queueName = BuildQueueName(rawQueueName);
             await EnsureQueueExistsAsync(queueName, cancellationToken);
 
             foreach (var messageType in descriptor.MessageTypes)
@@ -36,7 +38,7 @@ internal sealed class AzureServiceBusTopology(
                 var topicName = BuildTopicName(rawTopicName);
                 await EnsureTopicExistsAsync(topicName, cancellationToken);
 
-                var subscriptionName = BuildSubscriptionName(descriptor.QueueName);
+                var subscriptionName = BuildSubscriptionName(rawQueueName);
                 await EnsureForwardingSubscriptionExistsAsync(
                     topicName,
                     subscriptionName,

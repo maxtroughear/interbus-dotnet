@@ -1,5 +1,8 @@
 using System.Diagnostics.CodeAnalysis;
-using InterBus.Middleware;
+using InterBus.Dispatch;
+using InterBus.Publisher;
+using InterBus.Scheduler;
+using InterBus.Send;
 using InterBus.Serialization;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -22,9 +25,9 @@ public interface IInterBusBuilder
 
     /// <summary>
     /// Configure an explicit topic name for message type <typeparamref name="T"/>. The name is used
-    /// by both consumer registration and <see cref="IMessagePublisher.Publish{T}"/>, overriding the
+    /// by both consumer registration and <c>IMessagePublisher.PublishAsync&lt;T&gt;</c>, overriding the
     /// convention-based name derived from the type's fully-qualified name.
-    /// Call this before <see cref="AddConsumer{TConsumer}"/> for the same message type.
+    /// Call this before <c>AddConsumer&lt;TConsumer&gt;</c> for the same message type.
     /// </summary>
     IInterBusBuilder ConfigureTopic<T>(string topicName) where T : class;
 
@@ -61,27 +64,6 @@ public interface IInterBusBuilder
         where TConsumer : class, IConsumer;
 
     /// <summary>
-    /// Register a consumer with a source-generated dispatch delegate.
-    /// This is the only registration path; call it via the source-generated
-    /// <c>AddConsumers()</c> extension method which is produced at compile time.
-    /// <para>
-    /// The <paramref name="messageTypes"/> array is used to resolve topic names (respecting any
-    /// <see cref="ConfigureTopic{T}"/> overrides) and to subscribe the consumer's queue to each topic.
-    /// The <paramref name="queueName"/> is used to override the default queue name derived from the
-    /// consumer type's fully qualified name
-    /// The <paramref name="dispatch"/> delegate reads the <see cref="InterBusHeaders.MessageType"/>
-    /// header and routes to the appropriate <c>Consume</c> overload - no runtime reflection.
-    /// </para>
-    /// </summary>
-    IInterBusBuilder AddConsumer<
-        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
-        TConsumer>(
-        Type[] messageTypes,
-        string queueName,
-        Func<DispatchContext, IServiceProvider, CancellationToken, Task> dispatch)
-        where TConsumer : class, IConsumer;
-
-    /// <summary>
     /// Register a consumer with a source-generated dispatch delegate, a custom queue name,
     /// and an optional consumer-level configuration delegate.
     /// The <paramref name="configure"/> delegate is invoked immediately after registration,
@@ -91,9 +73,9 @@ public interface IInterBusBuilder
         [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
         TConsumer>(
         Type[] messageTypes,
-        string queueName,
+        Uri queue,
         Func<DispatchContext, IServiceProvider, CancellationToken, Task> dispatch,
-        Action<IConsumerBuilder>? configure)
+        Action<IConsumerBuilder>? configure = null)
         where TConsumer : class, IConsumer;
 
     /// <summary>

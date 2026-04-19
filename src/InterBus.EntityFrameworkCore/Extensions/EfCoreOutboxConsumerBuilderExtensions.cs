@@ -1,4 +1,5 @@
 using InterBus.EntityFrameworkCore.Internal;
+using InterBus.Send;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
@@ -55,7 +56,7 @@ public static class EfCoreOutboxConsumerBuilderExtensions
         /// The consumer's publish calls are written to the outbox atomically with
         /// <c>SaveChangesAsync()</c>. After <c>Consume</c> returns,
         /// <see cref="OutboxConsumeMiddleware{TDbContext}"/> reads the committed group and forwards
-        /// each message directly to the transport via <see cref="InterBus.Middleware.SendPipelineExecutor"/>,
+        /// each message directly to the transport via <see cref="SendPipelineExecutor"/>,
         /// exactly as the background processor would. If delivery succeeds the group is deleted,
         /// saving a background-processor round-trip. If delivery fails the group remains in the
         /// outbox so the <see cref="OutboxProcessor{TDbContext}"/> background service can retry

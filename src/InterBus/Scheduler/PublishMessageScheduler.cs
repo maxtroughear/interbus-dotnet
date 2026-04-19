@@ -1,9 +1,9 @@
-using InterBus.Middleware;
+using InterBus.Publisher;
 
 namespace InterBus.Scheduler;
 
 /// <summary>
-/// <see cref="IMessageScheduler"/> implementation that asynchronously schedules messages by
+/// <see cref="IScheduler"/> implementation that asynchronously schedules messages by
 /// publishing a concrete command message to the bus. The command is consumed by
 /// <see cref="SchedulingConsumer"/>, which enlists the registered
 /// <see cref="IMessageSchedulingProvider"/> to perform the actual deferred delivery.
@@ -14,15 +14,15 @@ namespace InterBus.Scheduler;
 /// </para>
 /// </summary>
 internal sealed class PublishMessageScheduler(
-    IMessagePublisher publisher,
+    IPublisher publisher,
     IMessageSerializer serializer,
     InterBusOptions options)
-    : MessageSchedulerBase(options, serializer)
+    : IMessageScheduler
 {
-    protected override Task ScheduleInternalAsync<T>(PublishContext<T> context, DateTimeOffset scheduledAt,
-        CancellationToken cancellationToken)
+    public Task ScheduleInternalAsync<T>(PublishContext<T> context, DateTimeOffset scheduledAt,
+        CancellationToken cancellationToken) where T : class
     {
-        var payload = Serializer.Serialize(context.Message);
+        var payload = serializer.Serialize(context.Message);
         var command = new ScheduleDeliveryCommand
         {
             Destination = context.Destination.ToString(),

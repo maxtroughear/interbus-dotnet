@@ -1,19 +1,16 @@
 using InterBus.Extensions;
+using InterBus.Scheduler.Extensions;
 using InterBus.Transport;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
 namespace InterBus.Tests;
 
-/// <summary>
-/// Unit tests for the <see cref="MessageScheduler"/> implementation of
-/// <see cref="IMessageScheduler"/>.
-/// </summary>
 public sealed class SchedulingTests
 {
     #region Helpers
 
-    private static (IMessageScheduler Publisher, TestSchedulingProvider Provider) BuildPublisher(
+    private static (IScheduler Publisher, TestSchedulingProvider Provider) BuildPublisher(
         Action<IInterBusBuilder>? configureBus = null)
     {
         var schedulingProvider = new TestSchedulingProvider();
@@ -23,13 +20,13 @@ public sealed class SchedulingTests
         {
             bus.Services.AddSingleton<IInterBusTransport, NoOpTransport>();
             bus.Services.AddSingleton<IMessageSchedulingProvider>(schedulingProvider);
-            bus.AddScheduling();
+            bus.AddScheduling(builder => builder.Directly());
             configureBus?.Invoke(bus);
         });
 
         var provider = services.BuildServiceProvider();
         using var scope = provider.CreateScope();
-        var publisher = scope.ServiceProvider.GetRequiredService<IMessageScheduler>();
+        var publisher = scope.ServiceProvider.GetRequiredService<IScheduler>();
         return (publisher, schedulingProvider);
     }
 
@@ -42,7 +39,7 @@ public sealed class SchedulingTests
     {
         var (publisher, schedulingProvider) = BuildPublisher();
         var scheduledAt = DateTimeOffset.UtcNow.AddMinutes(5);
-        var msg = new TestMessage(Guid.NewGuid());
+        var msg = new TestMessage();
 
         await publisher.SchedulePublishAsync(msg, scheduledAt, TestContext.Current.CancellationToken);
 
@@ -58,7 +55,7 @@ public sealed class SchedulingTests
         var (publisher, schedulingProvider) = BuildPublisher();
         var scheduledAt = DateTimeOffset.UtcNow.AddMinutes(1);
 
-        await publisher.SchedulePublishAsync(new TestMessage(Guid.NewGuid()), scheduledAt,
+        await publisher.SchedulePublishAsync(new TestMessage(), scheduledAt,
             ctx => ctx.Headers["x-custom"] = "value",
             TestContext.Current.CancellationToken);
 
@@ -77,7 +74,7 @@ public sealed class SchedulingTests
         var delay = TimeSpan.FromMinutes(10);
         var before = DateTimeOffset.UtcNow;
 
-        await publisher.SchedulePublishAsync(new TestMessage(Guid.NewGuid()), delay,
+        await publisher.SchedulePublishAsync(new TestMessage(), delay,
             TestContext.Current.CancellationToken);
 
         var after = DateTimeOffset.UtcNow;
@@ -97,7 +94,7 @@ public sealed class SchedulingTests
         var scheduledAt = DateTimeOffset.UtcNow.AddSeconds(30);
 
         await publisher.ScheduleSendAsync<TestConsumer, TestMessage>(
-            new TestMessage(Guid.NewGuid()), scheduledAt, TestContext.Current.CancellationToken);
+            new TestMessage(), scheduledAt, TestContext.Current.CancellationToken);
 
         var call = Assert.Single(schedulingProvider.Calls);
         Assert.Equal("queue", call.Destination.Scheme);
@@ -112,7 +109,7 @@ public sealed class SchedulingTests
         var (publisher, schedulingProvider) = BuildPublisher();
 
         await publisher.ScheduleSendAsync<TestConsumer, TestMessage>(
-            new TestMessage(Guid.NewGuid()), DateTimeOffset.UtcNow.AddSeconds(5),
+            new TestMessage(), DateTimeOffset.UtcNow.AddSeconds(5),
             ctx => ctx.Headers["x-trace"] = "abc",
             TestContext.Current.CancellationToken);
 
@@ -130,7 +127,7 @@ public sealed class SchedulingTests
         var (publisher, schedulingProvider) = BuildPublisher();
         var scheduledAt = DateTimeOffset.UtcNow.AddHours(1);
 
-        await publisher.ScheduleSendAsync("my-queue", new TestMessage(Guid.NewGuid()), scheduledAt,
+        await publisher.ScheduleSendAsync("my-queue", new TestMessage(), scheduledAt,
             TestContext.Current.CancellationToken);
 
         var call = Assert.Single(schedulingProvider.Calls);
@@ -144,7 +141,7 @@ public sealed class SchedulingTests
     {
         var (publisher, schedulingProvider) = BuildPublisher();
 
-        await publisher.ScheduleSendAsync("q", new TestMessage(Guid.NewGuid()),
+        await publisher.ScheduleSendAsync("q", new TestMessage(),
             DateTimeOffset.UtcNow.AddMinutes(2),
             ctx => ctx.Headers["x-source"] = "unit-test",
             TestContext.Current.CancellationToken);
@@ -162,7 +159,7 @@ public sealed class SchedulingTests
     {
         var (publisher, schedulingProvider) = BuildPublisher();
 
-        await publisher.SchedulePublishAsync(new TestMessage(Guid.NewGuid()),
+        await publisher.SchedulePublishAsync(new TestMessage(),
             DateTimeOffset.UtcNow.AddSeconds(1), TestContext.Current.CancellationToken);
 
         var call = Assert.Single(schedulingProvider.Calls);
@@ -182,7 +179,7 @@ public sealed class SchedulingTests
         services.AddInterBus(bus => { bus.Services.AddSingleton<IInterBusTransport, NoOpTransport>(); });
 
         var provider = services.BuildServiceProvider();
-        var schedulingPublisher = provider.GetService<IMessageScheduler>();
+        var schedulingPublisher = provider.GetService<IScheduler>();
 
         Assert.Null(schedulingPublisher);
     }
@@ -196,7 +193,7 @@ public sealed class SchedulingTests
 
         var provider = services.BuildServiceProvider();
         using var scope = provider.CreateScope();
-        var publisher = scope.ServiceProvider.GetService<IMessagePublisher>();
+        var publisher = scope.ServiceProvider.GetService<IPublisher>();
 
         Assert.NotNull(publisher);
     }
@@ -205,7 +202,7 @@ public sealed class SchedulingTests
 
     #region Support types
 
-    private sealed record TestMessage(Guid Id);
+    private sealed record TestMessage;
 
     private sealed class TestConsumer : IConsumer<TestMessage>
     {
@@ -226,14 +223,13 @@ public sealed class SchedulingTests
         public Task ScheduleAsync(Uri destination, byte[] payload, MessageHeaders headers,
             DateTimeOffset scheduledAt, CancellationToken cancellationToken)
         {
-            Calls.Add(new SchedulingCall(destination, payload, headers, scheduledAt));
+            Calls.Add(new SchedulingCall(destination, headers, scheduledAt));
             return Task.CompletedTask;
         }
     }
 
     private sealed record SchedulingCall(
         Uri Destination,
-        byte[] Payload,
         MessageHeaders Headers,
         DateTimeOffset ScheduledAt);
 

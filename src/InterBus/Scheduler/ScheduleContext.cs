@@ -1,4 +1,7 @@
-namespace InterBus.Middleware;
+using InterBus.Publisher;
+using InterBus.Send;
+
+namespace InterBus.Scheduler;
 
 /// <summary>
 /// Carries the state of a single scheduled-message delivery through the

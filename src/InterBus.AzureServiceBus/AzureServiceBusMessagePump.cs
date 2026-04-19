@@ -134,7 +134,7 @@ internal sealed class AzureServiceBusMessagePump(
             {
                 MaxConcurrentCalls = concurrency,
                 AutoCompleteMessages = false,
-                MaxAutoLockRenewalDuration = TimeSpan.FromHours(12) // TODO: configurable by consumer
+                MaxAutoLockRenewalDuration = TimeSpan.FromHours(12), // TODO: configurable by consumer
             };
 
             var processor = clientProvider.CreateQueueProcessor(consumerQueueName, processorOptions);

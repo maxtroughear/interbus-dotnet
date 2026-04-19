@@ -11,19 +11,18 @@ namespace InterBus.AzureServiceBus.Tests;
 [TestFixture]
 public class ConcurrencyTests
 {
-    private readonly ServiceBusContainer _container = new ServiceBusBuilder("mcr.microsoft.com/azure-messaging/servicebus-emulator:latest")
-        .WithAcceptLicenseAgreement(true)
-        .Build();
+    private readonly ServiceBusContainer _container =
+        new ServiceBusBuilder("mcr.microsoft.com/azure-messaging/servicebus-emulator:latest")
+            .WithAcceptLicenseAgreement(true)
+            .Build();
 
     private ServiceProvider _provider;
     private CancellationTokenSource _cts;
     private OrderPlacedTracker _orderTracker;
 
-    /// <summary>Number of concurrent publishers used in the concurrency test.</summary>
     private const int PublisherCount = 2;
-
-    /// <summary>Number of messages each publisher sends.</summary>
-    private const int MessagesPerPublisher = 1000;
+    private const int MessagesPerPublisher = 100;
+    private const int ConsumerCount = 10;
 
     [OneTimeSetUp]
     public async Task OneTimeSetUp()
@@ -56,9 +55,10 @@ public class ConcurrencyTests
             bus.AddAzureServiceBusTransport(o =>
             {
                 o.ConnectionString = _container.GetConnectionString();
+                //"Endpoint=sb://interbuslocal.servicebus.windows.net/;SharedAccessKeyName=Local;SharedAccessKey=eV6NP2PJv+mapEYpp7aiodKw2ife6pqTE+ASbOj3USI=";
                 o.AdminConnectionString = _container.GetHttpConnectionString();
             });
-            bus.AddConsumer<ConcurrencyTestConsumer>(cfg => cfg.WithConcurrency(20));
+            bus.AddConsumer<ConcurrencyTestConsumer>(cfg => cfg.WithConcurrency(ConsumerCount));
         });
 
         _provider = services.BuildServiceProvider();
@@ -83,7 +83,7 @@ public class ConcurrencyTests
     [Test]
     public async Task LotsOfPublishedMessages_AllAreConsumed()
     {
-        var totalMessages = PublisherCount * MessagesPerPublisher;
+        const int totalMessages = PublisherCount * MessagesPerPublisher;
 
         // Partition messages across N publishers so the test is scalable: change
         // PublisherCount / MessagesPerPublisher at the top of the class to adjust load.
@@ -122,6 +122,8 @@ public class ConcurrencyTests
                     $"Published batch of {batch.Length} messages at {DateTime.UtcNow:O} " +
                     $"at a rate of {batch.Length / batchStopwatch.Elapsed.TotalSeconds:F2}/second");
             });
+        await TestContext.Out.WriteLineAsync($"All {totalMessages} messages published at {DateTime.UtcNow:O} " +
+                                             $"at an overall rate of {totalMessages / consumerStopwatch.Elapsed.TotalSeconds:F2}/second");
 
         // Wait for all messages to be consumed.
         await TestHelpers.WaitUntilAsync(

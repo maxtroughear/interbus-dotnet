@@ -22,7 +22,7 @@ namespace InterBus.AmazonSqs;
 /// The topology is split by concern:
 /// <list type="bullet">
 /// <item><term>Consumer topology</term><description>Handled by
-/// <see cref="DeclareConsumerTopologyAsync"/>. Establishes the SQS queues needed for
+/// <see cref="BuildTopologyAsync"/>. Establishes the SQS queues needed for
 /// polling. In <see cref="TopologyMode.VerifyOnly"/> mode only the queue URL is resolved;
 /// no topic or subscription operations are performed.</description></item>
 /// <item><term>Publisher topology</term><description>Handled lazily by
@@ -47,6 +47,7 @@ public sealed partial class SnsSqsTopologySetup(
     SnsSqsTransportOptions transportOptions,
     InterBusOptions busOptions,
     ILogger<SnsSqsTopologySetup> logger)
+    : IInterBusTopologyBuilder
 {
     private GetCallerIdentityResponse? _callerIdentity;
 
@@ -62,7 +63,7 @@ public sealed partial class SnsSqsTopologySetup(
     /// until the first publish via <see cref="EnsureTopicArnAsync"/>.
     /// </para>
     /// </summary>
-    internal async Task DeclareConsumerTopologyAsync(CancellationToken cancellationToken)
+    public async Task BuildTopologyAsync(CancellationToken cancellationToken)
     {
         if (transportOptions.TopologyMode == TopologyMode.VerifyOnly)
             await VerifyConsumerTopologyAsync(cancellationToken);

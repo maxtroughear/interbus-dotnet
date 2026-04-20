@@ -12,8 +12,8 @@ namespace InterBus.AmazonSqs;
 /// Service Activator (Message Pump). A <see cref="BackgroundService"/> that long-polls each
 /// registered consumer's SQS queue and dispatches messages to the InterBus consume pipeline.
 /// <para>
-/// Topology setup (creating SNS topics, SQS queues, and subscriptions) is handled by
-/// <see cref="SnsSqsTopologySetup"/> during <see cref="StartAsync"/> before polling begins.
+/// Topology setup (creating SNS topics, SQS queues, and subscriptions) is handled during bus
+/// startup by <see cref="SnsSqsTopologySetup"/> before polling begins.
 /// </para>
 /// <para>
 /// Messages delivered via SNS use <em>raw message delivery</em> so the SQS message body is
@@ -27,7 +27,6 @@ namespace InterBus.AmazonSqs;
 /// </summary>
 internal sealed class SqsMessagePump(
     IAmazonSQS sqsClient,
-    SnsSqsTopologySetup topologySetup,
     SnsSqsTopology topology,
     SnsSqsTransportOptions options,
     InterBusOptions busOptions,
@@ -46,16 +45,6 @@ internal sealed class SqsMessagePump(
         public Task? DispatchTask { get; set; }
     }
 
-    public override async Task StartAsync(CancellationToken cancellationToken)
-    {
-        if (busOptions.Consumers.Count > 0)
-        {
-            await SetupTopologyWithRetryAsync(cancellationToken);
-        }
-
-        await base.StartAsync(cancellationToken);
-    }
-
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var consumers = busOptions.Consumers;
@@ -67,34 +56,6 @@ internal sealed class SqsMessagePump(
 
         var tasks = consumers.Select(d => ConsumeQueueAsync(d, stoppingToken));
         await Task.WhenAll(tasks);
-    }
-
-    private async Task SetupTopologyWithRetryAsync(CancellationToken cancellationToken)
-    {
-        var attempt = 0;
-        while (true)
-        {
-            try
-            {
-                await topologySetup.DeclareConsumerTopologyAsync(cancellationToken);
-                return;
-            }
-            catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
-            {
-                attempt++;
-                if (attempt > options.ConnectionRetry.RetryCount)
-                    throw;
-
-                var delay = options.ConnectionRetry.DelayProvider(attempt);
-                logger.LogWarning(
-                    ex,
-                    "InterBus AmazonSqs: topology setup failed (attempt {Attempt}); retrying in {Delay}",
-                    attempt,
-                    delay);
-
-                await Task.Delay(delay, cancellationToken);
-            }
-        }
     }
 
     private async Task ConsumeQueueAsync(ConsumerDescriptor descriptor, CancellationToken stoppingToken)

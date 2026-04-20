@@ -49,6 +49,7 @@ public static class RabbitMqTransportBuilderExtensions
 
         // Connection provider manages publish and consume connections (singleton).
         builder.Services.AddSingleton<RabbitMqConnectionProvider>();
+        builder.Services.AddSingleton<IInterBusTopologyBuilder, RabbitMqTopologyBuilder>();
 
         // RabbitMqTransport is scoped: each DI scope gets its own channel.
         // Registered via a factory because the constructor takes the internal RabbitMqConnectionProvider.

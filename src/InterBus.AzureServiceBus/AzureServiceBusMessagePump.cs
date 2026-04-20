@@ -8,16 +8,9 @@ using Microsoft.Extensions.Logging;
 namespace InterBus.AzureServiceBus;
 
 /// <summary>
-/// Service Activator (Message Pump). A <see cref="BackgroundService"/> that declares the
-/// required Azure Service Bus topology (topics, queues, subscriptions) at startup and starts
-/// one or more <see cref="ServiceBusProcessor"/> instances per registered InterBus consumer.
-/// <para>
-/// For each consumer, an Azure Service Bus queue is created to receive direct (point-to-point)
-/// sends. For every message type the consumer handles, an Azure Service Bus topic is created
-/// (if it does not already exist) and a subscription on that topic is created for the consumer,
-/// with <c>ForwardTo</c> set to the consumer's queue. This mirrors the RabbitMQ model of a
-/// single queue bound to multiple exchanges.
-/// </para>
+/// Service Activator (Message Pump). A <see cref="BackgroundService"/> that starts one or more
+/// <see cref="ServiceBusProcessor"/> instances per registered InterBus consumer.
+/// <para>Topology is created or verified during bus startup before this pump starts.</para>
 /// <para>
 /// A single <see cref="ServiceBusProcessor"/> per consumer listens on the consumer's queue,
 /// receiving both direct sends and messages forwarded from topic subscriptions.
@@ -29,7 +22,6 @@ namespace InterBus.AzureServiceBus;
 /// </summary>
 internal sealed class AzureServiceBusMessagePump(
     AzureServiceBusClientProvider clientProvider,
-    AzureServiceBusTopology topology,
     AzureServiceBusTransportOptions options,
     InterBusOptions busOptions,
     IServiceScopeFactory scopeFactory,
@@ -38,17 +30,10 @@ internal sealed class AzureServiceBusMessagePump(
 {
     private readonly List<ServiceBusProcessor> _processors = [];
 
-    /// <summary>
-    /// Declares the full Azure Service Bus topology and creates processors before the
-    /// background loop starts.
-    /// </summary>
     public override async Task StartAsync(CancellationToken cancellationToken)
     {
         if (busOptions.Consumers.Count > 0)
-        {
-            await SetupTopologyWithRetryAsync(cancellationToken);
             await StartProcessorsAsync(cancellationToken);
-        }
 
         await base.StartAsync(cancellationToken);
     }
@@ -84,37 +69,6 @@ internal sealed class AzureServiceBusMessagePump(
         catch (OperationCanceledException)
         {
             // Expected on shutdown.
-        }
-    }
-
-    /// <summary>
-    /// Declares consumer topology with retry behavior for transient startup failures.
-    /// </summary>
-    private async Task SetupTopologyWithRetryAsync(CancellationToken cancellationToken)
-    {
-        var attempt = 0;
-        while (true)
-        {
-            try
-            {
-                await topology.DeclareConsumerTopologyAsync(cancellationToken);
-                return;
-            }
-            catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
-            {
-                attempt++;
-                if (attempt > options.ConnectionRetry.RetryCount)
-                    throw;
-
-                var delay = options.ConnectionRetry.DelayProvider(attempt);
-                logger.LogWarning(
-                    ex,
-                    "InterBus AzureServiceBus: topology setup failed (attempt {Attempt}); retrying in {Delay}",
-                    attempt,
-                    delay);
-
-                await Task.Delay(delay, cancellationToken);
-            }
         }
     }
 

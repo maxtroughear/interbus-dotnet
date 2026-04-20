@@ -10,14 +10,9 @@ using RabbitMQ.Client.Exceptions;
 namespace InterBus.RabbitMQ;
 
 /// <summary>
-/// Service Activator (Message Pump). A <see cref="BackgroundService"/> that declares the
-/// required RabbitMQ topology (exchanges, queues, bindings) at startup and starts one consumer
+/// Service Activator (Message Pump). A <see cref="BackgroundService"/> that starts one consumer
 /// per registered InterBus consumer queue.
-/// <para>
-/// Each consumer queue is bound to a <c>fanout</c> exchange for every topic it handles.
-/// Messages published to a topic exchange are fanned out to all bound queues. Direct sends
-/// (queue-to-queue) use the default exchange with the queue name as the routing key.
-/// </para>
+/// <para>Topology is created or verified during bus startup before this pump starts.</para>
 /// <para>
 /// Successful dispatch acknowledges the RabbitMQ message. Consumer failures issue a negative
 /// acknowledgement with <c>requeue=true</c> so the message is redelivered.
@@ -38,15 +33,7 @@ internal sealed class RabbitMqMessagePump(
     private IConnection? _connection;
 
     /// <summary>
-    /// Opens the consume connection and declares the full RabbitMQ topology before the
-    /// background loop starts. By completing topology setup here, publishers can route
-    /// messages as soon as <see cref="StartAsync"/> returns without risking a race where
-    /// a publish happens before the exchange bindings exist (which would silently drop the message
-    /// on a fanout exchange with no bound queues).
-    /// <para>
-    /// Initial connection attempts are retried using the exponential back-off policy defined
-    /// in <see cref="RabbitMqTransportOptions.ConnectionRetry"/>.
-    /// </para>
+    /// Opens the consume connection before the background loop starts.
     /// </summary>
     public override async Task StartAsync(CancellationToken cancellationToken)
     {
@@ -54,7 +41,6 @@ internal sealed class RabbitMqMessagePump(
         {
             _connection = await ConnectWithRetryAsync(cancellationToken);
             logger.LogDebug("InterBus RabbitMQ: consume connection established");
-            await DeclareTopologyAsync(cancellationToken);
         }
 
         await base.StartAsync(cancellationToken);
@@ -118,62 +104,6 @@ internal sealed class RabbitMqMessagePump(
             or System.Net.Sockets.SocketException
             or TimeoutException
         || (ex.InnerException is not null && IsConnectionRelated(ex.InnerException));
-
-    /// <summary>
-    /// Declares all queues, exchanges, and bindings. Idempotent — safe to call even if the
-    /// topology already exists from a previous run. Uses a short-lived channel that is closed
-    /// after setup; the per-consumer channels are created later in
-    /// <see cref="ConsumeQueueAsync"/>.
-    /// </summary>
-    private async Task DeclareTopologyAsync(CancellationToken cancellationToken)
-    {
-        await using var channel = await _connection!.CreateChannelAsync(cancellationToken: cancellationToken);
-
-        foreach (var descriptor in busOptions.Consumers)
-        {
-            // Declare the queue as durable so it survives broker restarts.
-            await channel.QueueDeclareAsync(
-                queue: descriptor.QueueName,
-                durable: true,
-                exclusive: false,
-                autoDelete: false,
-                arguments: null,
-                noWait: false,
-                cancellationToken: cancellationToken);
-
-            // Bind the queue to a fanout exchange for each topic this consumer handles.
-            foreach (var messageType in descriptor.MessageTypes)
-            {
-                var topicName = busOptions.TryGetTopicName(messageType, out var custom)
-                    ? custom
-                    : RoutingConventions.TopicName(messageType);
-
-                var exchangeName = options.ExchangePrefix + topicName;
-
-                await channel.ExchangeDeclareAsync(
-                    exchange: exchangeName,
-                    type: ExchangeType.Fanout,
-                    durable: true,
-                    autoDelete: false,
-                    arguments: null,
-                    noWait: false,
-                    cancellationToken: cancellationToken);
-
-                await channel.QueueBindAsync(
-                    queue: descriptor.QueueName,
-                    exchange: exchangeName,
-                    routingKey: string.Empty,
-                    arguments: null,
-                    noWait: false,
-                    cancellationToken: cancellationToken);
-
-                logger.LogDebug(
-                    "InterBus RabbitMQ: bound queue {QueueName} to exchange {ExchangeName}",
-                    descriptor.QueueName,
-                    exchangeName);
-            }
-        }
-    }
 
     private async Task ConsumeQueueAsync(ConsumerDescriptor descriptor, CancellationToken stoppingToken)
     {

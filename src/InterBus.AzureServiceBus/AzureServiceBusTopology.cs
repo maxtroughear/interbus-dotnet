@@ -15,12 +15,13 @@ internal sealed class AzureServiceBusTopology(
     AzureServiceBusClientProvider clientProvider, 
     InterBusOptions busOptions,
     ILogger<AzureServiceBusTopology> logger)
+    : IInterBusTopologyBuilder
 {
     private ConcurrentDictionary<string, byte> Topics { get; } = new(StringComparer.Ordinal);
     private ConcurrentDictionary<string, byte> Queues { get; } = new(StringComparer.Ordinal);
     private ConcurrentDictionary<string, byte> Subscriptions { get; } = new(StringComparer.Ordinal);
     
-    internal async Task DeclareConsumerTopologyAsync(CancellationToken cancellationToken)
+    public async Task BuildTopologyAsync(CancellationToken cancellationToken)
     {
         foreach (var descriptor in busOptions.Consumers)
         {
@@ -153,4 +154,3 @@ internal sealed class AzureServiceBusTopology(
     private string BuildSubscriptionName(string rawQueueName) =>
         AzureServiceBusNaming.SanitizeSubscriptionName(options.QueuePrefix + rawQueueName);
 }
-

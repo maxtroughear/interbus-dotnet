@@ -9,7 +9,7 @@ internal sealed class RabbitMqTopologyBuilder(
     RabbitMqTransportOptions options,
     InterBusOptions busOptions,
     ILogger<RabbitMqTopologyBuilder> logger)
-    : ITopologyBuilder
+    : ITopologyBuilder, IDisposable
 {
     private HashSet<string> DeclaredTopics { get; } = new(StringComparer.Ordinal);
     private HashSet<string> DeclaredQueues { get; } = new(StringComparer.Ordinal);
@@ -91,12 +91,6 @@ internal sealed class RabbitMqTopologyBuilder(
         CancellationToken cancellationToken)
     {
         var exchangeName = options.ExchangePrefix + rawTopicName;
-        lock (DeclaredTopics)
-        {
-            if (DeclaredTopics.Contains(exchangeName))
-                return exchangeName;
-        }
-
         await TopicLock.WaitAsync(cancellationToken);
         try
         {
@@ -131,12 +125,6 @@ internal sealed class RabbitMqTopologyBuilder(
         string queueName,
         CancellationToken cancellationToken)
     {
-        lock (DeclaredQueues)
-        {
-            if (DeclaredQueues.Contains(queueName))
-                return queueName;
-        }
-
         await QueueLock.WaitAsync(cancellationToken);
         try
         {
@@ -173,12 +161,6 @@ internal sealed class RabbitMqTopologyBuilder(
         CancellationToken cancellationToken)
     {
         var bindingKey = exchangeName + "|" + queueName;
-        lock (DeclaredBindings)
-        {
-            if (DeclaredBindings.Contains(bindingKey))
-                return;
-        }
-
         await BindingLock.WaitAsync(cancellationToken);
         try
         {
@@ -203,6 +185,13 @@ internal sealed class RabbitMqTopologyBuilder(
         {
             BindingLock.Release();
         }
+    }
+
+    public void Dispose()
+    {
+        TopicLock.Dispose();
+        QueueLock.Dispose();
+        BindingLock.Dispose();
     }
 
     private async Task<IConnection> ConnectWithRetryAsync(CancellationToken cancellationToken)

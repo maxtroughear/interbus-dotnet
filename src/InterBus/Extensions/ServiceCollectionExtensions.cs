@@ -45,6 +45,12 @@ public static class ServiceCollectionExtensions
         var options = new InterBusOptions();
         var builder = new InterBusBuilder(services, options);
 
+        // Register topology setup before configure so this hosted service starts before any
+        // transport-hosted services added by transport extension methods.
+        services.AddHostedService<InterBusTopologyHostedService>();
+
+        configure(builder);
+
         // Register options so transports can resolve them.
         services.AddSingleton(options);
 
@@ -64,9 +70,6 @@ public static class ServiceCollectionExtensions
         // Register the transport factory and the scoped publisher.
         services.AddSingleton<IInterBusTransportFactory, InterBusTransportFactory>();
         services.AddScoped<IPublisher, Publisher.Publisher>();
-        services.AddHostedService<InterBusTopologyHostedService>();
-
-        configure(builder);
 
         return services;
     }

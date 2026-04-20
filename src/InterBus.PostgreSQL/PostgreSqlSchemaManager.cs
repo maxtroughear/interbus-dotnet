@@ -117,6 +117,22 @@ internal sealed class PostgreSqlSchemaManager(
         "END;\n" +
         "$$;\n\n" +
 
+        // ensure_topic: returns the topic ID, creating the row only on a miss.
+        $"CREATE OR REPLACE FUNCTION {s}.ensure_topic(p_topic_name TEXT)\n" +
+        "RETURNS BIGINT LANGUAGE plpgsql AS $$\n" +
+        "DECLARE v_topic_id BIGINT;\n" +
+        "BEGIN\n" +
+        $"    SELECT id INTO v_topic_id FROM {s}.topics WHERE topic_name = p_topic_name;\n" +
+        "    IF FOUND THEN RETURN v_topic_id; END IF;\n" +
+        $"    INSERT INTO {s}.topics (topic_name) VALUES (p_topic_name)\n" +
+        "        ON CONFLICT (topic_name) DO NOTHING RETURNING id INTO v_topic_id;\n" +
+        "    IF NOT FOUND THEN\n" +
+        $"        SELECT id INTO v_topic_id FROM {s}.topics WHERE topic_name = p_topic_name;\n" +
+        "    END IF;\n" +
+        "    RETURN v_topic_id;\n" +
+        "END;\n" +
+        "$$;\n\n" +
+
         // ensure_subscription: ensures the topic row and the (queue, topic) subscription row exist.
         $"CREATE OR REPLACE FUNCTION {s}.ensure_subscription(p_queue_id BIGINT, p_topic_name TEXT)\n" +
         "RETURNS VOID LANGUAGE plpgsql AS $$\n" +

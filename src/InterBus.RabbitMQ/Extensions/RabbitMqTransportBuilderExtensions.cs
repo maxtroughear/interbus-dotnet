@@ -52,11 +52,7 @@ public static class RabbitMqTransportBuilderExtensions
         builder.Services.AddSingleton<ITopologyBuilder, RabbitMqTopologyBuilder>();
 
         // RabbitMqTransport is scoped: each DI scope gets its own channel.
-        // Registered via a factory because the constructor takes the internal RabbitMqConnectionProvider.
-        builder.Services.AddScoped<RabbitMqTransport>(sp => new RabbitMqTransport(
-            sp.GetRequiredService<RabbitMqConnectionProvider>(),
-            sp.GetRequiredService<RabbitMqTransportOptions>(),
-            sp.GetRequiredService<ILogger<RabbitMqTransport>>()));
+        builder.Services.AddScoped<RabbitMqTransport>();
 
         // Keyed registrations for transport factory scheme-based resolution.
         builder.Services.AddKeyedScoped<ITransport>(RabbitMqTransport.TopicScheme,

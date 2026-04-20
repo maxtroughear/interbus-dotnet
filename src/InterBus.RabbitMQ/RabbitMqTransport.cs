@@ -28,12 +28,8 @@ namespace InterBus.RabbitMQ;
 /// acknowledgement before returning, preventing silent message loss.
 /// </para>
 /// <para>
-/// Topology (exchanges and queues) is declared at most once per application lifetime, tracked
-/// by the singleton <see cref="RabbitMqConnectionProvider.DeclaredTopology"/> dictionary so
-/// that the cost is not repeated across DI scopes. If a publish fails because the channel is
-/// closed by the broker (e.g., an exchange or queue was deleted by an operator), the tracking
-/// entry is removed, the channel is reopened, topology is redeclared, and the publish is
-/// retried once.
+/// Topology declaration and tracking is handled by <see cref="RabbitMqTopologyBuilder"/>, including
+/// lazy exchange/queue creation on send paths and startup bindings for consumer queues.
 /// </para>
 /// <para>
 /// Delayed delivery is not natively supported; the <see cref="TransportSendContext.Delay"/>
@@ -49,7 +45,7 @@ public sealed class RabbitMqTransport : ITransport, IAsyncDisposable
     public const string QueueScheme = "rabbitmqqueue";
 
     private readonly RabbitMqConnectionProvider _connectionProvider;
-    private readonly RabbitMqTransportOptions _options;
+    private readonly ITopologyBuilder _topologyBuilder;
     private readonly ILogger<RabbitMqTransport> _logger;
 
     // Channel is created lazily on first SendAsync within the scope.
@@ -57,11 +53,11 @@ public sealed class RabbitMqTransport : ITransport, IAsyncDisposable
 
     internal RabbitMqTransport(
         RabbitMqConnectionProvider connectionProvider,
-        RabbitMqTransportOptions options,
+        ITopologyBuilder topologyBuilder,
         ILogger<RabbitMqTransport> logger)
     {
         _connectionProvider = connectionProvider;
-        _options = options;
+        _topologyBuilder = topologyBuilder;
         _logger = logger;
     }
 
@@ -80,11 +76,12 @@ public sealed class RabbitMqTransport : ITransport, IAsyncDisposable
 
         if (context.Destination.Scheme == TopicScheme)
         {
-            var exchangeName = _options.ExchangePrefix + name;
-            await PublishToExchangeAsync(channel, exchangeName, props, context.Payload, cancellationToken);
+            var exchangeName = await _topologyBuilder.EnsureTopicAsync(name, cancellationToken);
+            await PublishToExchangeAsync(channel, name, exchangeName, props, context.Payload, cancellationToken);
         }
         else if (context.Destination.Scheme == QueueScheme)
         {
+            await _topologyBuilder.EnsureQueueAsync(name, cancellationToken);
             await PublishToQueueAsync(channel, name, props, context.Payload, cancellationToken);
         }
         else
@@ -98,12 +95,12 @@ public sealed class RabbitMqTransport : ITransport, IAsyncDisposable
 
     private async Task PublishToExchangeAsync(
         IChannel channel,
+        string rawTopicName,
         string exchangeName,
         BasicProperties props,
         ReadOnlyMemory<byte> payload,
         CancellationToken ct)
     {
-        await EnsureExchangeDeclaredAsync(channel, exchangeName, ct);
         try
         {
             await channel.BasicPublishAsync(
@@ -116,12 +113,12 @@ public sealed class RabbitMqTransport : ITransport, IAsyncDisposable
         }
         catch (Exception) when (!channel.IsOpen)
         {
-            // Channel was closed by the broker (exchange may have been deleted).
-            // Clear the topology entry, recreate the channel, redeclare, and retry once.
-            _connectionProvider.DeclaredTopology.TryRemove(exchangeName, out _);
+            if (_topologyBuilder is RabbitMqTopologyBuilder rabbitMqTopologyBuilder)
+                rabbitMqTopologyBuilder.InvalidateTopic(exchangeName);
+
             _publishChannel = null;
             var freshChannel = await EnsureChannelAsync(ct);
-            await EnsureExchangeDeclaredAsync(freshChannel, exchangeName, ct);
+            exchangeName = await _topologyBuilder.EnsureTopicAsync(rawTopicName, ct);
             await freshChannel.BasicPublishAsync(
                 exchange: exchangeName,
                 routingKey: string.Empty,
@@ -139,7 +136,6 @@ public sealed class RabbitMqTransport : ITransport, IAsyncDisposable
         ReadOnlyMemory<byte> payload,
         CancellationToken ct)
     {
-        await EnsureQueueDeclaredAsync(channel, queueName, ct);
         try
         {
             await channel.BasicPublishAsync(
@@ -152,12 +148,12 @@ public sealed class RabbitMqTransport : ITransport, IAsyncDisposable
         }
         catch (Exception) when (!channel.IsOpen)
         {
-            // Channel was closed by the broker (queue may have been deleted).
-            // Clear the topology entry, recreate the channel, redeclare, and retry once.
-            _connectionProvider.DeclaredTopology.TryRemove(queueName, out _);
+            if (_topologyBuilder is RabbitMqTopologyBuilder rabbitMqTopologyBuilder)
+                rabbitMqTopologyBuilder.InvalidateQueue(queueName);
+
             _publishChannel = null;
             var freshChannel = await EnsureChannelAsync(ct);
-            await EnsureQueueDeclaredAsync(freshChannel, queueName, ct);
+            await _topologyBuilder.EnsureQueueAsync(queueName, ct);
             await freshChannel.BasicPublishAsync(
                 exchange: string.Empty,
                 routingKey: queueName,
@@ -166,36 +162,6 @@ public sealed class RabbitMqTransport : ITransport, IAsyncDisposable
                 body: payload,
                 cancellationToken: ct);
         }
-    }
-
-    private async Task EnsureExchangeDeclaredAsync(IChannel channel, string exchangeName, CancellationToken ct)
-    {
-        if (!_connectionProvider.DeclaredTopology.TryAdd(exchangeName, true))
-            return;
-
-        await channel.ExchangeDeclareAsync(
-            exchange: exchangeName,
-            type: ExchangeType.Fanout,
-            durable: true,
-            autoDelete: false,
-            arguments: null,
-            noWait: false,
-            cancellationToken: ct);
-    }
-
-    private async Task EnsureQueueDeclaredAsync(IChannel channel, string queueName, CancellationToken ct)
-    {
-        if (!_connectionProvider.DeclaredTopology.TryAdd(queueName, true))
-            return;
-
-        await channel.QueueDeclareAsync(
-            queue: queueName,
-            durable: true,
-            exclusive: false,
-            autoDelete: false,
-            arguments: null,
-            noWait: false,
-            cancellationToken: ct);
     }
 
     private async Task<IChannel> EnsureChannelAsync(CancellationToken cancellationToken)

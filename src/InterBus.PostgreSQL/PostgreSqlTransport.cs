@@ -19,7 +19,10 @@ namespace InterBus.PostgreSQL;
 /// issues a <c>NOTIFY</c> in a single round trip.
 /// </para>
 /// </summary>
-public sealed class PostgreSqlTransport(NpgsqlDataSource dataSource, PostgreSqlTransportOptions options)
+public sealed class PostgreSqlTransport(
+    NpgsqlDataSource dataSource,
+    PostgreSqlTransportOptions options,
+    ITopologyBuilder topologyBuilder)
     : ITransport
 {
     /// <summary>URI scheme for PostgreSQL topic (fan-out) destinations.</summary>
@@ -38,6 +41,15 @@ public sealed class PostgreSqlTransport(NpgsqlDataSource dataSource, PostgreSqlT
         var visibleAt = context.Delay.HasValue
             ? (DateTimeOffset?)DateTimeOffset.UtcNow.Add(context.Delay.Value)
             : null;
+
+        _ = context.Destination.Scheme switch
+        {
+            TopicScheme => await topologyBuilder.EnsureTopicAsync(name, cancellationToken),
+            QueueScheme => await topologyBuilder.EnsureQueueAsync(name, cancellationToken),
+            _ => throw new ArgumentException(
+                $"Unsupported destination URI scheme '{context.Destination.Scheme}'. " +
+                $"Expected '{TopicScheme}' or '{QueueScheme}'.", nameof(context))
+        };
 
         await using var cmd = dataSource.CreateCommand();
 

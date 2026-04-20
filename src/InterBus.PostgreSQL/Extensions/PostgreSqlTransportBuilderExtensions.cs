@@ -137,8 +137,7 @@ public static class PostgreSqlTransportBuilderExtensions
             {
                 var service = builder.Services[i];
                 if (service.ServiceType == typeof(IHostedService) &&
-                    service.ImplementationType is not null &&
-                    typeof(IInterBusTopologyHostedServiceMarker).IsAssignableFrom(service.ImplementationType))
+                    service.ImplementationType == typeof(InterBusTopologyHostedService))
                 {
                     topologyHostedServiceIndex = i;
                     break;

@@ -5,10 +5,10 @@ namespace InterBus.Transport;
 /// <summary>
 /// Executes all registered transport topology builders once during host startup.
 /// </summary>
-internal sealed class InterBusTopologyHostedService(
+public sealed class InterBusTopologyHostedService(
     IEnumerable<ITopologyBuilder> topologyBuilders,
     InterBusOptions busOptions)
-    : IHostedService, IInterBusTopologyHostedServiceMarker
+    : IHostedService
 {
     public async Task StartAsync(CancellationToken cancellationToken)
     {

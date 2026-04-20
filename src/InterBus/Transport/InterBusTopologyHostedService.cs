@@ -8,7 +8,7 @@ namespace InterBus.Transport;
 internal sealed class InterBusTopologyHostedService(
     IEnumerable<ITopologyBuilder> topologyBuilders,
     InterBusOptions busOptions)
-    : IHostedService
+    : IHostedService, IInterBusTopologyHostedServiceMarker
 {
     public async Task StartAsync(CancellationToken cancellationToken)
     {

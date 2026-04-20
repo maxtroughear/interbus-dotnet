@@ -1,3 +1,4 @@
+using InterBus.Transport;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Npgsql;
@@ -136,7 +137,8 @@ public static class PostgreSqlTransportBuilderExtensions
             {
                 var service = builder.Services[i];
                 if (service.ServiceType == typeof(IHostedService) &&
-                    service.ImplementationType?.FullName == "InterBus.Transport.InterBusTopologyHostedService")
+                    service.ImplementationType is not null &&
+                    typeof(IInterBusTopologyHostedServiceMarker).IsAssignableFrom(service.ImplementationType))
                 {
                     topologyHostedServiceIndex = i;
                     break;

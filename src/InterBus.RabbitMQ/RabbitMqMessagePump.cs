@@ -186,7 +186,7 @@ internal sealed class RabbitMqMessagePump(
     {
         await using var scope = scopeFactory.CreateAsyncScope();
         var executor = scope.ServiceProvider.GetRequiredService<DispatchPipelineExecutor>();
-        var headers = RabbitMqTransport.ParseAmqpHeaders(ea.BasicProperties.Headers);
+        var headers = RabbitMqHeaders.ParseAmqpHeaders(ea.BasicProperties.Headers);
         var context = new DispatchContext(descriptor, ea.Body.ToArray(), headers);
         await executor.ExecuteAsync(context, ct);
     }

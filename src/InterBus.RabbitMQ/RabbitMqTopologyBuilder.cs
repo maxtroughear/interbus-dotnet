@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Exceptions;
@@ -12,9 +11,12 @@ internal sealed class RabbitMqTopologyBuilder(
     ILogger<RabbitMqTopologyBuilder> logger)
     : ITopologyBuilder
 {
-    private ConcurrentDictionary<string, Task<string>> DeclaredTopics { get; } = new(StringComparer.Ordinal);
-    private ConcurrentDictionary<string, Task<string>> DeclaredQueues { get; } = new(StringComparer.Ordinal);
-    private ConcurrentDictionary<string, Task> DeclaredBindings { get; } = new(StringComparer.Ordinal);
+    private HashSet<string> DeclaredTopics { get; } = new(StringComparer.Ordinal);
+    private HashSet<string> DeclaredQueues { get; } = new(StringComparer.Ordinal);
+    private HashSet<string> DeclaredBindings { get; } = new(StringComparer.Ordinal);
+    private SemaphoreSlim TopicLock { get; } = new(1, 1);
+    private SemaphoreSlim QueueLock { get; } = new(1, 1);
+    private SemaphoreSlim BindingLock { get; } = new(1, 1);
 
     public async Task BuildTopologyAsync(CancellationToken cancellationToken)
     {
@@ -67,18 +69,20 @@ internal sealed class RabbitMqTopologyBuilder(
 
     internal void InvalidateTopic(string exchangeName)
     {
-        DeclaredTopics.TryRemove(exchangeName, out _);
+        lock (DeclaredTopics)
+            DeclaredTopics.Remove(exchangeName);
 
-        foreach (var key in DeclaredBindings.Keys.Where(k => k.StartsWith(exchangeName + "|", StringComparison.Ordinal)))
-            DeclaredBindings.TryRemove(key, out _);
+        lock (DeclaredBindings)
+            DeclaredBindings.RemoveWhere(k => k.StartsWith(exchangeName + "|", StringComparison.Ordinal));
     }
 
     internal void InvalidateQueue(string queueName)
     {
-        DeclaredQueues.TryRemove(queueName, out _);
+        lock (DeclaredQueues)
+            DeclaredQueues.Remove(queueName);
 
-        foreach (var key in DeclaredBindings.Keys.Where(k => k.EndsWith("|" + queueName, StringComparison.Ordinal)))
-            DeclaredBindings.TryRemove(key, out _);
+        lock (DeclaredBindings)
+            DeclaredBindings.RemoveWhere(k => k.EndsWith("|" + queueName, StringComparison.Ordinal));
     }
 
     private async Task<string> EnsureTopicDeclaredOnChannelAsync(
@@ -87,22 +91,39 @@ internal sealed class RabbitMqTopologyBuilder(
         CancellationToken cancellationToken)
     {
         var exchangeName = options.ExchangePrefix + rawTopicName;
-        return await EnsureWithCacheAsync(
-            DeclaredTopics,
-            exchangeName,
-            async _ =>
-            {
-                await channel.ExchangeDeclareAsync(
-                    exchange: exchangeName,
-                    type: ExchangeType.Fanout,
-                    durable: true,
-                    autoDelete: false,
-                    arguments: null,
-                    noWait: false,
-                    cancellationToken: cancellationToken);
+        lock (DeclaredTopics)
+        {
+            if (DeclaredTopics.Contains(exchangeName))
                 return exchangeName;
-            },
-            cancellationToken);
+        }
+
+        await TopicLock.WaitAsync(cancellationToken);
+        try
+        {
+            lock (DeclaredTopics)
+            {
+                if (DeclaredTopics.Contains(exchangeName))
+                    return exchangeName;
+            }
+
+            await channel.ExchangeDeclareAsync(
+                exchange: exchangeName,
+                type: ExchangeType.Fanout,
+                durable: true,
+                autoDelete: false,
+                arguments: null,
+                noWait: false,
+                cancellationToken: cancellationToken);
+
+            lock (DeclaredTopics)
+                DeclaredTopics.Add(exchangeName);
+
+            return exchangeName;
+        }
+        finally
+        {
+            TopicLock.Release();
+        }
     }
 
     private async Task<string> EnsureQueueDeclaredOnChannelAsync(
@@ -110,22 +131,39 @@ internal sealed class RabbitMqTopologyBuilder(
         string queueName,
         CancellationToken cancellationToken)
     {
-        return await EnsureWithCacheAsync(
-            DeclaredQueues,
-            queueName,
-            async _ =>
-            {
-                await channel.QueueDeclareAsync(
-                    queue: queueName,
-                    durable: true,
-                    exclusive: false,
-                    autoDelete: false,
-                    arguments: null,
-                    noWait: false,
-                    cancellationToken: cancellationToken);
+        lock (DeclaredQueues)
+        {
+            if (DeclaredQueues.Contains(queueName))
                 return queueName;
-            },
-            cancellationToken);
+        }
+
+        await QueueLock.WaitAsync(cancellationToken);
+        try
+        {
+            lock (DeclaredQueues)
+            {
+                if (DeclaredQueues.Contains(queueName))
+                    return queueName;
+            }
+
+            await channel.QueueDeclareAsync(
+                queue: queueName,
+                durable: true,
+                exclusive: false,
+                autoDelete: false,
+                arguments: null,
+                noWait: false,
+                cancellationToken: cancellationToken);
+
+            lock (DeclaredQueues)
+                DeclaredQueues.Add(queueName);
+
+            return queueName;
+        }
+        finally
+        {
+            QueueLock.Release();
+        }
     }
 
     private async Task EnsureQueueBindingAsync(
@@ -135,59 +173,35 @@ internal sealed class RabbitMqTopologyBuilder(
         CancellationToken cancellationToken)
     {
         var bindingKey = exchangeName + "|" + queueName;
-        await EnsureWithCacheAsync(
-            DeclaredBindings,
-            bindingKey,
-            async _ =>
+        lock (DeclaredBindings)
+        {
+            if (DeclaredBindings.Contains(bindingKey))
+                return;
+        }
+
+        await BindingLock.WaitAsync(cancellationToken);
+        try
+        {
+            lock (DeclaredBindings)
             {
-                await channel.QueueBindAsync(
-                    queue: queueName,
-                    exchange: exchangeName,
-                    routingKey: string.Empty,
-                    arguments: null,
-                    noWait: false,
-                    cancellationToken: cancellationToken);
-            },
-            cancellationToken);
-    }
+                if (DeclaredBindings.Contains(bindingKey))
+                    return;
+            }
 
-    private static async Task<TValue> EnsureWithCacheAsync<TValue>(
-        ConcurrentDictionary<string, Task<TValue>> cache,
-        string key,
-        Func<CancellationToken, Task<TValue>> factory,
-        CancellationToken cancellationToken)
-    {
-        var task = cache.GetOrAdd(key, _ => factory(CancellationToken.None));
+            await channel.QueueBindAsync(
+                queue: queueName,
+                exchange: exchangeName,
+                routingKey: string.Empty,
+                arguments: null,
+                noWait: false,
+                cancellationToken: cancellationToken);
 
-        try
-        {
-            return await task.WaitAsync(cancellationToken);
+            lock (DeclaredBindings)
+                DeclaredBindings.Add(bindingKey);
         }
-        catch
+        finally
         {
-            if (task.IsFaulted || task.IsCanceled)
-                cache.TryRemove(key, out _);
-            throw;
-        }
-    }
-
-    private static async Task EnsureWithCacheAsync(
-        ConcurrentDictionary<string, Task> cache,
-        string key,
-        Func<CancellationToken, Task> factory,
-        CancellationToken cancellationToken)
-    {
-        var task = cache.GetOrAdd(key, _ => factory(CancellationToken.None));
-
-        try
-        {
-            await task.WaitAsync(cancellationToken);
-        }
-        catch
-        {
-            if (task.IsFaulted || task.IsCanceled)
-                cache.TryRemove(key, out _);
-            throw;
+            BindingLock.Release();
         }
     }
 

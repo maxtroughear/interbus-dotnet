@@ -1,5 +1,4 @@
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
 
 namespace InterBus.RabbitMQ.Extensions;
 
@@ -22,8 +21,8 @@ public static class RabbitMqTransportBuilderExtensions
     /// connection for consuming.
     /// </para>
     /// <para>
-    /// <see cref="RabbitMqTransport"/> is registered as a <em>scoped</em> service; each DI
-    /// scope gets its own publish channel with publisher confirms enabled.
+    /// Separate scoped transports are registered for topic and queue destinations; each scope
+    /// gets its own publish channel with publisher confirms enabled.
     /// </para>
     /// <para>
     /// Delayed delivery is not natively supported; the delay value is ignored and messages
@@ -44,21 +43,21 @@ public static class RabbitMqTransportBuilderExtensions
         var options = new RabbitMqTransportOptions();
         configure?.Invoke(options);
 
-        builder.Options.SetTransportUriSchemes(RabbitMqTransport.TopicScheme, RabbitMqTransport.QueueScheme);
+        builder.Options.SetTransportUriSchemes(RabbitMqTopicTransport.TopicScheme, RabbitMqQueueTransport.QueueScheme);
         builder.Services.AddSingleton(options);
 
         // Connection provider manages publish and consume connections (singleton).
         builder.Services.AddSingleton<RabbitMqConnectionProvider>();
         builder.Services.AddSingleton<ITopologyBuilder, RabbitMqTopologyBuilder>();
 
-        // RabbitMqTransport is scoped: each DI scope gets its own channel.
-        builder.Services.AddScoped<RabbitMqTransport>();
+        builder.Services.AddScoped<RabbitMqTopicTransport>();
+        builder.Services.AddScoped<RabbitMqQueueTransport>();
 
         // Keyed registrations for transport factory scheme-based resolution.
-        builder.Services.AddKeyedScoped<ITransport>(RabbitMqTransport.TopicScheme,
-            (sp, _) => sp.GetRequiredService<RabbitMqTransport>());
-        builder.Services.AddKeyedScoped<ITransport>(RabbitMqTransport.QueueScheme,
-            (sp, _) => sp.GetRequiredService<RabbitMqTransport>());
+        builder.Services.AddKeyedScoped<ITransport>(RabbitMqTopicTransport.TopicScheme,
+            (sp, _) => sp.GetRequiredService<RabbitMqTopicTransport>());
+        builder.Services.AddKeyedScoped<ITransport>(RabbitMqQueueTransport.QueueScheme,
+            (sp, _) => sp.GetRequiredService<RabbitMqQueueTransport>());
 
         // Message pump runs as a background service.
         builder.Services.AddHostedService<RabbitMqMessagePump>();

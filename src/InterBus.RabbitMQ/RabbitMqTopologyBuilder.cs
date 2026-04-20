@@ -13,9 +13,6 @@ internal sealed class RabbitMqTopologyBuilder(
 {
     public async Task BuildTopologyAsync(CancellationToken cancellationToken)
     {
-        if (busOptions.Consumers.Count == 0)
-            return;
-
         await using var connection = await ConnectWithRetryAsync(cancellationToken);
         await using var channel = await connection.CreateChannelAsync(cancellationToken: cancellationToken);
 

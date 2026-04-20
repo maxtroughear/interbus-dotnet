@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Npgsql;
 
 namespace InterBus.PostgreSQL.Extensions;
@@ -127,9 +128,25 @@ public static class PostgreSqlTransportBuilderExtensions
         if (options.RunSchemaMigrations)
         {
             builder.Services.AddSingleton<PostgreSqlSchemaManager>();
-            // Schema initializer must start before the message pump so the tables exist before
-            // the pump tries to SELECT from them.
-            builder.Services.AddHostedService<PostgreSqlSchemaInitializer>();
+            // AddInterBus registers InterBusTopologyHostedService before transport configuration.
+            // Insert migration hosted service before topology so schema exists for topology ensure calls.
+            var descriptor = ServiceDescriptor.Singleton<IHostedService, PostgreSqlSchemaInitializer>();
+            var topologyHostedServiceIndex = -1;
+            for (var i = 0; i < builder.Services.Count; i++)
+            {
+                var service = builder.Services[i];
+                if (service.ServiceType == typeof(IHostedService) &&
+                    service.ImplementationType?.FullName == "InterBus.Transport.InterBusTopologyHostedService")
+                {
+                    topologyHostedServiceIndex = i;
+                    break;
+                }
+            }
+
+            if (topologyHostedServiceIndex >= 0)
+                builder.Services.Insert(topologyHostedServiceIndex, descriptor);
+            else
+                builder.Services.Add(descriptor);
         }
 
         switch (options.MessagePumpMode)

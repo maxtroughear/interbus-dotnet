@@ -50,14 +50,9 @@ public static class RabbitMqTransportBuilderExtensions
         builder.Services.AddSingleton<RabbitMqConnectionProvider>();
         builder.Services.AddSingleton<ITopologyBuilder, RabbitMqTopologyBuilder>();
 
-        builder.Services.AddScoped<RabbitMqTopicTransport>();
-        builder.Services.AddScoped<RabbitMqQueueTransport>();
-
         // Keyed registrations for transport factory scheme-based resolution.
-        builder.Services.AddKeyedScoped<ITransport>(RabbitMqTopicTransport.TopicScheme,
-            (sp, _) => sp.GetRequiredService<RabbitMqTopicTransport>());
-        builder.Services.AddKeyedScoped<ITransport>(RabbitMqQueueTransport.QueueScheme,
-            (sp, _) => sp.GetRequiredService<RabbitMqQueueTransport>());
+        builder.Services.AddKeyedScoped<ITransport, RabbitMqTopicTransport>(RabbitMqTopicTransport.TopicScheme);
+        builder.Services.AddKeyedScoped<ITransport, RabbitMqQueueTransport>(RabbitMqQueueTransport.QueueScheme);
 
         // Message pump runs as a background service.
         builder.Services.AddHostedService<RabbitMqMessagePump>();

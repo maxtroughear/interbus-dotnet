@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Exceptions;
@@ -9,14 +10,11 @@ internal sealed class RabbitMqTopologyBuilder(
     RabbitMqTransportOptions options,
     InterBusOptions busOptions,
     ILogger<RabbitMqTopologyBuilder> logger)
-    : ITopologyBuilder, IDisposable
+    : ITopologyBuilder
 {
-    private HashSet<string> DeclaredTopics { get; } = new(StringComparer.Ordinal);
-    private HashSet<string> DeclaredQueues { get; } = new(StringComparer.Ordinal);
-    private HashSet<string> DeclaredBindings { get; } = new(StringComparer.Ordinal);
-    private SemaphoreSlim TopicLock { get; } = new(1, 1);
-    private SemaphoreSlim QueueLock { get; } = new(1, 1);
-    private SemaphoreSlim BindingLock { get; } = new(1, 1);
+    private ConcurrentDictionary<string, Task> DeclaredTopics { get; } = new(StringComparer.Ordinal);
+    private ConcurrentDictionary<string, Task> DeclaredQueues { get; } = new(StringComparer.Ordinal);
+    private ConcurrentDictionary<string, Task> DeclaredBindings { get; } = new(StringComparer.Ordinal);
 
     public async Task BuildTopologyAsync(CancellationToken cancellationToken)
     {
@@ -41,49 +39,72 @@ internal sealed class RabbitMqTopologyBuilder(
 
     public async Task<string> EnsureTopicAsync(string rawTopicName, CancellationToken cancellationToken)
     {
-        await ExecuteWithRetryAsync(
-            async ct =>
-            {
-                var connection = await connectionProvider.GetPublishConnectionAsync(ct);
-                await using var channel = await connection.CreateChannelAsync(cancellationToken: ct);
-                await EnsureTopicDeclaredOnChannelAsync(channel, rawTopicName, ct);
-            },
-            cancellationToken);
-
-        return options.ExchangePrefix + rawTopicName;
+        var exchangeName = options.ExchangePrefix + rawTopicName;
+        await EnsureTopicDeclaredAsync(exchangeName, cancellationToken);
+        return exchangeName;
     }
 
     public async Task<string> EnsureQueueAsync(string rawQueueName, CancellationToken cancellationToken)
     {
-        await ExecuteWithRetryAsync(
-            async ct =>
-            {
-                var connection = await connectionProvider.GetPublishConnectionAsync(ct);
-                await using var channel = await connection.CreateChannelAsync(cancellationToken: ct);
-                await EnsureQueueDeclaredOnChannelAsync(channel, rawQueueName, ct);
-            },
-            cancellationToken);
-
+        await EnsureQueueDeclaredAsync(rawQueueName, cancellationToken);
         return rawQueueName;
     }
 
     internal void InvalidateTopic(string exchangeName)
     {
-        lock (DeclaredTopics)
-            DeclaredTopics.Remove(exchangeName);
+        DeclaredTopics.TryRemove(exchangeName, out _);
 
-        lock (DeclaredBindings)
-            DeclaredBindings.RemoveWhere(k => k.StartsWith(exchangeName + "|", StringComparison.Ordinal));
+        foreach (var bindingKey in DeclaredBindings.Keys)
+        {
+            if (bindingKey.StartsWith(exchangeName + "|", StringComparison.Ordinal))
+                DeclaredBindings.TryRemove(bindingKey, out _);
+        }
     }
 
     internal void InvalidateQueue(string queueName)
     {
-        lock (DeclaredQueues)
-            DeclaredQueues.Remove(queueName);
+        DeclaredQueues.TryRemove(queueName, out _);
 
-        lock (DeclaredBindings)
-            DeclaredBindings.RemoveWhere(k => k.EndsWith("|" + queueName, StringComparison.Ordinal));
+        foreach (var bindingKey in DeclaredBindings.Keys)
+        {
+            if (bindingKey.EndsWith("|" + queueName, StringComparison.Ordinal))
+                DeclaredBindings.TryRemove(bindingKey, out _);
+        }
     }
+
+    private Task EnsureTopicDeclaredAsync(string exchangeName, CancellationToken cancellationToken) =>
+        EnsureWithCacheAsync(
+            DeclaredTopics,
+            exchangeName,
+            async ct =>
+            {
+                await ExecuteWithRetryAsync(
+                    async retryCt =>
+                    {
+                        var connection = await connectionProvider.GetPublishConnectionAsync(retryCt);
+                        await using var channel = await connection.CreateChannelAsync(cancellationToken: retryCt);
+                        await DeclareTopicOnChannelAsync(channel, exchangeName, retryCt);
+                    },
+                    ct);
+            },
+            cancellationToken);
+
+    private Task EnsureQueueDeclaredAsync(string queueName, CancellationToken cancellationToken) =>
+        EnsureWithCacheAsync(
+            DeclaredQueues,
+            queueName,
+            async ct =>
+            {
+                await ExecuteWithRetryAsync(
+                    async retryCt =>
+                    {
+                        var connection = await connectionProvider.GetPublishConnectionAsync(retryCt);
+                        await using var channel = await connection.CreateChannelAsync(cancellationToken: retryCt);
+                        await DeclareQueueOnChannelAsync(channel, queueName, retryCt);
+                    },
+                    ct);
+            },
+            cancellationToken);
 
     private async Task<string> EnsureTopicDeclaredOnChannelAsync(
         IChannel channel,
@@ -91,33 +112,12 @@ internal sealed class RabbitMqTopologyBuilder(
         CancellationToken cancellationToken)
     {
         var exchangeName = options.ExchangePrefix + rawTopicName;
-        await TopicLock.WaitAsync(cancellationToken);
-        try
-        {
-            lock (DeclaredTopics)
-            {
-                if (DeclaredTopics.Contains(exchangeName))
-                    return exchangeName;
-            }
-
-            await channel.ExchangeDeclareAsync(
-                exchange: exchangeName,
-                type: ExchangeType.Fanout,
-                durable: true,
-                autoDelete: false,
-                arguments: null,
-                noWait: false,
-                cancellationToken: cancellationToken);
-
-            lock (DeclaredTopics)
-                DeclaredTopics.Add(exchangeName);
-
-            return exchangeName;
-        }
-        finally
-        {
-            TopicLock.Release();
-        }
+        await EnsureWithCacheAsync(
+            DeclaredTopics,
+            exchangeName,
+            ct => DeclareTopicOnChannelAsync(channel, exchangeName, ct),
+            cancellationToken);
+        return exchangeName;
     }
 
     private async Task<string> EnsureQueueDeclaredOnChannelAsync(
@@ -125,33 +125,12 @@ internal sealed class RabbitMqTopologyBuilder(
         string queueName,
         CancellationToken cancellationToken)
     {
-        await QueueLock.WaitAsync(cancellationToken);
-        try
-        {
-            lock (DeclaredQueues)
-            {
-                if (DeclaredQueues.Contains(queueName))
-                    return queueName;
-            }
-
-            await channel.QueueDeclareAsync(
-                queue: queueName,
-                durable: true,
-                exclusive: false,
-                autoDelete: false,
-                arguments: null,
-                noWait: false,
-                cancellationToken: cancellationToken);
-
-            lock (DeclaredQueues)
-                DeclaredQueues.Add(queueName);
-
-            return queueName;
-        }
-        finally
-        {
-            QueueLock.Release();
-        }
+        await EnsureWithCacheAsync(
+            DeclaredQueues,
+            queueName,
+            ct => DeclareQueueOnChannelAsync(channel, queueName, ct),
+            cancellationToken);
+        return queueName;
     }
 
     private async Task EnsureQueueBindingAsync(
@@ -161,38 +140,55 @@ internal sealed class RabbitMqTopologyBuilder(
         CancellationToken cancellationToken)
     {
         var bindingKey = exchangeName + "|" + queueName;
-        await BindingLock.WaitAsync(cancellationToken);
-        try
-        {
-            lock (DeclaredBindings)
-            {
-                if (DeclaredBindings.Contains(bindingKey))
-                    return;
-            }
-
-            await channel.QueueBindAsync(
-                queue: queueName,
-                exchange: exchangeName,
-                routingKey: string.Empty,
-                arguments: null,
-                noWait: false,
-                cancellationToken: cancellationToken);
-
-            lock (DeclaredBindings)
-                DeclaredBindings.Add(bindingKey);
-        }
-        finally
-        {
-            BindingLock.Release();
-        }
+        await EnsureWithCacheAsync(
+            DeclaredBindings,
+            bindingKey,
+            ct => DeclareBindingOnChannelAsync(channel, queueName, exchangeName, ct),
+            cancellationToken);
     }
 
-    public void Dispose()
+    private static async Task DeclareTopicOnChannelAsync(
+        IChannel channel,
+        string exchangeName,
+        CancellationToken cancellationToken)
     {
-        TopicLock.Dispose();
-        QueueLock.Dispose();
-        BindingLock.Dispose();
+        await channel.ExchangeDeclareAsync(
+            exchange: exchangeName,
+            type: ExchangeType.Fanout,
+            durable: true,
+            autoDelete: false,
+            arguments: null,
+            noWait: false,
+            cancellationToken: cancellationToken);
     }
+
+    private static async Task DeclareQueueOnChannelAsync(
+        IChannel channel,
+        string queueName,
+        CancellationToken cancellationToken)
+    {
+        await channel.QueueDeclareAsync(
+            queue: queueName,
+            durable: true,
+            exclusive: false,
+            autoDelete: false,
+            arguments: null,
+            noWait: false,
+            cancellationToken: cancellationToken);
+    }
+
+    private static Task DeclareBindingOnChannelAsync(
+        IChannel channel,
+        string queueName,
+        string exchangeName,
+        CancellationToken cancellationToken) =>
+        channel.QueueBindAsync(
+            queue: queueName,
+            exchange: exchangeName,
+            routingKey: string.Empty,
+            arguments: null,
+            noWait: false,
+            cancellationToken: cancellationToken);
 
     private async Task<IConnection> ConnectWithRetryAsync(CancellationToken cancellationToken)
     {
@@ -255,6 +251,28 @@ internal sealed class RabbitMqTopologyBuilder(
         if (attempt > retry.RetryCount)
             return false;
         return retry.ShouldRetry?.Invoke(ex) ?? true;
+    }
+
+
+    private static async Task EnsureWithCacheAsync(
+        ConcurrentDictionary<string, Task> cache,
+        string key,
+        Func<CancellationToken, Task> factory,
+        CancellationToken cancellationToken)
+    {
+        var task = cache.GetOrAdd(key, _ => factory(CancellationToken.None));
+
+        try
+        {
+            await task.WaitAsync(cancellationToken);
+        }
+        catch
+        {
+            if (task.IsFaulted || task.IsCanceled)
+                cache.TryRemove(key, out _);
+
+            throw;
+        }
     }
 
     private static bool IsConnectionRelated(Exception ex) =>

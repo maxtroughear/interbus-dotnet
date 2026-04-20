@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Amazon.Runtime;
 using Amazon.SecurityToken;
 using Amazon.SecurityToken.Model;
@@ -15,17 +16,19 @@ namespace InterBus.AmazonSqs;
 /// one SQS queue per consumer, one SNS topic per handled message type, and raw-delivery
 /// subscriptions binding each queue to its topics
 /// </summary>
-public sealed partial class SnsSqsTopologySetup(
+public sealed partial class SnsSqsTopologyBuilder(
     IAmazonSimpleNotificationService snsClient,
     IAmazonSQS sqsClient,
     IAmazonSecurityTokenService stsClient,
     SnsSqsTopology topology,
     SnsSqsTransportOptions transportOptions,
     InterBusOptions busOptions,
-    ILogger<SnsSqsTopologySetup> logger)
+    ILogger<SnsSqsTopologyBuilder> logger)
     : ITopologyBuilder
 {
     private GetCallerIdentityResponse? _callerIdentity;
+    private ConcurrentDictionary<string, Task<string>> EnsuredTopics { get; } = new(StringComparer.Ordinal);
+    private ConcurrentDictionary<string, Task<string>> EnsuredQueues { get; } = new(StringComparer.Ordinal);
 
     /// <summary>
     /// Declares (or verifies) the consumer topology for every registered consumer, populating the
@@ -54,9 +57,13 @@ public sealed partial class SnsSqsTopologySetup(
         if (topology.TopicArns.TryGetValue(topicName, out var cachedArn))
             return cachedArn;
 
-        return transportOptions.TopologyMode == TopologyMode.VerifyOnly
-            ? await VerifyTopicAsync(topicName, cancellationToken)
-            : await CreateTopicAsync(topicName, cancellationToken);
+        return await EnsureWithCacheAsync(
+            EnsuredTopics,
+            topicName,
+            ct => transportOptions.TopologyMode == TopologyMode.VerifyOnly
+                ? VerifyTopicAsync(topicName, ct)
+                : CreateTopicAsync(topicName, ct),
+            cancellationToken);
     }
 
     public async Task<string> EnsureQueueAsync(string rawQueueName, CancellationToken cancellationToken)
@@ -66,9 +73,13 @@ public sealed partial class SnsSqsTopologySetup(
         if (topology.QueueUrls.TryGetValue(queueName, out var cachedUrl))
             return cachedUrl;
 
-        return transportOptions.TopologyMode == TopologyMode.VerifyOnly
-            ? await VerifyQueueAsync(queueName, cancellationToken)
-            : await CreateQueueAsync(queueName, cancellationToken);
+        return await EnsureWithCacheAsync(
+            EnsuredQueues,
+            queueName,
+            ct => transportOptions.TopologyMode == TopologyMode.VerifyOnly
+                ? VerifyQueueAsync(queueName, ct)
+                : CreateQueueAsync(queueName, ct),
+            cancellationToken);
     }
 
     private async Task CreateConsumerTopologyAsync(CancellationToken cancellationToken)
@@ -289,4 +300,25 @@ public sealed partial class SnsSqsTopologySetup(
 
     [LoggerMessage(LogLevel.Debug, "InterBus AmazonSqs: verifying SQS queue {QueueName}")]
     partial void LogDebugVerifyingSqsQueue(string queueName);
+
+    private static async Task<TValue> EnsureWithCacheAsync<TValue>(
+        ConcurrentDictionary<string, Task<TValue>> cache,
+        string key,
+        Func<CancellationToken, Task<TValue>> factory,
+        CancellationToken cancellationToken)
+    {
+        var task = cache.GetOrAdd(key, _ => factory(CancellationToken.None));
+
+        try
+        {
+            return await task.WaitAsync(cancellationToken);
+        }
+        catch
+        {
+            if (task.IsFaulted || task.IsCanceled)
+                cache.TryRemove(key, out _);
+
+            throw;
+        }
+    }
 }

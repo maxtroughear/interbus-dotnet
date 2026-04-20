@@ -13,7 +13,7 @@ namespace InterBus.AmazonSqs;
 /// registered consumer's SQS queue and dispatches messages to the InterBus consume pipeline.
 /// <para>
 /// Topology setup (creating SNS topics, SQS queues, and subscriptions) is handled during bus
-/// startup by <see cref="SnsSqsTopologySetup"/> before polling begins.
+/// startup by <see cref="SnsSqsTopologyBuilder"/> before polling begins.
 /// </para>
 /// <para>
 /// Messages delivered via SNS use <em>raw message delivery</em> so the SQS message body is

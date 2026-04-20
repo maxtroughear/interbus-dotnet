@@ -42,14 +42,14 @@ public sealed class PostgreSqlTransport(
             ? (DateTimeOffset?)DateTimeOffset.UtcNow.Add(context.Delay.Value)
             : null;
 
-        _ = context.Destination.Scheme switch
-        {
-            TopicScheme => await topologyBuilder.EnsureTopicAsync(name, cancellationToken),
-            QueueScheme => await topologyBuilder.EnsureQueueAsync(name, cancellationToken),
-            _ => throw new ArgumentException(
+        if (context.Destination.Scheme == TopicScheme)
+            await topologyBuilder.EnsureTopicAsync(name, cancellationToken);
+        else if (context.Destination.Scheme == QueueScheme)
+            await topologyBuilder.EnsureQueueAsync(name, cancellationToken);
+        else
+            throw new ArgumentException(
                 $"Unsupported destination URI scheme '{context.Destination.Scheme}'. " +
-                $"Expected '{TopicScheme}' or '{QueueScheme}'.", nameof(context))
-        };
+                $"Expected '{TopicScheme}' or '{QueueScheme}'.", nameof(context));
 
         await using var cmd = dataSource.CreateCommand();
 

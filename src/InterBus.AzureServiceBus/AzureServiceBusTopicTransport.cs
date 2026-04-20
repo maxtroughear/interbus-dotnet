@@ -26,7 +26,7 @@ namespace InterBus.AzureServiceBus;
 /// </summary>
 internal sealed class AzureServiceBusTopicTransport(
     AzureServiceBusClientProvider clientProvider,
-    AzureServiceBusTopology topology)
+    IInterBusTopologyBuilder topology)
     : IInterBusTransport
 {
     /// <summary>URI scheme for Azure Service Bus topic (fan-out) destinations.</summary>
@@ -44,7 +44,7 @@ internal sealed class AzureServiceBusTopicTransport(
         }
         
         var rawTopicName = RoutingConventions.GetDestinationName(context.Destination);
-        var entityPath = await topology.EnsureTopicEntityPathAsync(rawTopicName, cancellationToken);
+        var entityPath = await topology.EnsureTopicAsync(rawTopicName, cancellationToken);
 
         var sender = clientProvider.GetOrCreateSender(entityPath);
         var message = BuildMessage(context);

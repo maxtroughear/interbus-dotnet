@@ -49,14 +49,14 @@ internal sealed class AzureServiceBusTopology(
         }
     }
 
-    internal async Task<string> EnsureTopicEntityPathAsync(string rawTopicName, CancellationToken cancellationToken)
+    public async Task<string> EnsureTopicAsync(string rawTopicName, CancellationToken cancellationToken)
     {
         var topicName = BuildTopicName(rawTopicName);
         await EnsureTopicExistsAsync(topicName, cancellationToken);
         return topicName;
     }
 
-    internal async Task<string> EnsureQueueEntityPathAsync(string rawQueueName, CancellationToken cancellationToken)
+    public async Task<string> EnsureQueueAsync(string rawQueueName, CancellationToken cancellationToken)
     {
         var queueName = BuildQueueName(rawQueueName);
         await EnsureQueueExistsAsync(queueName, cancellationToken);

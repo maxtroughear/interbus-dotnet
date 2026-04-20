@@ -24,7 +24,7 @@ namespace InterBus.AmazonSqs;
 /// <para>
 /// Topic ARNs are resolved once and cached for the application lifetime so that create calls
 /// are not repeated on every send. ARN resolution and topology mode enforcement are delegated
-/// to <see cref="SnsSqsTopologySetup"/>.
+/// to <see cref="IInterBusTopologyBuilder"/>.
 /// </para>
 /// <para>
 /// Delayed delivery is not supported for SNS topic publishes; any
@@ -33,7 +33,7 @@ namespace InterBus.AmazonSqs;
 /// </summary>
 public sealed class SnsTransport(
     IAmazonSimpleNotificationService snsClient,
-    SnsSqsTopologySetup topologySetup)
+    IInterBusTopologyBuilder topologySetup)
     : IInterBusTransport
 {
     /// <summary>URI scheme for SNS topic (fan-out) destinations.</summary>
@@ -67,7 +67,7 @@ public sealed class SnsTransport(
     {
         // Resolve the topic ARN, creating or verifying the topic as configured by
         // SnsSqsTransportOptions.TopologyMode.
-        var topicArn = await topologySetup.EnsureTopicArnAsync(rawTopicName, ct);
+        var topicArn = await topologySetup.EnsureTopicAsync(rawTopicName, ct);
 
         // Serialise the full payload + headers into the envelope body so that any
         // serialisation format (JSON, MessagePack, gzip, etc.) round-trips without

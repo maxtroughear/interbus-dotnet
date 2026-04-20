@@ -65,20 +65,8 @@ public static class SnsSqsTransportBuilderExtensions
         builder.Services.AddSingleton<SnsSqsTopology>();
         builder.Services.AddSingleton<IInterBusTopologyBuilder, SnsSqsTopologySetup>();
         
-        builder.Services.AddKeyedScoped<IInterBusTransport>(SnsTransport.TopicScheme, (sp, _) =>
-        {
-            var topologySetup = sp.GetServices<IInterBusTopologyBuilder>().OfType<SnsSqsTopologySetup>().Single();
-            return new SnsTransport(
-                sp.GetRequiredService<Amazon.SimpleNotificationService.IAmazonSimpleNotificationService>(),
-                topologySetup);
-        });
-        builder.Services.AddKeyedScoped<IInterBusTransport>(SqsTransport.QueueScheme, (sp, _) =>
-        {
-            var topologySetup = sp.GetServices<IInterBusTopologyBuilder>().OfType<SnsSqsTopologySetup>().Single();
-            return new SqsTransport(
-                sp.GetRequiredService<Amazon.SQS.IAmazonSQS>(),
-                topologySetup);
-        });
+        builder.Services.AddKeyedScoped<IInterBusTransport, SnsTransport>(SnsTransport.TopicScheme);
+        builder.Services.AddKeyedScoped<IInterBusTransport, SqsTransport>(SqsTransport.QueueScheme);
 
         // Message pump runs as a background service.
         builder.Services.AddHostedService<SqsMessagePump>();

@@ -45,8 +45,6 @@ public static class ServiceCollectionExtensions
         var options = new InterBusOptions();
         var builder = new InterBusBuilder(services, options);
 
-        // Register topology setup before configure so this hosted service starts before any
-        // transport-hosted services added by transport extension methods.
         services.AddHostedService<InterBusTopologyHostedService>();
 
         configure(builder);

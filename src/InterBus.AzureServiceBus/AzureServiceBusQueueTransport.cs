@@ -26,7 +26,7 @@ namespace InterBus.AzureServiceBus;
 /// </summary>
 internal sealed class AzureServiceBusQueueTransport(
     AzureServiceBusClientProvider clientProvider,
-    AzureServiceBusTopology topology)
+    IInterBusTopologyBuilder topology)
     : IInterBusTransport
 {
     /// <summary>URI scheme for Azure Service Bus queue (point-to-point) destinations.</summary>
@@ -44,7 +44,7 @@ internal sealed class AzureServiceBusQueueTransport(
         }
         
         var rawQueueName = RoutingConventions.GetDestinationName(context.Destination);
-        var entityPath = await topology.EnsureQueueEntityPathAsync(rawQueueName, cancellationToken);
+        var entityPath = await topology.EnsureQueueAsync(rawQueueName, cancellationToken);
 
         var sender = clientProvider.GetOrCreateSender(entityPath);
         var message = BuildMessage(context);

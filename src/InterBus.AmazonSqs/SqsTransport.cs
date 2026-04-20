@@ -26,10 +26,10 @@ namespace InterBus.AmazonSqs;
 /// </para>
 /// <para>
 /// Queue URLs are resolved once and cached for the application lifetime. URL resolution and
-/// topology mode enforcement are delegated to <see cref="SnsSqsTopologySetup"/>.
+/// topology mode enforcement are delegated to <see cref="IInterBusTopologyBuilder"/>.
 /// </para>
 /// </summary>
-public sealed class SqsTransport(IAmazonSQS sqsClient, SnsSqsTopologySetup topologySetup) : IInterBusTransport
+public sealed class SqsTransport(IAmazonSQS sqsClient, IInterBusTopologyBuilder topologySetup) : IInterBusTransport
 {
     /// <summary>URI scheme for SQS queue (point-to-point) destinations.</summary>
     public const string QueueScheme = "sqsqueue";
@@ -62,7 +62,7 @@ public sealed class SqsTransport(IAmazonSQS sqsClient, SnsSqsTopologySetup topol
     {
         // Resolve the queue URL, creating or verifying the queue as configured by
         // SnsSqsTransportOptions.TopologyMode.
-        var queueUrl = await topologySetup.EnsureQueueUrlAsync(rawQueueName, ct);
+        var queueUrl = await topologySetup.EnsureQueueAsync(rawQueueName, ct);
 
         // Serialise the full payload + headers into the envelope body so that any
         // serialisation format (JSON, MessagePack, gzip, etc.) round-trips without

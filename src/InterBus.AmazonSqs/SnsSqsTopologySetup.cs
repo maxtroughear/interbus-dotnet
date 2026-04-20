@@ -26,8 +26,8 @@ namespace InterBus.AmazonSqs;
 /// polling. In <see cref="TopologyMode.VerifyOnly"/> mode only the queue URL is resolved;
 /// no topic or subscription operations are performed.</description></item>
 /// <item><term>Publisher topology</term><description>Handled lazily by
-/// <see cref="EnsureTopicArnAsync"/> (SNS fan-out) and
-/// <see cref="EnsureQueueUrlAsync"/> (SQS direct-send). Only the ARN or URL required for
+/// <see cref="EnsureTopicAsync"/> (SNS fan-out) and
+/// <see cref="EnsureQueueAsync"/> (SQS direct-send). Only the ARN or URL required for
 /// sending is resolved.</description></item>
 /// </list>
 /// </para>
@@ -60,7 +60,7 @@ public sealed partial class SnsSqsTopologySetup(
     /// </para>
     /// <para>
     /// In <see cref="TopologyMode.VerifyOnly"/> mode only the queue URL is resolved. Topic verification is deferred
-    /// until the first publish via <see cref="EnsureTopicArnAsync"/>.
+    /// until the first publish via <see cref="EnsureTopicAsync"/>.
     /// </para>
     /// </summary>
     public async Task BuildTopologyAsync(CancellationToken cancellationToken)
@@ -71,7 +71,7 @@ public sealed partial class SnsSqsTopologySetup(
             await CreateConsumerTopologyAsync(cancellationToken);
     }
 
-    internal async Task<string> EnsureTopicArnAsync(string rawTopicName, CancellationToken cancellationToken)
+    public async Task<string> EnsureTopicAsync(string rawTopicName, CancellationToken cancellationToken)
     {
         var topicName = topology.BuildSnsTopicName(rawTopicName);
 
@@ -83,7 +83,7 @@ public sealed partial class SnsSqsTopologySetup(
             : await CreateTopicAsync(topicName, cancellationToken);
     }
 
-    internal async Task<string> EnsureQueueUrlAsync(string rawQueueName, CancellationToken cancellationToken)
+    public async Task<string> EnsureQueueAsync(string rawQueueName, CancellationToken cancellationToken)
     {
         var queueName = topology.BuildSqsQueueName(rawQueueName);
 

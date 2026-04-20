@@ -105,7 +105,7 @@ public interface IInterBusBuilder
     /// <summary>
     /// Add a middleware step to the send pipeline, used in the bus context.
     /// Steps are executed in registration order - the first registered step is outermost
-    /// and runs first. The terminal step calls the configured <see cref="IInterBusTransport"/>.
+    /// and runs first. The terminal step calls the configured <see cref="ITransport"/>.
     /// </summary>
     /// <remarks>
     /// Use <see cref="IConsumerBuilder.UseSendMiddleware{TMiddleware}"/> to add send

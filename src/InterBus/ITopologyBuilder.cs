@@ -4,7 +4,7 @@ namespace InterBus;
 /// Transport-specific topology builder invoked by the bus during startup.
 /// Implementations create or verify the transport entities required by registered consumers.
 /// </summary>
-public interface IInterBusTopologyBuilder
+public interface ITopologyBuilder
 {
     /// <summary>
     /// Build or verify transport topology for registered consumers.

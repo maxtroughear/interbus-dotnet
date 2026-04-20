@@ -13,7 +13,7 @@ namespace InterBus.Scheduler;
 /// transports that do not may deliver the message immediately.
 /// </para>
 /// </summary>
-internal sealed class TransportDelayScheduler(InterBusOptions options, PublishPipelineExecutor publishPipeline)
+internal sealed class TransportDelayScheduler(PublishPipelineExecutor publishPipeline)
     : IMessageScheduler
 {
     public Task ScheduleInternalAsync<T>(PublishContext<T> context, DateTimeOffset scheduledAt,

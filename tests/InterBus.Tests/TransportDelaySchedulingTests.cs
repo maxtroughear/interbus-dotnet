@@ -24,8 +24,8 @@ public sealed class TransportDelaySchedulingTests
         services.AddLogging();
         services.AddInterBus(bus =>
         {
-            bus.Services.AddKeyedSingleton<IInterBusTransport>("topic", transport);
-            bus.Services.AddKeyedSingleton<IInterBusTransport>("queue", transport);
+            bus.Services.AddKeyedSingleton<ITransport>("topic", transport);
+            bus.Services.AddKeyedSingleton<ITransport>("queue", transport);
             bus.AddScheduling(builder => builder.OnTransport());
             configureBus?.Invoke(bus);
         });
@@ -48,7 +48,7 @@ public sealed class TransportDelaySchedulingTests
         services.AddLogging();
         services.AddInterBus(bus =>
         {
-            bus.Services.AddKeyedSingleton<IInterBusTransport>("queue", transport);
+            bus.Services.AddKeyedSingleton<ITransport>("queue", transport);
             bus.AddScheduling(builder => builder.OnTransport());
         });
 
@@ -78,7 +78,7 @@ public sealed class TransportDelaySchedulingTests
         services.AddLogging();
         services.AddInterBus(bus =>
         {
-            bus.Services.AddKeyedSingleton<IInterBusTransport>("queue", transport);
+            bus.Services.AddKeyedSingleton<ITransport>("queue", transport);
             bus.AddScheduling(builder => builder.OnTransport());
         });
 
@@ -158,13 +158,7 @@ public sealed class TransportDelaySchedulingTests
             CancellationToken cancellationToken = default) => Task.CompletedTask;
     }
 
-    private sealed class NoOpTransport : IInterBusTransport
-    {
-        public Task SendAsync(TransportSendContext context, CancellationToken cancellationToken) =>
-            Task.CompletedTask;
-    }
-
-    private sealed class RecordingTransport : IInterBusTransport
+    private sealed class RecordingTransport : ITransport
     {
         public List<TransportSendContext> Sent { get; } = [];
 

@@ -49,7 +49,7 @@ public static class RabbitMqTransportBuilderExtensions
 
         // Connection provider manages publish and consume connections (singleton).
         builder.Services.AddSingleton<RabbitMqConnectionProvider>();
-        builder.Services.AddSingleton<IInterBusTopologyBuilder, RabbitMqTopologyBuilder>();
+        builder.Services.AddSingleton<ITopologyBuilder, RabbitMqTopologyBuilder>();
 
         // RabbitMqTransport is scoped: each DI scope gets its own channel.
         // Registered via a factory because the constructor takes the internal RabbitMqConnectionProvider.
@@ -59,9 +59,9 @@ public static class RabbitMqTransportBuilderExtensions
             sp.GetRequiredService<ILogger<RabbitMqTransport>>()));
 
         // Keyed registrations for transport factory scheme-based resolution.
-        builder.Services.AddKeyedScoped<IInterBusTransport>(RabbitMqTransport.TopicScheme,
+        builder.Services.AddKeyedScoped<ITransport>(RabbitMqTransport.TopicScheme,
             (sp, _) => sp.GetRequiredService<RabbitMqTransport>());
-        builder.Services.AddKeyedScoped<IInterBusTransport>(RabbitMqTransport.QueueScheme,
+        builder.Services.AddKeyedScoped<ITransport>(RabbitMqTransport.QueueScheme,
             (sp, _) => sp.GetRequiredService<RabbitMqTransport>());
 
         // Message pump runs as a background service.

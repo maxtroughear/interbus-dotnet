@@ -4,7 +4,7 @@ using InterBus.Transport;
 namespace InterBus.AzureServiceBus;
 
 /// <summary>
-/// Azure Service Bus backed <see cref="IInterBusTransport"/>.
+/// Azure Service Bus backed <see cref="ITransport"/>.
 /// <para>
 /// When <see cref="SendAsync"/> is called with an <c>azureservicebustopic://</c> destination URI,
 /// the message is published to an Azure Service Bus topic. Every subscription on that topic
@@ -26,8 +26,8 @@ namespace InterBus.AzureServiceBus;
 /// </summary>
 internal sealed class AzureServiceBusTopicTransport(
     AzureServiceBusClientProvider clientProvider,
-    IInterBusTopologyBuilder topology)
-    : IInterBusTransport
+    ITopologyBuilder topology)
+    : ITransport
 {
     /// <summary>URI scheme for Azure Service Bus topic (fan-out) destinations.</summary>
     public const string TopicScheme = "azureservicebustopic";

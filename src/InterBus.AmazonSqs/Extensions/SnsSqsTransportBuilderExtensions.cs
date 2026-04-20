@@ -63,10 +63,10 @@ public static class SnsSqsTransportBuilderExtensions
         builder.Options.SetTransportUriSchemes(SnsTransport.TopicScheme, SqsTransport.QueueScheme);
         builder.Services.AddSingleton(options);
         builder.Services.AddSingleton<SnsSqsTopology>();
-        builder.Services.AddSingleton<IInterBusTopologyBuilder, SnsSqsTopologySetup>();
+        builder.Services.AddSingleton<ITopologyBuilder, SnsSqsTopologySetup>();
         
-        builder.Services.AddKeyedScoped<IInterBusTransport, SnsTransport>(SnsTransport.TopicScheme);
-        builder.Services.AddKeyedScoped<IInterBusTransport, SqsTransport>(SqsTransport.QueueScheme);
+        builder.Services.AddKeyedScoped<ITransport, SnsTransport>(SnsTransport.TopicScheme);
+        builder.Services.AddKeyedScoped<ITransport, SqsTransport>(SqsTransport.QueueScheme);
 
         // Message pump runs as a background service.
         builder.Services.AddHostedService<SqsMessagePump>();

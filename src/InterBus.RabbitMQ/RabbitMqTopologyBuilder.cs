@@ -9,7 +9,7 @@ internal sealed class RabbitMqTopologyBuilder(
     RabbitMqTransportOptions options,
     InterBusOptions busOptions,
     ILogger<RabbitMqTopologyBuilder> logger)
-    : IInterBusTopologyBuilder
+    : ITopologyBuilder
 {
     public async Task BuildTopologyAsync(CancellationToken cancellationToken)
     {

@@ -6,7 +6,7 @@ namespace InterBus.Transport;
 /// Executes all registered transport topology builders once during host startup.
 /// </summary>
 internal sealed class InterBusTopologyHostedService(
-    IEnumerable<IInterBusTopologyBuilder> topologyBuilders,
+    IEnumerable<ITopologyBuilder> topologyBuilders,
     InterBusOptions busOptions)
     : IHostedService
 {

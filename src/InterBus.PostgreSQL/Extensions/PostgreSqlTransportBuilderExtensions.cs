@@ -99,7 +99,7 @@ public static class PostgreSqlTransportBuilderExtensions
 
     /// <summary>
     /// Registers <see cref="PostgreSqlTransport"/> as its own concrete type, as a non-keyed
-    /// <see cref="IInterBusTransport"/>, and as a keyed service for each supported URI scheme
+    /// <see cref="ITransport"/>, and as a keyed service for each supported URI scheme
     /// so the transport factory can resolve it by destination scheme.
     /// </summary>
     private static void RegisterTransportServices(IInterBusBuilder builder)
@@ -108,9 +108,9 @@ public static class PostgreSqlTransportBuilderExtensions
         builder.Services.AddSingleton<PostgreSqlTransport>();
 
         // Keyed registrations for transport factory scheme-based resolution.
-        builder.Services.AddKeyedSingleton<IInterBusTransport>(PostgreSqlTransport.TopicScheme,
+        builder.Services.AddKeyedSingleton<ITransport>(PostgreSqlTransport.TopicScheme,
             (sp, _) => sp.GetRequiredService<PostgreSqlTransport>());
-        builder.Services.AddKeyedSingleton<IInterBusTransport>(PostgreSqlTransport.QueueScheme,
+        builder.Services.AddKeyedSingleton<ITransport>(PostgreSqlTransport.QueueScheme,
             (sp, _) => sp.GetRequiredService<PostgreSqlTransport>());
     }
 

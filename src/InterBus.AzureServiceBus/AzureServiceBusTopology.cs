@@ -8,14 +8,14 @@ namespace InterBus.AzureServiceBus;
 /// <summary>
 /// Declares and verifies Azure Service Bus topology for both consumer startup and producer send
 /// paths. This keeps the message pump focused on processing while topology concerns are shared
-/// by the pump and transport.
+/// by the pump and transport
 /// </summary>
 internal sealed class AzureServiceBusTopology(
     AzureServiceBusTransportOptions options,
     AzureServiceBusClientProvider clientProvider, 
     InterBusOptions busOptions,
     ILogger<AzureServiceBusTopology> logger)
-    : IInterBusTopologyBuilder
+    : ITopologyBuilder
 {
     private ConcurrentDictionary<string, byte> Topics { get; } = new(StringComparer.Ordinal);
     private ConcurrentDictionary<string, byte> Queues { get; } = new(StringComparer.Ordinal);

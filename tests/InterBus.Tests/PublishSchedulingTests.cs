@@ -18,8 +18,8 @@ public sealed class PublishSchedulingTests
         services.AddLogging();
         services.AddInterBus(bus =>
         {
-            bus.Services.AddKeyedSingleton<IInterBusTransport>("topic", transport);
-            bus.Services.AddKeyedSingleton<IInterBusTransport>("queue", transport);
+            bus.Services.AddKeyedSingleton<ITransport>("topic", transport);
+            bus.Services.AddKeyedSingleton<ITransport>("queue", transport);
             bus.AddScheduling(builder => builder.ViaPublish().AddSchedulingConsumer());
             configureBus?.Invoke(bus);
         });
@@ -41,7 +41,7 @@ public sealed class PublishSchedulingTests
         services.AddLogging();
         services.AddInterBus(bus =>
         {
-            bus.Services.AddSingleton<IInterBusTransport, NoOpTransport>();
+            bus.Services.AddSingleton<ITransport, NoOpTransport>();
             bus.AddScheduling(builder => builder.ViaPublish());
         });
 
@@ -57,7 +57,7 @@ public sealed class PublishSchedulingTests
     {
         var services = new ServiceCollection();
         services.AddLogging();
-        services.AddInterBus(bus => { bus.Services.AddSingleton<IInterBusTransport, NoOpTransport>(); });
+        services.AddInterBus(bus => { bus.Services.AddSingleton<ITransport, NoOpTransport>(); });
 
         var provider = services.BuildServiceProvider();
         var scheduler = provider.GetService<IScheduler>();
@@ -148,7 +148,7 @@ public sealed class PublishSchedulingTests
         InterBusOptions? capturedOptions = null;
         services.AddInterBus(bus =>
         {
-            bus.Services.AddSingleton<IInterBusTransport, NoOpTransport>();
+            bus.Services.AddSingleton<ITransport, NoOpTransport>();
             bus.AddScheduling(builder => builder.AddSchedulingConsumer());
             capturedOptions = bus.Options;
         });
@@ -174,13 +174,13 @@ public sealed class PublishSchedulingTests
             CancellationToken cancellationToken = default) => Task.CompletedTask;
     }
 
-    private sealed class NoOpTransport : IInterBusTransport
+    private sealed class NoOpTransport : ITransport
     {
         public Task SendAsync(TransportSendContext context, CancellationToken cancellationToken) =>
             Task.CompletedTask;
     }
 
-    private sealed class CapturingTransport : IInterBusTransport
+    private sealed class CapturingTransport : ITransport
     {
         public List<(Uri Destination, byte[] Payload, MessageHeaders Headers)> Sends { get; } = [];
 

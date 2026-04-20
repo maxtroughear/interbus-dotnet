@@ -5,7 +5,7 @@ using InterBus.Transport;
 namespace InterBus.AmazonSqs;
 
 /// <summary>
-/// Amazon SNS backed <see cref="IInterBusTransport"/> for topic (fan-out) delivery.
+/// Amazon SNS backed <see cref="ITransport"/> for topic (fan-out) delivery.
 /// <para>
 /// When <see cref="SendAsync"/> is called with a <c>snstopic://</c> destination URI it
 /// publishes the message to an SNS topic using
@@ -24,7 +24,7 @@ namespace InterBus.AmazonSqs;
 /// <para>
 /// Topic ARNs are resolved once and cached for the application lifetime so that create calls
 /// are not repeated on every send. ARN resolution and topology mode enforcement are delegated
-/// to <see cref="IInterBusTopologyBuilder"/>.
+/// to <see cref="ITopologyBuilder"/>.
 /// </para>
 /// <para>
 /// Delayed delivery is not supported for SNS topic publishes; any
@@ -33,8 +33,8 @@ namespace InterBus.AmazonSqs;
 /// </summary>
 public sealed class SnsTransport(
     IAmazonSimpleNotificationService snsClient,
-    IInterBusTopologyBuilder topologySetup)
-    : IInterBusTransport
+    ITopologyBuilder topologySetup)
+    : ITransport
 {
     /// <summary>URI scheme for SNS topic (fan-out) destinations.</summary>
     public const string TopicScheme = "snstopic";

@@ -13,31 +13,7 @@ namespace InterBus.AmazonSqs;
 /// <summary>
 /// Responsible for declaring the SNS/SQS topology required by registered InterBus consumers:
 /// one SQS queue per consumer, one SNS topic per handled message type, and raw-delivery
-/// subscriptions binding each queue to its topics.
-/// <para>
-/// Separating topology setup from the message pump means the pump only needs to focus on
-/// polling, dispatching, and acknowledgement.
-/// </para>
-/// <para>
-/// The topology is split by concern:
-/// <list type="bullet">
-/// <item><term>Consumer topology</term><description>Handled by
-/// <see cref="BuildTopologyAsync"/>. Establishes the SQS queues needed for
-/// polling. In <see cref="TopologyMode.VerifyOnly"/> mode only the queue URL is resolved;
-/// no topic or subscription operations are performed.</description></item>
-/// <item><term>Publisher topology</term><description>Handled lazily by
-/// <see cref="EnsureTopicAsync"/> (SNS fan-out) and
-/// <see cref="EnsureQueueAsync"/> (SQS direct-send). Only the ARN or URL required for
-/// sending is resolved.</description></item>
-/// </list>
-/// </para>
-/// <para>
-/// When <see cref="SnsSqsTransportOptions.TopologyMode"/> is
-/// <see cref="TopologyMode.VerifyOnly"/> all operations are read-only: no create, subscribe,
-/// or policy writes are issued. This suits applications running under a least-privilege IAM
-/// role where infrastructure is provisioned out-of-band (Terraform, CloudFormation, CDK) or
-/// via a one-time initialization step.
-/// </para>
+/// subscriptions binding each queue to its topics
 /// </summary>
 public sealed partial class SnsSqsTopologySetup(
     IAmazonSimpleNotificationService snsClient,
@@ -47,7 +23,7 @@ public sealed partial class SnsSqsTopologySetup(
     SnsSqsTransportOptions transportOptions,
     InterBusOptions busOptions,
     ILogger<SnsSqsTopologySetup> logger)
-    : IInterBusTopologyBuilder
+    : ITopologyBuilder
 {
     private GetCallerIdentityResponse? _callerIdentity;
 

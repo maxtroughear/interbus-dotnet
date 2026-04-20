@@ -1,4 +1,3 @@
-using InterBus.Dispatch;
 using InterBus.Extensions;
 using InterBus.Transport;
 using Microsoft.Extensions.DependencyInjection;
@@ -17,11 +16,11 @@ public sealed class TopologyBuilderTests
         services.AddLogging();
         services.AddInterBus(bus =>
         {
-            bus.Services.AddSingleton<IInterBusTransport, NoOpTransport>();
-            bus.Services.AddSingleton<IInterBusTopologyBuilder>(topologyBuilder);
+            bus.Services.AddSingleton<ITransport, NoOpTransport>();
+            bus.Services.AddSingleton<ITopologyBuilder>(topologyBuilder);
             bus.AddConsumer<TestConsumer>(
                 [typeof(TestMessage)],
-                static (DispatchContext _, IServiceProvider _, CancellationToken _) => Task.CompletedTask);
+                static (_, _, _) => Task.CompletedTask);
         });
 
         await using var provider = services.BuildServiceProvider();
@@ -41,8 +40,8 @@ public sealed class TopologyBuilderTests
         services.AddLogging();
         services.AddInterBus(bus =>
         {
-            bus.Services.AddSingleton<IInterBusTransport, NoOpTransport>();
-            bus.Services.AddSingleton<IInterBusTopologyBuilder>(topologyBuilder);
+            bus.Services.AddSingleton<ITransport, NoOpTransport>();
+            bus.Services.AddSingleton<ITopologyBuilder>(topologyBuilder);
         });
 
         await using var provider = services.BuildServiceProvider();
@@ -54,7 +53,7 @@ public sealed class TopologyBuilderTests
         Assert.Equal(0, topologyBuilder.CallCount);
     }
 
-    private sealed class CapturingTopologyBuilder : IInterBusTopologyBuilder
+    private sealed class CapturingTopologyBuilder : ITopologyBuilder
     {
         public int CallCount { get; private set; }
 
@@ -65,7 +64,7 @@ public sealed class TopologyBuilderTests
         }
     }
 
-    private sealed class NoOpTransport : IInterBusTransport
+    private sealed class NoOpTransport : ITransport
     {
         public Task SendAsync(TransportSendContext context, CancellationToken cancellationToken) =>
             Task.CompletedTask;

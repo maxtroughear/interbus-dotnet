@@ -6,7 +6,7 @@ using NpgsqlTypes;
 namespace InterBus.PostgreSQL;
 
 /// <summary>
-/// PostgreSQL-backed <see cref="IInterBusTransport"/>.
+/// PostgreSQL-backed <see cref="ITransport"/>.
 /// <para>
 /// When <see cref="SendAsync"/> is called with a <c>postgresqltopic://</c> destination URI,
 /// it delegates to the <c>publish_to_topic</c> stored function, which looks up subscribers,
@@ -20,7 +20,7 @@ namespace InterBus.PostgreSQL;
 /// </para>
 /// </summary>
 public sealed class PostgreSqlTransport(NpgsqlDataSource dataSource, PostgreSqlTransportOptions options)
-    : IInterBusTransport
+    : ITransport
 {
     /// <summary>URI scheme for PostgreSQL topic (fan-out) destinations.</summary>
     public const string TopicScheme = "postgresqltopic";
@@ -61,7 +61,7 @@ public sealed class PostgreSqlTransport(NpgsqlDataSource dataSource, PostgreSqlT
         await cmd.ExecuteNonQueryAsync(cancellationToken);
     }
 
-    internal static string SerializeHeaders(MessageHeaders headers) =>
+    private static string SerializeHeaders(MessageHeaders headers) =>
         JsonSerializer.Serialize(headers, PostgreSqlJsonContext.Default.DictionaryStringString);
 
     internal static MessageHeaders DeserializeHeaders(string json)

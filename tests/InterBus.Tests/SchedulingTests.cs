@@ -18,7 +18,7 @@ public sealed class SchedulingTests
         services.AddLogging();
         services.AddInterBus(bus =>
         {
-            bus.Services.AddSingleton<IInterBusTransport, NoOpTransport>();
+            bus.Services.AddSingleton<ITransport, NoOpTransport>();
             bus.Services.AddSingleton<IMessageSchedulingProvider>(schedulingProvider);
             bus.AddScheduling(builder => builder.Directly());
             configureBus?.Invoke(bus);
@@ -176,7 +176,7 @@ public sealed class SchedulingTests
     {
         var services = new ServiceCollection();
         services.AddLogging();
-        services.AddInterBus(bus => { bus.Services.AddSingleton<IInterBusTransport, NoOpTransport>(); });
+        services.AddInterBus(bus => { bus.Services.AddSingleton<ITransport, NoOpTransport>(); });
 
         var provider = services.BuildServiceProvider();
         var schedulingPublisher = provider.GetService<IScheduler>();
@@ -189,7 +189,7 @@ public sealed class SchedulingTests
     {
         var services = new ServiceCollection();
         services.AddLogging();
-        services.AddInterBus(bus => { bus.Services.AddSingleton<IInterBusTransport, NoOpTransport>(); });
+        services.AddInterBus(bus => { bus.Services.AddSingleton<ITransport, NoOpTransport>(); });
 
         var provider = services.BuildServiceProvider();
         using var scope = provider.CreateScope();
@@ -210,7 +210,7 @@ public sealed class SchedulingTests
             CancellationToken cancellationToken = default) => Task.CompletedTask;
     }
 
-    private sealed class NoOpTransport : IInterBusTransport
+    private sealed class NoOpTransport : ITransport
     {
         public Task SendAsync(TransportSendContext context, CancellationToken cancellationToken) =>
             Task.CompletedTask;

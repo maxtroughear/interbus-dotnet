@@ -5,7 +5,7 @@ using RabbitMQ.Client;
 namespace InterBus.RabbitMQ;
 
 /// <summary>
-/// RabbitMQ (AMQP) backed <see cref="IInterBusTransport"/>.
+/// RabbitMQ (AMQP) backed <see cref="ITransport"/>.
 /// <para>
 /// When <see cref="SendAsync"/> is called with a <c>rabbitmqtopic://</c> destination URI,
 /// it publishes to a <c>fanout</c> exchange named
@@ -20,7 +20,7 @@ namespace InterBus.RabbitMQ;
 /// Registered as a <em>scoped</em> service; each DI scope obtains its own instance with a
 /// dedicated publish channel. Within a single scope operations are sequential so no locking
 /// is needed for the channel. When resolved from a singleton context (e.g. via the default
-/// singleton <see cref="IInterBusTransportFactory"/>), the instance lives for the application
+/// singleton <see cref="ITransportFactory"/>), the instance lives for the application
 /// lifetime.
 /// </para>
 /// <para>
@@ -40,7 +40,7 @@ namespace InterBus.RabbitMQ;
 /// value is ignored and messages are always delivered immediately.
 /// </para>
 /// </summary>
-public sealed class RabbitMqTransport : IInterBusTransport, IAsyncDisposable
+public sealed class RabbitMqTransport : ITransport, IAsyncDisposable
 {
     /// <summary>URI scheme for RabbitMQ topic (fan-out) destinations.</summary>
     public const string TopicScheme = "rabbitmqtopic";

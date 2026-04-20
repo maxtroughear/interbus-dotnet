@@ -10,7 +10,6 @@ using InterBus.Serialization;
 using InterBus.Transport;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using Microsoft.Extensions.Hosting;
 
 namespace InterBus.Extensions;
 
@@ -66,7 +65,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<SendPipelineExecutor>();
 
         // Register the transport factory and the scoped publisher.
-        services.AddSingleton<IInterBusTransportFactory, InterBusTransportFactory>();
+        services.AddSingleton<ITransportFactory, TransportFactory>();
         services.AddScoped<IPublisher, Publisher.Publisher>();
 
         return services;

@@ -5,11 +5,11 @@ namespace InterBus.InMemory;
 
 /// <summary>
 /// Singleton broker that owns all <see cref="InMemoryTopic"/> and <see cref="InMemoryQueue"/> instances.
-/// Implements <see cref="IInterBusTransport"/> so the core <c>MessagePublisher</c> can dispatch through it.
+/// Implements <see cref="ITransport"/> so the core <c>MessagePublisher</c> can dispatch through it.
 /// Initialised from <see cref="InterBusOptions"/> at construction time.
 /// Each consumer class is assigned exactly one queue, subscribed to all topics that consumer handles.
 /// </summary>
-public sealed class InMemoryBroker : IInterBusTransport, IDisposable
+public sealed class InMemoryBroker : ITransport, IDisposable
 {
     /// <summary>URI scheme for in-memory topic (fan-out) destinations.</summary>
     public const string TopicScheme = "memorytopic";

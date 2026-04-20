@@ -5,7 +5,7 @@ using InterBus.Transport;
 namespace InterBus.AmazonSqs;
 
 /// <summary>
-/// Amazon SQS backed <see cref="IInterBusTransport"/> for point-to-point queue delivery.
+/// Amazon SQS backed <see cref="ITransport"/> for point-to-point queue delivery.
 /// <para>
 /// When <see cref="SendAsync"/> is called with a <c>sqsqueue://</c> destination URI it sends
 /// the message directly to an SQS queue using
@@ -26,10 +26,10 @@ namespace InterBus.AmazonSqs;
 /// </para>
 /// <para>
 /// Queue URLs are resolved once and cached for the application lifetime. URL resolution and
-/// topology mode enforcement are delegated to <see cref="IInterBusTopologyBuilder"/>.
+/// topology mode enforcement are delegated to <see cref="ITopologyBuilder"/>.
 /// </para>
 /// </summary>
-public sealed class SqsTransport(IAmazonSQS sqsClient, IInterBusTopologyBuilder topologySetup) : IInterBusTransport
+public sealed class SqsTransport(IAmazonSQS sqsClient, ITopologyBuilder topologySetup) : ITransport
 {
     /// <summary>URI scheme for SQS queue (point-to-point) destinations.</summary>
     public const string QueueScheme = "sqsqueue";

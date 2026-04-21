@@ -98,7 +98,7 @@ public sealed class InMemoryBroker : ITransport, IDisposable
     internal InMemoryTopic EnsureTopic(string topicName) =>
         EnsureTopicInternal(topicName);
 
-    internal InMemoryQueue? EnsureQueue(string queueName)
+    internal InMemoryQueue? TryEnsureQueue(string queueName)
     {
         return _consumerDescriptorsByQueue.TryGetValue(queueName, out var descriptor)
             ? EnsureQueueInternal(descriptor)

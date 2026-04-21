@@ -30,7 +30,7 @@ internal sealed class InMemoryTopologyBuilder(
 
     public Task<string> EnsureQueueAsync(string rawQueueName, CancellationToken cancellationToken)
     {
-        broker.EnsureQueue(rawQueueName);
+        broker.TryEnsureQueue(rawQueueName);
         return Task.FromResult(rawQueueName);
     }
 }

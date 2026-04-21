@@ -21,8 +21,7 @@ public static class InMemoryTransportBuilderExtensions
 
         // Broker is singleton: owns all topics and queues for the lifetime of the application.
         builder.Services.AddSingleton<InMemoryBroker>();
-        builder.Services.AddSingleton<InMemoryTopologyBuilder>();
-        builder.Services.AddSingleton<ITopologyBuilder>(sp => sp.GetRequiredService<InMemoryTopologyBuilder>());
+        builder.Services.AddSingleton<ITopologyBuilder, InMemoryTopologyBuilder>();
         builder.Services.AddSingleton<InMemoryTransport>();
 
         // Register the transport as a keyed service for each supported URI scheme so the

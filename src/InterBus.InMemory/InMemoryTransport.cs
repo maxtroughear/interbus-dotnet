@@ -5,7 +5,7 @@ namespace InterBus.InMemory;
 
 internal sealed class InMemoryTransport(
     InMemoryBroker broker,
-    InMemoryTopologyBuilder topologyBuilder,
+    ITopologyBuilder topologyBuilder,
     ILogger<InMemoryTransport> logger)
     : ITransport
 {

@@ -1,4 +1,6 @@
+using InterBus.Transport;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 
 namespace InterBus.InMemory.Extensions;
 
@@ -29,8 +31,24 @@ public static class InMemoryTransportBuilderExtensions
         builder.Services.AddKeyedSingleton<ITransport>(InMemoryBroker.QueueScheme,
             (sp, _) => sp.GetRequiredService<InMemoryBroker>());
 
-        // Message pump runs as a background service.
-        builder.Services.AddHostedService<InMemoryMessagePump>();
+        // Message pump runs as a background service after topology has been ensured.
+        var descriptor = ServiceDescriptor.Singleton<IHostedService, InMemoryMessagePump>();
+        var topologyHostedServiceIndex = -1;
+        for (var i = 0; i < builder.Services.Count; i++)
+        {
+            var service = builder.Services[i];
+            if (service.ServiceType == typeof(IHostedService) &&
+                service.ImplementationType == typeof(InterBusTopologyHostedService))
+            {
+                topologyHostedServiceIndex = i;
+                break;
+            }
+        }
+
+        if (topologyHostedServiceIndex >= 0)
+            builder.Services.Insert(topologyHostedServiceIndex + 1, descriptor);
+        else
+            builder.Services.Add(descriptor);
 
         return builder;
     }

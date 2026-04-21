@@ -8,10 +8,9 @@ namespace InterBus.InMemory;
 /// <summary>
 /// Singleton broker that owns all <see cref="InMemoryTopic"/> and <see cref="InMemoryQueue"/> instances.
 /// Implements <see cref="ITransport"/> so the core <c>MessagePublisher</c> can dispatch through it.
-/// Topology is initialised from <see cref="InterBusOptions"/> by <see cref="BuildTopologyAsync"/>.
-/// Each consumer class is assigned exactly one queue, subscribed to all topics that consumer handles.
+/// Queue descriptors are sourced from <see cref="InterBusOptions"/> to support queue send-path ensures.
 /// </summary>
-public sealed class InMemoryBroker : ITransport, ITopologyBuilder, IDisposable
+public sealed class InMemoryBroker : ITransport, IDisposable
 {
     /// <summary>URI scheme for in-memory topic (fan-out) destinations.</summary>
     public const string TopicScheme = "memorytopic";
@@ -22,57 +21,15 @@ public sealed class InMemoryBroker : ITransport, ITopologyBuilder, IDisposable
     private readonly ConcurrentDictionary<string, InMemoryTopic> _topics = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, InMemoryQueue> _queues = new(StringComparer.Ordinal);
     private readonly Dictionary<string, ConsumerDescriptor> _consumerDescriptorsByQueue = new(StringComparer.Ordinal);
-    private readonly InterBusOptions _options;
-    private readonly object _topologyLock = new();
-    private bool _topologyBuilt;
     private readonly ILogger<InMemoryBroker> _logger;
     private bool _disposed;
 
     public InMemoryBroker(InterBusOptions options, ILogger<InMemoryBroker> logger)
     {
-        _options = options;
         _logger = logger;
 
         foreach (var descriptor in options.Consumers)
             _consumerDescriptorsByQueue[descriptor.QueueName] = descriptor;
-    }
-
-    public Task BuildTopologyAsync(CancellationToken cancellationToken)
-    {
-        lock (_topologyLock)
-        {
-            if (_topologyBuilt)
-                return Task.CompletedTask;
-
-            foreach (var descriptor in _options.Consumers)
-            {
-                var queue = EnsureQueue(descriptor);
-                foreach (var type in descriptor.MessageTypes)
-                {
-                    var topicName = _options.TryGetTopicName(type, out var custom)
-                        ? custom
-                        : RoutingConventions.TopicName(type);
-                    EnsureTopic(topicName).AddSubscriber(queue);
-                }
-            }
-
-            _topologyBuilt = true;
-        }
-
-        return Task.CompletedTask;
-    }
-
-    public Task<string> EnsureTopicAsync(string rawTopicName, CancellationToken cancellationToken)
-    {
-        EnsureTopic(rawTopicName);
-        return Task.FromResult(rawTopicName);
-    }
-
-    public Task<string> EnsureQueueAsync(string rawQueueName, CancellationToken cancellationToken)
-    {
-        if (_consumerDescriptorsByQueue.TryGetValue(rawQueueName, out var descriptor))
-            EnsureQueue(descriptor);
-        return Task.FromResult(rawQueueName);
     }
 
     /// <inheritdoc/>
@@ -115,7 +72,7 @@ public sealed class InMemoryBroker : ITransport, ITopologyBuilder, IDisposable
 
         if (context.Destination.Scheme == TopicScheme)
         {
-            var topic = EnsureTopic(name);
+            var topic = EnsureTopicInternal(name);
             return topic.FanOutAsync(new InMemoryEnvelope(context.Payload, context.Headers), cancellationToken);
         }
 
@@ -123,7 +80,7 @@ public sealed class InMemoryBroker : ITransport, ITopologyBuilder, IDisposable
         {
             if (_consumerDescriptorsByQueue.TryGetValue(name, out var descriptor))
             {
-                var queue = EnsureQueue(descriptor);
+                var queue = EnsureQueueInternal(descriptor);
                 return queue.WriteAsync(new InMemoryEnvelope(context.Payload, context.Headers), cancellationToken).AsTask();
             }
             return Task.CompletedTask;
@@ -138,10 +95,23 @@ public sealed class InMemoryBroker : ITransport, ITopologyBuilder, IDisposable
     /// <summary>Returns all registered queues. Used by the message pump to start consumers.</summary>
     internal IReadOnlyCollection<InMemoryQueue> GetAllQueues() => _queues.Values.ToArray();
 
-    private InMemoryTopic EnsureTopic(string topicName) =>
+    internal InMemoryTopic EnsureTopic(string topicName) =>
+        EnsureTopicInternal(topicName);
+
+    internal InMemoryQueue? EnsureQueue(string queueName)
+    {
+        return _consumerDescriptorsByQueue.TryGetValue(queueName, out var descriptor)
+            ? EnsureQueueInternal(descriptor)
+            : null;
+    }
+
+    internal InMemoryQueue EnsureQueue(ConsumerDescriptor descriptor) =>
+        EnsureQueueInternal(descriptor);
+
+    private InMemoryTopic EnsureTopicInternal(string topicName) =>
         _topics.GetOrAdd(topicName, _ => new InMemoryTopic());
 
-    private InMemoryQueue EnsureQueue(ConsumerDescriptor descriptor) =>
+    private InMemoryQueue EnsureQueueInternal(ConsumerDescriptor descriptor) =>
         _queues.GetOrAdd(descriptor.QueueName, _ => new InMemoryQueue(descriptor));
 
     /// <inheritdoc/>

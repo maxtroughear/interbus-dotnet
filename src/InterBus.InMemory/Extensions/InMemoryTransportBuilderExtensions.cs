@@ -1,6 +1,4 @@
-using InterBus.Transport;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
 
 namespace InterBus.InMemory.Extensions;
 
@@ -23,6 +21,7 @@ public static class InMemoryTransportBuilderExtensions
 
         // Broker is singleton: owns all topics and queues for the lifetime of the application.
         builder.Services.AddSingleton<InMemoryBroker>();
+        builder.Services.AddSingleton<ITopologyBuilder>(sp => sp.GetRequiredService<InMemoryBroker>());
 
         // Register the broker as a keyed service for each supported URI scheme so the
         // transport factory can resolve it by destination scheme.
@@ -31,24 +30,8 @@ public static class InMemoryTransportBuilderExtensions
         builder.Services.AddKeyedSingleton<ITransport>(InMemoryBroker.QueueScheme,
             (sp, _) => sp.GetRequiredService<InMemoryBroker>());
 
-        // Message pump runs as a background service after topology has been ensured.
-        var descriptor = ServiceDescriptor.Singleton<IHostedService, InMemoryMessagePump>();
-        var topologyHostedServiceIndex = -1;
-        for (var i = 0; i < builder.Services.Count; i++)
-        {
-            var service = builder.Services[i];
-            if (service.ServiceType == typeof(IHostedService) &&
-                service.ImplementationType == typeof(InterBusTopologyHostedService))
-            {
-                topologyHostedServiceIndex = i;
-                break;
-            }
-        }
-
-        if (topologyHostedServiceIndex >= 0)
-            builder.Services.Insert(topologyHostedServiceIndex + 1, descriptor);
-        else
-            builder.Services.Add(descriptor);
+        // Message pump runs as a background service.
+        builder.Services.AddHostedService<InMemoryMessagePump>();
 
         return builder;
     }

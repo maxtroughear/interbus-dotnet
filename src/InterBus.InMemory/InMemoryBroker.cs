@@ -1,3 +1,5 @@
+using System.Collections.Concurrent;
+using InterBus.Consumer;
 using InterBus.Transport;
 using Microsoft.Extensions.Logging;
 
@@ -6,10 +8,10 @@ namespace InterBus.InMemory;
 /// <summary>
 /// Singleton broker that owns all <see cref="InMemoryTopic"/> and <see cref="InMemoryQueue"/> instances.
 /// Implements <see cref="ITransport"/> so the core <c>MessagePublisher</c> can dispatch through it.
-/// Initialised from <see cref="InterBusOptions"/> at construction time.
+/// Topology is initialised from <see cref="InterBusOptions"/> by <see cref="BuildTopologyAsync"/>.
 /// Each consumer class is assigned exactly one queue, subscribed to all topics that consumer handles.
 /// </summary>
-public sealed class InMemoryBroker : ITransport, IDisposable
+public sealed class InMemoryBroker : ITransport, ITopologyBuilder, IDisposable
 {
     /// <summary>URI scheme for in-memory topic (fan-out) destinations.</summary>
     public const string TopicScheme = "memorytopic";
@@ -17,39 +19,60 @@ public sealed class InMemoryBroker : ITransport, IDisposable
     /// <summary>URI scheme for in-memory queue (point-to-point) destinations.</summary>
     public const string QueueScheme = "memoryqueue";
 
-    private readonly Dictionary<string, InMemoryTopic> _topics = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, InMemoryQueue> _queues = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, InMemoryTopic> _topics = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, InMemoryQueue> _queues = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, ConsumerDescriptor> _consumerDescriptorsByQueue = new(StringComparer.Ordinal);
+    private readonly InterBusOptions _options;
+    private readonly object _topologyLock = new();
+    private bool _topologyBuilt;
     private readonly ILogger<InMemoryBroker> _logger;
     private bool _disposed;
 
     public InMemoryBroker(InterBusOptions options, ILogger<InMemoryBroker> logger)
     {
+        _options = options;
         _logger = logger;
 
         foreach (var descriptor in options.Consumers)
+            _consumerDescriptorsByQueue[descriptor.QueueName] = descriptor;
+    }
+
+    public Task BuildTopologyAsync(CancellationToken cancellationToken)
+    {
+        lock (_topologyLock)
         {
-            // One queue per consumer class.
-            var queue = new InMemoryQueue(descriptor);
-            _queues[descriptor.QueueName] = queue;
+            if (_topologyBuilt)
+                return Task.CompletedTask;
 
-            // Subscribe the queue to every topic the consumer handles
-
-            foreach (var type in descriptor.MessageTypes)
+            foreach (var descriptor in _options.Consumers)
             {
-                // Resolve topics from descriptor types
-                var topicName = options.TryGetTopicName(type, out var custom)
-                    ? custom
-                    : RoutingConventions.TopicName(type);
-
-                if (!_topics.TryGetValue(topicName, out var topic))
+                var queue = EnsureQueue(descriptor);
+                foreach (var type in descriptor.MessageTypes)
                 {
-                    topic = new InMemoryTopic();
-                    _topics[topicName] = topic;
+                    var topicName = _options.TryGetTopicName(type, out var custom)
+                        ? custom
+                        : RoutingConventions.TopicName(type);
+                    EnsureTopic(topicName).AddSubscriber(queue);
                 }
-
-                topic.AddSubscriber(queue);
             }
+
+            _topologyBuilt = true;
         }
+
+        return Task.CompletedTask;
+    }
+
+    public Task<string> EnsureTopicAsync(string rawTopicName, CancellationToken cancellationToken)
+    {
+        EnsureTopic(rawTopicName);
+        return Task.FromResult(rawTopicName);
+    }
+
+    public Task<string> EnsureQueueAsync(string rawQueueName, CancellationToken cancellationToken)
+    {
+        if (_consumerDescriptorsByQueue.TryGetValue(rawQueueName, out var descriptor))
+            EnsureQueue(descriptor);
+        return Task.FromResult(rawQueueName);
     }
 
     /// <inheritdoc/>
@@ -92,16 +115,18 @@ public sealed class InMemoryBroker : ITransport, IDisposable
 
         if (context.Destination.Scheme == TopicScheme)
         {
-            if (_topics.TryGetValue(name, out var topic))
-                return topic.FanOutAsync(new InMemoryEnvelope(context.Payload, context.Headers), cancellationToken);
-            return Task.CompletedTask;
+            var topic = EnsureTopic(name);
+            return topic.FanOutAsync(new InMemoryEnvelope(context.Payload, context.Headers), cancellationToken);
         }
 
         if (context.Destination.Scheme == QueueScheme)
         {
-            return _queues.TryGetValue(name, out var queue)
-                ? queue.WriteAsync(new InMemoryEnvelope(context.Payload, context.Headers), cancellationToken).AsTask()
-                : Task.CompletedTask;
+            if (_consumerDescriptorsByQueue.TryGetValue(name, out var descriptor))
+            {
+                var queue = EnsureQueue(descriptor);
+                return queue.WriteAsync(new InMemoryEnvelope(context.Payload, context.Headers), cancellationToken).AsTask();
+            }
+            return Task.CompletedTask;
         }
 
         throw new ArgumentException(
@@ -111,7 +136,13 @@ public sealed class InMemoryBroker : ITransport, IDisposable
     }
 
     /// <summary>Returns all registered queues. Used by the message pump to start consumers.</summary>
-    internal IReadOnlyCollection<InMemoryQueue> GetAllQueues() => _queues.Values;
+    internal IReadOnlyCollection<InMemoryQueue> GetAllQueues() => _queues.Values.ToArray();
+
+    private InMemoryTopic EnsureTopic(string topicName) =>
+        _topics.GetOrAdd(topicName, _ => new InMemoryTopic());
+
+    private InMemoryQueue EnsureQueue(ConsumerDescriptor descriptor) =>
+        _queues.GetOrAdd(descriptor.QueueName, _ => new InMemoryQueue(descriptor));
 
     /// <inheritdoc/>
     public void Dispose()

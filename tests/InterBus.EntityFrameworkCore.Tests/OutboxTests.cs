@@ -490,8 +490,9 @@ public class OutboxTests
 
     /// <summary>
     /// Consumer-published messages that are delivered inline are queued in the InMemory transport.
-    /// Once the message pump is started, the downstream consumer receives the message.
-    /// The outbox processor plays no role because inline delivery already forwarded the message.
+    /// With topology and pump running, the downstream consumer receives the message.
+    /// The outbox processor is disabled for this scenario because inline delivery already
+    /// forwarded the message.
     /// </summary>
     [Fact]
     public async Task ConsumerPublish_InlineDelivery_MessageDeliveredByPump()
@@ -503,11 +504,13 @@ public class OutboxTests
             bus.AddInMemoryTransport();
             bus.AddConsumer<OrderPlacedPublishingConsumer>(c => c.UseOutboxWithInlineDelivery<TestDbContext>());
             bus.AddConsumer<OrderShippedConsumer>();
-            bus.UseOutbox<TestDbContext>(o => o.WithPollInterval(TimeSpan.FromMilliseconds(50)));
+            bus.UseOutbox<TestDbContext>(o => o.DisableOutboxProcessor());
         }, services => services.AddSingleton(shippedTracker));
 
         try
         {
+            await StartHostedServicesAsync(provider, cts.Token);
+
             await using (var scope = provider.CreateAsyncScope())
             {
                 var executor = scope.ServiceProvider.GetRequiredService<ConsumePipelineExecutor>();
@@ -529,8 +532,6 @@ public class OutboxTests
                     return consumer.Consume(msg, ctx, ct);
                 }, TestContext.Current.CancellationToken);
             }
-
-            await StartHostedServicesAsync(provider, cts.Token);
 
             await WaitUntilAsync(() => shippedTracker.Messages.Count == 1);
 

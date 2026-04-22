@@ -1,5 +1,3 @@
-using InterBus.Consumer;
-
 namespace InterBus.InMemory;
 
 internal sealed class InMemoryTopologyBuilder(
@@ -10,23 +8,23 @@ internal sealed class InMemoryTopologyBuilder(
     public Task BuildTopologyAsync(CancellationToken cancellationToken)
     {
         foreach (var descriptor in options.Consumers)
-            EnsureConsumerTopology(descriptor);
+        {
+            var queue = broker.EnsureQueue(descriptor);
+            foreach (var type in descriptor.MessageTypes)
+            {
+                var topicName = options.TryGetTopicName(type, out var custom)
+                    ? custom
+                    : RoutingConventions.TopicName(type);
+                broker.EnsureTopic(topicName).AddSubscriber(queue);
+            }
+        }
 
         return Task.CompletedTask;
     }
 
     public Task<string> EnsureTopicAsync(string rawTopicName, CancellationToken cancellationToken)
     {
-        foreach (var descriptor in options.Consumers)
-        {
-            if (descriptor.MessageTypes.Any(type =>
-                    (options.TryGetTopicName(type, out var custom) ? custom : RoutingConventions.TopicName(type)) ==
-                    rawTopicName))
-            {
-                EnsureConsumerTopology(descriptor);
-            }
-        }
-
+        broker.EnsureTopic(rawTopicName);
         return Task.FromResult(rawTopicName);
     }
 
@@ -34,17 +32,5 @@ internal sealed class InMemoryTopologyBuilder(
     {
         broker.TryEnsureQueue(rawQueueName);
         return Task.FromResult(rawQueueName);
-    }
-
-    private void EnsureConsumerTopology(ConsumerDescriptor descriptor)
-    {
-        var queue = broker.EnsureQueue(descriptor);
-        foreach (var type in descriptor.MessageTypes)
-        {
-            var topicName = options.TryGetTopicName(type, out var custom)
-                ? custom
-                : RoutingConventions.TopicName(type);
-            broker.EnsureTopic(topicName).AddSubscriber(queue);
-        }
     }
 }

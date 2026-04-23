@@ -15,7 +15,7 @@ public interface IMessageSchedulingProvider
     /// <paramref name="scheduledAt"/>. The URI scheme determines the transport and whether
     /// the message is published to a topic (fan-out) or sent directly to a queue
     /// (point-to-point), mirroring the semantics of
-    /// <see cref="IInterBusTransport.SendAsync"/>.
+    /// <see cref="ITransport.SendAsync"/>.
     /// </summary>
     /// <param name="destination">
     /// A URI whose scheme encodes the transport and destination type

@@ -7,7 +7,7 @@ namespace InterBus;
 /// implementation to dispatch serialised messages without knowing the physical transport details.
 /// Transport packages register their implementation of this interface via DI
 /// </summary>
-public interface IInterBusTransport
+public interface ITransport
 {
     /// <summary>
     /// Send a message to the destination described by <paramref name="context"/>.

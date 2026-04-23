@@ -6,7 +6,7 @@ using NpgsqlTypes;
 namespace InterBus.PostgreSQL;
 
 /// <summary>
-/// PostgreSQL-backed <see cref="IInterBusTransport"/>.
+/// PostgreSQL-backed <see cref="ITransport"/>.
 /// <para>
 /// When <see cref="SendAsync"/> is called with a <c>postgresqltopic://</c> destination URI,
 /// it delegates to the <c>publish_to_topic</c> stored function, which looks up subscribers,
@@ -19,8 +19,11 @@ namespace InterBus.PostgreSQL;
 /// issues a <c>NOTIFY</c> in a single round trip.
 /// </para>
 /// </summary>
-public sealed class PostgreSqlTransport(NpgsqlDataSource dataSource, PostgreSqlTransportOptions options)
-    : IInterBusTransport
+public sealed class PostgreSqlTransport(
+    NpgsqlDataSource dataSource,
+    PostgreSqlTransportOptions options,
+    ITopologyBuilder topologyBuilder)
+    : ITransport
 {
     /// <summary>URI scheme for PostgreSQL topic (fan-out) destinations.</summary>
     public const string TopicScheme = "postgresqltopic";
@@ -38,6 +41,15 @@ public sealed class PostgreSqlTransport(NpgsqlDataSource dataSource, PostgreSqlT
         var visibleAt = context.Delay.HasValue
             ? (DateTimeOffset?)DateTimeOffset.UtcNow.Add(context.Delay.Value)
             : null;
+
+        if (context.Destination.Scheme == TopicScheme)
+            await topologyBuilder.EnsureTopicAsync(name, cancellationToken);
+        else if (context.Destination.Scheme == QueueScheme)
+            await topologyBuilder.EnsureQueueAsync(name, cancellationToken);
+        else
+            throw new ArgumentException(
+                $"Unsupported destination URI scheme '{context.Destination.Scheme}'. " +
+                $"Expected '{TopicScheme}' or '{QueueScheme}'.", nameof(context));
 
         await using var cmd = dataSource.CreateCommand();
 
@@ -61,7 +73,7 @@ public sealed class PostgreSqlTransport(NpgsqlDataSource dataSource, PostgreSqlT
         await cmd.ExecuteNonQueryAsync(cancellationToken);
     }
 
-    internal static string SerializeHeaders(MessageHeaders headers) =>
+    private static string SerializeHeaders(MessageHeaders headers) =>
         JsonSerializer.Serialize(headers, PostgreSqlJsonContext.Default.DictionaryStringString);
 
     internal static MessageHeaders DeserializeHeaders(string json)

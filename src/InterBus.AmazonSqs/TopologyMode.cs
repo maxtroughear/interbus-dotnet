@@ -1,7 +1,7 @@
 namespace InterBus.AmazonSqs;
 
 /// <summary>
-/// Controls how <see cref="SnsSqsTopologySetup"/> declares the SNS/SQS topology at startup.
+/// Controls how <see cref="SnsSqsTopologyBuilder"/> declares the SNS/SQS topology at startup.
 /// </summary>
 public enum TopologyMode
 {

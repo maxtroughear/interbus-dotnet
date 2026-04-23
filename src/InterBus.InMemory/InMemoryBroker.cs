@@ -1,15 +1,13 @@
-using InterBus.Transport;
-using Microsoft.Extensions.Logging;
+using System.Collections.Concurrent;
+using InterBus.Consumer;
 
 namespace InterBus.InMemory;
 
 /// <summary>
 /// Singleton broker that owns all <see cref="InMemoryTopic"/> and <see cref="InMemoryQueue"/> instances.
-/// Implements <see cref="IInterBusTransport"/> so the core <c>MessagePublisher</c> can dispatch through it.
-/// Initialised from <see cref="InterBusOptions"/> at construction time.
-/// Each consumer class is assigned exactly one queue, subscribed to all topics that consumer handles.
+/// Queue descriptors are sourced from <see cref="InterBusOptions"/> to support queue send-path ensures.
 /// </summary>
-public sealed class InMemoryBroker : IInterBusTransport, IDisposable
+public sealed class InMemoryBroker : IDisposable
 {
     /// <summary>URI scheme for in-memory topic (fan-out) destinations.</summary>
     public const string TopicScheme = "memorytopic";
@@ -17,101 +15,52 @@ public sealed class InMemoryBroker : IInterBusTransport, IDisposable
     /// <summary>URI scheme for in-memory queue (point-to-point) destinations.</summary>
     public const string QueueScheme = "memoryqueue";
 
-    private readonly Dictionary<string, InMemoryTopic> _topics = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, InMemoryQueue> _queues = new(StringComparer.Ordinal);
-    private readonly ILogger<InMemoryBroker> _logger;
+    private readonly ConcurrentDictionary<string, InMemoryTopic> _topics = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, InMemoryQueue> _queues = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, ConsumerDescriptor> _consumerDescriptorsByQueue = new(StringComparer.Ordinal);
     private bool _disposed;
 
-    public InMemoryBroker(InterBusOptions options, ILogger<InMemoryBroker> logger)
+    public InMemoryBroker(InterBusOptions options)
     {
-        _logger = logger;
-
         foreach (var descriptor in options.Consumers)
-        {
-            // One queue per consumer class.
-            var queue = new InMemoryQueue(descriptor);
-            _queues[descriptor.QueueName] = queue;
-
-            // Subscribe the queue to every topic the consumer handles
-
-            foreach (var type in descriptor.MessageTypes)
-            {
-                // Resolve topics from descriptor types
-                var topicName = options.TryGetTopicName(type, out var custom)
-                    ? custom
-                    : RoutingConventions.TopicName(type);
-
-                if (!_topics.TryGetValue(topicName, out var topic))
-                {
-                    topic = new InMemoryTopic();
-                    _topics[topicName] = topic;
-                }
-
-                topic.AddSubscriber(queue);
-            }
-        }
+            _consumerDescriptorsByQueue[descriptor.QueueName] = descriptor;
     }
 
-    /// <inheritdoc/>
-    public Task SendAsync(TransportSendContext context, CancellationToken cancellationToken)
+    internal Task PublishToTopicAsync(string topicName, InMemoryEnvelope envelope, CancellationToken cancellationToken)
     {
-        if (context.Delay.HasValue)
-        {
-            // Schedule delivery in the background so the caller is not blocked for the delay duration.
-            _ = DeliverAfterDelayAsync(context, cancellationToken);
-            return Task.CompletedTask;
-        }
-
-        return DeliverCoreAsync(context, cancellationToken);
+        var topic = EnsureTopicInternal(topicName);
+        return topic.FanOutAsync(envelope, cancellationToken);
     }
 
-    /// <summary>Waits for the configured delay then forwards the message to the destination.</summary>
-    private async Task DeliverAfterDelayAsync(TransportSendContext context, CancellationToken cancellationToken)
+    internal Task SendToQueueAsync(string queueName, InMemoryEnvelope envelope, CancellationToken cancellationToken)
     {
-        try
-        {
-            await Task.Delay(context.Delay!.Value, cancellationToken);
-            await DeliverCoreAsync(context, cancellationToken);
-        }
-        catch (OperationCanceledException)
-        {
-            // Delivery cancelled (e.g. host shutting down or caller token cancelled). Silently discard.
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(
-                ex,
-                "InterBus InMemory: unhandled error delivering delayed message to {Destination}",
-                context.Destination);
-        }
-    }
-
-    private Task DeliverCoreAsync(TransportSendContext context, CancellationToken cancellationToken)
-    {
-        var name = RoutingConventions.GetDestinationName(context.Destination);
-
-        if (context.Destination.Scheme == TopicScheme)
-        {
-            if (_topics.TryGetValue(name, out var topic))
-                return topic.FanOutAsync(new InMemoryEnvelope(context.Payload, context.Headers), cancellationToken);
-            return Task.CompletedTask;
-        }
-
-        if (context.Destination.Scheme == QueueScheme)
-        {
-            return _queues.TryGetValue(name, out var queue)
-                ? queue.WriteAsync(new InMemoryEnvelope(context.Payload, context.Headers), cancellationToken).AsTask()
-                : Task.CompletedTask;
-        }
-
-        throw new ArgumentException(
-            $"Unsupported destination URI scheme '{context.Destination.Scheme}'. " +
-            $"Expected '{TopicScheme}' or '{QueueScheme}'.",
-            nameof(context));
+        var queue = TryEnsureQueue(queueName);
+        return queue is null
+            ? Task.CompletedTask
+            : queue.WriteAsync(envelope, cancellationToken).AsTask();
     }
 
     /// <summary>Returns all registered queues. Used by the message pump to start consumers.</summary>
-    internal IReadOnlyCollection<InMemoryQueue> GetAllQueues() => _queues.Values;
+    internal IReadOnlyCollection<InMemoryQueue> GetAllQueues() => _queues.Values.ToArray();
+
+    internal InMemoryTopic EnsureTopic(string topicName) =>
+        EnsureTopicInternal(topicName);
+
+    internal InMemoryQueue? TryEnsureQueue(string queueName)
+    {
+        return _consumerDescriptorsByQueue.TryGetValue(queueName, out var descriptor)
+            ? EnsureQueueInternal(descriptor)
+            : null;
+    }
+
+    internal InMemoryQueue EnsureQueue(ConsumerDescriptor descriptor) =>
+        EnsureQueueInternal(descriptor);
+
+    private InMemoryTopic EnsureTopicInternal(string topicName) =>
+        _topics.GetOrAdd(topicName, _ => new InMemoryTopic());
+
+    private InMemoryQueue EnsureQueueInternal(ConsumerDescriptor descriptor) =>
+        _queues.GetOrAdd(descriptor.QueueName, _ => new InMemoryQueue(descriptor));
 
     /// <inheritdoc/>
     public void Dispose()

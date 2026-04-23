@@ -50,11 +50,11 @@ public static class AzureServiceBusTransportBuilderExtensions
             builder.Services.AddSingleton(options);
 
             builder.Services.AddSingleton<AzureServiceBusClientProvider>();
-            builder.Services.AddSingleton<AzureServiceBusTopology>();
+            builder.Services.AddSingleton<ITopologyBuilder, AzureServiceBusTopologyBuilder>();
 
-            builder.Services.AddKeyedScoped<IInterBusTransport, AzureServiceBusTopicTransport>(
+            builder.Services.AddKeyedScoped<ITransport, AzureServiceBusTopicTransport>(
                 AzureServiceBusTopicTransport.TopicScheme);
-            builder.Services.AddKeyedScoped<IInterBusTransport, AzureServiceBusQueueTransport>(
+            builder.Services.AddKeyedScoped<ITransport, AzureServiceBusQueueTransport>(
                 AzureServiceBusQueueTransport.QueueScheme);
 
             builder.Services.AddHostedService<AzureServiceBusMessagePump>();

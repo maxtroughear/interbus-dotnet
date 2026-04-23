@@ -1,4 +1,6 @@
+using InterBus.Transport;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Npgsql;
 
 namespace InterBus.PostgreSQL.Extensions;
@@ -99,18 +101,20 @@ public static class PostgreSqlTransportBuilderExtensions
 
     /// <summary>
     /// Registers <see cref="PostgreSqlTransport"/> as its own concrete type, as a non-keyed
-    /// <see cref="IInterBusTransport"/>, and as a keyed service for each supported URI scheme
+    /// <see cref="ITransport"/>, and as a keyed service for each supported URI scheme
     /// so the transport factory can resolve it by destination scheme.
     /// </summary>
     private static void RegisterTransportServices(IInterBusBuilder builder)
     {
+        builder.Services.AddSingleton<ITopologyBuilder, PostgreSqlTopologyBuilder>();
+
         // Register the concrete type so keyed registrations can share the same singleton.
         builder.Services.AddSingleton<PostgreSqlTransport>();
 
         // Keyed registrations for transport factory scheme-based resolution.
-        builder.Services.AddKeyedSingleton<IInterBusTransport>(PostgreSqlTransport.TopicScheme,
+        builder.Services.AddKeyedSingleton<ITransport>(PostgreSqlTransport.TopicScheme,
             (sp, _) => sp.GetRequiredService<PostgreSqlTransport>());
-        builder.Services.AddKeyedSingleton<IInterBusTransport>(PostgreSqlTransport.QueueScheme,
+        builder.Services.AddKeyedSingleton<ITransport>(PostgreSqlTransport.QueueScheme,
             (sp, _) => sp.GetRequiredService<PostgreSqlTransport>());
     }
 
@@ -125,9 +129,25 @@ public static class PostgreSqlTransportBuilderExtensions
         if (options.RunSchemaMigrations)
         {
             builder.Services.AddSingleton<PostgreSqlSchemaManager>();
-            // Schema initializer must start before the message pump so the tables exist before
-            // the pump tries to SELECT from them.
-            builder.Services.AddHostedService<PostgreSqlSchemaInitializer>();
+            // AddInterBus registers InterBusTopologyHostedService before transport configuration.
+            // Insert migration hosted service before topology so schema exists for topology ensure calls.
+            var descriptor = ServiceDescriptor.Singleton<IHostedService, PostgreSqlSchemaInitializer>();
+            var topologyHostedServiceIndex = -1;
+            for (var i = 0; i < builder.Services.Count; i++)
+            {
+                var service = builder.Services[i];
+                if (service.ServiceType == typeof(IHostedService) &&
+                    service.ImplementationType == typeof(InterBusTopologyHostedService))
+                {
+                    topologyHostedServiceIndex = i;
+                    break;
+                }
+            }
+
+            if (topologyHostedServiceIndex >= 0)
+                builder.Services.Insert(topologyHostedServiceIndex, descriptor);
+            else
+                builder.Services.Add(descriptor);
         }
 
         switch (options.MessagePumpMode)

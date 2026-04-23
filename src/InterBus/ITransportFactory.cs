@@ -1,7 +1,7 @@
 namespace InterBus;
 
 /// <summary>
-/// Resolves the appropriate <see cref="IInterBusTransport"/> for a given destination URI.
+/// Resolves the appropriate <see cref="ITransport"/> for a given destination URI.
 /// <para>
 /// Transports register themselves as keyed services with their supported URI scheme(s)
 /// as the key (e.g. <c>"memorytopic"</c>, <c>"memoryqueue"</c>). This factory looks up
@@ -9,10 +9,10 @@ namespace InterBus;
 /// active simultaneously in the same application.
 /// </para>
 /// </summary>
-public interface IInterBusTransportFactory
+public interface ITransportFactory
 {
     /// <summary>
-    /// Returns the <see cref="IInterBusTransport"/> that handles the given
+    /// Returns the <see cref="ITransport"/> that handles the given
     /// <paramref name="destination"/> URI.
     /// </summary>
     /// <param name="destination">
@@ -21,5 +21,5 @@ public interface IInterBusTransportFactory
     /// <exception cref="InvalidOperationException">
     /// Thrown when no transport is registered for the URI scheme.
     /// </exception>
-    IInterBusTransport Resolve(Uri destination);
+    ITransport Resolve(Uri destination);
 }

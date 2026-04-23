@@ -4,12 +4,12 @@ using InterBus.Transport;
 namespace InterBus.Send;
 
 public sealed class SendPipelineExecutor(
-    IInterBusTransportFactory transportFactory,
+    ITransportFactory transportFactory,
     IMiddlewareFactory middlewareFactory)
 {
     /// <summary>
     /// Builds and runs the send pipeline for the given <paramref name="context"/>,
-    /// forwarding to the correct <see cref="IInterBusTransport"/> as the terminal step.
+    /// forwarding to the correct <see cref="ITransport"/> as the terminal step.
     /// </summary>
     public Task ExecuteAsync(SendContext context, Type? key = null, CancellationToken cancellationToken = default)
     {

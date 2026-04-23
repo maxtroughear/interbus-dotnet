@@ -44,6 +44,8 @@ public static class ServiceCollectionExtensions
         var options = new InterBusOptions();
         var builder = new InterBusBuilder(services, options);
 
+        services.AddHostedService<InterBusTopologyHostedService>();
+
         configure(builder);
 
         // Register options so transports can resolve them.
@@ -63,7 +65,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<SendPipelineExecutor>();
 
         // Register the transport factory and the scoped publisher.
-        services.AddSingleton<IInterBusTransportFactory, InterBusTransportFactory>();
+        services.AddSingleton<ITransportFactory, TransportFactory>();
         services.AddScoped<IPublisher, Publisher.Publisher>();
 
         return services;

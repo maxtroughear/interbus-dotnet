@@ -10,7 +10,7 @@ public sealed class ScheduledDeliveryRequest
     /// <summary>
     /// The destination URI (e.g. <c>memorytopic://interbus/my-topic</c> or
     /// <c>memoryqueue://interbus/my-queue</c>). Passed directly to
-    /// <see cref="IInterBusTransport.SendAsync"/> when the scheduled job fires.
+    /// <see cref="ITransport.SendAsync"/> when the scheduled job fires.
     /// </summary>
     public string Destination { get; init; } = string.Empty;
 

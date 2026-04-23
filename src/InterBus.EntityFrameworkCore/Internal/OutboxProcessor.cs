@@ -9,7 +9,7 @@ namespace InterBus.EntityFrameworkCore.Internal;
 
 /// <summary>
 /// Background service that continuously reads pending groups of messages from the transactional
-/// outbox and forwards them to the configured transport via <see cref="IInterBusTransportFactory"/>.
+/// outbox and forwards them to the configured transport via <see cref="ITransportFactory"/>.
 /// <para>
 /// Each iteration fetches one complete group (all messages sharing the same
 /// <see cref="OutboxMessage.GroupId"/>) within a database transaction, forwards each message

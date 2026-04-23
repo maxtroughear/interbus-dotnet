@@ -15,8 +15,7 @@ namespace InterBus.Scheduler;
 /// </summary>
 internal sealed class PublishMessageScheduler(
     IPublisher publisher,
-    IMessageSerializer serializer,
-    InterBusOptions options)
+    IMessageSerializer serializer)
     : IMessageScheduler
 {
     public Task ScheduleInternalAsync<T>(PublishContext<T> context, DateTimeOffset scheduledAt,

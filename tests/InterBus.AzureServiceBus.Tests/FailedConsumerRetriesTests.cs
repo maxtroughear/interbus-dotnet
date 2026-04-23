@@ -79,11 +79,13 @@ public class FailedConsumerRetriesTests
         await publisher.PublishAsync(msg, TestContext.CurrentContext.CancellationToken);
 
         ServiceBusReceivedMessage? deadLetterMessage = null;
-        await TestHelpers.WaitUntilAsync(() =>
+        var deadline = DateTime.UtcNow.AddSeconds(60);
+        while (deadLetterMessage is null && DateTime.UtcNow < deadline)
         {
-            deadLetterMessage = TryReadDeadLetter();
-            return deadLetterMessage is not null;
-        }, timeoutMs: 60_000);
+            deadLetterMessage = await TryReadDeadLetterAsync();
+            if (deadLetterMessage is null)
+                await Task.Delay(200, TestContext.CurrentContext.CancellationToken);
+        }
 
         Assert.That(deadLetterMessage, Is.Not.Null);
         Assert.That(deadLetterMessage!.DeadLetterReason, Is.EqualTo("Unhandled exception in consume pipeline"));
@@ -93,23 +95,14 @@ public class FailedConsumerRetriesTests
         Assert.That(_receiveTracker.Count, Is.EqualTo(1));
     }
 
-    private ServiceBusReceivedMessage? TryReadDeadLetter()
+    private async Task<ServiceBusReceivedMessage?> TryReadDeadLetterAsync()
     {
         var queueName = typeof(DeadLetterOrderPlacedConsumer).FullName!;
-        var client = new ServiceBusClient(_container.GetConnectionString());
-        var receiver = client.CreateReceiver(
+        await using var client = new ServiceBusClient(_container.GetConnectionString());
+        await using var receiver = client.CreateReceiver(
             queueName,
             new ServiceBusReceiverOptions { SubQueue = SubQueue.DeadLetter });
-
-        try
-        {
-            return receiver.ReceiveMessageAsync(TimeSpan.FromMilliseconds(100)).GetAwaiter().GetResult();
-        }
-        finally
-        {
-            receiver.DisposeAsync().AsTask().GetAwaiter().GetResult();
-            client.DisposeAsync().AsTask().GetAwaiter().GetResult();
-        }
+        return await receiver.ReceiveMessageAsync(TimeSpan.FromMilliseconds(100));
     }
 }
 

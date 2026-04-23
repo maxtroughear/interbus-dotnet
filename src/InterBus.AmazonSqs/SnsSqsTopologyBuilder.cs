@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Text.Json;
 using Amazon.Runtime;
 using Amazon.SecurityToken;
 using Amazon.SecurityToken.Model;
@@ -107,8 +108,11 @@ public sealed partial class SnsSqsTopologyBuilder(
                 cancellationToken,
                 new Dictionary<string, string>(StringComparer.Ordinal)
                 {
-                    ["RedrivePolicy"] =
-                        $$"""{"deadLetterTargetArn":"{{deadLetterQueueArn}}","maxReceiveCount":"{{Math.Max(1, transportOptions.DeadLetterMaxReceiveCount)}}" }""",
+                    ["RedrivePolicy"] = JsonSerializer.Serialize(new
+                    {
+                        deadLetterTargetArn = deadLetterQueueArn,
+                        maxReceiveCount = Math.Max(1, transportOptions.DeadLetterMaxReceiveCount).ToString(),
+                    }),
                 });
 
             logger.LogDebug(

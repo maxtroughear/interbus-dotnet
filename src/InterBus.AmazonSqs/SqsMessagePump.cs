@@ -210,7 +210,7 @@ internal sealed class SqsMessagePump(
         DeadLetterException ex)
     {
         var deadLetterQueueName = topology.BuildDeadLetterQueueName(descriptor.QueueName);
-        if (!topology.DeadLetterQueueUrls.TryGetValue(deadLetterQueueName, out var deadLetterQueueUrl))
+        if (!topology.QueueUrls.TryGetValue(deadLetterQueueName, out var deadLetterQueueUrl))
         {
             logger.LogWarning(
                 ex,

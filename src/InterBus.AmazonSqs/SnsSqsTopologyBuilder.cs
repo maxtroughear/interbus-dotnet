@@ -91,7 +91,6 @@ public sealed partial class SnsSqsTopologyBuilder(
             var deadLetterQueueName = topology.BuildDeadLetterQueueName(descriptor.QueueName);
 
             var deadLetterQueueUrl = await CreateQueueAsync(deadLetterQueueName, cancellationToken);
-            topology.DeadLetterQueueUrls[deadLetterQueueName] = deadLetterQueueUrl;
 
             var deadLetterAttrs = await sqsClient.GetQueueAttributesAsync(
                 new GetQueueAttributesRequest

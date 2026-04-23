@@ -147,22 +147,19 @@ internal sealed class RabbitMqMessagePump(
             {
                 await channel.BasicNackAsync(ea.DeliveryTag, multiple: false, requeue: true);
             }
+            catch (DeadLetterException deadLetterException)
+            {
+                await DeadLetterAsync(channel, descriptor, ea, deadLetterException);
+            }
             catch (Exception ex)
             {
-                if (ex is DeadLetterException deadLetterException)
-                {
-                    await DeadLetterAsync(channel, descriptor, ea, deadLetterException);
-                }
-                else
-                {
-                    logger.LogWarning(
-                        ex,
-                        "InterBus RabbitMQ: consumer {ConsumerType} failed for queue {QueueName}; requeueing message for redelivery",
-                        descriptor.ConsumerType.Name,
-                        descriptor.QueueName);
+                logger.LogWarning(
+                    ex,
+                    "InterBus RabbitMQ: consumer {ConsumerType} failed for queue {QueueName}; requeueing message for redelivery",
+                    descriptor.ConsumerType.Name,
+                    descriptor.QueueName);
 
-                    await channel.BasicNackAsync(ea.DeliveryTag, multiple: false, requeue: true);
-                }
+                await channel.BasicNackAsync(ea.DeliveryTag, multiple: false, requeue: true);
             }
 
             // ReSharper restore MethodSupportsCancellation

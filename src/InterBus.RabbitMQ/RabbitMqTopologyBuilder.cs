@@ -15,9 +15,6 @@ internal sealed class RabbitMqTopologyBuilder(
     private ConcurrentDictionary<string, Task> DeclaredTopics { get; } = new(StringComparer.Ordinal);
     private ConcurrentDictionary<string, Task> DeclaredQueues { get; } = new(StringComparer.Ordinal);
     private ConcurrentDictionary<string, Task> DeclaredBindings { get; } = new(StringComparer.Ordinal);
-    private ConcurrentDictionary<string, Task> DeclaredDeadLetterExchanges { get; } = new(StringComparer.Ordinal);
-    private ConcurrentDictionary<string, Task> DeclaredDeadLetterQueues { get; } = new(StringComparer.Ordinal);
-    private ConcurrentDictionary<string, Task> DeclaredDeadLetterBindings { get; } = new(StringComparer.Ordinal);
 
     public async Task BuildTopologyAsync(CancellationToken cancellationToken)
     {
@@ -163,8 +160,8 @@ internal sealed class RabbitMqTopologyBuilder(
         string deadLetterExchangeName,
         CancellationToken cancellationToken) =>
         EnsureWithCacheAsync(
-            DeclaredDeadLetterExchanges,
-            deadLetterExchangeName,
+            DeclaredTopics,
+            "dlx|" + deadLetterExchangeName,
             ct => DeclareDeadLetterExchangeOnChannelAsync(channel, deadLetterExchangeName, ct),
             cancellationToken);
 
@@ -173,8 +170,8 @@ internal sealed class RabbitMqTopologyBuilder(
         string deadLetterQueueName,
         CancellationToken cancellationToken) =>
         EnsureWithCacheAsync(
-            DeclaredDeadLetterQueues,
-            deadLetterQueueName,
+            DeclaredQueues,
+            "dlq|" + deadLetterQueueName,
             ct => DeclareDeadLetterQueueOnChannelAsync(channel, deadLetterQueueName, ct),
             cancellationToken);
 
@@ -187,8 +184,8 @@ internal sealed class RabbitMqTopologyBuilder(
     {
         var bindingKey = deadLetterExchangeName + "|" + deadLetterQueueName + "|" + sourceQueueName;
         return EnsureWithCacheAsync(
-            DeclaredDeadLetterBindings,
-            bindingKey,
+            DeclaredBindings,
+            "dlb|" + bindingKey,
             ct => DeclareDeadLetterBindingOnChannelAsync(
                 channel,
                 deadLetterQueueName,

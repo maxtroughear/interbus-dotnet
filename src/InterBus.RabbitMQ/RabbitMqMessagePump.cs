@@ -1,4 +1,5 @@
 using InterBus.Consumer;
+using InterBus.DeadLettering;
 using InterBus.Dispatch;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -14,8 +15,9 @@ namespace InterBus.RabbitMQ;
 /// per registered InterBus consumer queue.
 /// <para>Topology is created or verified during bus startup before this pump starts.</para>
 /// <para>
-/// Successful dispatch acknowledges the RabbitMQ message. Consumer failures issue a negative
-/// acknowledgement with <c>requeue=true</c> so the message is redelivered.
+/// Successful dispatch acknowledges the RabbitMQ message. Unhandled consumer failures are
+/// republished to a dead-letter exchange with diagnostic headers; other failures are negatively
+/// acknowledged with <c>requeue=true</c> for redelivery.
 /// </para>
 /// <para>
 /// Initial connection failures are retried using the exponential back-off configured in
@@ -147,15 +149,23 @@ internal sealed class RabbitMqMessagePump(
             }
             catch (Exception ex)
             {
-                logger.LogWarning(
-                    ex,
-                    "InterBus RabbitMQ: consumer {ConsumerType} failed for queue {QueueName}; requeueing message for redelivery",
-                    descriptor.ConsumerType.Name,
-                    descriptor.QueueName);
+                if (ex is DeadLetterException deadLetterException)
+                {
+                    await DeadLetterAsync(channel, descriptor, ea, deadLetterException);
+                }
+                else
+                {
+                    logger.LogWarning(
+                        ex,
+                        "InterBus RabbitMQ: consumer {ConsumerType} failed for queue {QueueName}; requeueing message for redelivery",
+                        descriptor.ConsumerType.Name,
+                        descriptor.QueueName);
 
-                await channel.BasicNackAsync(ea.DeliveryTag, multiple: false, requeue: true);
-                // ReSharper restore MethodSupportsCancellation
+                    await channel.BasicNackAsync(ea.DeliveryTag, multiple: false, requeue: true);
+                }
             }
+
+            // ReSharper restore MethodSupportsCancellation
         };
 
         await channel.BasicConsumeAsync(
@@ -189,6 +199,51 @@ internal sealed class RabbitMqMessagePump(
         var headers = RabbitMqHeaders.ParseAmqpHeaders(ea.BasicProperties.Headers);
         var context = new DispatchContext(descriptor, ea.Body.ToArray(), headers);
         await executor.ExecuteAsync(context, ct);
+    }
+
+    private async Task DeadLetterAsync(
+        IChannel channel,
+        ConsumerDescriptor descriptor,
+        BasicDeliverEventArgs ea,
+        DeadLetterException ex)
+    {
+        var deadLetterExchangeName = descriptor.QueueName + options.DeadLetterExchangeSuffix;
+        var properties = new BasicProperties
+        {
+            ContentType = ea.BasicProperties.ContentType,
+            ContentEncoding = ea.BasicProperties.ContentEncoding,
+            DeliveryMode = ea.BasicProperties.DeliveryMode,
+            Priority = ea.BasicProperties.Priority,
+            CorrelationId = ea.BasicProperties.CorrelationId,
+            MessageId = ea.BasicProperties.MessageId,
+            Timestamp = ea.BasicProperties.Timestamp,
+            Type = ea.BasicProperties.Type,
+            AppId = ea.BasicProperties.AppId,
+            Headers = ea.BasicProperties.Headers is null
+                ? new Dictionary<string, object?>()
+                : new Dictionary<string, object?>(ea.BasicProperties.Headers, StringComparer.Ordinal),
+        };
+
+        properties.Headers[InterBusHeaders.DeadLetterReason] = ex.Reason;
+        properties.Headers[InterBusHeaders.DeadLetterError] = ex.Error;
+        properties.Headers[InterBusHeaders.DeadLetteredAt] = ex.DeadLetteredAtUtc.ToString("O");
+
+        await channel.BasicPublishAsync(
+            exchange: deadLetterExchangeName,
+            routingKey: descriptor.QueueName,
+            mandatory: false,
+            basicProperties: properties,
+            body: ea.Body,
+            cancellationToken: CancellationToken.None);
+
+        await channel.BasicAckAsync(ea.DeliveryTag, multiple: false);
+
+        logger.LogWarning(
+            ex,
+            "InterBus RabbitMQ: consumer {ConsumerType} failed for queue {QueueName}; message moved to dead-letter exchange {DeadLetterExchange}",
+            descriptor.ConsumerType.Name,
+            descriptor.QueueName,
+            deadLetterExchangeName);
     }
 
     public override async Task StopAsync(CancellationToken cancellationToken)

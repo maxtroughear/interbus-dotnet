@@ -1,6 +1,7 @@
 using Amazon.SQS;
 using Amazon.SQS.Model;
 using InterBus.Consumer;
+using InterBus.DeadLettering;
 using InterBus.Dispatch;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -21,8 +22,9 @@ namespace InterBus.AmazonSqs;
 /// use the same envelope format for consistency.
 /// </para>
 /// <para>
-/// Successful dispatch deletes the SQS message (ACK). Consumer failures let the message's
-/// visibility timeout expire so SQS redelivers automatically.
+/// Successful dispatch deletes the SQS message (ACK). Unhandled consumer failures are copied to
+/// the configured dead-letter queue with diagnostic message attributes and the original message is
+/// acknowledged; other failures let visibility timeout expire for redelivery.
 /// </para>
 /// </summary>
 internal sealed class SqsMessagePump(
@@ -181,6 +183,11 @@ internal sealed class SqsMessagePump(
         {
             // Dispatch was cancelled mid-flight; do not delete – SQS will redeliver.
         }
+        catch (DeadLetterException ex)
+        {
+            if (await TryDeadLetterAsync(queueUrl, descriptor, message, ex))
+                await sqsClient.DeleteMessageAsync(queueUrl, message.ReceiptHandle, CancellationToken.None);
+        }
         catch (Exception ex)
         {
             logger.LogWarning(
@@ -193,6 +200,71 @@ internal sealed class SqsMessagePump(
         {
             await StopRenewalAsync(prefetched);
             semaphore.Release();
+        }
+    }
+
+    private async Task<bool> TryDeadLetterAsync(
+        string queueUrl,
+        ConsumerDescriptor descriptor,
+        Message message,
+        DeadLetterException ex)
+    {
+        var deadLetterQueueName = topology.BuildDeadLetterQueueName(descriptor.QueueName);
+        if (!topology.DeadLetterQueueUrls.TryGetValue(deadLetterQueueName, out var deadLetterQueueUrl))
+        {
+            logger.LogWarning(
+                ex,
+                "InterBus AmazonSqs: failed to dead-letter message for consumer {ConsumerType}; dead-letter queue {DeadLetterQueue} is not available",
+                descriptor.ConsumerType.Name,
+                deadLetterQueueName);
+            return false;
+        }
+
+        try
+        {
+            await sqsClient.SendMessageAsync(
+                new SendMessageRequest
+                {
+                    QueueUrl = deadLetterQueueUrl,
+                    MessageBody = message.Body,
+                    MessageAttributes = new Dictionary<string, MessageAttributeValue>(StringComparer.Ordinal)
+                    {
+                        [InterBusHeaders.DeadLetterReason] = new()
+                        {
+                            DataType = "String",
+                            StringValue = ex.Reason
+                        },
+                        [InterBusHeaders.DeadLetterError] = new()
+                        {
+                            DataType = "String",
+                            StringValue = ex.Error
+                        },
+                        [InterBusHeaders.DeadLetteredAt] = new()
+                        {
+                            DataType = "String",
+                            StringValue = ex.DeadLetteredAtUtc.ToString("O")
+                        }
+                    }
+                },
+                CancellationToken.None);
+
+            logger.LogWarning(
+                ex,
+                "InterBus AmazonSqs: consumer {ConsumerType} failed for queue {QueueName}; message moved to dead-letter queue {DeadLetterQueue}",
+                descriptor.ConsumerType.Name,
+                descriptor.Queue,
+                deadLetterQueueName);
+
+            return true;
+        }
+        catch (Exception deadLetterFailure)
+        {
+            logger.LogError(
+                deadLetterFailure,
+                "InterBus AmazonSqs: failed sending dead-letter message for consumer {ConsumerType} queue {QueueName}",
+                descriptor.ConsumerType.Name,
+                descriptor.Queue);
+            return false;
         }
     }
 

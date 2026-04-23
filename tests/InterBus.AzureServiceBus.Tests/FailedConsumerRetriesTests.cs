@@ -1,6 +1,7 @@
 using InterBus.AzureServiceBus.Extensions;
 using InterBus.Extensions;
 using InterBus.Generated;
+using Azure.Messaging.ServiceBus;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Testcontainers.ServiceBus;
@@ -47,7 +48,7 @@ public class FailedConsumerRetriesTests
                 o.ConnectionString = _container.GetConnectionString();
                 o.AdminConnectionString = _container.GetHttpConnectionString();
             });
-            bus.AddConsumer<FailingOrderPlacedConsumer>();
+            bus.AddConsumer<DeadLetterOrderPlacedConsumer>();
         });
 
         _provider = services.BuildServiceProvider();
@@ -70,19 +71,45 @@ public class FailedConsumerRetriesTests
     }
 
     [Test]
-    public async Task FailedConsumer_MessageIsRetried()
+    public async Task FailedConsumer_MessageIsMovedToDeadLetterQueue()
     {
         using var scope = _provider.CreateScope();
         var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
         var msg = new OrderPlaced(Guid.NewGuid(), "retry@test.com", 10m);
         await publisher.PublishAsync(msg, TestContext.CurrentContext.CancellationToken);
 
-        // Wait for the second (successful) delivery.
-        await TestHelpers.WaitUntilAsync(() => _tracker.Messages.Count == 1, timeoutMs: 60_000);
+        ServiceBusReceivedMessage? deadLetterMessage = null;
+        await TestHelpers.WaitUntilAsync(() =>
+        {
+            deadLetterMessage = TryReadDeadLetter();
+            return deadLetterMessage is not null;
+        }, timeoutMs: 60_000);
 
-        Assert.That(_tracker.Messages, Has.Count.EqualTo(1));
-        Assert.That(_receiveTracker.Count, Is.GreaterThan(1),
-            "Message should have been retried at least once");
+        Assert.That(deadLetterMessage, Is.Not.Null);
+        Assert.That(deadLetterMessage!.DeadLetterReason, Is.EqualTo("Unhandled exception in consume pipeline"));
+        Assert.That(deadLetterMessage.ApplicationProperties.ContainsKey(InterBusHeaders.DeadLetterError), Is.True);
+        Assert.That(deadLetterMessage.ApplicationProperties.ContainsKey(InterBusHeaders.DeadLetteredAt), Is.True);
+        Assert.That(_tracker.Messages, Is.Empty);
+        Assert.That(_receiveTracker.Count, Is.EqualTo(1));
+    }
+
+    private ServiceBusReceivedMessage? TryReadDeadLetter()
+    {
+        var queueName = typeof(DeadLetterOrderPlacedConsumer).FullName!;
+        var client = new ServiceBusClient(_container.GetConnectionString());
+        var receiver = client.CreateReceiver(
+            queueName,
+            new ServiceBusReceiverOptions { SubQueue = SubQueue.DeadLetter });
+
+        try
+        {
+            return receiver.ReceiveMessageAsync(TimeSpan.FromMilliseconds(100)).GetAwaiter().GetResult();
+        }
+        finally
+        {
+            receiver.DisposeAsync().AsTask().GetAwaiter().GetResult();
+            client.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        }
     }
 }
 
@@ -94,17 +121,12 @@ public sealed class ReceiveTracker
     public void Increment() => Interlocked.Increment(ref _count);
 }
 
-public sealed class FailingOrderPlacedConsumer(OrderPlacedTracker tracker, ReceiveTracker receiveTracker)
+public sealed class DeadLetterOrderPlacedConsumer(ReceiveTracker receiveTracker)
     : IConsumer<OrderPlaced>
 {
     public Task Consume(OrderPlaced message, IConsumeContext context, CancellationToken cancellationToken = default)
     {
         receiveTracker.Increment();
-
-        if (receiveTracker.Count == 1)
-            throw new InvalidOperationException("Simulated transient failure");
-
-        tracker.Track(message);
-        return Task.CompletedTask;
+        throw new InvalidOperationException("Simulated dead-letter failure");
     }
 }

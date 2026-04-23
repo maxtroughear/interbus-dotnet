@@ -34,6 +34,12 @@ public sealed class SnsSqsTopology(SnsSqsTransportOptions options)
         new(StringComparer.Ordinal);
 
     /// <summary>
+    /// Application-level cache: dead-letter queue name → SQS Queue URL.
+    /// </summary>
+    internal ConcurrentDictionary<string, string> DeadLetterQueueUrls { get; } =
+        new(StringComparer.Ordinal);
+
+    /// <summary>
     /// Converts a raw InterBus topic name (e.g. a fully-qualified .NET type name) into a
     /// valid SNS topic name, replacing dots and other invalid characters with hyphens and
     /// trimming to the 256-character limit.
@@ -56,6 +62,9 @@ public sealed class SnsSqsTopology(SnsSqsTransportOptions options)
         var sanitized = SanitizeName(rawName, maxSanitizedLength);
         return options.QueuePrefix + sanitized;
     }
+
+    internal string BuildDeadLetterQueueName(string rawQueueName) =>
+        BuildSqsQueueName(rawQueueName + options.DeadLetterQueueSuffix);
 
     private static string SanitizeName(string rawName, int maxLength)
     {

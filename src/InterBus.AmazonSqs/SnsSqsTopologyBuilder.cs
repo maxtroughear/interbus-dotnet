@@ -87,8 +87,29 @@ public sealed partial class SnsSqsTopologyBuilder(
         foreach (var descriptor in busOptions.Consumers)
         {
             var queueName = topology.BuildSqsQueueName(descriptor.QueueName);
+            var deadLetterQueueName = topology.BuildDeadLetterQueueName(descriptor.QueueName);
 
-            var queueUrl = await CreateQueueAsync(queueName, cancellationToken);
+            var deadLetterQueueUrl = await CreateQueueAsync(deadLetterQueueName, cancellationToken);
+            topology.DeadLetterQueueUrls[deadLetterQueueName] = deadLetterQueueUrl;
+
+            var deadLetterAttrs = await sqsClient.GetQueueAttributesAsync(
+                new GetQueueAttributesRequest
+                {
+                    QueueUrl = deadLetterQueueUrl,
+                    AttributeNames = ["QueueArn"],
+                },
+                cancellationToken);
+
+            var deadLetterQueueArn = deadLetterAttrs.QueueARN;
+
+            var queueUrl = await CreateQueueAsync(
+                queueName,
+                cancellationToken,
+                new Dictionary<string, string>(StringComparer.Ordinal)
+                {
+                    ["RedrivePolicy"] =
+                        $$"""{"deadLetterTargetArn":"{{deadLetterQueueArn}}","maxReceiveCount":"{{Math.Max(1, transportOptions.DeadLetterMaxReceiveCount)}}" }""",
+                });
 
             logger.LogDebug(
                 "InterBus AmazonSqs: declared queue {QueueName} for consumer {ConsumerType}, URL {QueueUrl}",
@@ -196,12 +217,21 @@ public sealed partial class SnsSqsTopologyBuilder(
             cancellationToken);
     }
 
-    private async Task<string> CreateQueueAsync(string queueName, CancellationToken cancellationToken)
+    private async Task<string> CreateQueueAsync(
+        string queueName,
+        CancellationToken cancellationToken,
+        IDictionary<string, string>? additionalAttributes = null)
     {
         var attributes = new Dictionary<string, string>
         {
             ["MessageRetentionPeriod"] = "1209600" // 14 days
         };
+
+        if (additionalAttributes is not null)
+        {
+            foreach (var attribute in additionalAttributes)
+                attributes[attribute.Key] = attribute.Value;
+        }
 
         if (transportOptions.EnableSqsEncryption)
         {

@@ -108,6 +108,17 @@ public sealed class SnsSqsTransportOptions
     public bool EnableSnsEncryption { get; set; } = true;
 
     /// <summary>
+    /// Maximum number of receives before SQS moves a message to the configured dead-letter queue.
+    /// Used when topology is created by InterBus.
+    /// </summary>
+    public int DeadLetterMaxReceiveCount { get; set; } = 5;
+
+    /// <summary>
+    /// Suffix appended to the source queue name for the dead-letter queue created by InterBus.
+    /// </summary>
+    public string DeadLetterQueueSuffix { get; set; } = "-dlq";
+
+    /// <summary>
     /// Effective lease renewal interval: <see cref="LeaseRenewalInterval"/> when set,
     /// otherwise half of <see cref="VisibilityTimeout"/> (minimum 1 second).
     /// </summary>

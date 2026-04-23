@@ -60,4 +60,19 @@ public static class InterBusHeaders
     /// triggered the current consume operation. Enables causal tracing across related messages.
     /// </summary>
     public const string CausationId = "interbus-causation-id";
+
+    /// <summary>
+    /// Header key describing why a message was dead-lettered.
+    /// </summary>
+    public const string DeadLetterReason = "interbus-dead-letter-reason";
+
+    /// <summary>
+    /// Header key containing details of the exception that caused dead-lettering.
+    /// </summary>
+    public const string DeadLetterError = "interbus-dead-letter-error";
+
+    /// <summary>
+    /// Header key storing the UTC time when the message was dead-lettered.
+    /// </summary>
+    public const string DeadLetteredAt = "interbus-dead-lettered-at";
 }

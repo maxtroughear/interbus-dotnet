@@ -1,5 +1,6 @@
 using Azure.Messaging.ServiceBus;
 using InterBus.Consumer;
+using InterBus.DeadLettering;
 using InterBus.Dispatch;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -16,8 +17,8 @@ namespace InterBus.AzureServiceBus;
 /// receiving both direct sends and messages forwarded from topic subscriptions.
 /// </para>
 /// <para>
-/// Successful dispatch completes the Azure Service Bus message. Consumer failures abandon the
-/// message so it is redelivered (up to the entity's <c>MaxDeliveryCount</c>).
+/// Successful dispatch completes the Azure Service Bus message. Unhandled consumer failures are
+/// dead-lettered with diagnostic details; other transient failures are abandoned for redelivery.
 /// </para>
 /// </summary>
 internal sealed class AzureServiceBusMessagePump(
@@ -122,6 +123,26 @@ internal sealed class AzureServiceBusMessagePump(
         catch (OperationCanceledException) when (args.CancellationToken.IsCancellationRequested)
         {
             await args.AbandonMessageAsync(args.Message, cancellationToken: CancellationToken.None);
+        }
+        catch (DeadLetterException ex)
+        {
+            await args.DeadLetterMessageAsync(
+                args.Message,
+                deadLetterReason: ex.Reason,
+                deadLetterErrorDescription: ex.Error,
+                propertiesToModify: new Dictionary<string, object>
+                {
+                    [InterBusHeaders.DeadLetterReason] = ex.Reason,
+                    [InterBusHeaders.DeadLetterError] = ex.Error,
+                    [InterBusHeaders.DeadLetteredAt] = ex.DeadLetteredAtUtc.ToString("O"),
+                },
+                cancellationToken: CancellationToken.None);
+
+            logger.LogWarning(
+                ex,
+                "InterBus AzureServiceBus: consumer {ConsumerType} failed for queue {QueueName}; message moved to dead-letter queue",
+                descriptor.ConsumerType.Name,
+                descriptor.Queue);
         }
         catch (Exception ex)
         {

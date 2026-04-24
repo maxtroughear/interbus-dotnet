@@ -3,19 +3,22 @@ using InterBus.Consumer;
 namespace InterBus.DeadLettering;
 
 /// <summary>
-/// Outermost consume middleware that marks unhandled consumer exceptions for dead-lettering.
+/// Outermost consume middleware that marks unhandled consumer exceptions for dead-lettering
+/// and publishes a <see cref="DeadLetter{T}"/> message to allow application consumers to
+/// receive and process dead-lettered messages.
 /// </summary>
-public sealed class DeadLetterConsumeMiddleware : IConsumeMiddleware
+public sealed class DeadLetterConsumeMiddleware(IPublisher publisher) : IConsumeMiddleware
 {
     public Task InvokeAsync<T>(
         ConsumeContext<T> context,
         Func<ConsumeContext<T>, CancellationToken, Task> next,
         CancellationToken cancellationToken = default) where T : class =>
-        InvokeCoreAsync(context, next, cancellationToken);
+        InvokeCoreAsync(context, next, publisher, cancellationToken);
 
     private static async Task InvokeCoreAsync<T>(
         ConsumeContext<T> context,
         Func<ConsumeContext<T>, CancellationToken, Task> next,
+        IPublisher publisher,
         CancellationToken cancellationToken) where T : class
     {
         try
@@ -39,7 +42,34 @@ public sealed class DeadLetterConsumeMiddleware : IConsumeMiddleware
             context.Headers[InterBusHeaders.DeadLetterError] = ex.ToString();
             context.Headers[InterBusHeaders.DeadLetteredAt] = deadLetteredAtUtc.ToString("O");
 
+            // Publish a DeadLetter<T> event so application consumers can subscribe to failed messages.
+            // Skip publishing if T is already a DeadLetter<> type to prevent infinite nesting.
+            if (!IsDeadLetterType(typeof(T)))
+            {
+                var deadLetter = new DeadLetter<T>
+                {
+                    OriginalMessage = context.Message,
+                    Reason = reason,
+                    Error = ex.ToString(),
+                    DeadLetteredAtUtc = deadLetteredAtUtc,
+                };
+
+                try
+                {
+                    // Use CancellationToken.None so a cancelled consumer token does not suppress
+                    // the dead-letter publish.
+                    await publisher.PublishAsync(deadLetter, CancellationToken.None);
+                }
+                catch
+                {
+                    // Swallow publish errors to avoid masking the original consumer exception.
+                }
+            }
+
             throw new DeadLetterException(reason, ex.ToString(), deadLetteredAtUtc, ex);
         }
     }
+
+    private static bool IsDeadLetterType(Type type) =>
+        type.IsGenericType && type.GetGenericTypeDefinition() == typeof(DeadLetter<>);
 }

@@ -199,12 +199,14 @@ internal sealed class RabbitMqMessagePump(
     }
 
     private async Task DeadLetterAsync(
-        IChannel channel,
+        IChannel consumeChannel,
         ConsumerDescriptor descriptor,
         BasicDeliverEventArgs ea,
         DeadLetterException ex)
     {
         var deadLetterExchangeName = descriptor.QueueName + options.DeadLetterExchangeSuffix;
+        var publishConnection = await connectionProvider.GetPublishConnectionAsync(CancellationToken.None);
+        await using var publishChannel = await publishConnection.CreateChannelAsync(cancellationToken: CancellationToken.None);
         var properties = new BasicProperties
         {
             ContentType = ea.BasicProperties.ContentType,
@@ -225,7 +227,7 @@ internal sealed class RabbitMqMessagePump(
         properties.Headers[InterBusHeaders.DeadLetterError] = ex.Error;
         properties.Headers[InterBusHeaders.DeadLetteredAt] = ex.DeadLetteredAtUtc.ToString("O");
 
-        await channel.BasicPublishAsync(
+        await publishChannel.BasicPublishAsync(
             exchange: deadLetterExchangeName,
             routingKey: descriptor.QueueName,
             mandatory: false,
@@ -233,7 +235,7 @@ internal sealed class RabbitMqMessagePump(
             body: ea.Body,
             cancellationToken: CancellationToken.None);
 
-        await channel.BasicAckAsync(ea.DeliveryTag, multiple: false);
+        await consumeChannel.BasicAckAsync(ea.DeliveryTag, multiple: false);
 
         logger.LogWarning(
             ex,

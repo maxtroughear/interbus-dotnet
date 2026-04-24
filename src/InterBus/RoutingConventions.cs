@@ -20,7 +20,7 @@ public static class RoutingConventions
         var baseName = genericDef.FullName ?? genericDef.Name;
         // Remove the backtick suffix added by the CLR (e.g. "DeadLetter`1" → "DeadLetter").
         var cleanName = baseName.Contains('`') ? baseName[..baseName.IndexOf('`')] : baseName;
-        var argNames = string.Join(", ", messageType.GetGenericArguments().Select(TopicName));
+        var argNames = string.Join(",", messageType.GetGenericArguments().Select(TopicName));
         return $"{cleanName}<{argNames}>";
     }
 

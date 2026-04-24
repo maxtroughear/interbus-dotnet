@@ -183,7 +183,7 @@ public class DeadLetterConsumerTests
     {
     }
 
-    /// <summary>Consumer of <c>DeadLetter&lt;DeadLetter&lt;OrderPlaced&gt;&gt;</c> — should never be invoked.</summary>
+    /// <summary>Consumer of <c>DeadLetter&lt;DeadLetter&lt;OrderPlaced&gt;&gt;</c> - should never be invoked.</summary>
     public sealed class NestedDeadLetterConsumer(NestedDeadLetterTracker tracker)
         : IConsumer<DeadLetter<DeadLetter<OrderPlaced>>>
     {

@@ -149,7 +149,7 @@ internal sealed class RabbitMqMessagePump(
             }
             catch (DeadLetterException deadLetterException)
             {
-                await DeadLetterAsync(channel, descriptor, ea, deadLetterException, stoppingToken);
+                await DeadLetterAsync(channel, descriptor, ea, deadLetterException);
             }
             catch (Exception ex)
             {
@@ -202,12 +202,11 @@ internal sealed class RabbitMqMessagePump(
         IChannel consumeChannel,
         ConsumerDescriptor descriptor,
         BasicDeliverEventArgs ea,
-        DeadLetterException ex,
-        CancellationToken cancellationToken)
+        DeadLetterException ex)
     {
         var deadLetterExchangeName = descriptor.QueueName + options.DeadLetterExchangeSuffix;
-        var publishConnection = await connectionProvider.GetPublishConnectionAsync(cancellationToken);
-        await using var publishChannel = await publishConnection.CreateChannelAsync(cancellationToken: cancellationToken);
+        var publishConnection = await connectionProvider.GetPublishConnectionAsync(CancellationToken.None);
+        await using var publishChannel = await publishConnection.CreateChannelAsync(cancellationToken: CancellationToken.None);
         var properties = new BasicProperties
         {
             ContentType = ea.BasicProperties.ContentType,
@@ -234,7 +233,7 @@ internal sealed class RabbitMqMessagePump(
             mandatory: false,
             basicProperties: properties,
             body: ea.Body,
-            cancellationToken: cancellationToken);
+            cancellationToken: CancellationToken.None);
 
         await consumeChannel.BasicAckAsync(ea.DeliveryTag, multiple: false);
 

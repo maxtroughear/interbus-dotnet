@@ -1,5 +1,6 @@
 using System.Diagnostics.CodeAnalysis;
 using InterBus.Consumer;
+using InterBus.DeadLettering;
 using InterBus.Dispatch;
 using InterBus.Logging;
 using InterBus.Publisher;
@@ -70,6 +71,7 @@ internal sealed class InterBusBuilder : IInterBusBuilder
         var descriptor = new ConsumerDescriptor(typeof(TConsumer), queue, messageTypes, dispatch);
         var consumerBuilder = new ConsumerBuilder(descriptor, Services);
 
+        consumerBuilder.UseConsumeMiddleware<DeadLetterConsumeMiddleware>();
         consumerBuilder.UseConsumeMiddleware<ExceptionLoggingConsumeMiddleware>();
 
         configure?.Invoke(consumerBuilder);

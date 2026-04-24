@@ -51,6 +51,16 @@ public sealed class RabbitMqTransportOptions
     public string ExchangePrefix { get; set; } = "interbus.topic.";
 
     /// <summary>
+    /// Suffix appended to queue names when creating dead-letter queues.
+    /// </summary>
+    public string DeadLetterQueueSuffix { get; set; } = ".dlq";
+
+    /// <summary>
+    /// Suffix appended to queue names when creating dead-letter exchanges.
+    /// </summary>
+    public string DeadLetterExchangeSuffix { get; set; } = ".dlx";
+
+    /// <summary>
     /// Configures retry behavior for RabbitMQ connection-related failures in hosted services
     /// such as the message pump.
     /// <para>

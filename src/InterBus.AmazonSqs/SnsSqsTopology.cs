@@ -57,6 +57,9 @@ public sealed class SnsSqsTopology(SnsSqsTransportOptions options)
         return options.QueuePrefix + sanitized;
     }
 
+    internal string BuildDeadLetterQueueName(string rawQueueName) =>
+        BuildSqsQueueName(rawQueueName + options.DeadLetterQueueSuffix);
+
     private static string SanitizeName(string rawName, int maxLength)
     {
         // Replace all invalid chars (everything except alphanumerics, hyphens, underscores)

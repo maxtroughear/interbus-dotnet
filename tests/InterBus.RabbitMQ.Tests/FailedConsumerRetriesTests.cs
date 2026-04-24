@@ -3,6 +3,7 @@ using InterBus.Generated;
 using InterBus.RabbitMQ.Extensions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using global::RabbitMQ.Client;
 using Testcontainers.RabbitMq;
 
 namespace InterBus.RabbitMQ.Tests;
@@ -42,7 +43,7 @@ public class FailedConsumerRetriesTests(string imageTag)
         services.AddInterBus(bus =>
         {
             bus.AddRabbitMqTransport(o => { o.Uri = _container.GetConnectionString(); });
-            bus.AddConsumer<FailingOrderPlacedConsumer>();
+            bus.AddConsumer<DeadLetterOrderPlacedConsumer>();
         });
 
         _provider = services.BuildServiceProvider();
@@ -65,19 +66,36 @@ public class FailedConsumerRetriesTests(string imageTag)
     }
 
     [Test]
-    public async Task FailedConsumer_MessageIsRetried()
+    public async Task FailedConsumer_MessageIsMovedToDeadLetterQueue()
     {
         using var scope = _provider.CreateScope();
         var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
         var msg = new OrderPlaced(Guid.NewGuid(), "retry@test.com", 10m);
         await publisher.PublishAsync(msg, TestContext.CurrentContext.CancellationToken);
 
-        // Wait for the second (successful) delivery.
-        await TestHelpers.WaitUntilAsync(() => _tracker.Messages.Count == 1, timeoutMs: 15_000);
+        var deadLetterQueueName = $"{typeof(DeadLetterOrderPlacedConsumer).FullName}.dlq";
 
-        Assert.That(_tracker.Messages, Has.Count.EqualTo(1));
-        Assert.That(_receiveTracker.Count, Is.GreaterThan(1),
-            "Message should have been retried at least once");
+        byte[]? deadLetterBody = null;
+        var deadline = DateTime.UtcNow.AddSeconds(15);
+        while (deadLetterBody is null && DateTime.UtcNow < deadline)
+        {
+            deadLetterBody = await TryReadDeadLetterAsync(deadLetterQueueName);
+            if (deadLetterBody is null)
+                await Task.Delay(200, TestContext.CurrentContext.CancellationToken);
+        }
+
+        Assert.That(deadLetterBody, Is.Not.Null);
+        Assert.That(_tracker.Messages, Is.Empty);
+        Assert.That(_receiveTracker.Count, Is.EqualTo(1));
+    }
+
+    private async Task<byte[]?> TryReadDeadLetterAsync(string deadLetterQueueName)
+    {
+        var factory = new ConnectionFactory { Uri = new Uri(_container.GetConnectionString()) };
+        await using var connection = await factory.CreateConnectionAsync();
+        await using var channel = await connection.CreateChannelAsync();
+        var message = await channel.BasicGetAsync(deadLetterQueueName, autoAck: true);
+        return message?.Body.ToArray();
     }
 }
 
@@ -89,17 +107,12 @@ public sealed class ReceiveTracker
     public void Increment() => Interlocked.Increment(ref _count);
 }
 
-public sealed class FailingOrderPlacedConsumer(OrderPlacedTracker tracker, ReceiveTracker receiveTracker)
+public sealed class DeadLetterOrderPlacedConsumer(ReceiveTracker receiveTracker)
     : IConsumer<OrderPlaced>
 {
     public Task Consume(OrderPlaced message, IConsumeContext context, CancellationToken cancellationToken = default)
     {
         receiveTracker.Increment();
-
-        if (receiveTracker.Count == 1)
-            throw new InvalidOperationException("Simulated transient failure");
-
-        tracker.Track(message);
-        return Task.CompletedTask;
+        throw new InvalidOperationException("Simulated dead-letter failure");
     }
 }

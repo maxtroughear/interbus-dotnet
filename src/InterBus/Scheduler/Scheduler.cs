@@ -71,7 +71,7 @@ internal class Scheduler(InterBusOptions options, IMessageScheduler messageSched
     {
         var headers = new MessageHeaders
         {
-            [InterBusHeaders.MessageType] = typeof(T).FullName ?? typeof(T).Name,
+            [InterBusHeaders.MessageType] = RoutingConventions.TopicName(typeof(T)),
             [InterBusHeaders.MessageId] = Guid.CreateVersion7().ToString(),
             [InterBusHeaders.CorrelationId] = Guid.CreateVersion7().ToString(),
             [InterBusHeaders.SentTime] = DateTimeOffset.UtcNow.ToString("O"),

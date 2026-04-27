@@ -9,17 +9,10 @@ namespace InterBus.DeadLettering;
 /// </summary>
 public sealed class DeadLetterConsumeMiddleware(IPublisher publisher) : IConsumeMiddleware
 {
-    public Task InvokeAsync<T>(
+    public async Task InvokeAsync<T>(
         ConsumeContext<T> context,
         Func<ConsumeContext<T>, CancellationToken, Task> next,
-        CancellationToken cancellationToken = default) where T : class =>
-        InvokeCoreAsync(context, next, publisher, cancellationToken);
-
-    private static async Task InvokeCoreAsync<T>(
-        ConsumeContext<T> context,
-        Func<ConsumeContext<T>, CancellationToken, Task> next,
-        IPublisher publisher,
-        CancellationToken cancellationToken) where T : class
+        CancellationToken cancellationToken = default) where T : class
     {
         try
         {
@@ -44,7 +37,7 @@ public sealed class DeadLetterConsumeMiddleware(IPublisher publisher) : IConsume
 
             // Publish a DeadLetter<T> event so application consumers can subscribe to failed messages.
             // Skip publishing if T is already a DeadLetter<> type to prevent infinite nesting.
-            if (!IsDeadLetterType(typeof(T)))
+            if (!typeof(T).IsGenericType || typeof(T).GetGenericTypeDefinition() != typeof(DeadLetter<>))
             {
                 var deadLetter = new DeadLetter<T>
                 {
@@ -69,7 +62,4 @@ public sealed class DeadLetterConsumeMiddleware(IPublisher publisher) : IConsume
             throw new DeadLetterException(reason, ex.ToString(), deadLetteredAtUtc, ex);
         }
     }
-
-    private static bool IsDeadLetterType(Type type) =>
-        type.IsGenericType && type.GetGenericTypeDefinition() == typeof(DeadLetter<>);
 }

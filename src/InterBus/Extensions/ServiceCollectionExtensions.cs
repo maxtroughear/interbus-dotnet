@@ -32,11 +32,11 @@ public static class ServiceCollectionExtensions
     [UnconditionalSuppressMessage("ReflectionAnalysis", "IL2026",
         Justification =
             "SystemTextJsonMessageSerializer is registered as the default IMessageSerializer and uses reflection-based JSON. " +
-            "Override with bus.UseSerializer<TSerializer>() or bus.Services.AddSingleton<IMessageSerializer>(instance) for AOT/trim applications.")]
+            "Override with bus.UseSerializer<TSerializer>() or bus.Services.AddSingleton<IMessageSerializer>(instance) for AOT/trim applications")]
     [UnconditionalSuppressMessage("AotAnalysis", "IL3050",
         Justification =
             "SystemTextJsonMessageSerializer is registered as the default IMessageSerializer and requires dynamic code. " +
-            "Override with bus.UseSerializer<TSerializer>() or bus.Services.AddSingleton<IMessageSerializer>(instance) for AOT applications.")]
+            "Override with bus.UseSerializer<TSerializer>() or bus.Services.AddSingleton<IMessageSerializer>(instance) for AOT applications")]
     public static IServiceCollection AddInterBus(
         this IServiceCollection services,
         Action<IInterBusBuilder> configure)

@@ -48,7 +48,7 @@ public sealed class SqsTransport(IAmazonSQS sqsClient, ITopologyBuilder topology
         if (context.Destination.Scheme != QueueScheme)
             throw new ArgumentException(
                 $"Unsupported destination URI scheme '{context.Destination.Scheme}'. " +
-                $"Expected '{QueueScheme}'.",
+                $"Expected '{QueueScheme}'",
                 nameof(context));
 
         var rawQueueName = RoutingConventions.GetDestinationName(context.Destination);

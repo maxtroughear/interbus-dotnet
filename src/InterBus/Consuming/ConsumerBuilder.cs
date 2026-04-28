@@ -15,7 +15,7 @@ internal sealed class ConsumerBuilder(ConsumerDescriptor descriptor, IServiceCol
     {
         if (concurrencyCount < 1)
             throw new ArgumentOutOfRangeException(
-                nameof(concurrencyCount), "Concurrency count must be at least 1.");
+                nameof(concurrencyCount), "Concurrency count must be at least 1");
 
         descriptor.ConcurrencyCount = concurrencyCount;
         return this;

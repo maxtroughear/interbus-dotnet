@@ -16,5 +16,5 @@ internal sealed class TransportFactory(IServiceProvider serviceProvider) : ITran
         ?? throw new InvalidOperationException(
             $"No IInterBusTransport registered for destination scheme '{destination.Scheme}'. " +
             "Register a transport extension (e.g. AddInMemoryTransport()) or register a keyed " +
-            "IInterBusTransport for the scheme.");
+            "IInterBusTransport for the scheme");
 }

@@ -149,10 +149,10 @@ public sealed class ConsumerRegistrationGenerator : IIncrementalGenerator
         List<(INamedTypeSymbol Consumer, List<INamedTypeSymbol> Messages)> consumers)
     {
         sb.AppendLine("    /// <summary>");
-        sb.AppendLine("    /// Source-generated per-assembly dispatch module.");
+        sb.AppendLine("    /// Source-generated per-assembly dispatch module");
         sb.AppendLine("    /// Produced by <c>InterBus.SourceGenerator</c> for this assembly's");
         sb.AppendLine("    /// <c>IConsumer&lt;T&gt;</c> implementations. Consumed by the aggregating");
-        sb.AppendLine($"    /// <c>{AggregatingClassName}</c> class. Not intended for direct use.");
+        sb.AppendLine($"    /// <c>{AggregatingClassName}</c> class. Not intended for direct use");
         sb.AppendLine("    /// </summary>");
         sb.AppendLine("    [global::System.ComponentModel.EditorBrowsable(");
         sb.AppendLine("        global::System.ComponentModel.EditorBrowsableState.Never)]");
@@ -195,7 +195,7 @@ public sealed class ConsumerRegistrationGenerator : IIncrementalGenerator
 
         // TryGetDispatch(): individual consumer lookup for AddConsumer<TConsumer>().
         sb.AppendLine("        /// <summary>");
-        sb.AppendLine("        /// Tries to get the source-generated dispatch for a specific consumer type.");
+        sb.AppendLine("        /// Tries to get the source-generated dispatch for a specific consumer type");
         sb.AppendLine("        /// </summary>");
         sb.AppendLine("        public static bool TryGetDispatch(");
         sb.AppendLine("            global::System.Type consumerType,");
@@ -218,55 +218,30 @@ public sealed class ConsumerRegistrationGenerator : IIncrementalGenerator
     private static void AppendAggregatingClass(StringBuilder sb, List<string> allModuleNames)
     {
         sb.AppendLine("    /// <summary>");
-        sb.AppendLine("    /// Source-generated consumer registrations and dispatch delegates.");
+        sb.AppendLine("    /// Source-generated consumer registrations and dispatch delegates");
         sb.AppendLine("    /// Produced by <c>InterBus.SourceGenerator</c> at compile time -");
-        sb.AppendLine("    /// no runtime reflection is required for dispatch.");
+        sb.AppendLine("    /// no runtime reflection is required for dispatch");
         sb.AppendLine("    /// </summary>");
         sb.AppendLine($"    internal static class {AggregatingClassName}");
         sb.AppendLine("    {");
 
-        // AddConsumer<TConsumer>(): individual consumer registration via dispatch module lookup.
+        // AddConsumer<TConsumer>(configure): individual consumer registration via dispatch module lookup
         sb.AppendLine("        /// <summary>");
         sb.AppendLine("        /// Register a specific consumer by its type using the source-generated dispatch delegate.");
-        sb.AppendLine("        /// Searches all discovered dispatch modules for <typeparamref name=\"TConsumer\"/>.");
         sb.AppendLine("        /// </summary>");
         sb.AppendLine("        /// <typeparam name=\"TConsumer\">The consumer type to register. Must be an <c>IConsumer&lt;T&gt;</c>");
         sb.AppendLine("        /// implementation discovered by the source generator in this assembly or a referenced one.</typeparam>");
-        sb.AppendLine("        /// <param name=\"builder\">The <see cref=\"global::InterBus.IInterBusBuilder\"/> to register the consumer with.</param>");
-        sb.AppendLine("        /// <returns>The same builder instance for fluent chaining.</returns>");
+        sb.AppendLine("        /// <param name=\"builder\">The <see cref=\"global::InterBus.IInterBusBuilder\"/> to register the consumer with</param>");
+        sb.AppendLine("        /// <param name=\"configure\">The <paramref name=\"configure\"/> delegate is invoked immediately after registration, allowing per-consumer options such as concurrent dispatch to be set inline</param>");
+        sb.AppendLine("        /// <returns>The same builder instance for fluent chaining</returns>");
         sb.AppendLine("        /// <exception cref=\"global::System.InvalidOperationException\">Thrown when <typeparamref name=\"TConsumer\"/> was not");
         sb.AppendLine("        /// found in any dispatch module. Ensure the consumer implements <c>IConsumer&lt;T&gt;</c> and");
         sb.AppendLine("        /// <c>InterBus.SourceGenerator</c> is referenced in the assembly that defines it.</exception>");
         sb.AppendLine("        public static global::InterBus.IInterBusBuilder AddConsumer<");
         sb.AppendLine("            [global::System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(");
         sb.AppendLine("                global::System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicConstructors)] TConsumer>(");
-        sb.AppendLine("            this global::InterBus.IInterBusBuilder builder)");
-        sb.AppendLine("            where TConsumer : class, global::InterBus.IConsumer");
-        sb.AppendLine("        {");
-
-        for (var i = 0; i < allModuleNames.Count; i++)
-        {
-            sb.AppendLine($"            if (global::{GeneratedNamespace}.{allModuleNames[i]}.TryGetDispatch(");
-            sb.AppendLine($"                    typeof(TConsumer), out var m{i}, out var d{i}))");
-            sb.AppendLine($"                return builder.AddConsumer<TConsumer>(m{i}, d{i});");
-        }
-
-        sb.AppendLine("            throw new global::System.InvalidOperationException(");
-        sb.AppendLine("                $\"No source-generated dispatch found for consumer type '{typeof(TConsumer).FullName}'. \"");
-        sb.AppendLine("                + \"Ensure the consumer implements IConsumer<T> and InterBus.SourceGenerator is referenced \"");
-        sb.AppendLine("                + \"in the assembly that defines it.\");");
-        sb.AppendLine("        }");
-        sb.AppendLine();
-
-        // AddConsumer<TConsumer>(builder, configure): same as above but applies a consumer builder delegate.
-        sb.AppendLine("        /// <summary>");
-        sb.AppendLine("        /// Register a specific consumer and immediately apply a consumer builder configuration.");
-        sb.AppendLine("        /// </summary>");
-        sb.AppendLine("        public static global::InterBus.IInterBusBuilder AddConsumer<");
-        sb.AppendLine("            [global::System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(");
-        sb.AppendLine("                global::System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicConstructors)] TConsumer>(");
         sb.AppendLine("            this global::InterBus.IInterBusBuilder builder,");
-        sb.AppendLine("            global::System.Action<global::InterBus.IConsumerBuilder> configure)");
+        sb.AppendLine("            global::System.Action<global::InterBus.IConsumerBuilder>? configure = null)");
         sb.AppendLine("            where TConsumer : class, global::InterBus.IConsumer");
         sb.AppendLine("        {");
 

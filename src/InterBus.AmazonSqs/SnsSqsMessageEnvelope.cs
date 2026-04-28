@@ -39,7 +39,7 @@ internal sealed record SnsSqsMessageEnvelope(
     internal static (byte[] Payload, MessageHeaders Headers) Deserialize(string json)
     {
         var envelope = JsonSerializer.Deserialize(json, SnsSqsJsonContext.Default.SnsSqsMessageEnvelope)
-                       ?? throw new InvalidOperationException("Failed to deserialise SNS/SQS message envelope.");
+                       ?? throw new InvalidOperationException("Failed to deserialise SNS/SQS message envelope");
 
         var payload = Convert.FromBase64String(envelope.Payload);
         var headers = new MessageHeaders(

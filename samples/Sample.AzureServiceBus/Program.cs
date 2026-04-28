@@ -16,7 +16,7 @@ builder.Services.AddInterBus(bus =>
     {
         options.ConnectionString = builder.Configuration["AzureServiceBus:ConnectionString"] ??
                                    throw new InvalidOperationException(
-                                       "Azure Service Bus connection string not configured. Set AzureServiceBus:ConnectionString in appsettings.json or the AZURESERVICEBUS__CONNECTIONSTRING environment variable.");
+                                       "Azure Service Bus connection string not configured. Set AzureServiceBus:ConnectionString in appsettings.json or the AZURESERVICEBUS__CONNECTIONSTRING environment variable");
     });
 
     bus.AddConsumer<GreetingConsumer>();

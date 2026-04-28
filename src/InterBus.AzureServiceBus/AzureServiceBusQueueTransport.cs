@@ -39,7 +39,7 @@ internal sealed class AzureServiceBusQueueTransport(
         {
             throw new ArgumentException(
                 $"Unsupported destination URI scheme '{context.Destination.Scheme}'. " +
-                $"Expected '{QueueScheme}'.",
+                $"Expected '{QueueScheme}'",
                 nameof(context));
         }
 

@@ -39,7 +39,7 @@ internal sealed class AzureServiceBusTopicTransport(
         {
             throw new ArgumentException(
                 $"Unsupported destination URI scheme '{context.Destination.Scheme}'. " +
-                $"Expected '{TopicScheme}'.",
+                $"Expected '{TopicScheme}'",
                 nameof(context));
         }
 

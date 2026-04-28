@@ -61,7 +61,7 @@ internal sealed class InMemoryTransport(
 
         throw new ArgumentException(
             $"Unsupported destination URI scheme '{context.Destination.Scheme}'. " +
-            $"Expected '{InMemoryBroker.TopicScheme}' or '{InMemoryBroker.QueueScheme}'.",
+            $"Expected '{InMemoryBroker.TopicScheme}' or '{InMemoryBroker.QueueScheme}'",
             nameof(context));
     }
 }

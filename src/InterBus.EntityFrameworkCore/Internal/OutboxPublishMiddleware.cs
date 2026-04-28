@@ -1,5 +1,4 @@
 using System.Text.Json;
-using InterBus.Consuming;
 using InterBus.DeadLettering;
 using InterBus.Publishing;
 using Microsoft.EntityFrameworkCore;
@@ -36,7 +35,6 @@ internal sealed class OutboxPublishMiddleware<TDbContext>(
     TDbContext dbContext,
     IMessageSerializer serializer,
     OutboxOptions options,
-    ConsumeContextAccessor contextAccessor,
     OutboxConsumeState consumeState)
     : IPublishMiddleware
     where TDbContext : DbContext
@@ -74,12 +72,10 @@ internal sealed class OutboxPublishMiddleware<TDbContext>(
         if (_outboxGroup is not null)
             return _outboxGroup;
 
-        var isConsumerContext = contextAccessor.ConsumeContext is not null;
-
         // Bus context: VisibleAt = UtcNow (immediately eligible).
         // Consumer context & inline delivery: VisibleAt = UtcNow + ConsumerVisibilityTimeout (may equal UtcNow when
         // timeout is zero) - prevents the processor racing with inline delivery
-        var visibleAt = isConsumerContext && consumeState.IsDeliveryInline
+        var visibleAt = consumeState.IsDeliveryInline
             ? DateTime.UtcNow + options.ConsumerVisibilityTimeout
             : DateTime.UtcNow;
 
@@ -88,7 +84,7 @@ internal sealed class OutboxPublishMiddleware<TDbContext>(
 
         // Notify the paired OutboxConsumeMiddleware so it can attempt inline delivery
         // after the consumer's Consume handler (and its SaveChangesAsync) has finished.
-        if (isConsumerContext) consumeState.GroupId = _outboxGroup.Id;
+        if (consumeState.IsDeliveryInline) consumeState.GroupId = _outboxGroup.Id;
 
         return _outboxGroup;
     }

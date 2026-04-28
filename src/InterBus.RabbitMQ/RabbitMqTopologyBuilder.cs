@@ -63,10 +63,6 @@ internal sealed class RabbitMqTopologyBuilder(
         return rawQueueName;
     }
 
-    internal string BuildDeadLetterQueueName(string queueName) => queueName + options.DeadLetterQueueSuffix;
-
-    internal string BuildDeadLetterExchangeName(string queueName) => queueName + options.DeadLetterExchangeSuffix;
-
     internal void InvalidateTopic(string exchangeName)
     {
         DeclaredTopics.TryRemove(exchangeName, out _);
@@ -88,6 +84,10 @@ internal sealed class RabbitMqTopologyBuilder(
                 DeclaredBindings.TryRemove(bindingKey, out _);
         }
     }
+    
+    private string BuildDeadLetterQueueName(string queueName) => queueName + options.DeadLetterQueueSuffix;
+
+    private string BuildDeadLetterExchangeName(string queueName) => queueName + options.DeadLetterExchangeSuffix;
 
     private Task EnsureTopicDeclaredAsync(string exchangeName, CancellationToken cancellationToken) =>
         EnsureWithCacheAsync(
@@ -141,8 +141,7 @@ internal sealed class RabbitMqTopologyBuilder(
         return exchangeName;
     }
 
-    private async Task<string> EnsureQueueDeclaredOnChannelAsync(
-        IChannel channel,
+    private async Task EnsureQueueDeclaredOnChannelAsync(IChannel channel,
         string queueName,
         string deadLetterExchangeName,
         CancellationToken cancellationToken)
@@ -152,7 +151,6 @@ internal sealed class RabbitMqTopologyBuilder(
             queueName,
             ct => DeclareQueueOnChannelAsync(channel, queueName, deadLetterExchangeName, ct),
             cancellationToken);
-        return queueName;
     }
 
     private Task EnsureDeadLetterExchangeDeclaredOnChannelAsync(

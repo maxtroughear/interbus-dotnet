@@ -84,6 +84,4 @@ public class EavesDroppingConsumer : IConsumer<GreetingMessage>, IConsumer<Farew
 /// </summary>
 [JsonSerializable(typeof(GreetingMessage))]
 [JsonSerializable(typeof(FarewellMessage))]
-internal partial class SampleAotJsonContext : JsonSerializerContext
-{
-}
+internal partial class SampleAotJsonContext : JsonSerializerContext;

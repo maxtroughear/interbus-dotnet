@@ -1,6 +1,6 @@
 using System.Globalization;
-using InterBus.Consumer;
-using InterBus.Transport;
+using InterBus.Consuming;
+using InterBus.Transporting;
 using Microsoft.Extensions.Logging;
 
 namespace InterBus.Retry;

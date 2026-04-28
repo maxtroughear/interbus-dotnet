@@ -1,7 +1,7 @@
 using System.Text.Json;
-using InterBus.Consumer;
+using InterBus.Consuming;
 using InterBus.DeadLettering;
-using InterBus.Publisher;
+using InterBus.Publishing;
 using Microsoft.EntityFrameworkCore;
 
 namespace InterBus.EntityFrameworkCore.Internal;
@@ -22,7 +22,7 @@ namespace InterBus.EntityFrameworkCore.Internal;
 /// <see cref="OutboxGroup.VisibleAt"/> timestamp of
 /// <c>UtcNow + <see cref="OutboxOptions.ConsumerVisibilityTimeout"/></c>.
 /// After the consumer's <c>Consume</c> handler completes (and its transaction has committed), the
-/// paired <see cref="OutboxConsumeMiddleware{TDbContext}"/> (when registered) attempts immediate
+/// paired <see cref="OutboxInlineDeliveryConsumeMiddleware{TDbContext}"/> (when registered) attempts immediate
 /// inline delivery, deleting the group on success. If inline delivery fails the group remains in
 /// the outbox and the processor retries it after <see cref="OutboxGroup.VisibleAt"/> has elapsed.
 /// </para>
@@ -30,13 +30,6 @@ namespace InterBus.EntityFrameworkCore.Internal;
 /// All messages published within the same DI scope share the same
 /// <see cref="OutboxMessage.GroupId"/>, allowing the processor to fetch and forward them as a
 /// single atomic group.
-/// </para>
-/// <para>
-/// <b>Exception — <see cref="DeadLetter{T}"/> messages</b>: these are published by
-/// <see cref="InterBus.DeadLettering.DeadLetterConsumeMiddleware"/> in the consume failure path,
-/// where no <c>SaveChangesAsync</c> is ever called. Buffering them in the outbox would cause them
-/// to be silently lost, so they are forwarded directly to the transport by calling
-/// <paramref name="next"/> instead.
 /// </para>
 /// </summary>
 internal sealed class OutboxPublishMiddleware<TDbContext>(
@@ -84,9 +77,9 @@ internal sealed class OutboxPublishMiddleware<TDbContext>(
         var isConsumerContext = contextAccessor.ConsumeContext is not null;
 
         // Bus context: VisibleAt = UtcNow (immediately eligible).
-        // Consumer context: VisibleAt = UtcNow + ConsumerVisibilityTimeout (may equal UtcNow when
-        // timeout is zero) - prevents the processor racing with inline delivery.
-        var visibleAt = isConsumerContext
+        // Consumer context & inline delivery: VisibleAt = UtcNow + ConsumerVisibilityTimeout (may equal UtcNow when
+        // timeout is zero) - prevents the processor racing with inline delivery
+        var visibleAt = isConsumerContext && consumeState.IsDeliveryInline
             ? DateTime.UtcNow + options.ConsumerVisibilityTimeout
             : DateTime.UtcNow;
 

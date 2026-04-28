@@ -46,7 +46,7 @@ public sealed class ConsumerRegistrationGenerator : IIncrementalGenerator
     private const string AggregatingClassName = "InterBusConsumerRegistrations";
 
     private const string DispatchFuncType =
-        "global::System.Func<global::InterBus.Dispatch.DispatchContext, global::System.IServiceProvider, global::System.Threading.CancellationToken, global::System.Threading.Tasks.Task>";
+        "global::System.Func<global::InterBus.Dispatching.DispatchContext, global::System.IServiceProvider, global::System.Threading.CancellationToken, global::System.Threading.Tasks.Task>";
 
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
@@ -303,7 +303,7 @@ public sealed class ConsumerRegistrationGenerator : IIncrementalGenerator
         sb.AppendLine("                        throw new global::System.InvalidOperationException(");
         sb.AppendLine($"                            $\"InterBus: message received without {{(global::InterBus.InterBusHeaders.MessageType)}} header for consumer {consumer.Name}\");");
         sb.AppendLine("                    var serializer = sp.GetRequiredService<global::InterBus.IMessageSerializer>();");
-        sb.AppendLine("                    var consumePipeline = sp.GetRequiredService<global::InterBus.Consumer.ConsumePipelineExecutor>();");
+        sb.AppendLine("                    var consumePipeline = sp.GetRequiredService<global::InterBus.Consuming.ConsumePipelineExecutor>();");
         sb.AppendLine($"                    var consumer = sp.GetRequiredService<{consumerFqn}>();");
 
         foreach (var message in messages)
@@ -314,7 +314,7 @@ public sealed class ConsumerRegistrationGenerator : IIncrementalGenerator
             sb.AppendLine($"                    if (msgType == \"{messageFullName}\")");
             sb.AppendLine("                    {");
             sb.AppendLine($"                        var message = serializer.Deserialize<{messageFqn}>(context.Payload)!;");
-            sb.AppendLine($"                        var consumeContext = new global::InterBus.Consumer.ConsumeContext<{messageFqn}>(context.Descriptor, message, context.Headers);");
+            sb.AppendLine($"                        var consumeContext = new global::InterBus.Consuming.ConsumeContext<{messageFqn}>(context.Descriptor, message, context.Headers);");
             sb.AppendLine("                        return consumePipeline.ExecuteAsync(");
             sb.AppendLine("                            consumeContext,");
             sb.AppendLine("                            consumer.Consume,");

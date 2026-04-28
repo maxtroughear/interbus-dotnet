@@ -12,9 +12,11 @@ public class MessageTracker<T> where T : class
     public void Track(T message) => _messages.Add(message);
 }
 
-public sealed class OrderPlacedTracker : MessageTracker<OrderPlaced> { }
-public sealed class AuditTracker : MessageTracker<OrderPlaced> { }
-public sealed class OrderShippedTracker : MessageTracker<OrderShipped> { }
+public sealed class OrderPlacedTracker : MessageTracker<OrderPlaced>;
+
+public sealed class AuditTracker : MessageTracker<OrderPlaced>;
+
+public abstract class OrderShippedTracker : MessageTracker<OrderShipped>;
 
 public sealed class OrderPlacedConsumer(OrderPlacedTracker tracker) : IConsumer<OrderPlaced>
 {

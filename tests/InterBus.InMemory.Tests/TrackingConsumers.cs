@@ -16,34 +16,22 @@ public class MessageTracker<T> where T : class
 }
 
 // Distinct tracker types so OrderPlacedConsumer and AuditConsumer don't share the same singleton.
-public sealed class OrderPlacedTracker : MessageTracker<OrderPlaced>
-{
-}
+public sealed class OrderPlacedTracker : MessageTracker<OrderPlaced>;
 
-public sealed class AuditTracker : MessageTracker<OrderPlaced>
-{
-}
+public sealed class AuditTracker : MessageTracker<OrderPlaced>;
 
-public sealed class OrderShippedTracker : MessageTracker<OrderShipped>
-{
-}
+public sealed class OrderShippedTracker : MessageTracker<OrderShipped>;
 
 /// <summary>
 /// Distinct trackers for <see cref="MultiTypeConsumer"/> so it doesn't interfere with
 /// <see cref="OrderPlacedConsumer"/> and <see cref="OrderShippedTracker"/> in other tests.
 /// </summary>
-public sealed class MultiTypeOrderPlacedTracker : MessageTracker<OrderPlaced>
-{
-}
+public sealed class MultiTypeOrderPlacedTracker : MessageTracker<OrderPlaced>;
 
-public sealed class MultiTypeOrderShippedTracker : MessageTracker<OrderShipped>
-{
-}
+public sealed class MultiTypeOrderShippedTracker : MessageTracker<OrderShipped>;
 
 /// <summary>Tracks dead-lettered <see cref="OrderPlaced"/> messages for integration tests.</summary>
-public sealed class DeadLetterOrderPlacedTracker : MessageTracker<DeadLetter<OrderPlaced>>
-{
-}
+public sealed class DeadLetterOrderPlacedTracker : MessageTracker<DeadLetter<OrderPlaced>>;
 
 public sealed class OrderPlacedConsumer(OrderPlacedTracker tracker) : IConsumer<OrderPlaced>
 {
@@ -95,7 +83,8 @@ public sealed class MultiTypeConsumer(
 public sealed class DeadLetterOrderPlacedConsumer(DeadLetterOrderPlacedTracker tracker)
     : IConsumer<DeadLetter<OrderPlaced>>
 {
-    public Task Consume(DeadLetter<OrderPlaced> message, IConsumeContext context, CancellationToken cancellationToken = default)
+    public Task Consume(DeadLetter<OrderPlaced> message, IConsumeContext context,
+        CancellationToken cancellationToken = default)
     {
         tracker.Track(message);
         return Task.CompletedTask;

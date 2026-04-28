@@ -1,4 +1,4 @@
-using InterBus.Transport;
+using InterBus.Transporting;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Npgsql;

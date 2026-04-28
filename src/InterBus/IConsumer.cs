@@ -3,9 +3,7 @@ namespace InterBus;
 /// <summary>
 /// Marker interface for consumer discovery and registration. Do not implement directly; implement <see cref="IConsumer{T}"/>.
 /// </summary>
-public interface IConsumer
-{
-}
+public interface IConsumer;
 
 /// <summary>
 /// Message Endpoint (consumer side). Implement to handle messages of type <typeparamref name="T"/>.

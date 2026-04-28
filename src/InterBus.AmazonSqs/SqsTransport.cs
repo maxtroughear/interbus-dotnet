@@ -1,6 +1,6 @@
 using Amazon.SQS;
 using Amazon.SQS.Model;
-using InterBus.Transport;
+using InterBus.Transporting;
 
 namespace InterBus.AmazonSqs;
 

@@ -1,10 +1,10 @@
 using System.Diagnostics.CodeAnalysis;
-using InterBus.Consumer;
+using InterBus.Consuming;
 using InterBus.DeadLettering;
-using InterBus.Dispatch;
+using InterBus.Dispatching;
 using InterBus.Logging;
-using InterBus.Publisher;
-using InterBus.Send;
+using InterBus.Publishing;
+using InterBus.Sending;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
@@ -56,8 +56,9 @@ internal sealed class InterBusBuilder : IInterBusBuilder
         Func<DispatchContext, IServiceProvider, CancellationToken, Task> dispatch,
         Action<IConsumerBuilder>? configure)
         where TConsumer : class, IConsumer =>
-        AddConsumer<TConsumer>(messageTypes, RoutingConventions.QueueUri(Options.QueueUriScheme, typeof(TConsumer)), dispatch, configure);
-    
+        AddConsumer<TConsumer>(messageTypes, RoutingConventions.QueueUri(Options.QueueUriScheme, typeof(TConsumer)),
+            dispatch, configure);
+
     /// <inheritdoc/>
     public IInterBusBuilder AddConsumer<
         [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]

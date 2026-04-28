@@ -34,7 +34,7 @@ public static class InterBusHeaders
     /// The value is a UTC timestamp in ISO 8601 format (e.g. <c>2024-06-01T12:00:00Z</c>)
     /// </remarks>
     public const string ScheduledDeliveryTime = "interbus-scheduled-delivery-time";
-    
+
     /// <summary>
     /// Header key for the time the message was sent. Set automatically by <see cref="IPublisher"/> on every published and sent message.
     /// </summary>

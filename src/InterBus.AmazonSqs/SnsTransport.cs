@@ -1,6 +1,6 @@
 using Amazon.SimpleNotificationService;
 using Amazon.SimpleNotificationService.Model;
-using InterBus.Transport;
+using InterBus.Transporting;
 
 namespace InterBus.AmazonSqs;
 

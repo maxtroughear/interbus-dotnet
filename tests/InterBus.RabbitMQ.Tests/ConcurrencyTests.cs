@@ -15,7 +15,7 @@ public class ConcurrencyTests(string imageTag)
     private ServiceProvider _provider;
     private CancellationTokenSource _cts;
     private OrderPlacedTracker _orderTracker;
-    
+
     private const int PublisherCount = 100;
     private const int MessagesPerPublisher = 100;
     private const int ConsumerCount = 50;
@@ -109,7 +109,7 @@ public class ConcurrencyTests(string imageTag)
                     $"at a rate of {batch.Length / batchStopwatch.Elapsed.TotalSeconds:F2}/second");
             });
         await TestContext.Out.WriteLineAsync($"All {totalMessages} messages published at {DateTime.UtcNow:O} " +
-            $"at an overall rate of {totalMessages / consumerStopwatch.Elapsed.TotalSeconds:F2}/second");
+                                             $"at an overall rate of {totalMessages / consumerStopwatch.Elapsed.TotalSeconds:F2}/second");
 
         // Wait for all messages to be consumed.
         await TestHelpers.WaitUntilAsync(

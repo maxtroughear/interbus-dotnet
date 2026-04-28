@@ -1,0 +1,11 @@
+using InterBus.Sending;
+
+namespace InterBus.Transporting;
+
+/// <summary>
+/// Carries all the data required for a single transport send operation. Passed to
+/// <see cref="ITransport.SendAsync"/> so that all relevant properties are available to the transport
+/// implementation
+/// </summary>
+public sealed class TransportSendContext(Uri destination, byte[] payload, MessageHeaders headers, TimeSpan? delay)
+    : SendContext(destination, payload, headers, delay);

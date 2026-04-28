@@ -1,4 +1,4 @@
-using InterBus.Send;
+using InterBus.Sending;
 using TickerQ.Utilities.Base;
 
 namespace InterBus.TickerQ.Internal;

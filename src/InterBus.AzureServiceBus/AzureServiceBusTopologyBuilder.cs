@@ -12,7 +12,7 @@ namespace InterBus.AzureServiceBus;
 /// </summary>
 internal sealed class AzureServiceBusTopologyBuilder(
     AzureServiceBusTransportOptions options,
-    AzureServiceBusClientProvider clientProvider, 
+    AzureServiceBusClientProvider clientProvider,
     InterBusOptions busOptions,
     ILogger<AzureServiceBusTopologyBuilder> logger)
     : ITopologyBuilder
@@ -20,13 +20,13 @@ internal sealed class AzureServiceBusTopologyBuilder(
     private ConcurrentDictionary<string, Task> Topics { get; } = new(StringComparer.Ordinal);
     private ConcurrentDictionary<string, Task> Queues { get; } = new(StringComparer.Ordinal);
     private ConcurrentDictionary<string, Task> Subscriptions { get; } = new(StringComparer.Ordinal);
-    
+
     public async Task BuildTopologyAsync(CancellationToken cancellationToken)
     {
         foreach (var descriptor in busOptions.Consumers)
         {
             var rawQueueName = descriptor.QueueName;
-            
+
             var queueName = BuildQueueName(rawQueueName);
             await EnsureQueueExistsAsync(queueName, cancellationToken);
 

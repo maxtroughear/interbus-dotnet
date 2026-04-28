@@ -1,5 +1,5 @@
 using System.Text.Json;
-using InterBus.Send;
+using InterBus.Sending;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;

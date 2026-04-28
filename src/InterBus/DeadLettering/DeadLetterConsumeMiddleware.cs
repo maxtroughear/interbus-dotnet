@@ -1,4 +1,4 @@
-using InterBus.Consumer;
+using InterBus.Consuming;
 
 namespace InterBus.DeadLettering;
 
@@ -49,6 +49,7 @@ public sealed class DeadLetterConsumeMiddleware(IPublisher publisher) : IConsume
                 var deadLetter = new DeadLetter<T>
                 {
                     OriginalMessage = context.Message,
+                    OriginalHeaders = context.Headers,
                     Reason = reason,
                     Error = ex.ToString(),
                     DeadLetteredAtUtc = deadLetteredAtUtc,

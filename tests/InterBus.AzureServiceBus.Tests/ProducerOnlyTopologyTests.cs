@@ -10,9 +10,10 @@ namespace InterBus.AzureServiceBus.Tests;
 
 public class ProducerOnlyTopologyTests
 {
-    private readonly ServiceBusContainer _container = new ServiceBusBuilder("mcr.microsoft.com/azure-messaging/servicebus-emulator:latest")
-        .WithAcceptLicenseAgreement(true)
-        .Build();
+    private readonly ServiceBusContainer _container =
+        new ServiceBusBuilder("mcr.microsoft.com/azure-messaging/servicebus-emulator:latest")
+            .WithAcceptLicenseAgreement(true)
+            .Build();
 
     private ServiceProvider _provider = null!;
     private CancellationTokenSource _cts = null!;
@@ -120,4 +121,3 @@ public class ProducerOnlyTopologyTests
             $"Expected queue '{expectedQueueName}' to contain the sent message");
     }
 }
-

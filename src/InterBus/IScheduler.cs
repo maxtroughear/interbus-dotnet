@@ -1,4 +1,4 @@
-using InterBus.Publisher;
+using InterBus.Publishing;
 
 namespace InterBus;
 
@@ -126,7 +126,7 @@ public interface IScheduler
     Task ScheduleSendAsync<T>(string queueName, T message, TimeSpan delay, Action<PublishContext<T>> configure,
         CancellationToken cancellationToken = default) where T : class =>
         ScheduleSendAsync(queueName, message, DateTimeOffset.UtcNow + delay, configure, cancellationToken);
-    
+
     /// <summary>
     /// Schedule a message to be sent directly to the <paramref name="queue"/> after
     /// the specified <paramref name="delay"/>, applying the supplied <paramref name="configure"/>

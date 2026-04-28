@@ -1,4 +1,4 @@
-using InterBus.Consumer;
+using InterBus.Consuming;
 using Microsoft.Extensions.Logging;
 
 namespace InterBus.Retry;

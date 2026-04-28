@@ -61,6 +61,4 @@ await host.StopAsync();
 /// </summary>
 [JsonSerializable(typeof(GreetingMessage))]
 [JsonSerializable(typeof(FarewellMessage))]
-internal partial class SamplePostgreSqlJsonContext : JsonSerializerContext
-{
-}
+internal partial class SamplePostgreSqlJsonContext : JsonSerializerContext;

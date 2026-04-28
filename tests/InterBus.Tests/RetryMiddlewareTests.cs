@@ -1,4 +1,4 @@
-using InterBus.Consumer;
+using InterBus.Consuming;
 using InterBus.Retry;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;

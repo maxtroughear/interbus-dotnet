@@ -171,7 +171,8 @@ public class DeadLetterConsumerTests
     public sealed class FaultingDeadLetterConsumer(FaultingConsumerCallCount count)
         : IConsumer<DeadLetter<OrderPlaced>>
     {
-        public Task Consume(DeadLetter<OrderPlaced> message, IConsumeContext context, CancellationToken cancellationToken = default)
+        public Task Consume(DeadLetter<OrderPlaced> message, IConsumeContext context,
+            CancellationToken cancellationToken = default)
         {
             count.Increment();
             throw new InvalidOperationException("Intentional dead-letter consumer failure");
@@ -179,15 +180,14 @@ public class DeadLetterConsumerTests
     }
 
     /// <summary>Tracks nested dead letters (should never be received).</summary>
-    public sealed class NestedDeadLetterTracker : MessageTracker<DeadLetter<DeadLetter<OrderPlaced>>>
-    {
-    }
+    public sealed class NestedDeadLetterTracker : MessageTracker<DeadLetter<DeadLetter<OrderPlaced>>>;
 
     /// <summary>Consumer of <c>DeadLetter&lt;DeadLetter&lt;OrderPlaced&gt;&gt;</c> - should never be invoked.</summary>
     public sealed class NestedDeadLetterConsumer(NestedDeadLetterTracker tracker)
         : IConsumer<DeadLetter<DeadLetter<OrderPlaced>>>
     {
-        public Task Consume(DeadLetter<DeadLetter<OrderPlaced>> message, IConsumeContext context, CancellationToken cancellationToken = default)
+        public Task Consume(DeadLetter<DeadLetter<OrderPlaced>> message, IConsumeContext context,
+            CancellationToken cancellationToken = default)
         {
             tracker.Track(message);
             return Task.CompletedTask;

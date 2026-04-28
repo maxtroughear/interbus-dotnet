@@ -1,5 +1,5 @@
 using InterBus.EntityFrameworkCore.Internal;
-using InterBus.Send;
+using InterBus.Sending;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
@@ -40,8 +40,6 @@ public static class EfCoreOutboxConsumerBuilderExtensions
         {
             ArgumentNullException.ThrowIfNull(builder);
 
-            // OutboxConsumeState is registered globally by AddOutbox/UseOutbox, but ensure it's
-            // available even when only AddOutbox is not called (defensive registration).
             builder.Services.TryAddScoped<OutboxConsumeState>();
 
             builder.UsePublishMiddleware<OutboxPublishMiddleware<TDbContext>>();
@@ -55,7 +53,7 @@ public static class EfCoreOutboxConsumerBuilderExtensions
         /// <para>
         /// The consumer's publish calls are written to the outbox atomically with
         /// <c>SaveChangesAsync()</c>. After <c>Consume</c> returns,
-        /// <see cref="OutboxConsumeMiddleware{TDbContext}"/> reads the committed group and forwards
+        /// <see cref="OutboxInlineDeliveryConsumeMiddleware{TDbContext}"/> reads the committed group and forwards
         /// each message directly to the transport via <see cref="SendPipelineExecutor"/>,
         /// exactly as the background processor would. If delivery succeeds the group is deleted,
         /// saving a background-processor round-trip. If delivery fails the group remains in the
@@ -80,7 +78,7 @@ public static class EfCoreOutboxConsumerBuilderExtensions
             builder.Services.TryAddScoped<OutboxConsumeState>();
 
             builder.UsePublishMiddleware<OutboxPublishMiddleware<TDbContext>>();
-            builder.UseConsumeMiddleware<OutboxConsumeMiddleware<TDbContext>>();
+            builder.UseConsumeMiddleware<OutboxInlineDeliveryConsumeMiddleware<TDbContext>>();
 
             return builder;
         }

@@ -1,4 +1,4 @@
-using InterBus.Publisher;
+using InterBus.Publishing;
 
 namespace InterBus;
 
@@ -59,13 +59,13 @@ public interface IPublisher
     Task SendAsync<T>(string queueName, T message, Action<PublishContext<T>> configure,
         CancellationToken cancellationToken = default)
         where T : class;
-    
+
     /// <summary>
     /// Send a message directly to the <paramref name="queue"/>, bypassing topic fan-out.
     /// Use this overload when the consumer type is not available at the call site (e.g. cross-project sends).
     /// </summary>
     Task SendAsync<T>(Uri queue, T message, CancellationToken cancellationToken = default) where T : class;
-    
+
     /// <summary>
     /// Send a message directly to the <paramref name="queue"/>, applying the supplied
     /// <paramref name="configure"/> delegate to the <see cref="PublishContext{T}"/> before dispatch.

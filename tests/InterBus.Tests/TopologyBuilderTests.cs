@@ -1,5 +1,5 @@
 using InterBus.Extensions;
-using InterBus.Transport;
+using InterBus.Transporting;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Xunit;
@@ -74,7 +74,8 @@ public sealed class TopologyBuilderTests
 
     private sealed class TestConsumer : IConsumer<TestMessage>
     {
-        public Task Consume(TestMessage message, IConsumeContext context, CancellationToken cancellationToken = default) =>
+        public Task Consume(TestMessage message, IConsumeContext context,
+            CancellationToken cancellationToken = default) =>
             Task.CompletedTask;
     }
 }

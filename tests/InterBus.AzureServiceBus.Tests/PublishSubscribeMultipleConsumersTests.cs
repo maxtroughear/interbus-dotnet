@@ -9,9 +9,11 @@ namespace InterBus.AzureServiceBus.Tests;
 
 public class PublishSubscribeMultipleConsumersTests
 {
-    private readonly ServiceBusContainer _container = new ServiceBusBuilder("mcr.microsoft.com/azure-messaging/servicebus-emulator:latest")
-        .WithAcceptLicenseAgreement(true)
-        .Build();
+    private readonly ServiceBusContainer _container =
+        new ServiceBusBuilder("mcr.microsoft.com/azure-messaging/servicebus-emulator:latest")
+            .WithAcceptLicenseAgreement(true)
+            .Build();
+
     private ServiceProvider _provider = null!;
     private CancellationTokenSource _cts = null!;
     private OrderPlacedTracker _orderTracker = null!;
@@ -78,8 +80,7 @@ public class PublishSubscribeMultipleConsumersTests
         var msg = new OrderPlaced(Guid.NewGuid(), "fan@out.test", 50m);
         await publisher.PublishAsync(msg, TestContext.CurrentContext.CancellationToken);
 
-        await TestHelpers.WaitUntilAsync(
-            () => _orderTracker.Messages.Count == 1 && _auditTracker.Messages.Count == 1);
+        await TestHelpers.WaitUntilAsync(() => _orderTracker.Messages.Count == 1 && _auditTracker.Messages.Count == 1);
 
         using (Assert.EnterMultipleScope())
         {

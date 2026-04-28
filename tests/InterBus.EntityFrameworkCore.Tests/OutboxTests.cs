@@ -1,5 +1,5 @@
 using System.Collections.Concurrent;
-using InterBus.Consumer;
+using InterBus.Consuming;
 using InterBus.DeadLettering;
 using InterBus.EntityFrameworkCore.Extensions;
 using InterBus.Extensions;
@@ -44,7 +44,8 @@ public sealed class OrderPlacedConsumer(OrderPlacedTracker tracker) : IConsumer<
 /// Consumer that publishes <see cref="OrderShipped"/> to the outbox when it receives
 /// <see cref="OrderPlaced"/>. Saves the DbContext explicitly so the outbox row is committed.
 /// </summary>
-public sealed class OrderPlacedPublishingConsumer(TestDbContext dbContext, IPublisher publisher) : IConsumer<OrderPlaced>
+public sealed class OrderPlacedPublishingConsumer(TestDbContext dbContext, IPublisher publisher)
+    : IConsumer<OrderPlaced>
 {
     public async Task Consume(OrderPlaced message, IConsumeContext context,
         CancellationToken cancellationToken = default)
@@ -98,7 +99,8 @@ public sealed class DeadLetterOrderPlacedTrackerForOutbox
 public sealed class DeadLetterOrderPlacedConsumerForOutbox(DeadLetterOrderPlacedTrackerForOutbox tracker)
     : IConsumer<DeadLetter<OrderPlaced>>
 {
-    public Task Consume(DeadLetter<OrderPlaced> message, IConsumeContext context, CancellationToken cancellationToken = default)
+    public Task Consume(DeadLetter<OrderPlaced> message, IConsumeContext context,
+        CancellationToken cancellationToken = default)
     {
         tracker.Track(message);
         return Task.CompletedTask;
@@ -665,10 +667,8 @@ public class OutboxTests
     /// <summary>
     /// When a consumer with the outbox configured throws an unhandled exception,
     /// <see cref="DeadLetterConsumeMiddleware"/> publishes a <see cref="DeadLetter{T}"/>
-    /// via <see cref="IPublisher"/>. <see cref="OutboxPublishMiddleware{TDbContext}"/> must
-    /// forward it directly to the transport (bypassing the outbox) because no
-    /// <c>SaveChangesAsync</c> is ever called in the failure path, which would otherwise
-    /// cause the dead-letter notification to be silently lost.
+    /// via <see cref="IPublisher"/>. The message must be forwarded directly to the transport
+    /// as the outbox cannot be assumed to be used and controlled correctly
     /// </summary>
     [Fact]
     public async Task DeadLetterPublish_WithOutboxConfigured_BypassesOutboxAndDeliveredToConsumer()
@@ -713,11 +713,15 @@ public class OutboxTests
                 {
                     await executor.ExecuteAsync(context, (msg, ctx, ct) =>
                     {
-                        var consumer = scope.ServiceProvider.GetRequiredService<FaultingOrderPlacedConsumerWithOutbox>();
+                        var consumer = scope.ServiceProvider
+                            .GetRequiredService<FaultingOrderPlacedConsumerWithOutbox>();
                         return consumer.Consume(msg, ctx, ct);
                     }, TestContext.Current.CancellationToken);
                 }
-                catch (DeadLetterException) { /* expected — the consumer threw */ }
+                catch (DeadLetterException)
+                {
+                    /* expected — the consumer threw */
+                }
             }
 
             await WaitUntilAsync(() => deadLetterTracker.Messages.Count >= 1);

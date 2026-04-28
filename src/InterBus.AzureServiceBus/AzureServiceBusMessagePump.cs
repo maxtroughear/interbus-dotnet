@@ -1,7 +1,7 @@
 using Azure.Messaging.ServiceBus;
-using InterBus.Consumer;
+using InterBus.Consuming;
 using InterBus.DeadLettering;
-using InterBus.Dispatch;
+using InterBus.Dispatching;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -38,7 +38,7 @@ internal sealed class AzureServiceBusMessagePump(
 
         await base.StartAsync(cancellationToken);
     }
-    
+
     public override async Task StopAsync(CancellationToken cancellationToken)
     {
         await base.StopAsync(cancellationToken);

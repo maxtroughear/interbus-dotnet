@@ -1,5 +1,5 @@
 using System.Collections.Concurrent;
-using InterBus.Consumer;
+using InterBus.Consuming;
 
 namespace InterBus.InMemory;
 

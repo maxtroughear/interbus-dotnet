@@ -1,4 +1,4 @@
-using InterBus.Consumer;
+using InterBus.Consuming;
 
 namespace InterBus.Tests;
 

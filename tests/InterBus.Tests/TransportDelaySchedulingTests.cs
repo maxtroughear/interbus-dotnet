@@ -1,8 +1,8 @@
 using InterBus.Extensions;
-using InterBus.Publisher;
-using InterBus.Scheduler;
-using InterBus.Scheduler.Extensions;
-using InterBus.Transport;
+using InterBus.Publishing;
+using InterBus.Scheduling;
+using InterBus.Scheduling.Extensions;
+using InterBus.Transporting;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 

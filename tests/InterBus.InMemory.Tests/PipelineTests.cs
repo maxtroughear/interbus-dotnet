@@ -1,9 +1,9 @@
 using System.Collections.Concurrent;
-using InterBus.Consumer;
+using InterBus.Consuming;
 using InterBus.Extensions;
 using InterBus.Generated;
 using InterBus.InMemory.Extensions;
-using InterBus.Publisher;
+using InterBus.Publishing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Xunit;

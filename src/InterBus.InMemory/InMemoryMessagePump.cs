@@ -1,5 +1,5 @@
-using InterBus.Consumer;
-using InterBus.Dispatch;
+using InterBus.Consuming;
+using InterBus.Dispatching;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;

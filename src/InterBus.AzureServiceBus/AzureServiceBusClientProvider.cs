@@ -16,6 +16,7 @@ namespace InterBus.AzureServiceBus;
 internal sealed class AzureServiceBusClientProvider : IAsyncDisposable
 {
     private readonly ServiceBusClient _client;
+
     private readonly ConcurrentDictionary<string, ServiceBusSender> _senders
         = new(StringComparer.Ordinal);
 

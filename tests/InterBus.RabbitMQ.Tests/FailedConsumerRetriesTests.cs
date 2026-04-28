@@ -3,7 +3,7 @@ using InterBus.Generated;
 using InterBus.RabbitMQ.Extensions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using global::RabbitMQ.Client;
+using RabbitMQ.Client;
 using Testcontainers.RabbitMq;
 
 namespace InterBus.RabbitMQ.Tests;

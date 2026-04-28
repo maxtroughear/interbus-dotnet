@@ -1,5 +1,5 @@
 using Azure.Messaging.ServiceBus;
-using InterBus.Transport;
+using InterBus.Transporting;
 
 namespace InterBus.AzureServiceBus;
 
@@ -42,7 +42,7 @@ internal sealed class AzureServiceBusQueueTransport(
                 $"Expected '{QueueScheme}'.",
                 nameof(context));
         }
-        
+
         var rawQueueName = RoutingConventions.GetDestinationName(context.Destination);
         var entityPath = await topology.EnsureQueueAsync(rawQueueName, cancellationToken);
 

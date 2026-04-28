@@ -7,6 +7,13 @@ namespace InterBus.Sagas;
 /// Ensures that only one message per saga instance is processed at a time, while allowing
 /// messages for different correlation IDs to be processed concurrently.
 /// </summary>
+/// <remarks>
+/// The lock dictionary grows as new correlation IDs are encountered and does not remove entries
+/// automatically. In long-running applications processing a high number of unique correlation IDs,
+/// consider registering a custom <see cref="ISagaRepository{TState}"/> that signals completed
+/// sagas, or periodically sweeping stale entries. For typical workloads where the set of active
+/// saga instances is bounded, this is not a concern.
+/// </remarks>
 internal sealed class SagaInstanceLockManager
 {
     private readonly ConcurrentDictionary<(Type SagaType, string CorrelationId), SemaphoreSlim> _locks = new();

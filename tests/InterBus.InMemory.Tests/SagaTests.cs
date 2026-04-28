@@ -105,8 +105,8 @@ public sealed class AcknowledgingOrderSaga(IPublisher publisher) :
 
 public sealed class OrderAcknowledgedTracker
 {
-    private readonly List<OrderAcknowledged> _messages = [];
-    public IReadOnlyList<OrderAcknowledged> Messages => _messages;
+    private readonly System.Collections.Concurrent.ConcurrentBag<OrderAcknowledged> _messages = [];
+    public IReadOnlyCollection<OrderAcknowledged> Messages => _messages;
     public void Track(OrderAcknowledged msg) => _messages.Add(msg);
 }
 
@@ -419,7 +419,7 @@ public class SagaTests
             await WaitUntilAsync(() => tracker.Messages.Count == 1);
 
             Assert.Single(tracker.Messages);
-            Assert.Equal(orderId, tracker.Messages[0].OrderId);
+            Assert.Equal(orderId, tracker.Messages.Single().OrderId);
         }
         finally
         {

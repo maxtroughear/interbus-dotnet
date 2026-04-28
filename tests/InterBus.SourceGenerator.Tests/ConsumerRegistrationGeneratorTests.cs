@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Xunit;
@@ -85,7 +86,7 @@ public sealed class ConsumerRegistrationGeneratorTests
         Assert.Contains("TryGetDispatch(", generated);
         Assert.Contains("typeof(TConsumer), out var m0, out var d0", generated);
         // The method returns the builder for fluent chaining.
-        Assert.Contains("return builder.AddConsumer<TConsumer>(m0, d0);", generated);
+        Assert.Contains("return builder.AddConsumer<TConsumer>(m0, d0, configure);", generated);
     }
 
     [Fact]
@@ -164,12 +165,9 @@ public sealed class ConsumerRegistrationGeneratorTests
         // Register() calls builder.AddConsumer<T> for each consumer (with dispatch args).
         Assert.Contains("builder.AddConsumer<global::MyApp.OrderPlacedConsumer>(", generated);
         Assert.Contains("builder.AddConsumer<global::MyApp.AuditConsumer>(", generated);
-        // Two generic AddConsumer<TConsumer>() extension methods are generated:
-        // one without a configure delegate and one with Action<IConsumerBuilder>.
-        // Neither is emitted once-per-consumer type.
-        var addConsumerMethodCount = System.Text.RegularExpressions.Regex
-            .Matches(generated, @"public static global::InterBus\.IInterBusBuilder AddConsumer<").Count;
-        Assert.Equal(2, addConsumerMethodCount);
+        // One generic AddConsumer<TConsumer>() extension method is generated with an Action<IConsumerBuilder> delegate
+        var addConsumerMethodCount = Regex.Count(generated, @"public static global::InterBus\.IInterBusBuilder AddConsumer<");
+        Assert.Equal(1, addConsumerMethodCount);
     }
 
     [Fact]
@@ -213,7 +211,7 @@ public sealed class ConsumerRegistrationGeneratorTests
         Assert.Contains("\"MyApp.OrderShipped\"", generated);
         // Register() calls builder.AddConsumer<MultiConsumer> exactly once.
         Assert.Contains("builder.AddConsumer<global::MyApp.MultiConsumer>(", generated);
-        var addConsumerBulkCount = System.Text.RegularExpressions.Regex
+        var addConsumerBulkCount = Regex
             .Matches(generated, @"builder\.AddConsumer<global::")
             .Count;
         Assert.Equal(1, addConsumerBulkCount);

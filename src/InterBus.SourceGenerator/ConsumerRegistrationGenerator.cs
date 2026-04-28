@@ -248,8 +248,8 @@ public sealed class ConsumerRegistrationGenerator : IIncrementalGenerator
         for (var i = 0; i < allModuleNames.Count; i++)
         {
             sb.AppendLine($"            if (global::{GeneratedNamespace}.{allModuleNames[i]}.TryGetDispatch(");
-            sb.AppendLine($"                    typeof(TConsumer), out var m{i}c, out var d{i}c))");
-            sb.AppendLine($"                return builder.AddConsumer<TConsumer>(m{i}c, d{i}c, configure);");
+            sb.AppendLine($"                    typeof(TConsumer), out var m{i}, out var d{i}))");
+            sb.AppendLine($"                return builder.AddConsumer<TConsumer>(m{i}, d{i}, configure);");
         }
 
         sb.AppendLine("            throw new global::System.InvalidOperationException(");

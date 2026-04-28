@@ -1,26 +1,20 @@
 using InterBus.Consumer;
-using InterBus.Send;
 
 namespace InterBus.DeadLettering;
 
 /// <summary>
 /// Outermost consume middleware that marks unhandled consumer exceptions for dead-lettering
-/// and sends a <see cref="DeadLetter{T}"/> message to allow application consumers to
+/// and publishes a <see cref="DeadLetter{T}"/> message to allow application consumers to
 /// receive and process dead-lettered messages.
 /// <para>
-/// The dead-letter notification is sent directly to the transport via
-/// <see cref="SendPipelineExecutor"/>, bypassing the publish middleware pipeline (e.g. the
-/// transactional outbox). This guarantees the notification reaches the transport even when
-/// the consumer's outbox middleware would otherwise intercept and defer it — in the failure
-/// path no <c>SaveChangesAsync</c> is ever called, so an outbox-routed publish would be
-/// silently lost.
+/// The dead-letter notification is published via <see cref="IPublisher"/>. When the transactional
+/// outbox is configured on the consumer, the outbox publish middleware detects
+/// <see cref="DeadLetter{T}"/> messages and forwards them directly to the transport, bypassing
+/// the outbox buffer — ensuring delivery even when no <c>SaveChangesAsync</c> is called in the
+/// failure path.
 /// </para>
 /// </summary>
-public sealed class DeadLetterConsumeMiddleware(
-    SendPipelineExecutor sendPipeline,
-    IMessageSerializer serializer,
-    InterBusOptions options,
-    ConsumeContextAccessor contextAccessor) : IConsumeMiddleware
+public sealed class DeadLetterConsumeMiddleware(IPublisher publisher) : IConsumeMiddleware
 {
     public async Task InvokeAsync<T>(
         ConsumeContext<T> context,
@@ -48,10 +42,8 @@ public sealed class DeadLetterConsumeMiddleware(
             context.Headers[InterBusHeaders.DeadLetterError] = ex.ToString();
             context.Headers[InterBusHeaders.DeadLetteredAt] = deadLetteredAtUtc.ToString("O");
 
-            // Send a DeadLetter<T> event directly to the transport, bypassing publish middleware
-            // (e.g. the transactional outbox) so the notification always reaches the transport
-            // regardless of the consumer's outbox configuration.
-            // Skip if T is already a DeadLetter<> type to prevent infinite nesting.
+            // Publish a DeadLetter<T> event so application consumers can subscribe to failed messages.
+            // Skip publishing if T is already a DeadLetter<> type to prevent infinite nesting.
             if (!typeof(T).IsGenericType || typeof(T).GetGenericTypeDefinition() != typeof(DeadLetter<>))
             {
                 var deadLetter = new DeadLetter<T>
@@ -65,46 +57,16 @@ public sealed class DeadLetterConsumeMiddleware(
                 try
                 {
                     // Use CancellationToken.None so a cancelled consumer token does not suppress
-                    // the dead-letter notification.
-                    await SendDeadLetterDirectAsync(deadLetter, CancellationToken.None);
+                    // the dead-letter publish.
+                    await publisher.PublishAsync(deadLetter, CancellationToken.None);
                 }
                 catch
                 {
-                    // Swallow send errors to avoid masking the original consumer exception.
+                    // Swallow publish errors to avoid masking the original consumer exception.
                 }
             }
 
             throw new DeadLetterException(reason, ex.ToString(), deadLetteredAtUtc, ex);
         }
-    }
-
-    private Task SendDeadLetterDirectAsync<T>(T deadLetter, CancellationToken cancellationToken) where T : class
-    {
-        var topicName = options.TryGetTopicName(typeof(T), out var customName)
-            ? customName
-            : RoutingConventions.TopicName(typeof(T));
-        var destination = RoutingConventions.TopicUri(options.TopicUriScheme, topicName);
-
-        var consumeHeaders = contextAccessor.ConsumeContext?.Headers;
-
-        string? correlationId = null;
-        string? causationId = null;
-        consumeHeaders?.TryGetValue(InterBusHeaders.CorrelationId, out correlationId);
-        consumeHeaders?.TryGetValue(InterBusHeaders.MessageId, out causationId);
-
-        var headers = new MessageHeaders
-        {
-            [InterBusHeaders.MessageType] = RoutingConventions.TopicName(typeof(T)),
-            [InterBusHeaders.MessageId] = Guid.CreateVersion7().ToString(),
-            [InterBusHeaders.CorrelationId] = correlationId ?? Guid.CreateVersion7().ToString(),
-            [InterBusHeaders.SentTime] = DateTimeOffset.UtcNow.ToString("O"),
-        };
-
-        if (causationId is not null)
-            headers[InterBusHeaders.CausationId] = causationId;
-
-        var payload = serializer.Serialize(deadLetter);
-        var sendContext = new SendContext(destination, payload, headers);
-        return sendPipeline.ExecuteAsync(sendContext, cancellationToken: cancellationToken);
     }
 }

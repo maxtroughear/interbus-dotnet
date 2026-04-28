@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using InterBus.Consumer;
+using InterBus.DeadLettering;
 using InterBus.EntityFrameworkCore.Extensions;
 using InterBus.Extensions;
 using InterBus.Generated;
@@ -70,6 +71,38 @@ public sealed class TestDbContext(DbContextOptions<TestDbContext> options)
 
     protected override void OnModelCreating(ModelBuilder modelBuilder) =>
         modelBuilder.AddInterBusOutbox();
+}
+
+/// <summary>
+/// A consumer that always throws, used to verify dead-letter delivery when the outbox is configured.
+/// Uses a distinct name to avoid conflicts with other test projects.
+/// </summary>
+public sealed class FaultingOrderPlacedConsumerWithOutbox : IConsumer<OrderPlaced>
+{
+    public Task Consume(OrderPlaced message, IConsumeContext context, CancellationToken cancellationToken = default) =>
+        throw new InvalidOperationException("Intentional failure for dead-letter outbox test");
+}
+
+/// <summary>
+/// Tracker for <see cref="DeadLetter{T}"/> messages in the outbox test project.
+/// Uses a distinct type to avoid singleton conflicts with other test projects.
+/// </summary>
+public sealed class DeadLetterOrderPlacedTrackerForOutbox
+{
+    private readonly ConcurrentBag<DeadLetter<OrderPlaced>> _messages = [];
+    public IReadOnlyCollection<DeadLetter<OrderPlaced>> Messages => _messages;
+    public void Track(DeadLetter<OrderPlaced> msg) => _messages.Add(msg);
+}
+
+/// <summary>Consumer of <see cref="DeadLetter{OrderPlaced}"/> used by the outbox dead-letter test.</summary>
+public sealed class DeadLetterOrderPlacedConsumerForOutbox(DeadLetterOrderPlacedTrackerForOutbox tracker)
+    : IConsumer<DeadLetter<OrderPlaced>>
+{
+    public Task Consume(DeadLetter<OrderPlaced> message, IConsumeContext context, CancellationToken cancellationToken = default)
+    {
+        tracker.Track(message);
+        return Task.CompletedTask;
+    }
 }
 
 /// <summary>
@@ -622,6 +655,83 @@ public class OutboxTests
             var group = await dbContext.OutboxGroups.SingleAsync(TestContext.Current.CancellationToken);
             // Bus-context publishes are immediately eligible; VisibleAt should be <= UtcNow.
             Assert.True(group.VisibleAt <= DateTime.UtcNow);
+        }
+        finally
+        {
+            await StopAsync(provider, cts, conn);
+        }
+    }
+
+    /// <summary>
+    /// When a consumer with the outbox configured throws an unhandled exception,
+    /// <see cref="DeadLetterConsumeMiddleware"/> publishes a <see cref="DeadLetter{T}"/>
+    /// via <see cref="IPublisher"/>. <see cref="OutboxPublishMiddleware{TDbContext}"/> must
+    /// forward it directly to the transport (bypassing the outbox) because no
+    /// <c>SaveChangesAsync</c> is ever called in the failure path, which would otherwise
+    /// cause the dead-letter notification to be silently lost.
+    /// </summary>
+    [Fact]
+    public async Task DeadLetterPublish_WithOutboxConfigured_BypassesOutboxAndDeliveredToConsumer()
+    {
+        var deadLetterTracker = new DeadLetterOrderPlacedTrackerForOutbox();
+
+        var (provider, cts, conn) = await StartAsync(bus =>
+        {
+            bus.AddInMemoryTransport();
+            // Faulting consumer has outbox configured — the dead-letter publish must still
+            // reach the transport even without SaveChangesAsync being called.
+            bus.AddConsumer<FaultingOrderPlacedConsumerWithOutbox>(c => c.UseOutbox<TestDbContext>());
+            bus.AddConsumer<DeadLetterOrderPlacedConsumerForOutbox>();
+            // AddOutbox (not UseOutbox) — only the consumer-level outbox is under test here.
+            // Long poll interval effectively disables the background processor so it does not
+            // interfere with the assertions.
+            bus.AddOutbox<TestDbContext>(o => o.WithPollInterval(TimeSpan.FromHours(1)));
+        }, services => services.AddSingleton(deadLetterTracker));
+
+        try
+        {
+            await StartHostedServicesAsync(provider, cts.Token);
+
+            await using (var scope = provider.CreateAsyncScope())
+            {
+                var executor = scope.ServiceProvider.GetRequiredService<ConsumePipelineExecutor>();
+                var descriptor = scope.ServiceProvider.GetRequiredService<InterBusOptions>()
+                    .Consumers.Single(d => d.ConsumerType == typeof(FaultingOrderPlacedConsumerWithOutbox));
+
+                var headers = new MessageHeaders(new Dictionary<string, string>
+                {
+                    [InterBusHeaders.MessageType] = "OrderPlaced",
+                    [InterBusHeaders.MessageId] = Guid.NewGuid().ToString(),
+                });
+                var context = new ConsumeContext<OrderPlaced>(
+                    descriptor, new OrderPlaced(Guid.NewGuid(), "faulting@example.com", 42m), headers);
+
+                // The consumer throws; DeadLetterConsumeMiddleware catches it and publishes
+                // DeadLetter<OrderPlaced>. OutboxPublishMiddleware must forward it directly
+                // to the transport instead of buffering it in the outbox.
+                try
+                {
+                    await executor.ExecuteAsync(context, (msg, ctx, ct) =>
+                    {
+                        var consumer = scope.ServiceProvider.GetRequiredService<FaultingOrderPlacedConsumerWithOutbox>();
+                        return consumer.Consume(msg, ctx, ct);
+                    }, TestContext.Current.CancellationToken);
+                }
+                catch (DeadLetterException) { /* expected — the consumer threw */ }
+            }
+
+            await WaitUntilAsync(() => deadLetterTracker.Messages.Count >= 1);
+
+            Assert.NotEmpty(deadLetterTracker.Messages);
+            var dl = deadLetterTracker.Messages.First();
+            Assert.Equal("faulting@example.com", dl.OriginalMessage.CustomerEmail);
+            Assert.Equal("Unhandled exception in consume pipeline", dl.Reason);
+
+            // No outbox entry should have been created for the dead-letter message —
+            // OutboxPublishMiddleware forwarded it directly to the transport.
+            await using var assertScope = provider.CreateAsyncScope();
+            var db = assertScope.ServiceProvider.GetRequiredService<TestDbContext>();
+            Assert.Equal(0, await db.OutboxMessages.CountAsync(TestContext.Current.CancellationToken));
         }
         finally
         {

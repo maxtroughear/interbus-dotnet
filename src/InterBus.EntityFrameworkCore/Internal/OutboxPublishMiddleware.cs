@@ -1,5 +1,6 @@
 using System.Text.Json;
 using InterBus.Consumer;
+using InterBus.DeadLettering;
 using InterBus.Publisher;
 using Microsoft.EntityFrameworkCore;
 
@@ -30,6 +31,13 @@ namespace InterBus.EntityFrameworkCore.Internal;
 /// <see cref="OutboxMessage.GroupId"/>, allowing the processor to fetch and forward them as a
 /// single atomic group.
 /// </para>
+/// <para>
+/// <b>Exception — <see cref="DeadLetter{T}"/> messages</b>: these are published by
+/// <see cref="InterBus.DeadLettering.DeadLetterConsumeMiddleware"/> in the consume failure path,
+/// where no <c>SaveChangesAsync</c> is ever called. Buffering them in the outbox would cause them
+/// to be silently lost, so they are forwarded directly to the transport by calling
+/// <paramref name="next"/> instead.
+/// </para>
 /// </summary>
 internal sealed class OutboxPublishMiddleware<TDbContext>(
     TDbContext dbContext,
@@ -45,6 +53,12 @@ internal sealed class OutboxPublishMiddleware<TDbContext>(
     public Task InvokeAsync<T>(PublishContext<T> context, Func<PublishContext<T>, CancellationToken, Task> next,
         CancellationToken cancellationToken = default) where T : class
     {
+        // DeadLetter<> messages are published in the consume failure path, where no
+        // SaveChangesAsync is ever called. Buffering them in the outbox would cause them to be
+        // silently lost, so forward directly to the transport instead.
+        if (typeof(T).IsGenericType && typeof(T).GetGenericTypeDefinition() == typeof(DeadLetter<>))
+            return next(context, cancellationToken);
+
         var payload = serializer.Serialize(context.Message);
         var headersJson = SerializeHeaders(context.Headers);
 

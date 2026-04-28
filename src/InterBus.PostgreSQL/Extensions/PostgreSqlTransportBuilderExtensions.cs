@@ -1,4 +1,4 @@
-using InterBus.Transport;
+using InterBus.Transporting;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Npgsql;
@@ -42,7 +42,7 @@ public static class PostgreSqlTransportBuilderExtensions
 
             if (string.IsNullOrWhiteSpace(options.ConnectionString))
                 throw new InvalidOperationException(
-                    "PostgreSqlTransportOptions.ConnectionString must be set before calling AddPostgreSqlTransport.");
+                    "PostgreSqlTransportOptions.ConnectionString must be set before calling AddPostgreSqlTransport");
 
             ValidateOptions(options);
 
@@ -160,21 +160,21 @@ public static class PostgreSqlTransportBuilderExtensions
                 break;
             default:
                 throw new ArgumentOutOfRangeException(nameof(options.MessagePumpMode), options.MessagePumpMode,
-                    "Unsupported PostgreSQL message pump mode.");
+                    "Unsupported PostgreSQL message pump mode");
         }
     }
 
     private static void ValidateOptions(PostgreSqlTransportOptions options)
     {
         if (options.LeaseDuration <= TimeSpan.Zero)
-            throw new InvalidOperationException("PostgreSqlTransportOptions.LeaseDuration must be greater than zero.");
+            throw new InvalidOperationException("PostgreSqlTransportOptions.LeaseDuration must be greater than zero");
 
         if (options.LeaseRenewInterval is { } renewInterval && renewInterval <= TimeSpan.Zero)
             throw new InvalidOperationException(
-                "PostgreSqlTransportOptions.LeaseRenewInterval must be greater than zero when set.");
+                "PostgreSqlTransportOptions.LeaseRenewInterval must be greater than zero when set");
 
         if (options.FailureRedeliveryDelay < TimeSpan.Zero)
             throw new InvalidOperationException(
-                "PostgreSqlTransportOptions.FailureRedeliveryDelay cannot be negative.");
+                "PostgreSqlTransportOptions.FailureRedeliveryDelay cannot be negative");
     }
 }

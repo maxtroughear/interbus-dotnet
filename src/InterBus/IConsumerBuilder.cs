@@ -1,7 +1,7 @@
 using System.Diagnostics.CodeAnalysis;
-using InterBus.Consumer;
-using InterBus.Publisher;
-using InterBus.Send;
+using InterBus.Consuming;
+using InterBus.Publishing;
+using InterBus.Sending;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace InterBus;

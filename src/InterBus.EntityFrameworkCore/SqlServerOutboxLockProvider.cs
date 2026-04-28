@@ -32,7 +32,8 @@ public sealed class SqlServerOutboxLockProvider<TDbContext> : IOutboxLockProvide
             .FirstOrDefaultAsync(cancellationToken);
     }
 
-    private static (string fqn, string col1, string col2) GetTableInfo(IEntityType entityType, string colProperty1, string colProperty2)
+    private static (string fqn, string col1, string col2) GetTableInfo(IEntityType entityType, string colProperty1,
+        string colProperty2)
     {
         var tableName = entityType.GetTableName() ?? entityType.ShortName();
         var schemaName = entityType.GetSchema();

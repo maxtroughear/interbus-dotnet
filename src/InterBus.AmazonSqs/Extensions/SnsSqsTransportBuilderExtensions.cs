@@ -64,7 +64,7 @@ public static class SnsSqsTransportBuilderExtensions
         builder.Services.AddSingleton(options);
         builder.Services.AddSingleton<SnsSqsTopology>();
         builder.Services.AddSingleton<ITopologyBuilder, SnsSqsTopologyBuilder>();
-        
+
         builder.Services.AddKeyedScoped<ITransport, SnsTransport>(SnsTransport.TopicScheme);
         builder.Services.AddKeyedScoped<ITransport, SqsTransport>(SqsTransport.QueueScheme);
 

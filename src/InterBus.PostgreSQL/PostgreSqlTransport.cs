@@ -1,5 +1,5 @@
 using System.Text.Json;
-using InterBus.Transport;
+using InterBus.Transporting;
 using Npgsql;
 using NpgsqlTypes;
 
@@ -49,7 +49,7 @@ public sealed class PostgreSqlTransport(
         else
             throw new ArgumentException(
                 $"Unsupported destination URI scheme '{context.Destination.Scheme}'. " +
-                $"Expected '{TopicScheme}' or '{QueueScheme}'.", nameof(context));
+                $"Expected '{TopicScheme}' or '{QueueScheme}'", nameof(context));
 
         await using var cmd = dataSource.CreateCommand();
 
@@ -59,7 +59,7 @@ public sealed class PostgreSqlTransport(
             QueueScheme => $"SELECT \"{EscapeIdentifier(_schema)}\".send_to_queue($1, $2, $3, $4)",
             _ => throw new ArgumentException(
                 $"Unsupported destination URI scheme '{context.Destination.Scheme}'. " +
-                $"Expected '{TopicScheme}' or '{QueueScheme}'.", nameof(context))
+                $"Expected '{TopicScheme}' or '{QueueScheme}'", nameof(context))
         };
 
         cmd.Parameters.Add(new NpgsqlParameter<string> { TypedValue = name });

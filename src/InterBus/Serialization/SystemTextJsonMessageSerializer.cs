@@ -28,10 +28,10 @@ public sealed class SystemTextJsonMessageSerializer : IMessageSerializer
     /// </summary>
     [UnconditionalSuppressMessage("ReflectionAnalysis", "IL2026",
         Justification =
-            "DefaultJsonTypeInfoResolver uses reflection. Use the overload that accepts JsonSerializerOptions with a source-generated JsonSerializerContext for AOT/trim applications.")]
+            "DefaultJsonTypeInfoResolver uses reflection. Use the overload that accepts JsonSerializerOptions with a source-generated JsonSerializerContext for AOT/trim applications")]
     [UnconditionalSuppressMessage("AotAnalysis", "IL3050",
         Justification =
-            "DefaultJsonTypeInfoResolver requires dynamic code. Use the overload that accepts JsonSerializerOptions with a source-generated JsonSerializerContext for AOT applications.")]
+            "DefaultJsonTypeInfoResolver requires dynamic code. Use the overload that accepts JsonSerializerOptions with a source-generated JsonSerializerContext for AOT applications")]
     public SystemTextJsonMessageSerializer()
         : this(new JsonSerializerOptions { TypeInfoResolver = new DefaultJsonTypeInfoResolver() })
     {

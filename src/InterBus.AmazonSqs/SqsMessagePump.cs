@@ -1,8 +1,8 @@
 using Amazon.SQS;
 using Amazon.SQS.Model;
-using InterBus.Consumer;
+using InterBus.Consuming;
 using InterBus.DeadLettering;
-using InterBus.Dispatch;
+using InterBus.Dispatching;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -185,7 +185,7 @@ internal sealed class SqsMessagePump(
         }
         catch (DeadLetterException ex)
         {
-            if (await TryDeadLetterAsync(queueUrl, descriptor, message, ex))
+            if (await TryDeadLetterAsync(descriptor, message, ex))
                 await sqsClient.DeleteMessageAsync(queueUrl, message.ReceiptHandle, CancellationToken.None);
         }
         catch (Exception ex)
@@ -203,11 +203,7 @@ internal sealed class SqsMessagePump(
         }
     }
 
-    private async Task<bool> TryDeadLetterAsync(
-        string queueUrl,
-        ConsumerDescriptor descriptor,
-        Message message,
-        DeadLetterException ex)
+    private async Task<bool> TryDeadLetterAsync(ConsumerDescriptor descriptor, Message message, DeadLetterException ex)
     {
         var deadLetterQueueName = topology.BuildDeadLetterQueueName(descriptor.QueueName);
         if (!topology.QueueUrls.TryGetValue(deadLetterQueueName, out var deadLetterQueueUrl))

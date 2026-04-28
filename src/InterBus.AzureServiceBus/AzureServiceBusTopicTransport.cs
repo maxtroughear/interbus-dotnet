@@ -1,5 +1,5 @@
 using Azure.Messaging.ServiceBus;
-using InterBus.Transport;
+using InterBus.Transporting;
 
 namespace InterBus.AzureServiceBus;
 
@@ -39,10 +39,10 @@ internal sealed class AzureServiceBusTopicTransport(
         {
             throw new ArgumentException(
                 $"Unsupported destination URI scheme '{context.Destination.Scheme}'. " +
-                $"Expected '{TopicScheme}'.",
+                $"Expected '{TopicScheme}'",
                 nameof(context));
         }
-        
+
         var rawTopicName = RoutingConventions.GetDestinationName(context.Destination);
         var entityPath = await topology.EnsureTopicAsync(rawTopicName, cancellationToken);
 

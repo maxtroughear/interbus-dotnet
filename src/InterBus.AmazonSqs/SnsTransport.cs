@@ -1,6 +1,6 @@
 using Amazon.SimpleNotificationService;
 using Amazon.SimpleNotificationService.Model;
-using InterBus.Transport;
+using InterBus.Transporting;
 
 namespace InterBus.AmazonSqs;
 
@@ -53,7 +53,7 @@ public sealed class SnsTransport(
         if (context.Destination.Scheme != TopicScheme)
             throw new ArgumentException(
                 $"Unsupported destination URI scheme '{context.Destination.Scheme}'. " +
-                $"Expected '{TopicScheme}'.",
+                $"Expected '{TopicScheme}'",
                 nameof(context));
 
         var rawTopicName = RoutingConventions.GetDestinationName(context.Destination);

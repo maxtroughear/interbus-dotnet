@@ -1,7 +1,7 @@
 using System.Diagnostics.CodeAnalysis;
-using InterBus.Dispatch;
-using InterBus.Publisher;
-using InterBus.Send;
+using InterBus.Dispatching;
+using InterBus.Publishing;
+using InterBus.Sending;
 using InterBus.Serialization;
 using Microsoft.Extensions.DependencyInjection;
 

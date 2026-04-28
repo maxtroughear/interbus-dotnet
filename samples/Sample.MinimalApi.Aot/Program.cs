@@ -98,6 +98,4 @@ public class TodoNotifier(ILogger<TodoNotifier> logger) : IConsumer<TaskAdded>, 
 [JsonSerializable(typeof(List<Todo>))]
 [JsonSerializable(typeof(TaskAdded))]
 [JsonSerializable(typeof(TaskCompleted))]
-internal partial class AppJsonSerializerContext : JsonSerializerContext
-{
-}
+internal partial class AppJsonSerializerContext : JsonSerializerContext;

@@ -6,9 +6,23 @@ public static class RoutingConventions
     /// <summary>The host segment used in all bus destination URIs.</summary>
     public const string BusHost = "interbus";
 
-    /// <summary>Derives the topic name from a message type using its fully qualified name.</summary>
-    public static string TopicName(Type messageType) =>
-        messageType.FullName ?? messageType.Name;
+    /// <summary>
+    /// Derives the topic name from a message type using its fully qualified name.
+    /// Generic types produce a clean name using angle-bracket notation, e.g.
+    /// <c>InterBus.DeadLettering.DeadLetter&lt;MyApp.OrderPlaced&gt;</c>.
+    /// </summary>
+    public static string TopicName(Type messageType)
+    {
+        if (!messageType.IsGenericType)
+            return messageType.FullName ?? messageType.Name;
+
+        var genericDef = messageType.GetGenericTypeDefinition();
+        var baseName = genericDef.FullName ?? genericDef.Name;
+        // Remove the backtick suffix added by the CLR (e.g. "DeadLetter`1" → "DeadLetter").
+        var cleanName = baseName.Contains('`') ? baseName[..baseName.IndexOf('`')] : baseName;
+        var argNames = string.Join(",", messageType.GetGenericArguments().Select(TopicName));
+        return $"{cleanName}<{argNames}>";
+    }
 
     /// <summary>Derives the queue name for a consumer. Each consumer class has exactly one queue.</summary>
     public static string QueueName(Type consumerType) =>

@@ -94,7 +94,7 @@ public class PublishSubscribeMultipleConsumersTests
         var logger = _provider.GetRequiredService<ILogger<PublishSubscribeMultipleConsumersTests>>();
 
         await TestHelpers.CleanupResourcesByPrefixAsync(sqsClient, snsClient, _queuePrefix, _topicPrefix, logger);
-        
+
         await _provider.DisposeAsync();
     }
 
@@ -106,8 +106,7 @@ public class PublishSubscribeMultipleConsumersTests
         var msg = new OrderPlaced(Guid.NewGuid(), "fan@example.com", 150.00m);
         await publisher.PublishAsync(msg, TestContext.CurrentContext.CancellationToken);
 
-        await TestHelpers.WaitUntilAsync(
-            () => _orderTracker.Messages.Count >= 1 && _auditTracker.Messages.Count >= 1);
+        await TestHelpers.WaitUntilAsync(() => _orderTracker.Messages.Count >= 1 && _auditTracker.Messages.Count >= 1);
 
         using (Assert.EnterMultipleScope())
         {

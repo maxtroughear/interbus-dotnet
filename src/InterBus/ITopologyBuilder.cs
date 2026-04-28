@@ -16,12 +16,12 @@ public interface ITopologyBuilder
     /// </summary>
     Task<string> EnsureTopicAsync(string rawTopicName, CancellationToken cancellationToken) =>
         throw new NotSupportedException(
-            "Topic topology must be implemented by the transport-specific topology builder.");
+            "Topic topology must be implemented by the transport-specific topology builder");
 
     /// <summary>
     /// Ensure a send queue exists (or is verified) and return its transport-specific identifier.
     /// </summary>
     Task<string> EnsureQueueAsync(string rawQueueName, CancellationToken cancellationToken) =>
         throw new NotSupportedException(
-            "Queue topology must be implemented by the transport-specific topology builder.");
+            "Queue topology must be implemented by the transport-specific topology builder");
 }

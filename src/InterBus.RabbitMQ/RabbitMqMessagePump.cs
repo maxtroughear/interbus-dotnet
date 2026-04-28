@@ -1,6 +1,6 @@
-using InterBus.Consumer;
+using InterBus.Consuming;
 using InterBus.DeadLettering;
-using InterBus.Dispatch;
+using InterBus.Dispatching;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -206,7 +206,8 @@ internal sealed class RabbitMqMessagePump(
     {
         var deadLetterExchangeName = descriptor.QueueName + options.DeadLetterExchangeSuffix;
         var publishConnection = await connectionProvider.GetPublishConnectionAsync(CancellationToken.None);
-        await using var publishChannel = await publishConnection.CreateChannelAsync(cancellationToken: CancellationToken.None);
+        await using var publishChannel =
+            await publishConnection.CreateChannelAsync(cancellationToken: CancellationToken.None);
         var properties = new BasicProperties
         {
             ContentType = ea.BasicProperties.ContentType,

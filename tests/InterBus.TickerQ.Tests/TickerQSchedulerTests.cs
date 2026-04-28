@@ -1,7 +1,7 @@
 using System.Runtime.CompilerServices;
 using InterBus.Extensions;
 using InterBus.InMemory.Extensions;
-using InterBus.Scheduler.Extensions;
+using InterBus.Scheduling.Extensions;
 using InterBus.TickerQ.Extensions;
 using Microsoft.Extensions.DependencyInjection;
 using TickerQ.DependencyInjection;

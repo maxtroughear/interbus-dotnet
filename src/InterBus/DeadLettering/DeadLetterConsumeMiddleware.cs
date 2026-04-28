@@ -1,22 +1,25 @@
-using InterBus.Consumer;
+using InterBus.Consuming;
 
 namespace InterBus.DeadLettering;
 
 /// <summary>
-/// Outermost consume middleware that marks unhandled consumer exceptions for dead-lettering.
+/// Outermost consume middleware that marks unhandled consumer exceptions for dead-lettering
+/// and publishes a <see cref="DeadLetter{T}"/> message to allow application consumers to
+/// receive and process dead-lettered messages.
+/// <para>
+/// The dead-letter notification is published via <see cref="IPublisher"/>. When the transactional
+/// outbox is configured on the consumer, the outbox publish middleware detects
+/// <see cref="DeadLetter{T}"/> messages and forwards them directly to the transport, bypassing
+/// the outbox buffer — ensuring delivery even when no <c>SaveChangesAsync</c> is called in the
+/// failure path.
+/// </para>
 /// </summary>
-public sealed class DeadLetterConsumeMiddleware : IConsumeMiddleware
+public sealed class DeadLetterConsumeMiddleware(IPublisher publisher) : IConsumeMiddleware
 {
-    public Task InvokeAsync<T>(
+    public async Task InvokeAsync<T>(
         ConsumeContext<T> context,
         Func<ConsumeContext<T>, CancellationToken, Task> next,
-        CancellationToken cancellationToken = default) where T : class =>
-        InvokeCoreAsync(context, next, cancellationToken);
-
-    private static async Task InvokeCoreAsync<T>(
-        ConsumeContext<T> context,
-        Func<ConsumeContext<T>, CancellationToken, Task> next,
-        CancellationToken cancellationToken) where T : class
+        CancellationToken cancellationToken = default) where T : class
     {
         try
         {
@@ -38,6 +41,31 @@ public sealed class DeadLetterConsumeMiddleware : IConsumeMiddleware
             context.Headers[InterBusHeaders.DeadLetterReason] = reason;
             context.Headers[InterBusHeaders.DeadLetterError] = ex.ToString();
             context.Headers[InterBusHeaders.DeadLetteredAt] = deadLetteredAtUtc.ToString("O");
+
+            // Publish a DeadLetter<T> event so application consumers can subscribe to failed messages.
+            // Skip publishing if T is already a DeadLetter<> type to prevent infinite nesting.
+            if (!typeof(T).IsGenericType || typeof(T).GetGenericTypeDefinition() != typeof(DeadLetter<>))
+            {
+                var deadLetter = new DeadLetter<T>
+                {
+                    OriginalMessage = context.Message,
+                    OriginalHeaders = context.Headers,
+                    Reason = reason,
+                    Error = ex.ToString(),
+                    DeadLetteredAtUtc = deadLetteredAtUtc,
+                };
+
+                try
+                {
+                    // Use CancellationToken.None so a cancelled consumer token does not suppress
+                    // the dead-letter publish.
+                    await publisher.PublishAsync(deadLetter, CancellationToken.None);
+                }
+                catch
+                {
+                    // Swallow publish errors to avoid masking the original consumer exception.
+                }
+            }
 
             throw new DeadLetterException(reason, ex.ToString(), deadLetteredAtUtc, ex);
         }

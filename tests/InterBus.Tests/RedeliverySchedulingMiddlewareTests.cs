@@ -1,5 +1,5 @@
-using InterBus.Consumer;
-using InterBus.Publisher;
+using InterBus.Consuming;
+using InterBus.Publishing;
 using InterBus.Retry;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;

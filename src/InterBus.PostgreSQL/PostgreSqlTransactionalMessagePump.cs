@@ -1,4 +1,4 @@
-using InterBus.Consumer;
+using InterBus.Consuming;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Npgsql;

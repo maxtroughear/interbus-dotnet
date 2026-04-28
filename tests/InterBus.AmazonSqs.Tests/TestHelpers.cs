@@ -76,7 +76,9 @@ public static class TestHelpers
         }
         catch (Exception ex)
         {
-            logger?.LogError(ex, "Error cleaning up AWS resources with prefixes queue={QueuePrefix}, topic={TopicPrefix}", queuePrefix, topicPrefix);
+            logger?.LogError(ex,
+                "Error cleaning up AWS resources with prefixes queue={QueuePrefix}, topic={TopicPrefix}", queuePrefix,
+                topicPrefix);
             // Don't rethrow - cleanup failures shouldn't fail tests
         }
     }
@@ -132,7 +134,7 @@ public static class TestHelpers
             do
             {
                 var response = await snsClient.ListTopicsAsync(nextToken);
-                
+
                 if (response.Topics == null || response.Topics.Count == 0)
                     break;
 

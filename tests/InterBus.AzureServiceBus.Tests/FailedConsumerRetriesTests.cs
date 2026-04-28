@@ -10,9 +10,11 @@ namespace InterBus.AzureServiceBus.Tests;
 
 public class FailedConsumerRetriesTests
 {
-    private readonly ServiceBusContainer _container = new ServiceBusBuilder("mcr.microsoft.com/azure-messaging/servicebus-emulator:latest")
-        .WithAcceptLicenseAgreement(true)
-        .Build();
+    private readonly ServiceBusContainer _container =
+        new ServiceBusBuilder("mcr.microsoft.com/azure-messaging/servicebus-emulator:latest")
+            .WithAcceptLicenseAgreement(true)
+            .Build();
+
     private ServiceProvider _provider = null!;
     private CancellationTokenSource _cts = null!;
     private OrderPlacedTracker _tracker = null!;

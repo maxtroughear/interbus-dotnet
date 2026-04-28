@@ -7,7 +7,7 @@ using Amazon.SimpleNotificationService;
 using Amazon.SimpleNotificationService.Model;
 using Amazon.SQS;
 using Amazon.SQS.Model;
-using InterBus.Consumer;
+using InterBus.Consuming;
 using Microsoft.Extensions.Logging;
 
 namespace InterBus.AmazonSqs;

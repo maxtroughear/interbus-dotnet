@@ -1,5 +1,5 @@
 using System.Diagnostics.CodeAnalysis;
-using InterBus.Consumer;
+using InterBus.Consuming;
 
 namespace InterBus;
 

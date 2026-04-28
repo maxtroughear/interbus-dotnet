@@ -17,7 +17,7 @@ var connectionString = builder.Configuration["ConnectionStrings:InterBus"]
                        ?? throw new InvalidOperationException(
                            "PostgreSQL connection string not configured. " +
                            "Set ConnectionStrings:InterBus in appsettings.json or the " +
-                           "CONNECTIONSTRINGS__INTERBUS environment variable.");
+                           "CONNECTIONSTRINGS__INTERBUS environment variable");
 
 // Register InterBus with the PostgreSQL transport.
 // The transport automatically creates the required schema and tables on first run.
@@ -61,6 +61,4 @@ await host.StopAsync();
 /// </summary>
 [JsonSerializable(typeof(GreetingMessage))]
 [JsonSerializable(typeof(FarewellMessage))]
-internal partial class SamplePostgreSqlJsonContext : JsonSerializerContext
-{
-}
+internal partial class SamplePostgreSqlJsonContext : JsonSerializerContext;

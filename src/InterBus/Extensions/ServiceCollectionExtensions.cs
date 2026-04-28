@@ -1,13 +1,13 @@
 using System.Diagnostics.CodeAnalysis;
-using InterBus.Consumer;
-using InterBus.Dispatch;
+using InterBus.Consuming;
+using InterBus.Dispatching;
 using InterBus.Internal;
 using InterBus.Middleware;
 using InterBus.Middleware.Internal;
-using InterBus.Publisher;
-using InterBus.Send;
+using InterBus.Publishing;
+using InterBus.Sending;
 using InterBus.Serialization;
-using InterBus.Transport;
+using InterBus.Transporting;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
@@ -32,11 +32,11 @@ public static class ServiceCollectionExtensions
     [UnconditionalSuppressMessage("ReflectionAnalysis", "IL2026",
         Justification =
             "SystemTextJsonMessageSerializer is registered as the default IMessageSerializer and uses reflection-based JSON. " +
-            "Override with bus.UseSerializer<TSerializer>() or bus.Services.AddSingleton<IMessageSerializer>(instance) for AOT/trim applications.")]
+            "Override with bus.UseSerializer<TSerializer>() or bus.Services.AddSingleton<IMessageSerializer>(instance) for AOT/trim applications")]
     [UnconditionalSuppressMessage("AotAnalysis", "IL3050",
         Justification =
             "SystemTextJsonMessageSerializer is registered as the default IMessageSerializer and requires dynamic code. " +
-            "Override with bus.UseSerializer<TSerializer>() or bus.Services.AddSingleton<IMessageSerializer>(instance) for AOT applications.")]
+            "Override with bus.UseSerializer<TSerializer>() or bus.Services.AddSingleton<IMessageSerializer>(instance) for AOT applications")]
     public static IServiceCollection AddInterBus(
         this IServiceCollection services,
         Action<IInterBusBuilder> configure)
@@ -66,7 +66,7 @@ public static class ServiceCollectionExtensions
 
         // Register the transport factory and the scoped publisher.
         services.AddSingleton<ITransportFactory, TransportFactory>();
-        services.AddScoped<IPublisher, Publisher.Publisher>();
+        services.AddScoped<IPublisher, Publisher>();
 
         return services;
     }

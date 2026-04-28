@@ -1,6 +1,6 @@
 using System.Text.Json;
-using InterBus.Consumer;
-using InterBus.Publisher;
+using InterBus.DeadLettering;
+using InterBus.Publishing;
 using Microsoft.EntityFrameworkCore;
 
 namespace InterBus.EntityFrameworkCore.Internal;
@@ -21,7 +21,7 @@ namespace InterBus.EntityFrameworkCore.Internal;
 /// <see cref="OutboxGroup.VisibleAt"/> timestamp of
 /// <c>UtcNow + <see cref="OutboxOptions.ConsumerVisibilityTimeout"/></c>.
 /// After the consumer's <c>Consume</c> handler completes (and its transaction has committed), the
-/// paired <see cref="OutboxConsumeMiddleware{TDbContext}"/> (when registered) attempts immediate
+/// paired <see cref="OutboxInlineDeliveryConsumeMiddleware{TDbContext}"/> (when registered) attempts immediate
 /// inline delivery, deleting the group on success. If inline delivery fails the group remains in
 /// the outbox and the processor retries it after <see cref="OutboxGroup.VisibleAt"/> has elapsed.
 /// </para>
@@ -35,7 +35,6 @@ internal sealed class OutboxPublishMiddleware<TDbContext>(
     TDbContext dbContext,
     IMessageSerializer serializer,
     OutboxOptions options,
-    ConsumeContextAccessor contextAccessor,
     OutboxConsumeState consumeState)
     : IPublishMiddleware
     where TDbContext : DbContext
@@ -45,6 +44,12 @@ internal sealed class OutboxPublishMiddleware<TDbContext>(
     public Task InvokeAsync<T>(PublishContext<T> context, Func<PublishContext<T>, CancellationToken, Task> next,
         CancellationToken cancellationToken = default) where T : class
     {
+        // DeadLetter<> messages are published in the consume failure path, where no
+        // SaveChangesAsync is ever called. Buffering them in the outbox would cause them to be
+        // silently lost, so forward directly to the transport instead.
+        if (typeof(T).IsGenericType && typeof(T).GetGenericTypeDefinition() == typeof(DeadLetter<>))
+            return next(context, cancellationToken);
+
         var payload = serializer.Serialize(context.Message);
         var headersJson = SerializeHeaders(context.Headers);
 
@@ -67,12 +72,10 @@ internal sealed class OutboxPublishMiddleware<TDbContext>(
         if (_outboxGroup is not null)
             return _outboxGroup;
 
-        var isConsumerContext = contextAccessor.ConsumeContext is not null;
-
         // Bus context: VisibleAt = UtcNow (immediately eligible).
-        // Consumer context: VisibleAt = UtcNow + ConsumerVisibilityTimeout (may equal UtcNow when
-        // timeout is zero) - prevents the processor racing with inline delivery.
-        var visibleAt = isConsumerContext
+        // Consumer context & inline delivery: VisibleAt = UtcNow + ConsumerVisibilityTimeout (may equal UtcNow when
+        // timeout is zero) - prevents the processor racing with inline delivery
+        var visibleAt = consumeState.IsDeliveryInline
             ? DateTime.UtcNow + options.ConsumerVisibilityTimeout
             : DateTime.UtcNow;
 
@@ -81,7 +84,7 @@ internal sealed class OutboxPublishMiddleware<TDbContext>(
 
         // Notify the paired OutboxConsumeMiddleware so it can attempt inline delivery
         // after the consumer's Consume handler (and its SaveChangesAsync) has finished.
-        if (isConsumerContext) consumeState.GroupId = _outboxGroup.Id;
+        if (consumeState.IsDeliveryInline) consumeState.GroupId = _outboxGroup.Id;
 
         return _outboxGroup;
     }

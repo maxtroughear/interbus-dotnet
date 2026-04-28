@@ -82,7 +82,7 @@ public class OutboxSqlServerIntegrationTests(string imageTag)
         {
             try
             {
-                await svc.StopAsync(_cts.Token);
+                await svc.StopAsync(CancellationToken.None);
             }
             catch (OperationCanceledException)
             {

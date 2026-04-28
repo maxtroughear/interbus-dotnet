@@ -1,6 +1,9 @@
 using InterBus.Consumer;
 using InterBus.DeadLettering;
-using InterBus.Publisher;
+using InterBus.Middleware;
+using InterBus.Send;
+using InterBus.Serialization;
+using InterBus.Transport;
 using Xunit;
 
 namespace InterBus.Tests;
@@ -13,12 +16,25 @@ public class DeadLetterConsumeMiddlewareTests
             [typeof(TestMessage)],
             (_, _, _) => Task.CompletedTask);
 
+    private static (DeadLetterConsumeMiddleware Middleware, RecordingTransport Transport) CreateMiddleware(
+        bool failSend = false)
+    {
+        var transport = new RecordingTransport(failSend);
+        var factory = new FixedTransportFactory(transport);
+        var middlewareFactory = new NoOpMiddlewareFactory();
+        var sendPipeline = new SendPipelineExecutor(factory, middlewareFactory);
+        var serializer = new SystemTextJsonMessageSerializer();
+        var options = new InterBusOptions();
+        var contextAccessor = new ConsumeContextAccessor();
+
+        return (new DeadLetterConsumeMiddleware(sendPipeline, serializer, options, contextAccessor), transport);
+    }
+
     [Fact]
     public async Task InvokeAsync_WhenUnhandledException_ThrowsDeadLetterExceptionAndSetsHeaders()
     {
-        var publisher = new RecordingPublisher();
-        var middleware = new DeadLetterConsumeMiddleware(publisher);
-        var context = new ConsumeContext<TestMessage>(CreateDescriptor(), new TestMessage(), new MessageHeaders());
+        var (middleware, _) = CreateMiddleware();
+        var context = new ConsumeContext<TestMessage>(CreateDescriptor(), new TestMessage("x"), new MessageHeaders());
 
         var exception = await Assert.ThrowsAsync<DeadLetterException>(
             () => middleware.InvokeAsync(
@@ -33,11 +49,10 @@ public class DeadLetterConsumeMiddlewareTests
     }
 
     [Fact]
-    public async Task InvokeAsync_WhenUnhandledException_PublishesDeadLetterMessage()
+    public async Task InvokeAsync_WhenUnhandledException_SendsDeadLetterMessageToTransport()
     {
-        var publisher = new RecordingPublisher();
-        var middleware = new DeadLetterConsumeMiddleware(publisher);
-        var original = new TestMessage();
+        var (middleware, transport) = CreateMiddleware();
+        var original = new TestMessage("hello");
         var context = new ConsumeContext<TestMessage>(CreateDescriptor(), original, new MessageHeaders());
 
         await Assert.ThrowsAsync<DeadLetterException>(
@@ -46,19 +61,20 @@ public class DeadLetterConsumeMiddlewareTests
                 (_, _) => throw new InvalidOperationException("boom"),
                 CancellationToken.None));
 
-        var published = Assert.Single(publisher.Published);
-        var deadLetter = Assert.IsType<DeadLetter<TestMessage>>(published);
-        Assert.Same(original, deadLetter.OriginalMessage);
+        var sent = Assert.Single(transport.Sent);
+        var serializer = new SystemTextJsonMessageSerializer();
+        var deadLetter = serializer.Deserialize<DeadLetter<TestMessage>>(sent.Payload);
+        Assert.NotNull(deadLetter);
+        Assert.Equal(original.Value, deadLetter.OriginalMessage.Value);
         Assert.Equal("Unhandled exception in consume pipeline", deadLetter.Reason);
         Assert.NotEmpty(deadLetter.Error);
         Assert.True(deadLetter.DeadLetteredAtUtc <= DateTimeOffset.UtcNow);
     }
 
     [Fact]
-    public async Task InvokeAsync_WhenMessageIsAlreadyDeadLetter_DoesNotPublishNestedDeadLetter()
+    public async Task InvokeAsync_WhenMessageIsAlreadyDeadLetter_DoesNotSendNestedDeadLetter()
     {
-        var publisher = new RecordingPublisher();
-        var middleware = new DeadLetterConsumeMiddleware(publisher);
+        var (middleware, transport) = CreateMiddleware();
         var descriptor = new ConsumerDescriptor(
             typeof(TestConsumer),
             new Uri("testqueue://dead-letter-consumer"),
@@ -66,7 +82,7 @@ public class DeadLetterConsumeMiddlewareTests
             (_, _, _) => Task.CompletedTask);
         var deadLetterMessage = new DeadLetter<TestMessage>
         {
-            OriginalMessage = new TestMessage(),
+            OriginalMessage = new TestMessage("nested"),
             Reason = "original failure",
             Error = "some error",
             DeadLetteredAtUtc = DateTimeOffset.UtcNow,
@@ -79,15 +95,14 @@ public class DeadLetterConsumeMiddlewareTests
                 (_, _) => throw new InvalidOperationException("boom"),
                 CancellationToken.None));
 
-        Assert.Empty(publisher.Published);
+        Assert.Empty(transport.Sent);
     }
 
     [Fact]
     public async Task InvokeAsync_WhenCancellationRequested_PropagatesOperationCanceled()
     {
-        var publisher = new RecordingPublisher();
-        var middleware = new DeadLetterConsumeMiddleware(publisher);
-        var context = new ConsumeContext<TestMessage>(CreateDescriptor(), new TestMessage(), new MessageHeaders());
+        var (middleware, _) = CreateMiddleware();
+        var context = new ConsumeContext<TestMessage>(CreateDescriptor(), new TestMessage("x"), new MessageHeaders());
         using var cts = new CancellationTokenSource();
         await cts.CancelAsync();
 
@@ -99,11 +114,10 @@ public class DeadLetterConsumeMiddlewareTests
     }
 
     [Fact]
-    public async Task InvokeAsync_WhenPublishFails_OriginalDeadLetterExceptionIsStillThrown()
+    public async Task InvokeAsync_WhenSendFails_OriginalDeadLetterExceptionIsStillThrown()
     {
-        var publisher = new FailingPublisher();
-        var middleware = new DeadLetterConsumeMiddleware(publisher);
-        var context = new ConsumeContext<TestMessage>(CreateDescriptor(), new TestMessage(), new MessageHeaders());
+        var (middleware, _) = CreateMiddleware(failSend: true);
+        var context = new ConsumeContext<TestMessage>(CreateDescriptor(), new TestMessage("x"), new MessageHeaders());
 
         var exception = await Assert.ThrowsAsync<DeadLetterException>(
             () => middleware.InvokeAsync(
@@ -120,48 +134,30 @@ public class DeadLetterConsumeMiddlewareTests
             Task.CompletedTask;
     }
 
-    private sealed record TestMessage;
+    private sealed record TestMessage(string Value);
 
-    /// <summary>An <see cref="IPublisher"/> stub that records all published messages.</summary>
-    private sealed class RecordingPublisher : IPublisher
+    private sealed class RecordingTransport(bool fail = false) : ITransport
     {
-        private readonly List<object> _published = [];
-        public IReadOnlyList<object> Published => _published;
+        private readonly List<TransportSendContext> _sent = [];
+        public IReadOnlyList<TransportSendContext> Sent => _sent;
 
-        public Task PublishAsync<T>(T message, CancellationToken cancellationToken = default) where T : class
+        public Task SendAsync(TransportSendContext context, CancellationToken cancellationToken)
         {
-            _published.Add(message);
+            if (fail)
+                throw new InvalidOperationException("send failed");
+            _sent.Add(context);
             return Task.CompletedTask;
         }
-
-        public Task PublishAsync<T>(T message, Action<PublishContext<T>> configure, CancellationToken cancellationToken = default) where T : class
-        {
-            _published.Add(message);
-            return Task.CompletedTask;
-        }
-
-        public Task SendAsync<TConsumer, T>(T message, CancellationToken cancellationToken = default) where TConsumer : IConsumer<T> where T : class => Task.CompletedTask;
-        public Task SendAsync<TConsumer, T>(T message, Action<PublishContext<T>> configure, CancellationToken cancellationToken = default) where TConsumer : IConsumer<T> where T : class => Task.CompletedTask;
-        public Task SendAsync<T>(string queueName, T message, CancellationToken cancellationToken = default) where T : class => Task.CompletedTask;
-        public Task SendAsync<T>(string queueName, T message, Action<PublishContext<T>> configure, CancellationToken cancellationToken = default) where T : class => Task.CompletedTask;
-        public Task SendAsync<T>(Uri queue, T message, CancellationToken cancellationToken = default) where T : class => Task.CompletedTask;
-        public Task SendAsync<T>(Uri queue, T message, Action<PublishContext<T>> configure, CancellationToken cancellationToken = default) where T : class => Task.CompletedTask;
     }
 
-    /// <summary>An <see cref="IPublisher"/> stub that always throws on publish.</summary>
-    private sealed class FailingPublisher : IPublisher
+    private sealed class FixedTransportFactory(ITransport transport) : ITransportFactory
     {
-        public Task PublishAsync<T>(T message, CancellationToken cancellationToken = default) where T : class =>
-            throw new InvalidOperationException("publish failed");
+        public ITransport Resolve(Uri destination) => transport;
+    }
 
-        public Task PublishAsync<T>(T message, Action<PublishContext<T>> configure, CancellationToken cancellationToken = default) where T : class =>
-            throw new InvalidOperationException("publish failed");
-
-        public Task SendAsync<TConsumer, T>(T message, CancellationToken cancellationToken = default) where TConsumer : IConsumer<T> where T : class => Task.CompletedTask;
-        public Task SendAsync<TConsumer, T>(T message, Action<PublishContext<T>> configure, CancellationToken cancellationToken = default) where TConsumer : IConsumer<T> where T : class => Task.CompletedTask;
-        public Task SendAsync<T>(string queueName, T message, CancellationToken cancellationToken = default) where T : class => Task.CompletedTask;
-        public Task SendAsync<T>(string queueName, T message, Action<PublishContext<T>> configure, CancellationToken cancellationToken = default) where T : class => Task.CompletedTask;
-        public Task SendAsync<T>(Uri queue, T message, CancellationToken cancellationToken = default) where T : class => Task.CompletedTask;
-        public Task SendAsync<T>(Uri queue, T message, Action<PublishContext<T>> configure, CancellationToken cancellationToken = default) where T : class => Task.CompletedTask;
+    private sealed class NoOpMiddlewareFactory : IMiddlewareFactory
+    {
+        public IEnumerable<TMiddleware> Resolve<TMiddleware>(Type? key = null) where TMiddleware : IMiddleware =>
+            [];
     }
 }

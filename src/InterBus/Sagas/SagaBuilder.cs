@@ -1,31 +1,78 @@
+using System.Diagnostics.CodeAnalysis;
+using InterBus.Consuming;
+using InterBus.Publishing;
+using InterBus.Sending;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+
 namespace InterBus.Sagas;
 
-/// <inheritdoc/>
-internal sealed class SagaBuilder<TSaga, TState> : ISagaBuilder
+/// <inheritdoc cref="ISagaBuilder{TState}"/>
+internal sealed class SagaBuilder<TSaga, TState>(
+    ConsumerDescriptor descriptor,
+    IServiceCollection services,
+    SagaOptions<TSaga> options)
+    : ISagaBuilder<TState>
     where TSaga : class, ISaga<TState>
     where TState : class, new()
 {
-    /// <summary>The configured time-to-live for saga instances, if set.</summary>
-    internal TimeSpan? TimeToLive { get; private set; }
+    private readonly ConsumerBuilder _inner = new(descriptor, services);
 
-    /// <summary>The configured concurrency count, if set.</summary>
-    internal int? Concurrency { get; private set; }
+    // ── IConsumerBuilder ────────────────────────────────────────────────────
 
     /// <inheritdoc/>
-    public ISagaBuilder WithTimeToLive(TimeSpan ttl)
+    public IServiceCollection Services => services;
+
+    /// <inheritdoc/>
+    public IConsumerBuilder WithConcurrency(int concurrencyCount)
     {
-        TimeToLive = ttl;
+        _inner.WithConcurrency(concurrencyCount);
         return this;
     }
 
     /// <inheritdoc/>
-    public ISagaBuilder WithConcurrency(int concurrencyCount)
+    public IConsumerBuilder UseConsumeMiddleware<
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
+        TMiddleware>()
+        where TMiddleware : class, IConsumeMiddleware
     {
-        if (concurrencyCount < 1)
-            throw new ArgumentOutOfRangeException(
-                nameof(concurrencyCount), "Concurrency count must be at least 1");
+        _inner.UseConsumeMiddleware<TMiddleware>();
+        return this;
+    }
 
-        Concurrency = concurrencyCount;
+    /// <inheritdoc/>
+    public IConsumerBuilder UseSendMiddleware<
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
+        TMiddleware>()
+        where TMiddleware : class, ISendMiddleware
+    {
+        _inner.UseSendMiddleware<TMiddleware>();
+        return this;
+    }
+
+    /// <inheritdoc/>
+    public IConsumerBuilder UsePublishMiddleware<
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
+        TMiddleware>()
+        where TMiddleware : class, IPublishMiddleware
+    {
+        _inner.UsePublishMiddleware<TMiddleware>();
+        return this;
+    }
+
+    // ── ISagaBuilder<TState> ─────────────────────────────────────────────────
+
+    /// <inheritdoc/>
+    public ISagaBuilder<TState> UseInMemoryRepository()
+    {
+        services.TryAddSingleton<ISagaRepository<TState>, InMemorySagaRepository<TState>>();
+        return this;
+    }
+
+    /// <inheritdoc/>
+    public ISagaBuilder<TState> WithTimeToLive(TimeSpan ttl)
+    {
+        options.TimeToLive = ttl;
         return this;
     }
 }

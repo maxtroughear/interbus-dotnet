@@ -1,12 +1,25 @@
 namespace InterBus.Sagas;
 
 /// <summary>
-/// Provides persistent storage for saga state instances.
-/// Each saga type uses its own <see cref="ISagaRepository{TState}"/> instance.
+/// Provides persistent storage and exclusive per-instance locking for saga state.
+/// Each saga state type uses its own <see cref="ISagaRepository{TState}"/> registration.
 /// </summary>
+/// <remarks>
+/// Implementations are responsible for serialised access to the same saga instance.
+/// Use <see cref="AcquireLockAsync"/> to obtain an exclusive lock before reading or writing
+/// state so that concurrent messages for the same correlation ID are processed sequentially.
+/// </remarks>
 /// <typeparam name="TState">The saga state type.</typeparam>
 public interface ISagaRepository<TState> where TState : class, new()
 {
+    /// <summary>
+    /// Acquires an exclusive lock for the given <paramref name="correlationId"/>, preventing
+    /// concurrent processing of messages for the same saga instance.
+    /// Dispose the returned <see cref="IAsyncDisposable"/> to release the lock.
+    /// </summary>
+    Task<IAsyncDisposable> AcquireLockAsync(string correlationId,
+        CancellationToken cancellationToken = default);
+
     /// <summary>
     /// Retrieves the saga state for the given <paramref name="correlationId"/>,
     /// or <c>null</c> if no instance exists (or it has expired).

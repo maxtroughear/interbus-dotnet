@@ -191,7 +191,7 @@ public class SagaTests
             bus =>
             {
                 bus.AddInMemoryTransport();
-                bus.AddSaga<OrderSaga, OrderSagaState>();
+                bus.AddSaga<OrderSaga, OrderSagaState>(saga => saga.UseInMemoryRepository());
             });
 
         try
@@ -231,7 +231,7 @@ public class SagaTests
             bus =>
             {
                 bus.AddInMemoryTransport();
-                bus.AddSaga<OrderSaga, OrderSagaState>();
+                bus.AddSaga<OrderSaga, OrderSagaState>(saga => saga.UseInMemoryRepository());
             });
 
         try
@@ -275,7 +275,7 @@ public class SagaTests
             bus =>
             {
                 bus.AddInMemoryTransport();
-                bus.AddSaga<OrderSaga, OrderSagaState>();
+                bus.AddSaga<OrderSaga, OrderSagaState>(saga => saga.UseInMemoryRepository());
             });
 
         try
@@ -319,7 +319,7 @@ public class SagaTests
             bus =>
             {
                 bus.AddInMemoryTransport();
-                bus.AddSaga<OrderWithDeletionSaga, OrderSagaState>();
+                bus.AddSaga<OrderWithDeletionSaga, OrderSagaState>(saga => saga.UseInMemoryRepository());
             });
 
         try
@@ -362,7 +362,7 @@ public class SagaTests
             {
                 bus.AddInMemoryTransport();
                 bus.AddSaga<OrderSaga, OrderSagaState>(saga =>
-                    saga.WithTimeToLive(TimeSpan.FromMilliseconds(200)));
+                    saga.UseInMemoryRepository().WithTimeToLive(TimeSpan.FromMilliseconds(200)));
             });
 
         try
@@ -405,7 +405,7 @@ public class SagaTests
             bus =>
             {
                 bus.AddInMemoryTransport();
-                bus.AddSaga<AcknowledgingOrderSaga, OrderSagaState>();
+                bus.AddSaga<AcknowledgingOrderSaga, OrderSagaState>(saga => saga.UseInMemoryRepository());
                 bus.AddConsumer<OrderAcknowledgedConsumer>();
             });
 
@@ -437,7 +437,7 @@ public class SagaTests
             bus =>
             {
                 bus.AddInMemoryTransport();
-                bus.AddSaga<OrderSaga, OrderSagaState>();
+                bus.AddSaga<OrderSaga, OrderSagaState>(saga => saga.UseInMemoryRepository());
             });
 
         try

@@ -1,6 +1,7 @@
 using System.Diagnostics.CodeAnalysis;
 using InterBus.Dispatching;
 using InterBus.Publishing;
+using InterBus.Sagas;
 using InterBus.Sending;
 using InterBus.Serialization;
 using Microsoft.Extensions.DependencyInjection;
@@ -76,6 +77,26 @@ public interface IInterBusBuilder
         Func<DispatchContext, IServiceProvider, CancellationToken, Task> dispatch,
         Action<IConsumerBuilder>? configure = null)
         where TConsumer : class, IConsumer;
+
+    /// <summary>
+    /// Register a saga with a source-generated dispatch delegate.
+    /// Called by the source-generated <c>AddSaga&lt;TSaga, TState&gt;(configure)</c> extension
+    /// method after it looks up the dispatch delegate from the per-assembly dispatch module.
+    /// </summary>
+    /// <remarks>
+    /// The <paramref name="configure"/> delegate is invoked immediately after registration.
+    /// Use it to configure the saga repository (e.g. <c>saga.UseInMemoryRepository()</c>),
+    /// time-to-live, concurrency, or additional middleware.
+    /// </remarks>
+    IInterBusBuilder AddSaga<
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
+        TSaga,
+        TState>(
+        Type[] messageTypes,
+        Func<DispatchContext, IServiceProvider, CancellationToken, Task> dispatch,
+        Action<ISagaBuilder<TState>>? configure = null)
+        where TSaga : class, ISaga<TState>
+        where TState : class, new();
 
     /// <summary>
     /// Register a custom <see cref="IMessageSerializer"/> implementation.

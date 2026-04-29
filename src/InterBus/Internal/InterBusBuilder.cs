@@ -4,6 +4,7 @@ using InterBus.DeadLettering;
 using InterBus.Dispatching;
 using InterBus.Logging;
 using InterBus.Publishing;
+using InterBus.Sagas;
 using InterBus.Sending;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -79,6 +80,34 @@ internal sealed class InterBusBuilder : IInterBusBuilder
 
         Options.AddConsumer(descriptor);
         Services.TryAddScoped<TConsumer>();
+        return this;
+    }
+
+    /// <inheritdoc/>
+    public IInterBusBuilder AddSaga<
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
+        TSaga,
+        TState>(
+        Type[] messageTypes,
+        Func<DispatchContext, IServiceProvider, CancellationToken, Task> dispatch,
+        Action<ISagaBuilder<TState>>? configure = null)
+        where TSaga : class, ISaga<TState>
+        where TState : class, new()
+    {
+        var queue = RoutingConventions.QueueUri(Options.QueueUriScheme, typeof(TSaga));
+        var descriptor = new ConsumerDescriptor(typeof(TSaga), queue, messageTypes, dispatch);
+        var sagaOptions = new SagaOptions<TSaga>();
+        var sagaBuilder = new SagaBuilder<TSaga, TState>(descriptor, Services, sagaOptions);
+
+        // Apply the same default middleware as regular consumers.
+        sagaBuilder.UseConsumeMiddleware<DeadLetterConsumeMiddleware>();
+        sagaBuilder.UseConsumeMiddleware<ExceptionLoggingConsumeMiddleware>();
+
+        configure?.Invoke(sagaBuilder);
+
+        Services.AddSingleton(sagaOptions);
+        Options.AddConsumer(descriptor);
+        Services.TryAddScoped<TSaga>();
         return this;
     }
 

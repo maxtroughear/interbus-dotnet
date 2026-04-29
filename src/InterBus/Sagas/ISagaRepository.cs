@@ -5,7 +5,7 @@ namespace InterBus.Sagas;
 /// Each saga state type uses its own <see cref="ISagaRepository{TState}"/> registration.
 /// </summary>
 /// <remarks>
-/// Implementations are responsible for serialised access to the same saga instance.
+/// Implementations are responsible for serialized access to the same saga instance.
 /// Use <see cref="AcquireLockAsync"/> to obtain an exclusive lock before reading or writing
 /// state so that concurrent messages for the same correlation ID are processed sequentially.
 /// </remarks>

@@ -9,6 +9,13 @@ namespace InterBus.Sagas;
 /// Per-correlation-ID locking is handled with <see cref="SemaphoreSlim"/> instances so that
 /// only one message per saga instance is processed at a time.
 /// </summary>
+/// <remarks>
+/// The internal lock dictionary grows as new correlation IDs are encountered and entries are
+/// not removed automatically. In long-running applications processing a high volume of unique
+/// correlation IDs, memory growth may occur. Use <see cref="ISagaContext{TState}.Delete"/> to
+/// delete completed saga instances, which removes the state entry; lock entries are lightweight
+/// and bounded by the number of concurrently active correlation IDs for typical workloads.
+/// </remarks>
 public sealed class InMemorySagaRepository<TState> : ISagaRepository<TState>
     where TState : class, new()
 {

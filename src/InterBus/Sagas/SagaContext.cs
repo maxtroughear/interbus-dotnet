@@ -8,9 +8,6 @@ internal sealed class SagaContext<TState>(TState state, IConsumeContext inner)
     : ISagaContext<TState>
     where TState : class, new()
 {
-    private bool _deleted;
-    private bool _completed;
-
     /// <inheritdoc/>
     public TState State { get; } = state;
 
@@ -21,14 +18,12 @@ internal sealed class SagaContext<TState>(TState state, IConsumeContext inner)
     public string? CorrelationId => inner.CorrelationId;
 
     /// <inheritdoc/>
-    public void Delete() => _deleted = true;
+    public void Delete() => IsDeleted = true;
 
     /// <inheritdoc/>
-    public void Complete() => _completed = true;
+    public void Complete() => IsCompleted = true;
 
-    /// <summary>Returns <c>true</c> if <see cref="Delete"/> has been called.</summary>
-    internal bool IsDeleted => _deleted;
+    internal bool IsDeleted { get; private set; }
 
-    /// <summary>Returns <c>true</c> if <see cref="Complete"/> has been called.</summary>
-    internal bool IsCompleted => _completed;
+    internal bool IsCompleted { get; private set; }
 }

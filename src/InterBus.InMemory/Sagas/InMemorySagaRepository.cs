@@ -20,7 +20,7 @@ namespace InterBus.InMemory.Sagas;
 public sealed class InMemorySagaRepository<TState> : ISagaRepository<TState>
     where TState : class, new()
 {
-    private readonly ConcurrentDictionary<string, Entry> _store = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, StoreEntry> _store = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _locks = new(StringComparer.Ordinal);
 
     /// <inheritdoc/>
@@ -36,33 +36,25 @@ public sealed class InMemorySagaRepository<TState> : ISagaRepository<TState>
     public Task<SagaEntry<TState>?> GetAsync(string correlationId,
         CancellationToken cancellationToken = default)
     {
-        if (_store.TryGetValue(correlationId, out var entry))
+        if (_store.TryGetValue(correlationId, out var stored))
         {
-            if (entry.ExpiresAtUtc.HasValue && entry.ExpiresAtUtc.Value <= DateTimeOffset.UtcNow)
+            if (stored.ExpiresAtUtc.HasValue && stored.ExpiresAtUtc.Value <= DateTimeOffset.UtcNow)
             {
                 _store.TryRemove(correlationId, out _);
                 return Task.FromResult<SagaEntry<TState>?>(null);
             }
 
-            return Task.FromResult<SagaEntry<TState>?>(new SagaEntry<TState>(entry.State, entry.IsCompleted));
+            return Task.FromResult<SagaEntry<TState>?>(new SagaEntry<TState>(stored.State, stored.IsCompleted));
         }
 
         return Task.FromResult<SagaEntry<TState>?>(null);
     }
 
     /// <inheritdoc/>
-    public Task SaveAsync(string correlationId, TState state, TimeSpan? timeToLive = null,
+    public Task SaveAsync(string correlationId, SagaEntry<TState> entry,
         CancellationToken cancellationToken = default)
     {
-        _store[correlationId] = new Entry(state, ExpiryFrom(timeToLive));
-        return Task.CompletedTask;
-    }
-
-    /// <inheritdoc/>
-    public Task CompleteAsync(string correlationId, TState state, TimeSpan? timeToLive = null,
-        CancellationToken cancellationToken = default)
-    {
-        _store[correlationId] = new Entry(state, ExpiryFrom(timeToLive), IsCompleted: true);
+        _store[correlationId] = new StoreEntry(entry.State, ExpiryFrom(entry.TimeToLive), entry.IsCompleted);
         return Task.CompletedTask;
     }
 
@@ -76,7 +68,7 @@ public sealed class InMemorySagaRepository<TState> : ISagaRepository<TState>
     private static DateTimeOffset? ExpiryFrom(TimeSpan? timeToLive) =>
         timeToLive.HasValue ? DateTimeOffset.UtcNow.Add(timeToLive.Value) : (DateTimeOffset?)null;
 
-    private sealed record Entry(TState State, DateTimeOffset? ExpiresAtUtc, bool IsCompleted = false);
+    private sealed record StoreEntry(TState State, DateTimeOffset? ExpiresAtUtc, bool IsCompleted = false);
 
     private sealed class SemaphoreReleaser(SemaphoreSlim semaphore) : IAsyncDisposable
     {

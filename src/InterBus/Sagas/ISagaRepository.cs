@@ -23,35 +23,31 @@ public interface ISagaRepository<TState> where TState : class, new()
     /// <summary>
     /// Retrieves the saga entry for the given <paramref name="correlationId"/>,
     /// or <c>null</c> if no instance exists (or it has expired).
-    /// The returned <see cref="SagaEntry{TState}"/> includes both the state and whether
+    /// The returned <see cref="SagaEntry{TState}"/> includes the state and whether
     /// the saga has been completed.
     /// </summary>
     Task<SagaEntry<TState>?> GetAsync(string correlationId, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Persists the saga state for the given <paramref name="correlationId"/> as an active instance.
+    /// Persists the given <paramref name="entry"/> for the saga identified by
+    /// <paramref name="correlationId"/>. The entry carries the state, the completed flag,
+    /// and an optional <see cref="SagaEntry{TState}.TimeToLive"/> that the repository
+    /// should honour on a best-effort basis.
     /// </summary>
-    /// <param name="correlationId">The saga instance identifier.</param>
-    /// <param name="state">The state to save.</param>
-    /// <param name="timeToLive">
-    /// Optional time-to-live for this saga instance. Repository implementations should
-    /// expire the stored state after this duration if possible. <c>null</c> means no expiry.
-    /// </param>
-    /// <param name="cancellationToken">A cancellation token.</param>
-    Task SaveAsync(string correlationId, TState state, TimeSpan? timeToLive = null,
-        CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Persists the saga state for the given <paramref name="correlationId"/> and marks the
-    /// saga as completed. Completed sagas preserve their state but will no longer process new
-    /// messages.
-    /// </summary>
-    Task CompleteAsync(string correlationId, TState state, TimeSpan? timeToLive = null,
+    /// <remarks>
+    /// This method is always called before <see cref="DeleteAsync"/> so that repositories
+    /// can capture the final state for archiving or audit before the entry is removed.
+    /// </remarks>
+    Task SaveAsync(string correlationId, SagaEntry<TState> entry,
         CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Removes the saga state for the given <paramref name="correlationId"/>.
     /// A no-op if the instance does not exist.
     /// </summary>
+    /// <remarks>
+    /// <see cref="SaveAsync"/> is always called before this method, giving the repository an
+    /// opportunity to capture the final state (e.g. for archiving).
+    /// </remarks>
     Task DeleteAsync(string correlationId, CancellationToken cancellationToken = default);
 }

@@ -3,7 +3,6 @@ using InterBus.Consuming;
 using InterBus.Publishing;
 using InterBus.Sending;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace InterBus.Sagas;
 
@@ -18,7 +17,7 @@ internal sealed class SagaBuilder<TSaga, TState>(
 {
     private readonly ConsumerBuilder _inner = new(descriptor, services);
 
-    // ── IConsumerBuilder ────────────────────────────────────────────────────
+    #region IConsumerBuilder
 
     /// <inheritdoc/>
     public IServiceCollection Services => services;
@@ -60,14 +59,7 @@ internal sealed class SagaBuilder<TSaga, TState>(
         return this;
     }
 
-    // ── ISagaBuilder<TState> ─────────────────────────────────────────────────
-
-    /// <inheritdoc/>
-    public ISagaBuilder<TState> UseInMemoryRepository()
-    {
-        services.TryAddSingleton<ISagaRepository<TState>, InMemorySagaRepository<TState>>();
-        return this;
-    }
+    #endregion
 
     /// <inheritdoc/>
     public ISagaBuilder<TState> WithTimeToLive(TimeSpan ttl)

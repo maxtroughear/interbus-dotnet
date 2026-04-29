@@ -1,9 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
-using InterBus.Consuming;
-using InterBus.Publishing;
-using InterBus.Sending;
-using Microsoft.Extensions.DependencyInjection;
-
 namespace InterBus.Sagas;
 
 /// <summary>
@@ -15,13 +9,6 @@ namespace InterBus.Sagas;
 public interface ISagaBuilder<TState> : IConsumerBuilder
     where TState : class, new()
 {
-    /// <summary>
-    /// Registers <see cref="InMemorySagaRepository{TState}"/> as the
-    /// <see cref="ISagaRepository{TState}"/> for this saga. A no-op if an
-    /// <see cref="ISagaRepository{TState}"/> has already been registered.
-    /// </summary>
-    ISagaBuilder<TState> UseInMemoryRepository();
-
     /// <summary>
     /// Sets the time-to-live for saga instances. Repository implementations will attempt to
     /// expire stored state after this duration. The default is no expiry.

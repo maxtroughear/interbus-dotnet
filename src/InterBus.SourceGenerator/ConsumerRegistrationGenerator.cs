@@ -50,6 +50,16 @@ public sealed class ConsumerRegistrationGenerator : IIncrementalGenerator
     private const string DispatchFuncType =
         "global::System.Func<global::InterBus.Dispatching.DispatchContext, global::System.IServiceProvider, global::System.Threading.CancellationToken, global::System.Threading.Tasks.Task>";
 
+    private static readonly DiagnosticDescriptor MixedSagaStateTypesDiagnostic = new(
+        id: "INTERBUS001",
+        title: "Saga has mixed state types",
+        messageFormat: "Saga '{0}' implements ISagaConsumer<,> with multiple different state types. " +
+                       "All ISagaConsumer<TState, TMessage> implementations on a single saga class must use " +
+                       "the same TState. Conflicting types: '{1}' and '{2}'.",
+        category: "InterBus.SourceGenerator",
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
+
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
         // Collect IConsumer<T> class symbols from this project's own syntax trees only.
@@ -96,6 +106,7 @@ public sealed class ConsumerRegistrationGenerator : IIncrementalGenerator
             List<INamedTypeSymbol>? consumerMessages = null;
             INamedTypeSymbol? sagaStateType = null;
             List<INamedTypeSymbol>? sagaMessages = null;
+            INamedTypeSymbol? conflictingStateType = null;
 
             foreach (var symbol in classSymbol.AllInterfaces)
             {
@@ -115,9 +126,17 @@ public sealed class ConsumerRegistrationGenerator : IIncrementalGenerator
                     symbol.TypeArguments[0] is INamedTypeSymbol stateType &&
                     symbol.TypeArguments[1] is INamedTypeSymbol sagaMsg)
                 {
-                    // Validate consistent state type across all ISagaConsumer<> implementations
-                    sagaStateType ??= stateType;
-                    if (!SymbolEqualityComparer.Default.Equals(sagaStateType, stateType)) continue;
+                    // Validate consistent state type across all ISagaConsumer<> implementations.
+                    // Track the first conflicting type so we can include it in the diagnostic.
+                    if (sagaStateType is null)
+                    {
+                        sagaStateType = stateType;
+                    }
+                    else if (!SymbolEqualityComparer.Default.Equals(sagaStateType, stateType))
+                    {
+                        conflictingStateType ??= stateType;
+                        continue;
+                    }
 
                     sagaMessages ??= new List<INamedTypeSymbol>();
                     sagaMessages.Add(sagaMsg);
@@ -127,8 +146,20 @@ public sealed class ConsumerRegistrationGenerator : IIncrementalGenerator
             if (consumerMessages is not null)
                 currentConsumers.Add((classSymbol, consumerMessages));
 
-            if (sagaStateType is not null && sagaMessages is not null)
+            if (conflictingStateType is not null)
+            {
+                // Report a compile-time error and skip this saga so no broken dispatch is emitted.
+                ctx.ReportDiagnostic(Diagnostic.Create(
+                    MixedSagaStateTypesDiagnostic,
+                    classSymbol.Locations.FirstOrDefault(),
+                    classSymbol.Name,
+                    sagaStateType!.ToDisplayString(),
+                    conflictingStateType.ToDisplayString()));
+            }
+            else if (sagaStateType is not null && sagaMessages is not null)
+            {
                 currentSagas.Add((classSymbol, sagaStateType, sagaMessages));
+            }
         }
 
         // Looks only in the InterBus.Generated namespace for InterBusConsumerRegistrations_*

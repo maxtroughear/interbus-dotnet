@@ -87,6 +87,34 @@ public sealed class OrderWithDeletionSaga :
 }
 
 // ---------------------------------------------------------------------------
+// Saga with completion: handles OrderStarted and OrderConfirmed (complete on confirm)
+// ---------------------------------------------------------------------------
+
+public sealed class CompletingOrderSaga :
+    ISagaConsumer<OrderSagaState, OrderStarted>,
+    ISagaConsumer<OrderSagaState, OrderConfirmed>
+{
+    public string GetCorrelationId(OrderStarted message) => message.OrderId.ToString();
+    public string GetCorrelationId(OrderConfirmed message) => message.OrderId.ToString();
+
+    public Task Consume(OrderStarted message, ISagaContext<OrderSagaState> context,
+        CancellationToken cancellationToken = default)
+    {
+        context.State.CustomerEmail = message.CustomerEmail;
+        context.State.MessageCount++;
+        return Task.CompletedTask;
+    }
+
+    public Task Consume(OrderConfirmed message, ISagaContext<OrderSagaState> context,
+        CancellationToken cancellationToken = default)
+    {
+        context.State.MessageCount++;
+        context.Complete();
+        return Task.CompletedTask;
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Saga that publishes a message from within Consume
 // ---------------------------------------------------------------------------
 
@@ -123,7 +151,7 @@ public sealed class OrderAcknowledgedConsumer(OrderAcknowledgedTracker tracker) 
 
 /// <summary>
 /// Integration tests for saga functionality: state management, correlation, concurrency locking,
-/// TTL, explicit deletion, and publishing from within a saga.
+/// TTL, explicit deletion, completion, and publishing from within a saga.
 /// </summary>
 public class SagaTests
 {
@@ -204,16 +232,16 @@ public class SagaTests
             await WaitUntilAsync(() =>
             {
                 var repo = provider.GetRequiredService<ISagaRepository<OrderSagaState>>();
-                var state = repo.GetAsync(orderId.ToString()).GetAwaiter().GetResult();
-                return state?.MessageCount == 1;
+                var entry = repo.GetAsync(orderId.ToString()).GetAwaiter().GetResult();
+                return entry?.State.MessageCount == 1;
             });
 
             var repository = provider.GetRequiredService<ISagaRepository<OrderSagaState>>();
-            var sagaState = await repository.GetAsync(orderId.ToString());
+            var sagaEntry = await repository.GetAsync(orderId.ToString());
 
-            Assert.NotNull(sagaState);
-            Assert.Equal("test@example.com", sagaState.CustomerEmail);
-            Assert.Equal(1, sagaState.MessageCount);
+            Assert.NotNull(sagaEntry);
+            Assert.Equal("test@example.com", sagaEntry.State.CustomerEmail);
+            Assert.Equal(1, sagaEntry.State.MessageCount);
         }
         finally
         {
@@ -246,17 +274,17 @@ public class SagaTests
             await WaitUntilAsync(() =>
             {
                 var repo = provider.GetRequiredService<ISagaRepository<OrderSagaState>>();
-                var state = repo.GetAsync(orderId.ToString()).GetAwaiter().GetResult();
-                return state?.MessageCount == 2;
+                var entry = repo.GetAsync(orderId.ToString()).GetAwaiter().GetResult();
+                return entry?.State.MessageCount == 2;
             });
 
             var repository = provider.GetRequiredService<ISagaRepository<OrderSagaState>>();
-            var sagaState = await repository.GetAsync(orderId.ToString());
+            var sagaEntry = await repository.GetAsync(orderId.ToString());
 
-            Assert.NotNull(sagaState);
-            Assert.Equal("order@test.com", sagaState.CustomerEmail);
-            Assert.True(sagaState.IsConfirmed);
-            Assert.Equal(2, sagaState.MessageCount);
+            Assert.NotNull(sagaEntry);
+            Assert.Equal("order@test.com", sagaEntry.State.CustomerEmail);
+            Assert.True(sagaEntry.State.IsConfirmed);
+            Assert.Equal(2, sagaEntry.State.MessageCount);
         }
         finally
         {
@@ -292,16 +320,16 @@ public class SagaTests
             {
                 var s1 = repository.GetAsync(orderId1.ToString()).GetAwaiter().GetResult();
                 var s2 = repository.GetAsync(orderId2.ToString()).GetAwaiter().GetResult();
-                return s1?.MessageCount == 1 && s2?.MessageCount == 1;
+                return s1?.State.MessageCount == 1 && s2?.State.MessageCount == 1;
             });
 
-            var state1 = await repository.GetAsync(orderId1.ToString());
-            var state2 = await repository.GetAsync(orderId2.ToString());
+            var entry1 = await repository.GetAsync(orderId1.ToString());
+            var entry2 = await repository.GetAsync(orderId2.ToString());
 
-            Assert.NotNull(state1);
-            Assert.NotNull(state2);
-            Assert.Equal("first@test.com", state1.CustomerEmail);
-            Assert.Equal("second@test.com", state2.CustomerEmail);
+            Assert.NotNull(entry1);
+            Assert.NotNull(entry2);
+            Assert.Equal("first@test.com", entry1.State.CustomerEmail);
+            Assert.Equal("second@test.com", entry2.State.CustomerEmail);
         }
         finally
         {
@@ -332,7 +360,7 @@ public class SagaTests
             var repository = provider.GetRequiredService<ISagaRepository<OrderSagaState>>();
 
             await WaitUntilAsync(() =>
-                repository.GetAsync(orderId.ToString()).GetAwaiter().GetResult()?.MessageCount == 1);
+                repository.GetAsync(orderId.ToString()).GetAwaiter().GetResult()?.State.MessageCount == 1);
 
             // Now cancel the order - saga should call Delete()
             await publisher.PublishAsync(new OrderCancelled(orderId));
@@ -342,8 +370,67 @@ public class SagaTests
                 repository.GetAsync(orderId.ToString()).GetAwaiter().GetResult() == null,
                 timeoutMs: 3000);
 
-            var state = await repository.GetAsync(orderId.ToString());
-            Assert.Null(state);
+            var entry = await repository.GetAsync(orderId.ToString());
+            Assert.Null(entry);
+        }
+        finally
+        {
+            await StopAsync(provider, cts);
+        }
+    }
+
+    [Fact]
+    public async Task Saga_Complete_PreservesStateAndStopsProcessingNewMessages()
+    {
+        var orderId = Guid.NewGuid();
+
+        var (provider, cts) = await StartAsync(
+            null,
+            bus =>
+            {
+                bus.AddInMemoryTransport();
+                bus.AddSaga<CompletingOrderSaga, OrderSagaState>(saga => saga.UseInMemoryRepository());
+            });
+
+        try
+        {
+            using var scope = provider.CreateScope();
+            var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
+            var repository = provider.GetRequiredService<ISagaRepository<OrderSagaState>>();
+
+            await publisher.PublishAsync(new OrderStarted(orderId, "complete@test.com"));
+            await WaitUntilAsync(() =>
+                repository.GetAsync(orderId.ToString()).GetAwaiter().GetResult()?.State.MessageCount == 1);
+
+            // Confirming completes the saga
+            await publisher.PublishAsync(new OrderConfirmed(orderId));
+            await WaitUntilAsync(() =>
+            {
+                var e = repository.GetAsync(orderId.ToString()).GetAwaiter().GetResult();
+                return e?.IsCompleted == true;
+            });
+
+            // State is preserved and marked completed
+            var completedEntry = await repository.GetAsync(orderId.ToString());
+            Assert.NotNull(completedEntry);
+            Assert.True(completedEntry.IsCompleted);
+            Assert.Equal("complete@test.com", completedEntry.State.CustomerEmail);
+            Assert.Equal(2, completedEntry.State.MessageCount);
+
+            // Send another message - should be dropped because the saga is completed.
+            // Wait briefly to give the message pump an opportunity to (incorrectly) process it.
+            await publisher.PublishAsync(new OrderStarted(orderId, "new@test.com"));
+            await WaitUntilAsync(
+                () => repository.GetAsync(orderId.ToString()).GetAwaiter().GetResult()
+                          ?.State.CustomerEmail == "new@test.com",
+                timeoutMs: 500, intervalMs: 10);
+
+            // State must be unchanged — the message was silently dropped
+            var entryAfter = await repository.GetAsync(orderId.ToString());
+            Assert.NotNull(entryAfter);
+            Assert.True(entryAfter.IsCompleted);
+            Assert.Equal("complete@test.com", entryAfter.State.CustomerEmail);
+            Assert.Equal(2, entryAfter.State.MessageCount);
         }
         finally
         {
@@ -375,18 +462,18 @@ public class SagaTests
             var repository = provider.GetRequiredService<ISagaRepository<OrderSagaState>>();
 
             await WaitUntilAsync(() =>
-                repository.GetAsync(orderId.ToString()).GetAwaiter().GetResult()?.MessageCount == 1);
+                repository.GetAsync(orderId.ToString()).GetAwaiter().GetResult()?.State.MessageCount == 1);
 
             // State should be present immediately after processing
-            var stateBeforeExpiry = await repository.GetAsync(orderId.ToString());
-            Assert.NotNull(stateBeforeExpiry);
+            var entryBeforeExpiry = await repository.GetAsync(orderId.ToString());
+            Assert.NotNull(entryBeforeExpiry);
 
             // Wait for TTL to expire
             await Task.Delay(300);
 
             // State should now be expired (lazy removal on next read)
-            var stateAfterExpiry = await repository.GetAsync(orderId.ToString());
-            Assert.Null(stateAfterExpiry);
+            var entryAfterExpiry = await repository.GetAsync(orderId.ToString());
+            Assert.Null(entryAfterExpiry);
         }
         finally
         {
@@ -450,12 +537,12 @@ public class SagaTests
             var repository = provider.GetRequiredService<ISagaRepository<OrderSagaState>>();
 
             await WaitUntilAsync(() =>
-                repository.GetAsync(orderId.ToString()).GetAwaiter().GetResult()?.MessageCount == 1);
+                repository.GetAsync(orderId.ToString()).GetAwaiter().GetResult()?.State.MessageCount == 1);
 
-            var state = await repository.GetAsync(orderId.ToString());
-            Assert.NotNull(state);
-            Assert.True(state.IsConfirmed);
-            Assert.Null(state.CustomerEmail); // CustomerEmail not set because OrderStarted was not sent
+            var sagaEntry = await repository.GetAsync(orderId.ToString());
+            Assert.NotNull(sagaEntry);
+            Assert.True(sagaEntry.State.IsConfirmed);
+            Assert.Null(sagaEntry.State.CustomerEmail); // CustomerEmail not set because OrderStarted was not sent
         }
         finally
         {

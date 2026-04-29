@@ -20,4 +20,11 @@ public interface ISagaContext<TState> : IConsumeContext
     /// after the current <see cref="ISagaConsumer{TState,TMessage}.Consume"/> method completes.
     /// </summary>
     void Delete();
+
+    /// <summary>
+    /// Marks this saga instance as completed. The saga state is preserved in the repository
+    /// but no further messages will be processed by this saga instance. Any subsequent
+    /// messages targeting this correlation ID are silently dropped.
+    /// </summary>
+    void Complete();
 }

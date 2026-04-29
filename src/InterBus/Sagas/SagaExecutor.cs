@@ -12,12 +12,12 @@ public static class SagaExecutor
     /// <list type="number">
     ///   <item>Resolves the correlation ID from the message.</item>
     ///   <item>Acquires the per-correlation-ID exclusive lock from the repository.</item>
-    ///   <item>Loads existing state, or creates and persists a fresh instance so that any
-    ///       external actions performed inside <see cref="ISagaConsumer{TState,TMessage}.Consume"/>
-    ///       can already observe a valid saga state entry.</item>
+    ///   <item>Loads existing state. If the saga is already completed, the message is dropped.</item>
+    ///   <item>Creates a fresh state instance if no state exists yet (lock is already held,
+    ///       so there is no race on first creation).</item>
     ///   <item>Invokes <see cref="ISagaConsumer{TState,TMessage}.Consume"/>.</item>
-    ///   <item>Persists the (potentially mutated) state, or deletes the instance if
-    ///       <see cref="ISagaContext{TState}.Delete"/> was called.</item>
+    ///   <item>Persists the (potentially mutated) state, marks the saga as completed, or
+    ///       deletes the instance depending on which lifecycle method was called.</item>
     ///   <item>Releases the lock.</item>
     /// </list>
     /// </summary>
@@ -36,14 +36,15 @@ public static class SagaExecutor
 
         await using var sagaLock = await repository.AcquireLockAsync(correlationId, cancellationToken);
 
-        var state = await repository.GetAsync(correlationId, cancellationToken);
-        if (state == null)
-        {
-            // Persist an empty state immediately so that any messages published from within
-            // Consume can observe a valid saga entry, avoiding a race on first creation.
-            state = new TState();
-            await repository.SaveAsync(correlationId, state, options?.TimeToLive, cancellationToken);
-        }
+        var entry = await repository.GetAsync(correlationId, cancellationToken);
+
+        // If the saga has already completed, drop the incoming message.
+        if (entry?.IsCompleted == true)
+            return;
+
+        // Use existing state, or create a fresh instance. The lock is already held at this
+        // point, so there is no race on first creation.
+        var state = entry?.State ?? new TState();
 
         var sagaCtx = new SagaContext<TState>(state, context);
 
@@ -51,6 +52,8 @@ public static class SagaExecutor
 
         if (sagaCtx.IsDeleted)
             await repository.DeleteAsync(correlationId, cancellationToken);
+        else if (sagaCtx.IsCompleted)
+            await repository.CompleteAsync(correlationId, sagaCtx.State, options?.TimeToLive, cancellationToken);
         else
             await repository.SaveAsync(correlationId, sagaCtx.State, options?.TimeToLive, cancellationToken);
     }

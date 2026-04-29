@@ -21,13 +21,15 @@ public interface ISagaRepository<TState> where TState : class, new()
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Retrieves the saga state for the given <paramref name="correlationId"/>,
+    /// Retrieves the saga entry for the given <paramref name="correlationId"/>,
     /// or <c>null</c> if no instance exists (or it has expired).
+    /// The returned <see cref="SagaEntry{TState}"/> includes both the state and whether
+    /// the saga has been completed.
     /// </summary>
-    Task<TState?> GetAsync(string correlationId, CancellationToken cancellationToken = default);
+    Task<SagaEntry<TState>?> GetAsync(string correlationId, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Persists the saga state for the given <paramref name="correlationId"/>.
+    /// Persists the saga state for the given <paramref name="correlationId"/> as an active instance.
     /// </summary>
     /// <param name="correlationId">The saga instance identifier.</param>
     /// <param name="state">The state to save.</param>
@@ -37,6 +39,14 @@ public interface ISagaRepository<TState> where TState : class, new()
     /// </param>
     /// <param name="cancellationToken">A cancellation token.</param>
     Task SaveAsync(string correlationId, TState state, TimeSpan? timeToLive = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Persists the saga state for the given <paramref name="correlationId"/> and marks the
+    /// saga as completed. Completed sagas preserve their state but will no longer process new
+    /// messages.
+    /// </summary>
+    Task CompleteAsync(string correlationId, TState state, TimeSpan? timeToLive = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>

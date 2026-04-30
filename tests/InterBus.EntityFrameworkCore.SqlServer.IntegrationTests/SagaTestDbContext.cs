@@ -8,8 +8,8 @@ namespace InterBus.EntityFrameworkCore.SqlServer.IntegrationTests;
 public sealed class SagaTestDbContext(DbContextOptions<SagaTestDbContext> options)
     : DbContext(options)
 {
-    public Microsoft.EntityFrameworkCore.DbSet<SagaStateEntry> SagaStateEntries => Set<SagaStateEntry>();
+    public DbSet<SagaStateEntry> SagaStateEntries => Set<SagaStateEntry>();
 
-    protected override void OnModelCreating(Microsoft.EntityFrameworkCore.ModelBuilder modelBuilder) =>
+    protected override void OnModelCreating(ModelBuilder modelBuilder) =>
         modelBuilder.AddInterBusSagas();
 }

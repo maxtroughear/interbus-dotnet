@@ -6,12 +6,12 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace InterBus.Sagas;
 
-/// <inheritdoc cref="ISagaBuilder{TState}"/>
+/// <inheritdoc cref="ISagaBuilder{TSaga, TState}"/>
 internal sealed class SagaBuilder<TSaga, TState>(
     ConsumerDescriptor descriptor,
     IServiceCollection services,
     SagaOptions<TSaga> options)
-    : ISagaBuilder<TState>
+    : ISagaBuilder<TSaga, TState>
     where TSaga : class, ISaga<TState>
     where TState : class, new()
 {
@@ -62,7 +62,7 @@ internal sealed class SagaBuilder<TSaga, TState>(
     #endregion
 
     /// <inheritdoc/>
-    public ISagaBuilder<TState> WithTimeToLive(TimeSpan ttl)
+    public ISagaBuilder<TSaga, TState> WithTimeToLive(TimeSpan ttl)
     {
         options.TimeToLive = ttl;
         return this;

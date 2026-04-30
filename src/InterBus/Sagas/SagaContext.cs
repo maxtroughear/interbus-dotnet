@@ -4,12 +4,12 @@ namespace InterBus.Sagas;
 /// Concrete <see cref="ISagaContext{TState}"/> passed to <see cref="ISagaConsumer{TState,TMessage}.Consume"/>.
 /// Wraps the inner <see cref="IConsumeContext"/> and tracks whether the saga has been marked for deletion or completion.
 /// </summary>
-internal sealed class SagaContext<TState>(TState state, IConsumeContext inner)
+internal sealed class SagaContext<TState>(SagaEntry<TState> entry, IConsumeContext inner)
     : ISagaContext<TState>
     where TState : class, new()
 {
     /// <inheritdoc/>
-    public TState State { get; } = state;
+    public TState State { get; } = entry.State;
 
     /// <inheritdoc/>
     public MessageHeaders Headers => inner.Headers;
@@ -18,12 +18,8 @@ internal sealed class SagaContext<TState>(TState state, IConsumeContext inner)
     public string? CorrelationId => inner.CorrelationId;
 
     /// <inheritdoc/>
-    public void Delete() => IsDeleted = true;
+    public void Delete() => entry.IsDeleted = true;
 
     /// <inheritdoc/>
-    public void Complete() => IsCompleted = true;
-
-    internal bool IsDeleted { get; private set; }
-
-    internal bool IsCompleted { get; private set; }
+    public void Complete() => entry.IsCompleted = true;
 }

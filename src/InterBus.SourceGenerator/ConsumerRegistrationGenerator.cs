@@ -370,7 +370,7 @@ public sealed class ConsumerRegistrationGenerator : IIncrementalGenerator
         sb.AppendLine("                global::System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicConstructors)] TSaga,");
         sb.AppendLine("            TState>(");
         sb.AppendLine("            this global::InterBus.IInterBusBuilder builder,");
-        sb.AppendLine("            global::System.Action<global::InterBus.Sagas.ISagaBuilder<TState>>? configure = null)");
+        sb.AppendLine("            global::System.Action<global::InterBus.Sagas.ISagaBuilder<TSaga, TState>>? configure = null)");
         sb.AppendLine("            where TSaga : class, global::InterBus.Sagas.ISaga<TState>");
         sb.AppendLine("            where TState : class, new()");
         sb.AppendLine("        {");
@@ -467,7 +467,7 @@ public sealed class ConsumerRegistrationGenerator : IIncrementalGenerator
             sb.AppendLine($"                        var consumeContext = new global::InterBus.Consuming.ConsumeContext<{messageFqn}>(context.Descriptor, message, context.Headers);");
             sb.AppendLine("                        return consumePipeline.ExecuteAsync(");
             sb.AppendLine("                            consumeContext,");
-            sb.AppendLine($"                            (msg, ctx, innerCt) => sagaExecutor.ExecuteAsync<{messageFqn}>(saga, msg, ctx, innerCt),");
+            sb.AppendLine($"                            (msg, ctx, innerCt) => sagaExecutor.ExecuteAsync<{sagaFqn}, {messageFqn}>(saga, msg, ctx, innerCt),");
             sb.AppendLine("                            ct);");
             sb.AppendLine("                    }");
         }

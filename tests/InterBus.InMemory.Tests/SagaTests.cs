@@ -226,18 +226,18 @@ public class SagaTests
         {
             using var scope = provider.CreateScope();
             var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
-            await publisher.PublishAsync(new OrderStarted(orderId, "test@example.com"));
+            await publisher.PublishAsync(new OrderStarted(orderId, "test@example.com"), TestContext.Current.CancellationToken);
 
             // Allow the saga to process
             await WaitUntilAsync(() =>
             {
-                var repo = provider.GetRequiredService<ISagaRepository<OrderSagaState>>();
+                var repo = provider.GetRequiredService<ISagaRepository<OrderSaga, OrderSagaState>>();
                 var entry = repo.GetAsync(orderId.ToString()).GetAwaiter().GetResult();
                 return entry?.State.MessageCount == 1;
             });
 
-            var repository = provider.GetRequiredService<ISagaRepository<OrderSagaState>>();
-            var sagaEntry = await repository.GetAsync(orderId.ToString());
+            var repository = provider.GetRequiredService<ISagaRepository<OrderSaga, OrderSagaState>>();
+            var sagaEntry = await repository.GetAsync(orderId.ToString(), TestContext.Current.CancellationToken);
 
             Assert.NotNull(sagaEntry);
             Assert.Equal("test@example.com", sagaEntry.State.CustomerEmail);
@@ -267,19 +267,19 @@ public class SagaTests
             using var scope = provider.CreateScope();
             var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
 
-            await publisher.PublishAsync(new OrderStarted(orderId, "order@test.com"));
-            await publisher.PublishAsync(new OrderConfirmed(orderId));
+            await publisher.PublishAsync(new OrderStarted(orderId, "order@test.com"), TestContext.Current.CancellationToken);
+            await publisher.PublishAsync(new OrderConfirmed(orderId), TestContext.Current.CancellationToken);
 
             // Wait for both messages to be processed
             await WaitUntilAsync(() =>
             {
-                var repo = provider.GetRequiredService<ISagaRepository<OrderSagaState>>();
+                var repo = provider.GetRequiredService<ISagaRepository<OrderSaga, OrderSagaState>>();
                 var entry = repo.GetAsync(orderId.ToString()).GetAwaiter().GetResult();
                 return entry?.State.MessageCount == 2;
             });
 
-            var repository = provider.GetRequiredService<ISagaRepository<OrderSagaState>>();
-            var sagaEntry = await repository.GetAsync(orderId.ToString());
+            var repository = provider.GetRequiredService<ISagaRepository<OrderSaga, OrderSagaState>>();
+            var sagaEntry = await repository.GetAsync(orderId.ToString(), TestContext.Current.CancellationToken);
 
             Assert.NotNull(sagaEntry);
             Assert.Equal("order@test.com", sagaEntry.State.CustomerEmail);
@@ -311,10 +311,10 @@ public class SagaTests
             using var scope = provider.CreateScope();
             var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
 
-            await publisher.PublishAsync(new OrderStarted(orderId1, "first@test.com"));
-            await publisher.PublishAsync(new OrderStarted(orderId2, "second@test.com"));
+            await publisher.PublishAsync(new OrderStarted(orderId1, "first@test.com"), TestContext.Current.CancellationToken);
+            await publisher.PublishAsync(new OrderStarted(orderId2, "second@test.com"), TestContext.Current.CancellationToken);
 
-            var repository = provider.GetRequiredService<ISagaRepository<OrderSagaState>>();
+            var repository = provider.GetRequiredService<ISagaRepository<OrderSaga, OrderSagaState>>();
 
             await WaitUntilAsync(() =>
             {
@@ -323,8 +323,8 @@ public class SagaTests
                 return s1?.State.MessageCount == 1 && s2?.State.MessageCount == 1;
             });
 
-            var entry1 = await repository.GetAsync(orderId1.ToString());
-            var entry2 = await repository.GetAsync(orderId2.ToString());
+            var entry1 = await repository.GetAsync(orderId1.ToString(), TestContext.Current.CancellationToken);
+            var entry2 = await repository.GetAsync(orderId2.ToString(), TestContext.Current.CancellationToken);
 
             Assert.NotNull(entry1);
             Assert.NotNull(entry2);
@@ -355,22 +355,22 @@ public class SagaTests
             using var scope = provider.CreateScope();
             var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
 
-            await publisher.PublishAsync(new OrderStarted(orderId, "cancel@test.com"));
+            await publisher.PublishAsync(new OrderStarted(orderId, "cancel@test.com"), TestContext.Current.CancellationToken);
 
-            var repository = provider.GetRequiredService<ISagaRepository<OrderSagaState>>();
+            var repository = provider.GetRequiredService<ISagaRepository<OrderWithDeletionSaga, OrderSagaState>>();
 
             await WaitUntilAsync(() =>
                 repository.GetAsync(orderId.ToString()).GetAwaiter().GetResult()?.State.MessageCount == 1);
 
             // Now cancel the order - saga should call Delete()
-            await publisher.PublishAsync(new OrderCancelled(orderId));
+            await publisher.PublishAsync(new OrderCancelled(orderId), TestContext.Current.CancellationToken);
 
             // Wait for the saga to process the cancellation and delete its state
             await WaitUntilAsync(() =>
                 repository.GetAsync(orderId.ToString()).GetAwaiter().GetResult() == null,
                 timeoutMs: 3000);
 
-            var entry = await repository.GetAsync(orderId.ToString());
+            var entry = await repository.GetAsync(orderId.ToString(), TestContext.Current.CancellationToken);
             Assert.Null(entry);
         }
         finally
@@ -396,14 +396,14 @@ public class SagaTests
         {
             using var scope = provider.CreateScope();
             var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
-            var repository = provider.GetRequiredService<ISagaRepository<OrderSagaState>>();
+            var repository = provider.GetRequiredService<ISagaRepository<CompletingOrderSaga, OrderSagaState>>();
 
-            await publisher.PublishAsync(new OrderStarted(orderId, "complete@test.com"));
+            await publisher.PublishAsync(new OrderStarted(orderId, "complete@test.com"), TestContext.Current.CancellationToken);
             await WaitUntilAsync(() =>
                 repository.GetAsync(orderId.ToString()).GetAwaiter().GetResult()?.State.MessageCount == 1);
 
             // Confirming completes the saga
-            await publisher.PublishAsync(new OrderConfirmed(orderId));
+            await publisher.PublishAsync(new OrderConfirmed(orderId), TestContext.Current.CancellationToken);
             await WaitUntilAsync(() =>
             {
                 var e = repository.GetAsync(orderId.ToString()).GetAwaiter().GetResult();
@@ -411,7 +411,7 @@ public class SagaTests
             });
 
             // State is preserved and marked completed
-            var completedEntry = await repository.GetAsync(orderId.ToString());
+            var completedEntry = await repository.GetAsync(orderId.ToString(), TestContext.Current.CancellationToken);
             Assert.NotNull(completedEntry);
             Assert.True(completedEntry.IsCompleted);
             Assert.Equal("complete@test.com", completedEntry.State.CustomerEmail);
@@ -419,14 +419,14 @@ public class SagaTests
 
             // Send another message - should be dropped because the saga is completed.
             // Wait briefly to give the message pump an opportunity to (incorrectly) process it.
-            await publisher.PublishAsync(new OrderStarted(orderId, "new@test.com"));
+            await publisher.PublishAsync(new OrderStarted(orderId, "new@test.com"), TestContext.Current.CancellationToken);
             await WaitUntilAsync(
                 () => repository.GetAsync(orderId.ToString()).GetAwaiter().GetResult()
                           ?.State.CustomerEmail == "new@test.com",
                 timeoutMs: 500, intervalMs: 10);
 
             // State must be unchanged — the message was silently dropped
-            var entryAfter = await repository.GetAsync(orderId.ToString());
+            var entryAfter = await repository.GetAsync(orderId.ToString(), TestContext.Current.CancellationToken);
             Assert.NotNull(entryAfter);
             Assert.True(entryAfter.IsCompleted);
             Assert.Equal("complete@test.com", entryAfter.State.CustomerEmail);
@@ -457,22 +457,22 @@ public class SagaTests
             using var scope = provider.CreateScope();
             var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
 
-            await publisher.PublishAsync(new OrderStarted(orderId, "ttl@test.com"));
+            await publisher.PublishAsync(new OrderStarted(orderId, "ttl@test.com"), TestContext.Current.CancellationToken);
 
-            var repository = provider.GetRequiredService<ISagaRepository<OrderSagaState>>();
+            var repository = provider.GetRequiredService<ISagaRepository<OrderSaga, OrderSagaState>>();
 
             await WaitUntilAsync(() =>
                 repository.GetAsync(orderId.ToString()).GetAwaiter().GetResult()?.State.MessageCount == 1);
 
             // State should be present immediately after processing
-            var entryBeforeExpiry = await repository.GetAsync(orderId.ToString());
+            var entryBeforeExpiry = await repository.GetAsync(orderId.ToString(), TestContext.Current.CancellationToken);
             Assert.NotNull(entryBeforeExpiry);
 
             // Wait for TTL to expire
-            await Task.Delay(300);
+            await Task.Delay(300, TestContext.Current.CancellationToken);
 
             // State should now be expired (lazy removal on next read)
-            var entryAfterExpiry = await repository.GetAsync(orderId.ToString());
+            var entryAfterExpiry = await repository.GetAsync(orderId.ToString(), TestContext.Current.CancellationToken);
             Assert.Null(entryAfterExpiry);
         }
         finally
@@ -501,7 +501,7 @@ public class SagaTests
             using var scope = provider.CreateScope();
             var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
 
-            await publisher.PublishAsync(new OrderStarted(orderId, "publish@test.com"));
+            await publisher.PublishAsync(new OrderStarted(orderId, "publish@test.com"), TestContext.Current.CancellationToken);
 
             await WaitUntilAsync(() => tracker.Messages.Count == 1);
 
@@ -532,14 +532,14 @@ public class SagaTests
             // Send OrderConfirmed first (before OrderStarted) - a new saga state should be created
             using var scope = provider.CreateScope();
             var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
-            await publisher.PublishAsync(new OrderConfirmed(orderId));
+            await publisher.PublishAsync(new OrderConfirmed(orderId), TestContext.Current.CancellationToken);
 
-            var repository = provider.GetRequiredService<ISagaRepository<OrderSagaState>>();
+            var repository = provider.GetRequiredService<ISagaRepository<OrderSaga, OrderSagaState>>();
 
             await WaitUntilAsync(() =>
                 repository.GetAsync(orderId.ToString()).GetAwaiter().GetResult()?.State.MessageCount == 1);
 
-            var sagaEntry = await repository.GetAsync(orderId.ToString());
+            var sagaEntry = await repository.GetAsync(orderId.ToString(), TestContext.Current.CancellationToken);
             Assert.NotNull(sagaEntry);
             Assert.True(sagaEntry.State.IsConfirmed);
             Assert.Null(sagaEntry.State.CustomerEmail); // CustomerEmail not set because OrderStarted was not sent

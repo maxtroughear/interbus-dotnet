@@ -4,7 +4,7 @@ using InterBus.Sagas;
 namespace InterBus.InMemory.Sagas;
 
 /// <summary>
-/// In-memory implementation of <see cref="ISagaRepository{TState}"/>.
+/// In-memory implementation of <see cref="ISagaRepository{TSaga, TState}"/>.
 /// State is held in a <see cref="ConcurrentDictionary{TKey,TValue}"/> and is lost when the
 /// process restarts. Lazy TTL expiry is performed on each read using the
 /// <see cref="SagaEntry{TState}.ExpiresAtUtc"/> field stored directly in the entry.
@@ -18,7 +18,8 @@ namespace InterBus.InMemory.Sagas;
 /// delete completed saga instances, which removes the state entry; lock entries are lightweight
 /// and bounded by the number of concurrently active correlation IDs for typical workloads.
 /// </remarks>
-public sealed class InMemorySagaRepository<TState> : ISagaRepository<TState>
+public sealed class InMemorySagaRepository<TSaga, TState> : ISagaRepository<TSaga, TState>
+    where TSaga : class, ISaga<TState>
     where TState : class, new()
 {
     private readonly ConcurrentDictionary<string, SagaEntry<TState>> _store = new(StringComparer.Ordinal);
@@ -37,18 +38,16 @@ public sealed class InMemorySagaRepository<TState> : ISagaRepository<TState>
     public Task<SagaEntry<TState>?> GetAsync(string correlationId,
         CancellationToken cancellationToken = default)
     {
-        if (_store.TryGetValue(correlationId, out var entry))
-        {
-            if (entry.ExpiresAtUtc.HasValue && entry.ExpiresAtUtc.Value <= DateTimeOffset.UtcNow)
-            {
-                _store.TryRemove(correlationId, out _);
-                return Task.FromResult<SagaEntry<TState>?>(null);
-            }
+        if (!_store.TryGetValue(correlationId, out var entry))
+            return Task.FromResult<SagaEntry<TState>?>(null);
 
-            return Task.FromResult<SagaEntry<TState>?>(entry);
+        if (entry.ExpiresAtUtc.HasValue && entry.ExpiresAtUtc.Value <= DateTimeOffset.UtcNow)
+        {
+            _store.TryRemove(correlationId, out _);
+            return Task.FromResult<SagaEntry<TState>?>(null);
         }
 
-        return Task.FromResult<SagaEntry<TState>?>(null);
+        return Task.FromResult<SagaEntry<TState>?>(entry);
     }
 
     /// <inheritdoc/>

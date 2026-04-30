@@ -2,15 +2,18 @@ namespace InterBus.Sagas;
 
 /// <summary>
 /// Provides persistent storage and exclusive per-instance locking for saga state.
-/// Each saga state type uses its own <see cref="ISagaRepository{TState}"/> registration.
+/// Each saga state type uses its own <see cref="ISagaRepository{TSaga, TState}"/> registration.
 /// </summary>
 /// <remarks>
 /// Implementations are responsible for serialized access to the same saga instance.
 /// Use <see cref="AcquireLockAsync"/> to obtain an exclusive lock before reading or writing
 /// state so that concurrent messages for the same correlation ID are processed sequentially.
 /// </remarks>
-/// <typeparam name="TState">The saga state type.</typeparam>
-public interface ISagaRepository<TState> where TState : class, new()
+/// <typeparam name="TSaga">The saga type</typeparam>
+/// <typeparam name="TState">The saga state type</typeparam>
+public interface ISagaRepository<TSaga, TState> 
+    where TSaga : class, ISaga<TState>
+    where TState : class, new()
 {
     /// <summary>
     /// Acquires an exclusive lock for the given <paramref name="correlationId"/>, preventing
@@ -31,7 +34,7 @@ public interface ISagaRepository<TState> where TState : class, new()
     /// <summary>
     /// Persists the given <paramref name="entry"/> for the saga identified by
     /// <paramref name="correlationId"/>. The entry carries the state, the completed flag,
-    /// and an optional <see cref="SagaEntry{TState}.TimeToLive"/> that the repository
+    /// and an optional <see cref="SagaEntry{TState}.ExpiresAtUtc"/> that the repository
     /// should honour on a best-effort basis.
     /// </summary>
     /// <remarks>

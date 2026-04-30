@@ -12,72 +12,63 @@ namespace InterBus.Sagas;
 /// </summary>
 /// <typeparam name="TSaga">The saga type.</typeparam>
 /// <typeparam name="TState">The saga state type.</typeparam>
-public sealed class SagaExecutor<TSaga, TState>(
-    ISagaRepository<TState> repository,
+public sealed partial class SagaExecutor<TSaga, TState>(
+    ISagaRepository<TSaga, TState> repository,
     SagaOptions<TSaga> options,
     ILogger<SagaExecutor<TSaga, TState>> logger)
-    where TSaga : class
+    where TSaga : class, ISaga<TState>
     where TState : class, new()
 {
     /// <summary>
     /// Executes a single saga message handler:
     /// <list type="number">
-    ///   <item>Resolves the correlation ID from the message.</item>
-    ///   <item>Acquires the per-correlation-ID exclusive lock from the repository.</item>
-    ///   <item>Loads existing state. If the saga is already completed, the message is dropped
-    ///       (logged at <see cref="LogLevel.Debug"/>).</item>
-    ///   <item>Creates a fresh state instance if no state exists yet (lock is already held,
-    ///       so there is no race on first creation).</item>
-    ///   <item>Invokes <see cref="ISagaConsumer{TState,TMessage}.Consume"/>.</item>
-    ///   <item>Saves the entry (which carries the completion flag and absolute expiry) so that
-    ///       the repository can capture the final state before any deletion (e.g. for archiving).</item>
-    ///   <item>If <see cref="ISagaContext{TState}.Delete"/> was called, also invokes
-    ///       <see cref="ISagaRepository{TState}.DeleteAsync"/>.</item>
-    ///   <item>Releases the lock.</item>
+    ///   <item>Resolves the correlation ID from the message</item>
+    ///   <item>Acquires the per-correlation-ID exclusive lock from the repository</item>
+    ///   <item>Loads existing state. If the saga is already completed, the message is dropped (logged at <see cref="LogLevel.Debug"/>)</item>
+    ///   <item>Creates a fresh state instance if no state exists yet (lock is already held, so there is no race on first creation)</item>
+    ///   <item>Invokes <see cref="ISagaConsumer{TState,TMessage}.Consume"/></item>
+    ///   <item>Saves the entry (which carries the completion flag and absolute expiry) so that the repository can capture the final state before any deletion (e.g. for archiving)</item>
+    ///   <item>If <see cref="ISagaContext{TState}.Delete"/> was called, also invokes <see cref="ISagaRepository{TSaga, TState}.DeleteAsync"/></item>
+    ///   <item>Releases the lock</item>
     /// </list>
     /// </summary>
-    public async Task ExecuteAsync<TMessage>(
-        TSaga saga,
+    public async Task ExecuteAsync<TSagaConsumer, TMessage>(
+        TSagaConsumer saga,
         TMessage message,
         IConsumeContext context,
         CancellationToken cancellationToken)
+        where TSagaConsumer : TSaga, ISagaConsumer<TState, TMessage>
         where TMessage : class
     {
-        var consumer = (ISagaConsumer<TState, TMessage>)saga;
-        var correlationId = consumer.GetCorrelationId(message);
+        var correlationId = saga.GetCorrelationId(message);
 
         await using var sagaLock = await repository.AcquireLockAsync(correlationId, cancellationToken);
 
         var entry = await repository.GetAsync(correlationId, cancellationToken);
 
-        // If the saga has already completed, drop the incoming message.
-        if (entry?.IsCompleted == true)
+        if (entry?.IsCompleted is true)
         {
-            logger.LogDebug(
-                "Skipping {MessageType} for completed saga {SagaType} (correlationId: {CorrelationId})",
-                typeof(TMessage).Name, typeof(TSaga).Name, correlationId);
+            LogSagaCompleted(typeof(TMessage).Name, typeof(TSagaConsumer).Name, correlationId);
             return;
         }
 
-        // Use existing state, or create a fresh instance. The lock is already held at this
-        // point, so there is no race on first creation.
-        var state = entry?.State ?? new TState();
+        entry ??= new SagaEntry<TState>(
+            new TState(),
+            ExpiresAtUtc: options.TimeToLive.HasValue
+                ? DateTimeOffset.UtcNow.Add(options.TimeToLive.Value)
+                : null);
 
-        var sagaCtx = new SagaContext<TState>(state, context);
+        var sagaCtx = new SagaContext<TState>(entry, context);
 
-        await consumer.Consume(message, sagaCtx, cancellationToken);
+        await saga.Consume(message, sagaCtx, cancellationToken);
 
-        // Compute the absolute expiry from the configured TTL.
-        var expiresAtUtc = options.TimeToLive.HasValue
-            ? DateTimeOffset.UtcNow.Add(options.TimeToLive.Value)
-            : (DateTimeOffset?)null;
+        await repository.SaveAsync(correlationId, entry, cancellationToken);
 
-        // Always save first so the repository can capture the final state before any deletion
-        // (e.g. for archiving or audit). The entry carries the IsCompleted flag and expiry.
-        var savedEntry = new SagaEntry<TState>(sagaCtx.State, sagaCtx.IsCompleted, expiresAtUtc);
-        await repository.SaveAsync(correlationId, savedEntry, cancellationToken);
-
-        if (sagaCtx.IsDeleted)
+        if (entry.IsDeleted)
             await repository.DeleteAsync(correlationId, cancellationToken);
     }
+
+    [LoggerMessage(LogLevel.Debug,
+        "Skipping {MessageType} for completed saga {SagaType} (correlationId: {CorrelationId})")]
+    partial void LogSagaCompleted(string messageType, string sagaType, string correlationId);
 }

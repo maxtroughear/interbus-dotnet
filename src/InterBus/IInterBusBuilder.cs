@@ -94,7 +94,7 @@ public interface IInterBusBuilder
         TState>(
         Type[] messageTypes,
         Func<DispatchContext, IServiceProvider, CancellationToken, Task> dispatch,
-        Action<ISagaBuilder<TState>>? configure = null)
+        Action<ISagaBuilder<TSaga, TState>>? configure = null)
         where TSaga : class, ISaga<TState>
         where TState : class, new();
 

@@ -184,7 +184,6 @@ public sealed class ConsumerRegistrationGenerator : IIncrementalGenerator
         sb.AppendLine("#nullable enable");
         sb.AppendLine();
         sb.AppendLine("using global::Microsoft.Extensions.DependencyInjection;");
-        sb.AppendLine("using global::Microsoft.Extensions.Logging;");
         sb.AppendLine();
         sb.AppendLine($"namespace {GeneratedNamespace}");
         sb.AppendLine("{");
@@ -455,9 +454,7 @@ public sealed class ConsumerRegistrationGenerator : IIncrementalGenerator
         sb.AppendLine("                    var serializer = sp.GetRequiredService<global::InterBus.IMessageSerializer>();");
         sb.AppendLine("                    var consumePipeline = sp.GetRequiredService<global::InterBus.Consuming.ConsumePipelineExecutor>();");
         sb.AppendLine($"                    var saga = sp.GetRequiredService<{sagaFqn}>();");
-        sb.AppendLine($"                    var repository = sp.GetRequiredService<global::InterBus.Sagas.ISagaRepository<{stateFqn}>>();");
-        sb.AppendLine($"                    var sagaOptions = sp.GetService<global::InterBus.Sagas.SagaOptions<{sagaFqn}>>();");
-        sb.AppendLine("                    var sagaLogger = sp.GetRequiredService<global::Microsoft.Extensions.Logging.ILoggerFactory>().CreateLogger(\"InterBus.Sagas.SagaExecutor\");");
+        sb.AppendLine($"                    var sagaExecutor = sp.GetRequiredService<global::InterBus.Sagas.SagaExecutor<{sagaFqn}, {stateFqn}>>();");
 
         foreach (var message in messages)
         {
@@ -470,7 +467,7 @@ public sealed class ConsumerRegistrationGenerator : IIncrementalGenerator
             sb.AppendLine($"                        var consumeContext = new global::InterBus.Consuming.ConsumeContext<{messageFqn}>(context.Descriptor, message, context.Headers);");
             sb.AppendLine("                        return consumePipeline.ExecuteAsync(");
             sb.AppendLine("                            consumeContext,");
-            sb.AppendLine($"                            (msg, ctx, innerCt) => global::InterBus.Sagas.SagaExecutor.ExecuteAsync<{sagaFqn}, {stateFqn}, {messageFqn}>(saga, repository, sagaOptions, msg, ctx, sagaLogger, innerCt),");
+            sb.AppendLine($"                            (msg, ctx, innerCt) => sagaExecutor.ExecuteAsync<{messageFqn}>(saga, msg, ctx, innerCt),");
             sb.AppendLine("                            ct);");
             sb.AppendLine("                    }");
         }

@@ -108,6 +108,7 @@ internal sealed class InterBusBuilder : IInterBusBuilder
         Services.AddSingleton(sagaOptions);
         Options.AddConsumer(descriptor);
         Services.TryAddScoped<TSaga>();
+        Services.TryAddScoped<SagaExecutor<TSaga, TState>>();
         return this;
     }
 

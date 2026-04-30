@@ -6,7 +6,8 @@ namespace InterBus.InMemory.Sagas;
 /// <summary>
 /// In-memory implementation of <see cref="ISagaRepository{TState}"/>.
 /// State is held in a <see cref="ConcurrentDictionary{TKey,TValue}"/> and is lost when the
-/// process restarts. TTL is respected: expired entries are removed lazily on the next read.
+/// process restarts. Lazy TTL expiry is performed on each read using the
+/// <see cref="SagaEntry{TState}.ExpiresAtUtc"/> field stored directly in the entry.
 /// Per-correlation-ID locking is handled with <see cref="SemaphoreSlim"/> instances so that
 /// only one message per saga instance is processed at a time.
 /// </summary>
@@ -20,7 +21,7 @@ namespace InterBus.InMemory.Sagas;
 public sealed class InMemorySagaRepository<TState> : ISagaRepository<TState>
     where TState : class, new()
 {
-    private readonly ConcurrentDictionary<string, StoreEntry> _store = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, SagaEntry<TState>> _store = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _locks = new(StringComparer.Ordinal);
 
     /// <inheritdoc/>
@@ -36,15 +37,15 @@ public sealed class InMemorySagaRepository<TState> : ISagaRepository<TState>
     public Task<SagaEntry<TState>?> GetAsync(string correlationId,
         CancellationToken cancellationToken = default)
     {
-        if (_store.TryGetValue(correlationId, out var stored))
+        if (_store.TryGetValue(correlationId, out var entry))
         {
-            if (stored.ExpiresAtUtc.HasValue && stored.ExpiresAtUtc.Value <= DateTimeOffset.UtcNow)
+            if (entry.ExpiresAtUtc.HasValue && entry.ExpiresAtUtc.Value <= DateTimeOffset.UtcNow)
             {
                 _store.TryRemove(correlationId, out _);
                 return Task.FromResult<SagaEntry<TState>?>(null);
             }
 
-            return Task.FromResult<SagaEntry<TState>?>(new SagaEntry<TState>(stored.State, stored.IsCompleted));
+            return Task.FromResult<SagaEntry<TState>?>(entry);
         }
 
         return Task.FromResult<SagaEntry<TState>?>(null);
@@ -54,7 +55,7 @@ public sealed class InMemorySagaRepository<TState> : ISagaRepository<TState>
     public Task SaveAsync(string correlationId, SagaEntry<TState> entry,
         CancellationToken cancellationToken = default)
     {
-        _store[correlationId] = new StoreEntry(entry.State, ExpiryFrom(entry.TimeToLive), entry.IsCompleted);
+        _store[correlationId] = entry;
         return Task.CompletedTask;
     }
 
@@ -64,11 +65,6 @@ public sealed class InMemorySagaRepository<TState> : ISagaRepository<TState>
         _store.TryRemove(correlationId, out _);
         return Task.CompletedTask;
     }
-
-    private static DateTimeOffset? ExpiryFrom(TimeSpan? timeToLive) =>
-        timeToLive.HasValue ? DateTimeOffset.UtcNow.Add(timeToLive.Value) : (DateTimeOffset?)null;
-
-    private sealed record StoreEntry(TState State, DateTimeOffset? ExpiresAtUtc, bool IsCompleted = false);
 
     private sealed class SemaphoreReleaser(SemaphoreSlim semaphore) : IAsyncDisposable
     {

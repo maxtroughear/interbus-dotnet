@@ -394,7 +394,7 @@ public class DynamoDbSagaRepositoryTests
     }
 
     [Test]
-    public async Task AcquireLock_AfterLeasExpiry_ClaimsAbandonedLock()
+    public async Task AcquireLock_AfterLeaseExpiry_ClaimsAbandonedLock()
     {
         var shortLease = new DynamoDbSagaOptions
         {

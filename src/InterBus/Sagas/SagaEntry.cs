@@ -30,4 +30,15 @@ public sealed record SagaEntry<TState>(TState State, DateTimeOffset? ExpiresAtUt
     /// archived instead or moved.
     /// </summary>
     public bool IsDeleted { get; internal set; }
+
+    /// <summary>
+    /// Creates a <see cref="SagaEntry{TState}"/> restored from persisted storage, preserving
+    /// the <see cref="IsCompleted"/> flag that was previously recorded by the repository.
+    /// </summary>
+    /// <remarks>
+    /// This factory method is intended for repository implementations that need to restore
+    /// the full lifecycle state of a saga entry when loading from a backing store.
+    /// </remarks>
+    public static SagaEntry<TState> FromPersisted(TState state, DateTimeOffset? expiresAtUtc, bool isCompleted)
+        => new(state, expiresAtUtc) { IsCompleted = isCompleted };
 }

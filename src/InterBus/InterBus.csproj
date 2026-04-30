@@ -15,6 +15,11 @@
     <ItemGroup>
         <ProjectReference Include="..\InterBus.SourceGenerator\InterBus.SourceGenerator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false"/>
     </ItemGroup>
+    <ItemGroup>
+        <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+            <_Parameter1>InterBus.DynamoDB</_Parameter1>
+        </AssemblyAttribute>
+    </ItemGroup>
     <Target Name="CopyAnalyzer" AfterTargets="Build">
         <MakeDir Directories="$(OutputPath)analyzers/dotnet/cs"/>
     </Target>

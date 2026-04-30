@@ -1,0 +1,290 @@
+using System.Text.Json;
+using Amazon.DynamoDBv2;
+using Amazon.DynamoDBv2.Model;
+using InterBus.Sagas;
+
+namespace InterBus.DynamoDB.Sagas;
+
+/// <summary>
+/// DynamoDB-backed implementation of <see cref="ISagaRepository{TSaga, TState}"/>.
+/// </summary>
+/// <remarks>
+/// <para>
+/// Each saga instance is stored as a single DynamoDB item with partition key
+/// <c>CorrelationId</c>. The following attributes are used:
+/// </para>
+/// <list type="table">
+///   <item><term>CorrelationId</term><description>Partition key (string)</description></item>
+///   <item><term>State</term><description>JSON-serialised saga state (string)</description></item>
+///   <item><term>IsCompleted</term><description>Completion flag (bool)</description></item>
+///   <item><term>LockOwner</term><description>UUID of the current lock holder (string)</description></item>
+///   <item><term>LockExpiresAt</term><description>Unix epoch seconds at which the lock expires (number)</description></item>
+///   <item><term>Ttl</term><description>Unix epoch seconds for DynamoDB TTL (number); requires TTL enabled on the table</description></item>
+/// </list>
+/// <para>
+/// Exclusive locking uses a lease-style mechanism: <see cref="AcquireLockAsync"/> attempts a
+/// conditional <c>UpdateItem</c> that succeeds only when no unexpired lock is held by another
+/// caller. The lock owner GUID is stored alongside its expiry so that stale locks (e.g. from
+/// crashed processes) are automatically reclaimed after <see cref="DynamoDbSagaOptions.LockLeaseDuration"/>.
+/// </para>
+/// </remarks>
+/// <typeparam name="TSaga">The saga type.</typeparam>
+/// <typeparam name="TState">The saga state type.</typeparam>
+public sealed class DynamoDbSagaRepository<TSaga, TState> : ISagaRepository<TSaga, TState>
+    where TSaga : class, ISaga<TState>
+    where TState : class, new()
+{
+    // -----------------------------------------------------------------------
+    // DynamoDB attribute name constants – exposed publicly so that callers can
+    // set up the DynamoDB table schema without hardcoding strings.
+    // -----------------------------------------------------------------------
+
+    /// <summary>The partition key attribute name (hash key). String type.</summary>
+    public const string AttrCorrelationId = "CorrelationId";
+
+    /// <summary>JSON-serialised saga state. String type.</summary>
+    public const string AttrState = "State";
+
+    /// <summary>Completion flag. Boolean type.</summary>
+    public const string AttrIsCompleted = "IsCompleted";
+
+    /// <summary>UUID of the current lock holder. String type.</summary>
+    public const string AttrLockOwner = "LockOwner";
+
+    /// <summary>Unix epoch seconds at which the current lock expires. Number type.</summary>
+    public const string AttrLockExpiresAt = "LockExpiresAt";
+
+    /// <summary>
+    /// Unix epoch seconds used as the DynamoDB TTL attribute.
+    /// Requires TTL to be enabled on the table pointing at this attribute name.
+    /// Number type.
+    /// </summary>
+    public const string AttrTtl = "Ttl";
+
+    private readonly IAmazonDynamoDB _dynamoDb;
+    private readonly DynamoDbSagaOptions _options;
+
+    /// <summary>
+    /// Initialises a new <see cref="DynamoDbSagaRepository{TSaga,TState}"/>.
+    /// </summary>
+    public DynamoDbSagaRepository(IAmazonDynamoDB dynamoDb, DynamoDbSagaOptions options)
+    {
+        _dynamoDb = dynamoDb;
+        _options = options;
+    }
+
+    // -----------------------------------------------------------------------
+    // ISagaRepository<TSaga, TState>
+    // -----------------------------------------------------------------------
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Implements a lease-style distributed lock using DynamoDB conditional expressions.
+    /// Retries with a fixed delay until the lock is acquired or
+    /// <see cref="DynamoDbSagaOptions.LockAcquireTimeout"/> is exceeded.
+    /// </remarks>
+    public async Task<IAsyncDisposable> AcquireLockAsync(
+        string correlationId,
+        CancellationToken cancellationToken = default)
+    {
+        var lockOwner = Guid.NewGuid().ToString("N");
+        var deadline = DateTimeOffset.UtcNow.Add(_options.LockAcquireTimeout);
+
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (await TryAcquireLockAsync(correlationId, lockOwner, cancellationToken))
+                return new LockReleaser(this, correlationId, lockOwner);
+
+            if (DateTimeOffset.UtcNow >= deadline)
+                throw new TimeoutException(
+                    $"Failed to acquire saga lock for correlation ID '{correlationId}' " +
+                    $"within {_options.LockAcquireTimeout.TotalSeconds:F0} seconds.");
+
+            await Task.Delay(_options.LockRetryInterval, cancellationToken);
+        }
+    }
+
+    /// <inheritdoc/>
+    public async Task<SagaEntry<TState>?> GetAsync(
+        string correlationId,
+        CancellationToken cancellationToken = default)
+    {
+        var response = await _dynamoDb.GetItemAsync(new GetItemRequest
+        {
+            TableName = _options.TableName,
+            Key = BuildKey(correlationId),
+            ConsistentRead = true,
+        }, cancellationToken);
+
+        if (!response.IsItemSet)
+            return null;
+
+        var item = response.Item;
+
+        // Resolve TTL: treat expired items as non-existent (lazy expiry)
+        DateTimeOffset? expiresAtUtc = null;
+        if (item.TryGetValue(AttrTtl, out var ttlAttr) &&
+            long.TryParse(ttlAttr.N, out var ttlEpoch))
+        {
+            expiresAtUtc = DateTimeOffset.FromUnixTimeSeconds(ttlEpoch);
+            if (expiresAtUtc.Value <= DateTimeOffset.UtcNow)
+                return null;
+        }
+
+        var stateJson = item.TryGetValue(AttrState, out var stateAttr) ? stateAttr.S : null;
+        var state = stateJson is not null
+            ? JsonSerializer.Deserialize<TState>(stateJson) ?? new TState()
+            : new TState();
+
+        var entry = new SagaEntry<TState>(state, expiresAtUtc);
+
+        if (item.TryGetValue(AttrIsCompleted, out var completedAttr) && completedAttr.BOOL is true)
+            entry.IsCompleted = true;
+
+        return entry;
+    }
+
+    /// <inheritdoc/>
+    public async Task SaveAsync(
+        string correlationId,
+        SagaEntry<TState> entry,
+        CancellationToken cancellationToken = default)
+    {
+        var stateJson = JsonSerializer.Serialize(entry.State);
+
+        var item = new Dictionary<string, AttributeValue>
+        {
+            [AttrCorrelationId] = new() { S = correlationId },
+            [AttrState] = new() { S = stateJson },
+            [AttrIsCompleted] = new() { BOOL = entry.IsCompleted },
+        };
+
+        if (entry.ExpiresAtUtc.HasValue)
+        {
+            item[AttrTtl] = new AttributeValue { N = entry.ExpiresAtUtc.Value.ToUnixTimeSeconds().ToString() };
+        }
+
+        await _dynamoDb.PutItemAsync(new PutItemRequest
+        {
+            TableName = _options.TableName,
+            Item = item,
+        }, cancellationToken);
+    }
+
+    /// <inheritdoc/>
+    public async Task DeleteAsync(
+        string correlationId,
+        CancellationToken cancellationToken = default)
+    {
+        await _dynamoDb.DeleteItemAsync(new DeleteItemRequest
+        {
+            TableName = _options.TableName,
+            Key = BuildKey(correlationId),
+        }, cancellationToken);
+    }
+
+    // -----------------------------------------------------------------------
+    // Internal helpers
+    // -----------------------------------------------------------------------
+
+    /// <summary>
+    /// Attempts a single conditional write to claim the lock.
+    /// Returns <c>true</c> when the lock was successfully acquired.
+    /// </summary>
+    private async Task<bool> TryAcquireLockAsync(
+        string correlationId,
+        string lockOwner,
+        CancellationToken cancellationToken)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var lockExpiresAt = now.Add(_options.LockLeaseDuration);
+        var nowEpoch = now.ToUnixTimeSeconds().ToString();
+        var lockExpiresAtEpoch = lockExpiresAt.ToUnixTimeSeconds().ToString();
+
+        try
+        {
+            await _dynamoDb.UpdateItemAsync(new UpdateItemRequest
+            {
+                TableName = _options.TableName,
+                Key = BuildKey(correlationId),
+                UpdateExpression = "SET #lo = :owner, #le = :expiresAt",
+                // Allow the lock to be taken when:
+                //   1. No item exists yet (attribute_not_exists)
+                //   2. The current lock has expired (:now > LockExpiresAt)
+                ConditionExpression =
+                    "attribute_not_exists(#lo) OR #le < :now",
+                ExpressionAttributeNames = new Dictionary<string, string>
+                {
+                    ["#lo"] = AttrLockOwner,
+                    ["#le"] = AttrLockExpiresAt,
+                },
+                ExpressionAttributeValues = new Dictionary<string, AttributeValue>
+                {
+                    [":owner"] = new() { S = lockOwner },
+                    [":expiresAt"] = new() { N = lockExpiresAtEpoch },
+                    [":now"] = new() { N = nowEpoch },
+                },
+            }, cancellationToken);
+
+            return true;
+        }
+        catch (ConditionalCheckFailedException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Releases the lock conditionally: only removes <c>LockOwner</c> / <c>LockExpiresAt</c>
+    /// if the caller still owns the lock, preventing accidental release of a lock held by
+    /// another caller after a lease expiry.
+    /// </summary>
+    internal async Task ReleaseLockAsync(string correlationId, string lockOwner)
+    {
+        try
+        {
+            await _dynamoDb.UpdateItemAsync(new UpdateItemRequest
+            {
+                TableName = _options.TableName,
+                Key = BuildKey(correlationId),
+                UpdateExpression = "REMOVE #lo, #le",
+                ConditionExpression = "#lo = :owner",
+                ExpressionAttributeNames = new Dictionary<string, string>
+                {
+                    ["#lo"] = AttrLockOwner,
+                    ["#le"] = AttrLockExpiresAt,
+                },
+                ExpressionAttributeValues = new Dictionary<string, AttributeValue>
+                {
+                    [":owner"] = new() { S = lockOwner },
+                },
+            });
+        }
+        catch (ConditionalCheckFailedException)
+        {
+            // Lock was already reclaimed by another caller — nothing to do.
+        }
+        catch (ResourceNotFoundException)
+        {
+            // Item was deleted while the lock was held — nothing to do.
+        }
+    }
+
+    private static Dictionary<string, AttributeValue> BuildKey(string correlationId) =>
+        new() { [AttrCorrelationId] = new AttributeValue { S = correlationId } };
+
+    // -----------------------------------------------------------------------
+    // Lock releaser
+    // -----------------------------------------------------------------------
+
+    private sealed class LockReleaser(
+        DynamoDbSagaRepository<TSaga, TState> repository,
+        string correlationId,
+        string lockOwner) : IAsyncDisposable
+    {
+        public ValueTask DisposeAsync() =>
+            new(repository.ReleaseLockAsync(correlationId, lockOwner));
+    }
+}

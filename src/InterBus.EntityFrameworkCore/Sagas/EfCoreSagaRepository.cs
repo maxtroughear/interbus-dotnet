@@ -63,7 +63,7 @@ public sealed class EfCoreSagaRepository<TSaga, TState, TDbContext>(
         }
 
         var state = JsonSerializer.Deserialize<TState>(row.StateJson) ?? new TState();
-        return SagaEntry<TState>.FromPersisted(state, row.ExpiresAtUtc, row.IsCompleted);
+        return new SagaEntry<TState>(state, row.ExpiresAtUtc) { IsCompleted = row.IsCompleted };
     }
 
     /// <inheritdoc/>

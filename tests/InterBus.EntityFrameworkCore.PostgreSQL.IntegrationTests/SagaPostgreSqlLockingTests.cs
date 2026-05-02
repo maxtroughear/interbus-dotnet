@@ -59,7 +59,7 @@ public class SagaPostgreSqlLockingTests(string imageTag)
         // Session A acquires the lock.
         await using var scopeA = _provider.CreateAsyncScope();
         var dbA = scopeA.ServiceProvider.GetRequiredService<SagaTestDbContext>();
-        await using var lockA = await lockProvider.AcquireLockAsync(dbA, lockKey);
+        var lockA = await lockProvider.AcquireLockAsync(dbA, lockKey);
 
         var sessionBStarted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         var sessionBReleased = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -74,9 +74,9 @@ public class SagaPostgreSqlLockingTests(string imageTag)
             sessionBStarted.SetResult(true);
 
             // This call blocks until session A releases.
-            await using var lockB = await lockProvider.AcquireLockAsync(dbB, lockKey);
-
+            var lockB = await lockProvider.AcquireLockAsync(dbB, lockKey);
             sessionBReleased.SetResult(true);
+            await lockB.DisposeAsync();
         });
 
         // Wait for session B to be running but blocked.
@@ -105,16 +105,18 @@ public class SagaPostgreSqlLockingTests(string imageTag)
 
         await using var scopeA = _provider.CreateAsyncScope();
         var dbA = scopeA.ServiceProvider.GetRequiredService<SagaTestDbContext>();
-        await using var lockA = await lockProvider.AcquireLockAsync(dbA, "TestSaga:corr-key-a");
+        var lockA = await lockProvider.AcquireLockAsync(dbA, "TestSaga:corr-key-a");
 
         await using var scopeB = _provider.CreateAsyncScope();
         var dbB = scopeB.ServiceProvider.GetRequiredService<SagaTestDbContext>();
 
         // Should not block because the key is different.
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-        await using var lockB = await lockProvider.AcquireLockAsync(dbB, "TestSaga:corr-key-b",
-            cts.Token);
+        var lockB = await lockProvider.AcquireLockAsync(dbB, "TestSaga:corr-key-b", cts.Token);
 
         Assert.Pass("Session B acquired a different key lock without blocking");
+
+        await lockB.DisposeAsync();
+        await lockA.DisposeAsync();
     }
 }

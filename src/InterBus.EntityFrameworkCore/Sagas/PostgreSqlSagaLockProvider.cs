@@ -47,13 +47,8 @@ public sealed class PostgreSqlSagaLockProvider<TDbContext> : ISagaLockProvider<T
 
     private sealed class AdvisoryLockReleaser(TDbContext context, string lockKey) : IAsyncDisposable
     {
-        private int _disposed;
-
         public async ValueTask DisposeAsync()
         {
-            if (Interlocked.Exchange(ref _disposed, 1) != 0)
-                return;
-
             var connection = context.Database.GetDbConnection();
 
             await using var cmd = connection.CreateCommand();

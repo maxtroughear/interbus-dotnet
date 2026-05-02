@@ -66,13 +66,8 @@ public sealed class SqlServerSagaLockProvider<TDbContext> : ISagaLockProvider<TD
 
     private sealed class AppLockReleaser(TDbContext context, string resource) : IAsyncDisposable
     {
-        private int _disposed;
-
         public async ValueTask DisposeAsync()
         {
-            if (Interlocked.Exchange(ref _disposed, 1) != 0)
-                return;
-
             var connection = context.Database.GetDbConnection();
 
             await using var cmd = connection.CreateCommand();

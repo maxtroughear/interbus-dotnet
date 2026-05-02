@@ -22,12 +22,12 @@ public sealed record SagaEntry<TState>(TState State, DateTimeOffset? ExpiresAtUt
     /// <c>true</c> if the saga has been completed via <see cref="ISagaContext{TState}.Complete"/>.
     /// Completed sagas preserve their state but no longer process new messages.
     /// </summary>
-    public bool IsCompleted { get; internal set; }
+    public bool IsCompleted { get; set; }
 
     /// <summary>
     /// <c>true</c> if the saga has been marked for deletion via <see cref="ISagaContext{TState}.Delete"/>
     /// Deleted sagas are removed from the repository and no longer process new messages. In some cases they may be
     /// archived instead or moved.
     /// </summary>
-    public bool IsDeleted { get; internal set; }
+    public bool IsDeleted { get; set; }
 }

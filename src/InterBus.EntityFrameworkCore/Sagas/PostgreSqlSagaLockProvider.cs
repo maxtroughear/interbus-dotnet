@@ -26,7 +26,7 @@ public sealed class PostgreSqlSagaLockProvider<TDbContext> : ISagaLockProvider<T
             var connection = context.Database.GetDbConnection();
 
             await using var cmd = connection.CreateCommand();
-            cmd.CommandText = "SELECT pg_advisory_lock(hashtext(@lockKey))";
+            cmd.CommandText = "SELECT pg_advisory_lock(hashtextextended(@lockKey, 0))";
 
             var param = cmd.CreateParameter();
             param.ParameterName = "lockKey";
@@ -52,7 +52,7 @@ public sealed class PostgreSqlSagaLockProvider<TDbContext> : ISagaLockProvider<T
             var connection = context.Database.GetDbConnection();
 
             await using var cmd = connection.CreateCommand();
-            cmd.CommandText = "SELECT pg_advisory_unlock(hashtext(@lockKey))";
+            cmd.CommandText = "SELECT pg_advisory_unlock(hashtextextended(@lockKey, 0))";
 
             var param = cmd.CreateParameter();
             param.ParameterName = "lockKey";

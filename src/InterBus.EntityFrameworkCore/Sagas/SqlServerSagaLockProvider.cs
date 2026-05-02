@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using Microsoft.EntityFrameworkCore;
 
 namespace InterBus.EntityFrameworkCore.Sagas;
@@ -11,17 +13,22 @@ namespace InterBus.EntityFrameworkCore.Sagas;
 public sealed class SqlServerSagaLockProvider<TDbContext> : ISagaLockProvider<TDbContext>
     where TDbContext : DbContext
 {
-    // sp_getapplock resource names are limited to 255 characters.
-    private const int MaxResourceLength = 255;
+    /// <summary>
+    /// Returns a fixed-length 64-character hex string that uniquely represents <paramref name="lockKey"/>
+    /// for use as a <c>sp_getapplock</c> resource name (limit: 255 characters).
+    /// SHA-256 is used so that arbitrarily long or structurally similar keys produce distinct, compact identifiers.
+    /// </summary>
+    private static string HashLockKey(string lockKey)
+    {
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(lockKey));
+        return Convert.ToHexString(hash);
+    }
 
     /// <inheritdoc/>
     public async Task<IAsyncDisposable> AcquireLockAsync(TDbContext context, string lockKey,
         CancellationToken cancellationToken = default)
     {
-        // Truncate to 255 characters to satisfy sp_getapplock's resource name limit.
-        var resource = lockKey.Length <= MaxResourceLength
-            ? lockKey
-            : lockKey[..MaxResourceLength];
+        var resource = HashLockKey(lockKey);
 
         // Keep the connection open for the duration of the application lock.
         await context.Database.OpenConnectionAsync(cancellationToken);

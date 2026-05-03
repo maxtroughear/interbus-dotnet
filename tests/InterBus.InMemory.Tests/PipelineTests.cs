@@ -287,9 +287,11 @@ public class PipelineTests
                 new OrderPlaced(Guid.NewGuid(), "fault@test.com", 0m),
                 TestContext.Current.CancellationToken);
 
-            // Send a normal message to OrderPlacedConsumer to prove the pump is alive.
+            // Send a normal message directly to OrderPlacedConsumer to prove its pump is still alive.
+            // Using SendAsync (not PublishAsync) avoids FaultingConsumer receiving the same message
+            // and endlessly re-enqueueing it, which would starve the OrderPlacedConsumer pump.
             var normalMsg = new OrderPlaced(Guid.NewGuid(), "ok@test.com", 5m);
-            await publisher.PublishAsync(normalMsg, TestContext.Current.CancellationToken);
+            await publisher.SendAsync<OrderPlacedConsumer, OrderPlaced>(normalMsg, TestContext.Current.CancellationToken);
 
             await WaitUntilAsync(() => orderTracker.Messages.Count >= 1 && faultingCount.Count >= 1);
 

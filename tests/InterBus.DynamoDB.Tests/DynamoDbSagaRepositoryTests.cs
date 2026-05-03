@@ -181,8 +181,16 @@ public class DynamoDbSagaRepositoryTests
             await dynamoDb.CreateTableAsync(new CreateTableRequest
             {
                 TableName = tableName,
-                KeySchema = [new KeySchemaElement(DynamoDbSagaRepository<OrderSaga, OrderSagaState>.AttrCorrelationId, KeyType.HASH)],
-                AttributeDefinitions = [new AttributeDefinition(DynamoDbSagaRepository<OrderSaga, OrderSagaState>.AttrCorrelationId, ScalarAttributeType.S)],
+                KeySchema =
+                [
+                    new KeySchemaElement(DynamoDbSagaRepository<OrderSaga, OrderSagaState>.AttrCorrelationId, KeyType.HASH),
+                    new KeySchemaElement(DynamoDbSagaRepository<OrderSaga, OrderSagaState>.AttrSagaType, KeyType.RANGE),
+                ],
+                AttributeDefinitions =
+                [
+                    new AttributeDefinition(DynamoDbSagaRepository<OrderSaga, OrderSagaState>.AttrCorrelationId, ScalarAttributeType.S),
+                    new AttributeDefinition(DynamoDbSagaRepository<OrderSaga, OrderSagaState>.AttrSagaType, ScalarAttributeType.S),
+                ],
                 BillingMode = BillingMode.PAY_PER_REQUEST,
             });
 
@@ -313,6 +321,40 @@ public class DynamoDbSagaRepositoryTests
         var repo = CreateRepo();
         Assert.DoesNotThrowAsync(async () =>
             await repo.DeleteAsync(Guid.NewGuid().ToString()));
+    }
+
+    [Test]
+    public async Task DifferentSagaTypes_SameCorrelationId_AreIsolated()
+    {
+        // Two different saga types with the same correlationId in the same table
+        // should store and retrieve their state independently.
+        var correlationId = Guid.NewGuid().ToString();
+
+        var repoOrder = new DynamoDbSagaRepository<OrderSaga, OrderSagaState>(_dynamoDb, _options);
+        var repoDeletion = new DynamoDbSagaRepository<OrderWithDeletionSaga, OrderSagaState>(_dynamoDb, _options);
+
+        var orderState = new OrderSagaState { CustomerEmail = "order@example.com", MessageCount = 1 };
+        var deletionSagaState = new OrderSagaState { CustomerEmail = "deletion@example.com", MessageCount = 99 };
+
+        await repoOrder.SaveAsync(correlationId, new SagaEntry<OrderSagaState>(orderState));
+        await repoDeletion.SaveAsync(correlationId, new SagaEntry<OrderSagaState>(deletionSagaState));
+
+        var loadedOrder = await repoOrder.GetAsync(correlationId);
+        var loadedDeletion = await repoDeletion.GetAsync(correlationId);
+
+        Assert.That(loadedOrder, Is.Not.Null);
+        Assert.That(loadedOrder!.State.CustomerEmail, Is.EqualTo("order@example.com"));
+        Assert.That(loadedOrder.State.MessageCount, Is.EqualTo(1));
+
+        Assert.That(loadedDeletion, Is.Not.Null);
+        Assert.That(loadedDeletion!.State.CustomerEmail, Is.EqualTo("deletion@example.com"));
+        Assert.That(loadedDeletion.State.MessageCount, Is.EqualTo(99));
+
+        // Deleting one should not affect the other
+        await repoOrder.DeleteAsync(correlationId);
+
+        Assert.That(await repoOrder.GetAsync(correlationId), Is.Null);
+        Assert.That(await repoDeletion.GetAsync(correlationId), Is.Not.Null);
     }
 
     [Test]

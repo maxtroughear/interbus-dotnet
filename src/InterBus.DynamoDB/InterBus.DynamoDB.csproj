@@ -7,7 +7,6 @@
     </PropertyGroup>
     <ItemGroup>
         <PackageReference Include="AWSSDK.DynamoDBv2" Version="4.0.17.11" />
-        <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.7" />
     </ItemGroup>
     <ItemGroup>
         <ProjectReference Include="..\InterBus\InterBus.csproj"/>

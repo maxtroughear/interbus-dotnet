@@ -10,15 +10,18 @@ namespace InterBus.DynamoDB.Sagas;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Each saga instance is stored as a single DynamoDB item with partition key
-/// <c>CorrelationId</c>. The following attributes are used:
+/// Each saga instance is stored as a single DynamoDB item using a composite key:
+/// <c>CorrelationId</c> (partition key) and <c>SagaType</c> (sort key). This allows
+/// multiple saga types to share the same DynamoDB table without conflicts.
+/// The following attributes are used:
 /// </para>
 /// <list type="table">
 ///   <item><term>CorrelationId</term><description>Partition key (string)</description></item>
+///   <item><term>SagaType</term><description>Sort key — fully-qualified name of <typeparamref name="TSaga"/> (string)</description></item>
 ///   <item><term>State</term><description>JSON-serialised saga state (string)</description></item>
 ///   <item><term>IsCompleted</term><description>Completion flag (bool)</description></item>
 ///   <item><term>LockOwner</term><description>UUID of the current lock holder (string)</description></item>
-///   <item><term>LockExpiresAt</term><description>Unix epoch seconds at which the lock expires (number)</description></item>
+///   <item><term>LockExpiresAt</term><description>Unix epoch seconds at which the current lock expires (number)</description></item>
 ///   <item><term>Ttl</term><description>Unix epoch seconds for DynamoDB TTL (number); requires TTL enabled on the table</description></item>
 /// </list>
 /// <para>
@@ -42,6 +45,12 @@ public sealed class DynamoDbSagaRepository<TSaga, TState> : ISagaRepository<TSag
     /// <summary>The partition key attribute name (hash key). String type.</summary>
     public const string AttrCorrelationId = "CorrelationId";
 
+    /// <summary>
+    /// The sort key attribute name. Stores the fully-qualified name of the saga type,
+    /// allowing multiple saga types to share the same DynamoDB table. String type.
+    /// </summary>
+    public const string AttrSagaType = "SagaType";
+
     /// <summary>JSON-serialised saga state. String type.</summary>
     public const string AttrState = "State";
 
@@ -60,6 +69,9 @@ public sealed class DynamoDbSagaRepository<TSaga, TState> : ISagaRepository<TSag
     /// Number type.
     /// </summary>
     public const string AttrTtl = "Ttl";
+
+    private static readonly string SagaTypeName =
+        typeof(TSaga).FullName ?? typeof(TSaga).Name;
 
     private readonly IAmazonDynamoDB _dynamoDb;
     private readonly DynamoDbSagaOptions _options;
@@ -157,6 +169,7 @@ public sealed class DynamoDbSagaRepository<TSaga, TState> : ISagaRepository<TSag
         var item = new Dictionary<string, AttributeValue>
         {
             [AttrCorrelationId] = new() { S = correlationId },
+            [AttrSagaType] = new() { S = SagaTypeName },
             [AttrState] = new() { S = stateJson },
             [AttrIsCompleted] = new() { BOOL = entry.IsCompleted },
         };
@@ -273,7 +286,11 @@ public sealed class DynamoDbSagaRepository<TSaga, TState> : ISagaRepository<TSag
     }
 
     private static Dictionary<string, AttributeValue> BuildKey(string correlationId) =>
-        new() { [AttrCorrelationId] = new AttributeValue { S = correlationId } };
+        new()
+        {
+            [AttrCorrelationId] = new AttributeValue { S = correlationId },
+            [AttrSagaType] = new AttributeValue { S = SagaTypeName },
+        };
 
     // -----------------------------------------------------------------------
     // Lock releaser

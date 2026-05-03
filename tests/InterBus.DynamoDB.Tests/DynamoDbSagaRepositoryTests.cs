@@ -278,37 +278,18 @@ public class DynamoDbSagaRepositoryTests
     [Test]
     public async Task SaveAndGet_PreservesIsCompleted()
     {
-        // Test via the full bus lifecycle since IsCompleted has internal set access only.
-        var orderId = Guid.NewGuid();
-        var tableName = $"test-{Guid.NewGuid():N}";
-        await EnsureTableExistsAsync(_dynamoDb, tableName);
+        var repo = CreateRepo();
+        var correlationId = Guid.NewGuid().ToString();
 
-        var (provider, cts) = await StartBusAsync(bus =>
-        {
-            bus.AddInMemoryTransport();
-            bus.AddSaga<CompletingOrderSaga, OrderSagaState>(saga =>
-                saga.UseDynamoDbRepository(o => o.TableName = tableName));
-        });
+        var state = new OrderSagaState { MessageCount = 1 };
+        var entry = new SagaEntry<OrderSagaState>(state) { IsCompleted = true };
 
-        try
-        {
-            using var scope = provider.CreateScope();
-            var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
-            await publisher.PublishAsync(new OrderStarted(orderId, "complete@example.com"));
-            await publisher.PublishAsync(new OrderConfirmed(orderId));
+        await repo.SaveAsync(correlationId, entry);
 
-            var repo = provider.GetRequiredService<ISagaRepository<CompletingOrderSaga, OrderSagaState>>();
-            await WaitUntilAsync(() =>
-                repo.GetAsync(orderId.ToString()).GetAwaiter().GetResult()?.IsCompleted == true);
+        var loaded = await repo.GetAsync(correlationId);
 
-            var loaded = await repo.GetAsync(orderId.ToString());
-            Assert.That(loaded, Is.Not.Null);
-            Assert.That(loaded!.IsCompleted, Is.True);
-        }
-        finally
-        {
-            await StopBusAsync(provider, cts);
-        }
+        Assert.That(loaded, Is.Not.Null);
+        Assert.That(loaded!.IsCompleted, Is.True);
     }
 
     [Test]
@@ -520,16 +501,21 @@ public class DynamoDbSagaRepositoryTests
         {
             using var scope = provider.CreateScope();
             var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
+            var repository = provider.GetRequiredService<ISagaRepository<OrderWithDeletionSaga, OrderSagaState>>();
+
             await publisher.PublishAsync(new OrderStarted(orderId, "del@example.com"));
+
+            // Wait for OrderStarted to be fully processed before publishing OrderCancelled,
+            // to avoid a race where OrderCancelled is consumed before OrderStarted and the
+            // saga creates a fresh entry after the cancellation delete.
+            await WaitUntilAsync(() =>
+                repository.GetAsync(orderId.ToString()).GetAwaiter().GetResult()?.State.MessageCount == 1);
+
             await publisher.PublishAsync(new OrderCancelled(orderId));
 
             await WaitUntilAsync(() =>
-            {
-                var repo = provider.GetRequiredService<ISagaRepository<OrderWithDeletionSaga, OrderSagaState>>();
-                return repo.GetAsync(orderId.ToString()).GetAwaiter().GetResult() is null;
-            });
+                repository.GetAsync(orderId.ToString()).GetAwaiter().GetResult() is null);
 
-            var repository = provider.GetRequiredService<ISagaRepository<OrderWithDeletionSaga, OrderSagaState>>();
             var entry = await repository.GetAsync(orderId.ToString());
 
             Assert.That(entry, Is.Null);

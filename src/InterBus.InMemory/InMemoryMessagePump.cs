@@ -57,7 +57,10 @@ internal sealed class InMemoryMessagePump(
                     queue.Descriptor.QueueName);
 
                 // In-memory transport simulates broker behaviour by re-enqueueing the same
-                // envelope when processing fails (no ACK semantics)
+                // envelope when processing fails (no ACK semantics).
+                // Yield to the thread pool scheduler before re-enqueuing so that rapid failure
+                // loops do not starve other consumer pumps running on the same thread pool.
+                await Task.Yield();
                 await queue.WriteAsync(envelope, stoppingToken);
             }
         }

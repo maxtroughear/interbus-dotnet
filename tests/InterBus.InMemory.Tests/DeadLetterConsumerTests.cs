@@ -148,6 +148,50 @@ public class DeadLetterConsumerTests
         }
     }
 
+    [Fact]
+    public async Task DeadLetteredMessage_IsNotRedelivered_AfterDeadLettering()
+    {
+        // Arrange: a consumer that always throws so every message is dead-lettered.
+        // The pump must discard the message after dead-lettering rather than re-enqueuing it,
+        // so the consumer should only be called exactly once per published message.
+        var faultingCount = new FaultingConsumerCallCount();
+        var deadLetterTracker = new DeadLetterOrderPlacedTracker();
+
+        var (provider, cts) = await StartAsync(
+            services =>
+            {
+                services.AddSingleton(faultingCount);
+                services.AddSingleton(deadLetterTracker);
+            },
+            bus =>
+            {
+                bus.AddInMemoryTransport();
+                bus.AddConsumer<FaultingOrderPlacedConsumer>();
+                bus.AddConsumer<DeadLetterOrderPlacedConsumer>();
+            });
+
+        try
+        {
+            using var scope = provider.CreateScope();
+            var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
+
+            await publisher.PublishAsync(
+                new OrderPlaced(Guid.NewGuid(), "loop@test.com", 10m),
+                TestContext.Current.CancellationToken);
+
+            // Wait until the dead letter is received, then allow extra time to confirm no redelivery.
+            await WaitUntilAsync(() => deadLetterTracker.Messages.Count >= 1);
+            await Task.Delay(200, TestContext.Current.CancellationToken);
+
+            // The faulting consumer should have been called exactly once — no infinite loop.
+            Assert.Equal(1, faultingCount.Count);
+        }
+        finally
+        {
+            await StopAsync(provider, cts);
+        }
+    }
+
     // ---- Support types -------------------------------------------------------
 
     public sealed class FaultingConsumerCallCount

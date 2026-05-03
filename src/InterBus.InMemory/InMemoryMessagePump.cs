@@ -1,4 +1,5 @@
 using InterBus.Consuming;
+using InterBus.DeadLettering;
 using InterBus.Dispatching;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -47,6 +48,17 @@ internal sealed class InMemoryMessagePump(
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
                 throw;
+            }
+            catch (DeadLetterException ex)
+            {
+                // The DeadLetterConsumeMiddleware has already published the DeadLetter<T>
+                // notification. Discard the message so it is not re-enqueued, which would
+                // cause an infinite processing loop.
+                logger.LogWarning(
+                    ex,
+                    "InterBus InMemory: consumer {ConsumerType} failed for queue {QueueName}; message dead-lettered and discarded",
+                    queue.Descriptor.ConsumerType.Name,
+                    queue.Descriptor.QueueName);
             }
             catch (Exception ex)
             {

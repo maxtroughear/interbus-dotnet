@@ -57,7 +57,7 @@ public sealed class EventBridgeDeliveryTests
         var tracker = new OrderPlacedTracker();
 
         var services = new ServiceCollection();
-        services.AddLogging(b => b.AddConsole().SetMinimumLevel(LogLevel.Debug));
+        services.AddLogging(b => b.AddConsole().SetMinimumLevel(LogLevel.Trace));
         services.AddSingleton(tracker);
 
         // Use ambient AWS credentials injected by the OIDC action — no explicit AWSOptions needed.

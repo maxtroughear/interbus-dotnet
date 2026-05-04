@@ -151,7 +151,7 @@ jobs:
           --no-build --configuration Release --verbosity normal
         env:
           INTERBUS_USE_REAL_AWS: 'true'
-          INTERBUS_EVENTBRIDGE_TARGET_ROLE_ARN: 'arn:aws:iam::404304993722:role/InterBus-GitHub-Actions'
+          INTERBUS_EVENTBRIDGE_TARGET_ROLE_ARN: 'arn:aws:iam::404304993722:role/InterBusSchedulerRole'
 
   test-rabbitmq:
     name: Test – RabbitMQ

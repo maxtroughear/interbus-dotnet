@@ -36,6 +36,13 @@ internal sealed class SqsMessagePump(
     ILogger<SqsMessagePump> logger)
     : BackgroundService
 {
+    /// <summary>
+    /// Per-request timeout for <c>ReceiveMessageAsync</c>: slightly longer than
+    /// <c>WaitTimeSeconds</c> (20 s) to ensure the call is cancelled and retried
+    /// if the underlying HTTP connection is silently dropped by a NAT gateway or firewall.
+    /// </summary>
+    private static readonly TimeSpan ReceiveRequestTimeout = TimeSpan.FromSeconds(30);
+
     private sealed class PrefetchedMessage(
         Message message,
         CancellationTokenSource renewalCts,
@@ -101,6 +108,12 @@ internal sealed class SqsMessagePump(
                     queueName,
                     maxFetch);
 
+                // Use a per-request timeout slightly longer than WaitTimeSeconds to guard
+                // against silent connection drops by NAT gateways or firewalls in cloud
+                // environments, which would otherwise cause the call to hang indefinitely.
+                using var requestCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+                requestCts.CancelAfter(ReceiveRequestTimeout);
+
                 var response = await sqsClient.ReceiveMessageAsync(
                     new ReceiveMessageRequest
                     {
@@ -110,13 +123,21 @@ internal sealed class SqsMessagePump(
                         MessageAttributeNames = ["All"],
                         VisibilityTimeout = (int)options.VisibilityTimeout.TotalSeconds,
                     },
-                    stoppingToken);
+                    requestCts.Token);
 
                 messages = response.Messages;
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
                 break;
+            }
+            catch (OperationCanceledException)
+            {
+                // Per-request timeout fired (connection likely dropped silently); retry immediately.
+                logger.LogTrace(
+                    "InterBus AmazonSqs: receive timed out on queue {QueueName}; retrying",
+                    queueName);
+                continue;
             }
             catch (Exception ex)
             {

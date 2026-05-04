@@ -54,9 +54,13 @@ public class DeadLetteringTests
         services.AddSingleton(_receiveTracker);
 
         var awsOptions = TestHelpers.CreateAwsOptions(Container);
-        services.AddAWSService<IAmazonSimpleNotificationService>(awsOptions);
-        services.AddAWSService<IAmazonSQS>(awsOptions);
-        services.AddAWSService<Amazon.SecurityToken.IAmazonSecurityTokenService>(awsOptions);
+        
+        if (awsOptions is not null)
+            services.AddDefaultAWSOptions(awsOptions);
+        
+        services.AddAWSService<IAmazonSimpleNotificationService>();
+        services.AddAWSService<IAmazonSQS>();
+        services.AddAWSService<Amazon.SecurityToken.IAmazonSecurityTokenService>();
 
         services.AddInterBus(bus =>
         {

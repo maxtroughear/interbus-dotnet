@@ -22,19 +22,13 @@ public static class TestHelpers
             "true",
             StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>Returns a new LocalStack container, or <c>null</c> when using real AWS.</summary>
     internal static LocalStackContainer? CreateLocalStackContainer() =>
         UseRealAws ? null : new LocalStackBuilder("localstack/localstack:4").Build();
-
-    /// <summary>
-    /// Builds <see cref="AWSOptions"/> for either LocalStack or real AWS.
-    /// When <paramref name="container"/> is <c>null</c> the SDK credential chain resolves
-    /// credentials from the environment (suitable for OIDC / IAM role scenarios).
-    /// </summary>
-    internal static AWSOptions CreateAwsOptions(LocalStackContainer? container)
+    
+    internal static AWSOptions? CreateAwsOptions(LocalStackContainer? container)
     {
         if (container is null)
-            return new AWSOptions { Region = RegionEndpoint.USEast1 };
+            return null;
 
         return new AWSOptions
         {
@@ -68,10 +62,8 @@ public static class TestHelpers
     {
         try
         {
-            // Delete SQS queues matching the prefix
             await DeleteQueuesWithPrefixAsync(sqsClient, queuePrefix, logger);
 
-            // Delete SNS topics matching the prefix
             await DeleteTopicsWithPrefixAsync(snsClient, topicPrefix, logger);
         }
         catch (Exception ex)
@@ -134,7 +126,7 @@ public static class TestHelpers
             do
             {
                 var response = await snsClient.ListTopicsAsync(nextToken);
-
+                
                 if (response.Topics == null || response.Topics.Count == 0)
                     break;
 
@@ -200,6 +192,9 @@ public static class TestHelpers
                 logger?.LogWarning(ex, "Error listing subscriptions for SNS topic {TopicArn}", topicArn);
                 return;
             }
+            
+            if (response.Subscriptions == null || response.Subscriptions.Count == 0)
+                return;
 
             foreach (var subscription in response.Subscriptions)
             {

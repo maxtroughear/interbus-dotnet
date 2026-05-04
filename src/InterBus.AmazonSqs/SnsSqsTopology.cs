@@ -36,7 +36,7 @@ public sealed class SnsSqsTopology(SnsSqsTransportOptions options)
     /// <summary>
     /// Application-level cache: sanitised queue name → SQS Queue ARN.
     /// </summary>
-    internal ConcurrentDictionary<string, string> QueueArns { get; } =
+    public ConcurrentDictionary<string, string> QueueArns { get; } =
         new(StringComparer.Ordinal);
 
     /// <summary>

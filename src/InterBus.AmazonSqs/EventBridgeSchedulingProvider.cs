@@ -4,10 +4,10 @@ using Amazon.Scheduler.Model;
 namespace InterBus.AmazonSqs;
 
 /// <summary>
-/// Internal abstraction over <see cref="IAmazonScheduler"/> for creating and deleting
+/// Abstraction over <see cref="IAmazonScheduler"/> for creating and deleting
 /// EventBridge Scheduler schedules. Simplifies unit testing.
 /// </summary>
-internal interface IEventBridgeScheduleStore
+public interface IEventBridgeScheduleStore
 {
     /// <summary>Creates an EventBridge Scheduler schedule.</summary>
     Task CreateScheduleAsync(CreateScheduleRequest request, CancellationToken cancellationToken);
@@ -20,11 +20,13 @@ internal interface IEventBridgeScheduleStore
 /// Default <see cref="IEventBridgeScheduleStore"/> implementation backed by
 /// <see cref="IAmazonScheduler"/>.
 /// </summary>
-internal sealed class AmazonEventBridgeScheduleStore(IAmazonScheduler client) : IEventBridgeScheduleStore
+public sealed class AmazonEventBridgeScheduleStore(IAmazonScheduler client) : IEventBridgeScheduleStore
 {
+    /// <inheritdoc/>
     public Task CreateScheduleAsync(CreateScheduleRequest request, CancellationToken cancellationToken) =>
         client.CreateScheduleAsync(request, cancellationToken);
 
+    /// <inheritdoc/>
     public Task DeleteScheduleAsync(DeleteScheduleRequest request, CancellationToken cancellationToken) =>
         client.DeleteScheduleAsync(request, cancellationToken);
 }
@@ -58,6 +60,7 @@ internal sealed class AmazonEventBridgeScheduleStore(IAmazonScheduler client) : 
 public sealed class EventBridgeSchedulingProvider : IMessageSchedulingProvider
 {
     private readonly IEventBridgeScheduleStore _scheduleStore;
+    private readonly SnsSqsTopology _topology;
     private readonly ITopologyBuilder _topologyBuilder;
     private readonly EventBridgeSchedulerOptions _options;
 
@@ -67,21 +70,24 @@ public sealed class EventBridgeSchedulingProvider : IMessageSchedulingProvider
     /// </summary>
     public EventBridgeSchedulingProvider(
         IAmazonScheduler schedulerClient,
+        SnsSqsTopology topology,
         ITopologyBuilder topologyBuilder,
         EventBridgeSchedulerOptions options)
-        : this(new AmazonEventBridgeScheduleStore(schedulerClient), topologyBuilder, options)
+        : this(new AmazonEventBridgeScheduleStore(schedulerClient), topology, topologyBuilder, options)
     {
     }
 
     /// <summary>
-    /// Internal constructor for unit testing - accepts abstracted adapter interfaces.
+    /// Constructor for unit testing - accepts abstracted adapter interfaces.
     /// </summary>
-    internal EventBridgeSchedulingProvider(
+    public EventBridgeSchedulingProvider(
         IEventBridgeScheduleStore scheduleStore,
+        SnsSqsTopology topology,
         ITopologyBuilder topologyBuilder,
         EventBridgeSchedulerOptions options)
     {
         _scheduleStore = scheduleStore;
+        _topology = topology;
         _topologyBuilder = topologyBuilder;
         _options = options;
     }
@@ -141,15 +147,22 @@ public sealed class EventBridgeSchedulingProvider : IMessageSchedulingProvider
         if (destination.Scheme == SnsTransport.TopicScheme)
         {
             var rawTopicName = RoutingConventions.GetDestinationName(destination);
-            // EnsureTopicAsync returns the SNS topic ARN.
+            // EnsureTopicAsync returns the SNS topic ARN (creating if needed).
             return await _topologyBuilder.EnsureTopicAsync(rawTopicName, cancellationToken);
         }
 
         if (destination.Scheme == SqsTransport.QueueScheme)
         {
             var rawQueueName = RoutingConventions.GetDestinationName(destination);
-            // EnsureQueueArnAsync returns the SQS queue ARN (cached in the topology builder).
-            return await _topologyBuilder.EnsureQueueArnAsync(rawQueueName, cancellationToken);
+            var queueName = _topology.BuildSqsQueueName(rawQueueName);
+
+            // Queue ARNs are resolved and stored by SnsSqsTopologyBuilder during topology build.
+            if (!_topology.QueueArns.TryGetValue(queueName, out var queueArn))
+                throw new InvalidOperationException(
+                    $"Queue ARN for '{rawQueueName}' (resolved name: '{queueName}') is not available " +
+                    "in the SNS/SQS topology. Ensure BuildTopologyAsync has been called before scheduling.");
+
+            return queueArn;
         }
 
         throw new ArgumentException(

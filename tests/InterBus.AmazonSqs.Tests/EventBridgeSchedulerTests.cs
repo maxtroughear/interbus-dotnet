@@ -20,9 +20,8 @@ public sealed class EventBridgeSchedulerTests
     public async Task ScheduleAsync_WithQueueUri_CreatesSchedule_WithSqsTargetArn()
     {
         var scheduleStore = new StubScheduleStore();
-        var topologyBuilder = new StubTopologyBuilder(
-            queueArn: "arn:aws:sqs:us-east-1:123456789012:interbus-my-queue");
-        var provider = BuildProvider(scheduleStore, topologyBuilder);
+        var topology = BuildTopology(queueArn: ("my-queue", "arn:aws:sqs:us-east-1:123456789012:interbus-my-queue"));
+        var provider = BuildProvider(scheduleStore, topology);
 
         var scheduleId = Guid.CreateVersion7();
         var destination = new Uri("sqsqueue://interbus/my-queue");
@@ -46,9 +45,10 @@ public sealed class EventBridgeSchedulerTests
     public async Task ScheduleAsync_WithTopicUri_CreatesSchedule_WithSnsTargetArn()
     {
         var scheduleStore = new StubScheduleStore();
+        var topology = BuildTopology();
         var topologyBuilder = new StubTopologyBuilder(
             topicArn: "arn:aws:sns:us-east-1:123456789012:interbus-my-topic");
-        var provider = BuildProvider(scheduleStore, topologyBuilder);
+        var provider = BuildProvider(scheduleStore, topology, topologyBuilder);
 
         var scheduleId = Guid.CreateVersion7();
         var destination = new Uri("snstopic://interbus/my-topic");
@@ -65,9 +65,8 @@ public sealed class EventBridgeSchedulerTests
     public async Task ScheduleAsync_InputIsSnsSqsMessageEnvelope_ContainsPayloadAndHeaders()
     {
         var scheduleStore = new StubScheduleStore();
-        var topologyBuilder = new StubTopologyBuilder(
-            queueArn: "arn:aws:sqs:us-east-1:123456789012:test-queue");
-        var provider = BuildProvider(scheduleStore, topologyBuilder);
+        var topology = BuildTopology(queueArn: ("test-queue", "arn:aws:sqs:us-east-1:123456789012:test-queue"));
+        var provider = BuildProvider(scheduleStore, topology);
 
         var payload = new byte[] { 10, 20, 30 };
         var headers = new MessageHeaders { [InterBusHeaders.MessageType] = "TestEvent" };
@@ -86,8 +85,8 @@ public sealed class EventBridgeSchedulerTests
     public async Task ScheduleAsync_ScheduleExpression_UsesAtFormatWithUtcTime()
     {
         var scheduleStore = new StubScheduleStore();
-        var topologyBuilder = new StubTopologyBuilder(queueArn: "arn:aws:sqs:us-east-1:123456789012:test");
-        var provider = BuildProvider(scheduleStore, topologyBuilder);
+        var topology = BuildTopology(queueArn: ("test", "arn:aws:sqs:us-east-1:123456789012:test"));
+        var provider = BuildProvider(scheduleStore, topology);
 
         var scheduledAt = new DateTimeOffset(2025, 6, 15, 10, 30, 0, TimeSpan.Zero);
         await provider.ScheduleAsync(
@@ -102,8 +101,8 @@ public sealed class EventBridgeSchedulerTests
     public async Task ScheduleAsync_UsesCustomScheduleGroupName()
     {
         var scheduleStore = new StubScheduleStore();
-        var topologyBuilder = new StubTopologyBuilder(queueArn: "arn:aws:sqs:us-east-1:123456789012:test");
-        var provider = BuildProvider(scheduleStore, topologyBuilder, groupName: "my-custom-group");
+        var topology = BuildTopology(queueArn: ("test", "arn:aws:sqs:us-east-1:123456789012:test"));
+        var provider = BuildProvider(scheduleStore, topology, groupName: "my-custom-group");
 
         await provider.ScheduleAsync(
             Guid.CreateVersion7(), new Uri("sqsqueue://interbus/test"), [], new MessageHeaders(),
@@ -114,31 +113,46 @@ public sealed class EventBridgeSchedulerTests
     }
 
     [Test]
-    public async Task ScheduleAsync_DelegatesToTopologyBuilder_ForQueueArnResolution()
+    public async Task ScheduleAsync_QueueArnComesFromTopology_PopulatedByTopologyBuilder()
     {
         var scheduleStore = new StubScheduleStore();
-        var topologyBuilder = new StubTopologyBuilder(queueArn: "arn:aws:sqs:us-east-1:123456789012:test");
-        var provider = BuildProvider(scheduleStore, topologyBuilder);
+        // Simulate topology builder having resolved and stored ARNs for two queues.
+        var topology = BuildTopology(
+            queueArn: ("queue-a", "arn:aws:sqs:us-east-1:123456789012:queue-a"));
+        topology.QueueArns.TryAdd("queue-b", "arn:aws:sqs:us-east-1:123456789012:queue-b");
+        var provider = BuildProvider(scheduleStore, topology);
 
-        var destination = new Uri("sqsqueue://interbus/test");
+        await provider.ScheduleAsync(Guid.CreateVersion7(), new Uri("sqsqueue://interbus/queue-a"), [],
+            new MessageHeaders(), DateTimeOffset.UtcNow.AddHours(1), CancellationToken.None);
+        await provider.ScheduleAsync(Guid.CreateVersion7(), new Uri("sqsqueue://interbus/queue-b"), [],
+            new MessageHeaders(), DateTimeOffset.UtcNow.AddHours(2), CancellationToken.None);
 
-        // Schedule the same queue twice; the provider delegates to the topology builder each time.
-        // The topology builder is responsible for caching ARN lookups.
-        await provider.ScheduleAsync(Guid.CreateVersion7(), destination, [], new MessageHeaders(),
-            DateTimeOffset.UtcNow.AddHours(1), CancellationToken.None);
-        await provider.ScheduleAsync(Guid.CreateVersion7(), destination, [], new MessageHeaders(),
-            DateTimeOffset.UtcNow.AddHours(2), CancellationToken.None);
-
-        Assert.That(topologyBuilder.EnsureQueueArnCallCount, Is.EqualTo(2));
         Assert.That(scheduleStore.CreatedSchedules, Has.Count.EqualTo(2));
+        Assert.That(scheduleStore.CreatedSchedules[0].Target.Arn,
+            Is.EqualTo("arn:aws:sqs:us-east-1:123456789012:queue-a"));
+        Assert.That(scheduleStore.CreatedSchedules[1].Target.Arn,
+            Is.EqualTo("arn:aws:sqs:us-east-1:123456789012:queue-b"));
+    }
+
+    [Test]
+    public void ScheduleAsync_WhenQueueArnMissingFromTopology_ThrowsInvalidOperationException()
+    {
+        var scheduleStore = new StubScheduleStore();
+        var topology = BuildTopology(); // no queue ARNs pre-populated
+        var provider = BuildProvider(scheduleStore, topology);
+
+        Assert.ThrowsAsync<InvalidOperationException>(
+            () => provider.ScheduleAsync(
+                Guid.CreateVersion7(), new Uri("sqsqueue://interbus/unknown-queue"), [], new MessageHeaders(),
+                DateTimeOffset.UtcNow.AddHours(1), CancellationToken.None));
     }
 
     [Test]
     public void ScheduleAsync_WithUnsupportedScheme_ThrowsArgumentException()
     {
         var scheduleStore = new StubScheduleStore();
-        var topologyBuilder = new StubTopologyBuilder();
-        var provider = BuildProvider(scheduleStore, topologyBuilder);
+        var topology = BuildTopology();
+        var provider = BuildProvider(scheduleStore, topology);
 
         Assert.ThrowsAsync<ArgumentException>(
             () => provider.ScheduleAsync(
@@ -154,8 +168,8 @@ public sealed class EventBridgeSchedulerTests
     public async Task CancelAsync_SendsDeleteRequest_WithCorrectNameAndGroup()
     {
         var scheduleStore = new StubScheduleStore();
-        var topologyBuilder = new StubTopologyBuilder();
-        var provider = BuildProvider(scheduleStore, topologyBuilder);
+        var topology = BuildTopology();
+        var provider = BuildProvider(scheduleStore, topology);
 
         var scheduleId = Guid.CreateVersion7();
         await provider.CancelAsync(scheduleId, CancellationToken.None);
@@ -169,8 +183,8 @@ public sealed class EventBridgeSchedulerTests
     public async Task CancelAsync_UsesCustomScheduleGroupName()
     {
         var scheduleStore = new StubScheduleStore();
-        var topologyBuilder = new StubTopologyBuilder();
-        var provider = BuildProvider(scheduleStore, topologyBuilder, groupName: "my-group");
+        var topology = BuildTopology();
+        var provider = BuildProvider(scheduleStore, topology, groupName: "my-group");
 
         await provider.CancelAsync(Guid.CreateVersion7(), CancellationToken.None);
 
@@ -188,6 +202,10 @@ public sealed class EventBridgeSchedulerTests
         services.AddLogging();
         // Provide real-looking stub for IAmazonScheduler needed by DI
         services.AddSingleton<IAmazonScheduler>(new FakeAmazonSchedulerClient());
+        // SnsSqsTopology and its options are normally registered by AddAmazonSqsTransport().
+        var transportOptions = new SnsSqsTransportOptions();
+        services.AddSingleton(transportOptions);
+        services.AddSingleton<SnsSqsTopology>();
         services.AddInterBus(bus =>
         {
             bus.AddInMemoryTransport();
@@ -210,6 +228,8 @@ public sealed class EventBridgeSchedulerTests
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddSingleton<IAmazonScheduler>(new FakeAmazonSchedulerClient());
+        services.AddSingleton(new SnsSqsTransportOptions());
+        services.AddSingleton<SnsSqsTopology>();
         services.AddInterBus(bus =>
         {
             bus.AddInMemoryTransport();
@@ -226,9 +246,24 @@ public sealed class EventBridgeSchedulerTests
 
     #region Helpers
 
+    /// <summary>
+    /// Builds a <see cref="SnsSqsTopology"/> with no queue/topic prefix (for predictable key names
+    /// in tests) and optionally pre-populates a queue ARN entry (simulating what
+    /// <see cref="SnsSqsTopologyBuilder"/> does at startup).
+    /// </summary>
+    private static SnsSqsTopology BuildTopology((string name, string arn)? queueArn = null)
+    {
+        // Use empty prefix so BuildSqsQueueName("my-queue") returns "my-queue", not "interbus-my-queue".
+        var topology = new SnsSqsTopology(new SnsSqsTransportOptions { QueuePrefix = "", TopicPrefix = "" });
+        if (queueArn.HasValue)
+            topology.QueueArns.TryAdd(queueArn.Value.name, queueArn.Value.arn);
+        return topology;
+    }
+
     private static EventBridgeSchedulingProvider BuildProvider(
         IEventBridgeScheduleStore scheduleStore,
-        ITopologyBuilder topologyBuilder,
+        SnsSqsTopology topology,
+        ITopologyBuilder? topologyBuilder = null,
         string roleArn = "arn:aws:iam::123456789012:role/eventbridge-role",
         string groupName = "default")
     {
@@ -237,7 +272,7 @@ public sealed class EventBridgeSchedulerTests
             TargetRoleArn = roleArn,
             ScheduleGroupName = groupName,
         };
-        return new EventBridgeSchedulingProvider(scheduleStore, topologyBuilder, options);
+        return new EventBridgeSchedulingProvider(scheduleStore, topology, topologyBuilder ?? new StubTopologyBuilder(), options);
     }
 
     #endregion
@@ -262,25 +297,12 @@ public sealed class EventBridgeSchedulerTests
         }
     }
 
-    private sealed class StubTopologyBuilder(
-        string? queueArn = null,
-        string? topicArn = null) : ITopologyBuilder
+    private sealed class StubTopologyBuilder(string? topicArn = null) : ITopologyBuilder
     {
-        public int EnsureQueueArnCallCount { get; private set; }
-
         public Task BuildTopologyAsync(CancellationToken cancellationToken) => Task.CompletedTask;
-
-        public Task<string> EnsureQueueAsync(string rawQueueName, CancellationToken cancellationToken) =>
-            Task.FromResult(queueArn ?? throw new InvalidOperationException("Queue ARN not configured"));
 
         public Task<string> EnsureTopicAsync(string rawTopicName, CancellationToken cancellationToken) =>
             Task.FromResult(topicArn ?? throw new InvalidOperationException("Topic ARN not configured"));
-
-        public Task<string> EnsureQueueArnAsync(string rawQueueName, CancellationToken cancellationToken)
-        {
-            EnsureQueueArnCallCount++;
-            return Task.FromResult(queueArn ?? throw new InvalidOperationException("Queue ARN not configured"));
-        }
     }
 
     /// <summary>Minimal fake Amazon Scheduler client for DI resolution tests only.</summary>

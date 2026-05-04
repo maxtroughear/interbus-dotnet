@@ -30,7 +30,6 @@ public sealed partial class SnsSqsTopologyBuilder(
     private GetCallerIdentityResponse? _callerIdentity;
     private ConcurrentDictionary<string, Task<string>> EnsuredTopics { get; } = new(StringComparer.Ordinal);
     private ConcurrentDictionary<string, Task<string>> EnsuredQueues { get; } = new(StringComparer.Ordinal);
-    private ConcurrentDictionary<string, Task<string>> EnsuredQueueArns { get; } = new(StringComparer.Ordinal);
 
     /// <summary>
     /// Declares (or verifies) the consumer topology for every registered consumer, populating the
@@ -84,33 +83,6 @@ public sealed partial class SnsSqsTopologyBuilder(
             cancellationToken);
     }
 
-    public async Task<string> EnsureQueueArnAsync(string rawQueueName, CancellationToken cancellationToken)
-    {
-        var queueName = topology.BuildSqsQueueName(rawQueueName);
-
-        if (topology.QueueArns.TryGetValue(queueName, out var cachedArn))
-            return cachedArn;
-
-        return await EnsureWithCacheAsync(
-            EnsuredQueueArns,
-            queueName,
-            async ct =>
-            {
-                var queueUrl = await EnsureQueueAsync(rawQueueName, ct);
-                var attrs = await sqsClient.GetQueueAttributesAsync(
-                    new GetQueueAttributesRequest
-                    {
-                        QueueUrl = queueUrl,
-                        AttributeNames = ["QueueArn"],
-                    },
-                    ct);
-                var arn = attrs.QueueARN;
-                topology.QueueArns.TryAdd(queueName, arn);
-                return arn;
-            },
-            cancellationToken);
-    }
-
     private async Task CreateConsumerTopologyAsync(CancellationToken cancellationToken)
     {
         foreach (var descriptor in busOptions.Consumers)
@@ -157,6 +129,7 @@ public sealed partial class SnsSqsTopologyBuilder(
                 cancellationToken);
 
             var queueArn = attrs.QueueARN;
+            topology.QueueArns.TryAdd(queueName, queueArn);
 
             foreach (var messageType in descriptor.MessageTypes)
             {
@@ -316,6 +289,13 @@ public sealed partial class SnsSqsTopologyBuilder(
 
         var url = response.QueueUrl;
         topology.QueueUrls.TryAdd(queueName, url);
+
+        // Resolve and cache the queue ARN for EventBridge Scheduler targeting.
+        var attrs = await sqsClient.GetQueueAttributesAsync(
+            new GetQueueAttributesRequest { QueueUrl = url, AttributeNames = ["QueueArn"] },
+            cancellationToken);
+        topology.QueueArns.TryAdd(queueName, attrs.QueueARN);
+
         return url;
     }
 

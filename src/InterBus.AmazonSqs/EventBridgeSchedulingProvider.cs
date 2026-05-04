@@ -4,34 +4,6 @@ using Amazon.Scheduler.Model;
 namespace InterBus.AmazonSqs;
 
 /// <summary>
-/// Abstraction over <see cref="IAmazonScheduler"/> for creating and deleting
-/// EventBridge Scheduler schedules. Simplifies unit testing.
-/// </summary>
-public interface IEventBridgeScheduleStore
-{
-    /// <summary>Creates an EventBridge Scheduler schedule.</summary>
-    Task CreateScheduleAsync(CreateScheduleRequest request, CancellationToken cancellationToken);
-
-    /// <summary>Deletes an EventBridge Scheduler schedule by name.</summary>
-    Task DeleteScheduleAsync(DeleteScheduleRequest request, CancellationToken cancellationToken);
-}
-
-/// <summary>
-/// Default <see cref="IEventBridgeScheduleStore"/> implementation backed by
-/// <see cref="IAmazonScheduler"/>.
-/// </summary>
-public sealed class AmazonEventBridgeScheduleStore(IAmazonScheduler client) : IEventBridgeScheduleStore
-{
-    /// <inheritdoc/>
-    public Task CreateScheduleAsync(CreateScheduleRequest request, CancellationToken cancellationToken) =>
-        client.CreateScheduleAsync(request, cancellationToken);
-
-    /// <inheritdoc/>
-    public Task DeleteScheduleAsync(DeleteScheduleRequest request, CancellationToken cancellationToken) =>
-        client.DeleteScheduleAsync(request, cancellationToken);
-}
-
-/// <summary>
 /// <see cref="IMessageSchedulingProvider"/> implementation that uses Amazon EventBridge Scheduler
 /// to deliver scheduled InterBus messages to SNS topics or SQS queues.
 /// <para>
@@ -57,41 +29,13 @@ public sealed class AmazonEventBridgeScheduleStore(IAmazonScheduler client) : IE
 /// </list>
 /// </para>
 /// </summary>
-public sealed class EventBridgeSchedulingProvider : IMessageSchedulingProvider
+public sealed class EventBridgeSchedulingProvider(
+    IAmazonScheduler schedulerClient,
+    SnsSqsTopology topology,
+    ITopologyBuilder topologyBuilder,
+    EventBridgeSchedulerOptions options)
+    : IMessageSchedulingProvider
 {
-    private readonly IEventBridgeScheduleStore _scheduleStore;
-    private readonly SnsSqsTopology _topology;
-    private readonly ITopologyBuilder _topologyBuilder;
-    private readonly EventBridgeSchedulerOptions _options;
-
-    /// <summary>
-    /// Initializes a new instance of <see cref="EventBridgeSchedulingProvider"/> using
-    /// the real <see cref="IAmazonScheduler"/> client.
-    /// </summary>
-    public EventBridgeSchedulingProvider(
-        IAmazonScheduler schedulerClient,
-        SnsSqsTopology topology,
-        ITopologyBuilder topologyBuilder,
-        EventBridgeSchedulerOptions options)
-        : this(new AmazonEventBridgeScheduleStore(schedulerClient), topology, topologyBuilder, options)
-    {
-    }
-
-    /// <summary>
-    /// Constructor for unit testing - accepts abstracted adapter interfaces.
-    /// </summary>
-    public EventBridgeSchedulingProvider(
-        IEventBridgeScheduleStore scheduleStore,
-        SnsSqsTopology topology,
-        ITopologyBuilder topologyBuilder,
-        EventBridgeSchedulerOptions options)
-    {
-        _scheduleStore = scheduleStore;
-        _topology = topology;
-        _topologyBuilder = topologyBuilder;
-        _options = options;
-    }
-
     /// <inheritdoc/>
     public async Task ScheduleAsync(
         Guid scheduleId,
@@ -104,11 +48,11 @@ public sealed class EventBridgeSchedulingProvider : IMessageSchedulingProvider
         var input = SnsSqsMessageEnvelope.Serialize(payload, headers);
         var targetArn = await ResolveTargetArnAsync(destination, cancellationToken);
 
-        await _scheduleStore.CreateScheduleAsync(
+        await schedulerClient.CreateScheduleAsync(
             new CreateScheduleRequest
             {
                 Name = scheduleId.ToString(),
-                GroupName = _options.ScheduleGroupName,
+                GroupName = options.ScheduleGroupName,
                 // One-time schedule expressed as an absolute UTC timestamp.
                 ScheduleExpression = $"at({scheduledAt.UtcDateTime:yyyy-MM-ddTHH:mm:ss})",
                 ScheduleExpressionTimezone = "UTC",
@@ -119,7 +63,7 @@ public sealed class EventBridgeSchedulingProvider : IMessageSchedulingProvider
                 Target = new Target
                 {
                     Arn = targetArn,
-                    RoleArn = _options.TargetRoleArn,
+                    RoleArn = options.TargetRoleArn,
                     Input = input,
                 },
                 // Automatically clean up the schedule once it has fired.
@@ -130,11 +74,11 @@ public sealed class EventBridgeSchedulingProvider : IMessageSchedulingProvider
 
     /// <inheritdoc/>
     public Task CancelAsync(Guid scheduleId, CancellationToken cancellationToken) =>
-        _scheduleStore.DeleteScheduleAsync(
+        schedulerClient.DeleteScheduleAsync(
             new DeleteScheduleRequest
             {
                 Name = scheduleId.ToString(),
-                GroupName = _options.ScheduleGroupName,
+                GroupName = options.ScheduleGroupName,
             },
             cancellationToken);
 
@@ -147,19 +91,16 @@ public sealed class EventBridgeSchedulingProvider : IMessageSchedulingProvider
         if (destination.Scheme == SnsTransport.TopicScheme)
         {
             var rawTopicName = RoutingConventions.GetDestinationName(destination);
-            // EnsureTopicAsync returns the SNS topic ARN (creating if needed).
-            return await _topologyBuilder.EnsureTopicAsync(rawTopicName, cancellationToken);
+            return await topologyBuilder.EnsureTopicAsync(rawTopicName, cancellationToken);
         }
 
         if (destination.Scheme == SqsTransport.QueueScheme)
         {
             var rawQueueName = RoutingConventions.GetDestinationName(destination);
-            var queueName = _topology.BuildSqsQueueName(rawQueueName);
-
-            // Queue ARNs are resolved and stored by SnsSqsTopologyBuilder during topology build.
-            if (!_topology.QueueArns.TryGetValue(queueName, out var queueArn))
+            var queueUrl = await topologyBuilder.EnsureQueueAsync(rawQueueName, cancellationToken);
+            if (!topology.QueueArns.TryGetValue(queueUrl, out var queueArn))
                 throw new InvalidOperationException(
-                    $"Queue ARN for '{rawQueueName}' (resolved name: '{queueName}') is not available " +
+                    $"Queue ARN for '{rawQueueName}' (resolved URL: '{queueUrl}') is not available " +
                     "in the SNS/SQS topology. Ensure the Amazon SQS transport has been configured " +
                     "and initialized before scheduling messages.");
 

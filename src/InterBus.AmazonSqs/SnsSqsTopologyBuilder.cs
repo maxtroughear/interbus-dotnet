@@ -90,8 +90,8 @@ public sealed partial class SnsSqsTopologyBuilder(
             var queueName = topology.BuildSqsQueueName(descriptor.QueueName);
             var deadLetterQueueName = topology.BuildDeadLetterQueueName(descriptor.QueueName);
 
-            await CreateQueueAsync(deadLetterQueueName, cancellationToken);
-            var deadLetterQueueArn = topology.QueueArns[deadLetterQueueName];
+            var deadLetterQueueUrl = await CreateQueueAsync(deadLetterQueueName, cancellationToken);
+            var deadLetterQueueArn = topology.QueueArns[deadLetterQueueUrl];
 
             var queueUrl = await CreateQueueAsync(
                 queueName,
@@ -105,7 +105,7 @@ public sealed partial class SnsSqsTopologyBuilder(
                     }),
                 });
 
-            var queueArn = topology.QueueArns[queueName];
+            var queueArn = topology.QueueArns[queueUrl];
 
             logger.LogDebug(
                 "InterBus AmazonSqs: declared queue {QueueName} for consumer {ConsumerType}, URL {QueueUrl}",
@@ -236,7 +236,7 @@ public sealed partial class SnsSqsTopologyBuilder(
         var attrs = await sqsClient.GetQueueAttributesAsync(
             new GetQueueAttributesRequest { QueueUrl = url, AttributeNames = ["QueueArn"] },
             cancellationToken);
-        topology.QueueArns.TryAdd(queueName, attrs.QueueARN);
+        topology.QueueArns.TryAdd(url, attrs.QueueARN);
 
         return url;
     }
@@ -284,7 +284,7 @@ public sealed partial class SnsSqsTopologyBuilder(
         var attrs = await sqsClient.GetQueueAttributesAsync(
             new GetQueueAttributesRequest { QueueUrl = url, AttributeNames = ["QueueArn"] },
             cancellationToken);
-        topology.QueueArns.TryAdd(queueName, attrs.QueueARN);
+        topology.QueueArns.TryAdd(url, attrs.QueueARN);
 
         return url;
     }

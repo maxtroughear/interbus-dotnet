@@ -58,7 +58,7 @@ public sealed class TickerQSchedulerTests
 
         var scheduledAt = DateTimeOffset.UtcNow.AddHours(1);
         var destination = new Uri("memoryqueue://interbus/my-queue");
-        await scheduler.ScheduleAsync(
+        var scheduleId = await scheduler.ScheduleAsync(
             destination, [1, 2], new MessageHeaders(), scheduledAt,
             TestContext.Current.CancellationToken);
 
@@ -69,6 +69,10 @@ public sealed class TickerQSchedulerTests
 
         var request = TickerHelper.ReadTickerRequest<ScheduledDeliveryRequest>(ticker.Request!);
         Assert.Equal(destination.ToString(), request.Destination);
+
+        // Returned schedule ID should be a valid GUID matching the ticker ID.
+        Assert.True(Guid.TryParse(scheduleId, out _));
+        Assert.Equal(ticker.Id.ToString(), scheduleId);
     }
 
     [Fact]
@@ -81,7 +85,7 @@ public sealed class TickerQSchedulerTests
         var scheduledAt = DateTimeOffset.UtcNow.AddMinutes(5);
         var destination = new Uri("memorytopic://interbus/orders");
 
-        await scheduler.ScheduleAsync(destination, payload, new MessageHeaders(), scheduledAt,
+        var scheduleId = await scheduler.ScheduleAsync(destination, payload, new MessageHeaders(), scheduledAt,
             TestContext.Current.CancellationToken);
 
         var ticker = Assert.Single(manager.Added);
@@ -91,6 +95,7 @@ public sealed class TickerQSchedulerTests
         var request = TickerHelper.ReadTickerRequest<ScheduledDeliveryRequest>(ticker.Request!);
         Assert.Equal(destination.ToString(), request.Destination);
         Assert.Equal(payload, request.Payload);
+        Assert.True(Guid.TryParse(scheduleId, out _));
     }
 
     [Fact]
@@ -122,6 +127,33 @@ public sealed class TickerQSchedulerTests
             TestContext.Current.CancellationToken);
 
         Assert.Equal(1, hostScheduler.RestartIfNeededCallCount);
+    }
+
+    [Fact]
+    public async Task CancelAsync_WithValidId_CallsDeleteAsync()
+    {
+        var manager = new StubTimeTickerManager();
+        var scheduler = new TickerQMessageScheduler(manager, new NoOpHostScheduler());
+
+        var destination = new Uri("memoryqueue://interbus/q");
+        var scheduleId = await scheduler.ScheduleAsync(
+            destination, [1], new MessageHeaders(), DateTimeOffset.UtcNow.AddSeconds(30),
+            TestContext.Current.CancellationToken);
+
+        await scheduler.CancelAsync(scheduleId, TestContext.Current.CancellationToken);
+
+        var deletedId = Assert.Single(manager.Deleted);
+        Assert.Equal(Guid.Parse(scheduleId), deletedId);
+    }
+
+    [Fact]
+    public async Task CancelAsync_WithInvalidId_ThrowsArgumentException()
+    {
+        var manager = new StubTimeTickerManager();
+        var scheduler = new TickerQMessageScheduler(manager, new NoOpHostScheduler());
+
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => scheduler.CancelAsync("not-a-guid", TestContext.Current.CancellationToken));
     }
 
     #endregion
@@ -173,6 +205,7 @@ public sealed class TickerQSchedulerTests
     private sealed class StubTimeTickerManager : ITimeTickerManager<TimeTickerEntity>
     {
         public List<TimeTickerEntity> Added { get; } = [];
+        public List<Guid> Deleted { get; } = [];
 
         private static TickerResult<T> EmptyResult<T>() where T : class =>
             (TickerResult<T>)RuntimeHelpers.GetUninitializedObject(typeof(TickerResult<T>));
@@ -188,7 +221,10 @@ public sealed class TickerQSchedulerTests
             CancellationToken cancellationToken) => Task.FromResult(EmptyResult<TimeTickerEntity>());
 
         public Task<TickerResult<TimeTickerEntity>> DeleteAsync(Guid id, CancellationToken cancellationToken)
-            => Task.FromResult(EmptyResult<TimeTickerEntity>());
+        {
+            Deleted.Add(id);
+            return Task.FromResult(EmptyResult<TimeTickerEntity>());
+        }
 
         public Task<TickerResult<List<TimeTickerEntity>>> AddBatchAsync(List<TimeTickerEntity> entities,
             CancellationToken cancellationToken) => Task.FromResult(EmptyResult<List<TimeTickerEntity>>());

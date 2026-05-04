@@ -12,12 +12,16 @@ namespace InterBus.Scheduling;
 internal sealed class SchedulingConsumer(IMessageSchedulingProvider provider) :
     IConsumer<ScheduleDeliveryCommand>
 {
-    public Task Consume(ScheduleDeliveryCommand message, IConsumeContext context,
-        CancellationToken cancellationToken = default) =>
-        provider.ScheduleAsync(
+    public async Task Consume(ScheduleDeliveryCommand message, IConsumeContext context,
+        CancellationToken cancellationToken = default)
+    {
+        // Schedule the delivery; the returned ID is not propagated back to the original
+        // caller in the publish-based pipeline.
+        await provider.ScheduleAsync(
             new Uri(message.Destination),
             message.Payload,
             new MessageHeaders(message.Headers),
             message.ScheduledAt,
             cancellationToken);
+    }
 }

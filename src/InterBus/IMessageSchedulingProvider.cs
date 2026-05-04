@@ -26,6 +26,19 @@ public interface IMessageSchedulingProvider
     /// <param name="headers">The message headers.</param>
     /// <param name="scheduledAt">The UTC time at which the message should be delivered.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    Task ScheduleAsync(Uri destination, byte[] payload, MessageHeaders headers,
+    /// <returns>
+    /// An opaque schedule identifier that can be passed to <see cref="CancelAsync"/> to cancel
+    /// the scheduled delivery before it fires.
+    /// </returns>
+    Task<string> ScheduleAsync(Uri destination, byte[] payload, MessageHeaders headers,
         DateTimeOffset scheduledAt, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Cancels a previously scheduled delivery identified by <paramref name="scheduleId"/>.
+    /// </summary>
+    /// <param name="scheduleId">
+    /// The identifier returned by <see cref="ScheduleAsync"/> when the schedule was created.
+    /// </param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task CancelAsync(string scheduleId, CancellationToken cancellationToken);
 }

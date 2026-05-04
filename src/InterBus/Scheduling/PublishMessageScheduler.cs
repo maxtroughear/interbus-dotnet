@@ -12,13 +12,17 @@ namespace InterBus.Scheduling;
 /// the commands via <c>bus.AddSchedulingConsumer()</c> - this may be in the same application
 /// or in a dedicated consumer service.
 /// </para>
+/// <para>
+/// Cancellation is not supported by this scheduler. <see cref="CancelInternalAsync"/> always
+/// throws <see cref="NotSupportedException"/>.
+/// </para>
 /// </summary>
 internal sealed class PublishMessageScheduler(
     IPublisher publisher,
     IMessageSerializer serializer)
     : IMessageScheduler
 {
-    public Task ScheduleInternalAsync<T>(PublishContext<T> context, DateTimeOffset scheduledAt,
+    public async Task<string> ScheduleInternalAsync<T>(PublishContext<T> context, DateTimeOffset scheduledAt,
         CancellationToken cancellationToken) where T : class
     {
         var payload = serializer.Serialize(context.Message);
@@ -29,6 +33,12 @@ internal sealed class PublishMessageScheduler(
             Headers = new Dictionary<string, string>(context.Headers),
             ScheduledAt = scheduledAt
         };
-        return publisher.SendAsync<SchedulingConsumer, ScheduleDeliveryCommand>(command, cancellationToken);
+        await publisher.SendAsync<SchedulingConsumer, ScheduleDeliveryCommand>(command, cancellationToken);
+        return Guid.CreateVersion7().ToString();
     }
+
+    public Task CancelInternalAsync(string scheduleId, CancellationToken cancellationToken) =>
+        throw new NotSupportedException(
+            "The publish-based scheduler does not support cancellation. " +
+            "Use a scheduler that supports cancellation (e.g. TickerQ or EventBridge).");
 }

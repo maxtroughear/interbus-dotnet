@@ -263,6 +263,8 @@ public sealed class EventBridgeSchedulerTests
     private static EventBridgeSchedulingProvider BuildProvider(
         IEventBridgeScheduleStore scheduleStore,
         SnsSqsTopology topology,
+        // topologyBuilder is only invoked for SNS topic ARN resolution (EnsureTopicAsync).
+        // Tests that schedule to SQS queues can pass null; topic tests must pass a configured stub.
         ITopologyBuilder? topologyBuilder = null,
         string roleArn = "arn:aws:iam::123456789012:role/eventbridge-role",
         string groupName = "default")

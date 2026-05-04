@@ -160,7 +160,8 @@ public sealed class EventBridgeSchedulingProvider : IMessageSchedulingProvider
             if (!_topology.QueueArns.TryGetValue(queueName, out var queueArn))
                 throw new InvalidOperationException(
                     $"Queue ARN for '{rawQueueName}' (resolved name: '{queueName}') is not available " +
-                    "in the SNS/SQS topology. Ensure BuildTopologyAsync has been called before scheduling.");
+                    "in the SNS/SQS topology. Ensure the Amazon SQS transport has been configured " +
+                    "and initialized before scheduling messages.");
 
             return queueArn;
         }

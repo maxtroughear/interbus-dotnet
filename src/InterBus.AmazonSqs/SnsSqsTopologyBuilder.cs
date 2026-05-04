@@ -90,17 +90,8 @@ public sealed partial class SnsSqsTopologyBuilder(
             var queueName = topology.BuildSqsQueueName(descriptor.QueueName);
             var deadLetterQueueName = topology.BuildDeadLetterQueueName(descriptor.QueueName);
 
-            var deadLetterQueueUrl = await CreateQueueAsync(deadLetterQueueName, cancellationToken);
-
-            var deadLetterAttrs = await sqsClient.GetQueueAttributesAsync(
-                new GetQueueAttributesRequest
-                {
-                    QueueUrl = deadLetterQueueUrl,
-                    AttributeNames = ["QueueArn"],
-                },
-                cancellationToken);
-
-            var deadLetterQueueArn = deadLetterAttrs.QueueARN;
+            await CreateQueueAsync(deadLetterQueueName, cancellationToken);
+            var deadLetterQueueArn = topology.QueueArns[deadLetterQueueName];
 
             var queueUrl = await CreateQueueAsync(
                 queueName,
@@ -114,22 +105,13 @@ public sealed partial class SnsSqsTopologyBuilder(
                     }),
                 });
 
+            var queueArn = topology.QueueArns[queueName];
+
             logger.LogDebug(
                 "InterBus AmazonSqs: declared queue {QueueName} for consumer {ConsumerType}, URL {QueueUrl}",
                 queueName,
                 descriptor.ConsumerType.Name,
                 queueUrl);
-
-            var attrs = await sqsClient.GetQueueAttributesAsync(
-                new GetQueueAttributesRequest
-                {
-                    QueueUrl = queueUrl,
-                    AttributeNames = ["QueueArn"],
-                },
-                cancellationToken);
-
-            var queueArn = attrs.QueueARN;
-            topology.QueueArns.TryAdd(queueName, queueArn);
 
             foreach (var messageType in descriptor.MessageTypes)
             {
@@ -248,6 +230,14 @@ public sealed partial class SnsSqsTopologyBuilder(
 
         var url = response.QueueUrl;
         topology.QueueUrls.TryAdd(queueName, url);
+
+        // Resolve and cache the queue ARN so it is available to EventBridge Scheduler targeting
+        // and subscription setup without a separate API call.
+        var attrs = await sqsClient.GetQueueAttributesAsync(
+            new GetQueueAttributesRequest { QueueUrl = url, AttributeNames = ["QueueArn"] },
+            cancellationToken);
+        topology.QueueArns.TryAdd(queueName, attrs.QueueARN);
+
         return url;
     }
 

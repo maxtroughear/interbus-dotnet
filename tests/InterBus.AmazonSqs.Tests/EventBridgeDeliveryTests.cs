@@ -8,6 +8,7 @@ using InterBus.Generated;
 using InterBus.Scheduling.Extensions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 
 namespace InterBus.AmazonSqs.Tests;
 
@@ -30,8 +31,8 @@ public sealed class EventBridgeDeliveryTests
         Environment.GetEnvironmentVariable("INTERBUS_EVENTBRIDGE_TARGET_ROLE_ARN")
         ?? "arn:aws:iam::123456789012:role/eventbridge-role";
 
-    /// <summary>Hard test timeout in milliseconds (6 minutes).</summary>
-    private const int TestTimeoutMs = 360_000;
+    /// <summary>Hard test timeout in milliseconds (12 minutes).</summary>
+    private const int TestTimeoutMs = 720_000;
 
     /// <summary>
     /// Full end-to-end test: schedules an <see cref="OrderPlaced"/> message to be delivered
@@ -39,11 +40,11 @@ public sealed class EventBridgeDeliveryTests
     /// verifies the consumer receives it.
     /// <para>
     /// EventBridge Scheduler fires approximately one minute after the scheduled time, so the
-    /// message is scheduled 2 minutes from now and delivery is awaited for up to 5 minutes.
+    /// message is scheduled 2 minutes from now and delivery is awaited for up to 8 minutes.
     /// </para>
     /// </summary>
     [Test]
-    [CancelAfter(TestTimeoutMs)] // 6-minute hard timeout
+    [CancelAfter(TestTimeoutMs)] // 12-minute hard timeout
     public async Task EventBridgeScheduler_DirectSendToConsumerQueue_MessageIsDelivered()
     {
         Assume.That(TestHelpers.UseRealAws, Is.True,
@@ -56,7 +57,7 @@ public sealed class EventBridgeDeliveryTests
         var tracker = new OrderPlacedTracker();
 
         var services = new ServiceCollection();
-        services.AddLogging();
+        services.AddLogging(b => b.AddConsole().SetMinimumLevel(LogLevel.Debug));
         services.AddSingleton(tracker);
 
         // Use ambient AWS credentials injected by the OIDC action — no explicit AWSOptions needed.
@@ -95,11 +96,12 @@ public sealed class EventBridgeDeliveryTests
             var msg = new OrderPlaced(Guid.NewGuid(), "eventbridge@test.com", 42.00m);
             await scheduler.ScheduleSendAsync<OrderPlacedConsumer, OrderPlaced>(msg, scheduledAt, ct);
 
-            // Wait up to 5 minutes — EventBridge fires ~1 min after the scheduled time.
+            // Wait up to 8 minutes — EventBridge fires ~1 min after the scheduled time.
             await TestHelpers.WaitUntilAsync(
                 () => tracker.Messages.Count >= 1,
-                timeoutMs: 5 * 60 * 1_000,
-                intervalMs: 5_000);
+                timeoutMs: 8 * 60 * 1_000,
+                intervalMs: 5_000,
+                cancellationToken: ct);
 
             using (Assert.EnterMultipleScope())
             {

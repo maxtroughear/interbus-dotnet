@@ -41,11 +41,21 @@ public static class TestHelpers
     internal static async Task WaitUntilAsync(
         Func<bool> condition,
         int timeoutMs = 30_000,
-        int intervalMs = 200)
+        int intervalMs = 200,
+        CancellationToken cancellationToken = default)
     {
         var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
         while (!condition() && DateTime.UtcNow < deadline)
-            await Task.Delay(intervalMs);
+        {
+            try
+            {
+                await Task.Delay(intervalMs, cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+        }
     }
 
     /// <summary>

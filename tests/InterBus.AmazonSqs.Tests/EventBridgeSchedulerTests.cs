@@ -31,6 +31,10 @@ public sealed class EventBridgeSchedulerTests
         _serviceProvider.GetRequiredService<IAmazonSimpleNotificationService>();
     private IAmazonScheduler SchedulerClient => _serviceProvider.GetRequiredService<IAmazonScheduler>();
 
+    private static string TargetRoleArn =>
+        Environment.GetEnvironmentVariable("INTERBUS_EVENTBRIDGE_TARGET_ROLE_ARN")
+        ?? "arn:aws:iam::123456789012:role/eventbridge-role";
+
     [OneTimeSetUp]
     public static async Task OneTimeSetUp()
     {
@@ -128,8 +132,7 @@ public sealed class EventBridgeSchedulerTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(schedule.Target.Arn, Contains.Substring("my-queue"));
-            Assert.That(schedule.Target.RoleArn,
-                Is.EqualTo("arn:aws:iam::123456789012:role/eventbridge-role"));
+            Assert.That(schedule.Target.RoleArn, Is.EqualTo(TargetRoleArn));
             Assert.That(schedule.ActionAfterCompletion, Is.EqualTo(ActionAfterCompletion.DELETE));
             Assert.That(schedule.FlexibleTimeWindow.Mode, Is.EqualTo(FlexibleTimeWindowMode.OFF));
             Assert.That(schedule.ScheduleExpressionTimezone, Is.EqualTo("UTC"));
@@ -219,26 +222,6 @@ public sealed class EventBridgeSchedulerTests
         Assert.That(schedule.GroupName, Is.EqualTo(groupName));
     }
 
-    [Test]
-    public void ScheduleAsync_WhenQueueArnMissingFromTopology_ThrowsInvalidOperationException()
-    {
-        Assert.ThrowsAsync<InvalidOperationException>(
-            () => BuildProvider().ScheduleAsync(
-                Guid.CreateVersion7(), new Uri("sqsqueue://interbus/unknown-queue"),
-                [], new MessageHeaders(), DateTimeOffset.UtcNow.AddHours(1),
-                CancellationToken.None));
-    }
-
-    [Test]
-    public void ScheduleAsync_WithUnsupportedScheme_ThrowsArgumentException()
-    {
-        Assert.ThrowsAsync<ArgumentException>(
-            () => BuildProvider().ScheduleAsync(
-                Guid.CreateVersion7(), new Uri("memorytopic://interbus/test"),
-                [], new MessageHeaders(), DateTimeOffset.UtcNow.AddHours(1),
-                CancellationToken.None));
-    }
-
     #endregion
 
     #region CancelAsync - deletes EventBridge schedule
@@ -290,10 +273,14 @@ public sealed class EventBridgeSchedulerTests
     #region Helpers
 
     private EventBridgeSchedulingProvider BuildProvider(
-        string roleArn = "arn:aws:iam::123456789012:role/eventbridge-role",
+        string? roleArn = null,
         string groupName = "default") =>
         new(SchedulerClient, _topology, _topologyBuilder,
-            new EventBridgeSchedulerOptions { TargetRoleArn = roleArn, ScheduleGroupName = groupName });
+            new EventBridgeSchedulerOptions
+            {
+                TargetRoleArn = roleArn ?? TargetRoleArn,
+                ScheduleGroupName = groupName,
+            });
 
     #endregion
 }

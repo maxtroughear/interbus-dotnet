@@ -20,7 +20,7 @@ namespace InterBus.Scheduling;
 internal sealed class TransportDelayScheduler(PublishPipelineExecutor publishPipeline)
     : IMessageScheduler
 {
-    public async Task<string> ScheduleInternalAsync<T>(PublishContext<T> context, DateTimeOffset scheduledAt,
+    public async Task<Guid> ScheduleInternalAsync<T>(PublishContext<T> context, DateTimeOffset scheduledAt,
         CancellationToken cancellationToken) where T : class
     {
         var delay = scheduledAt - DateTimeOffset.UtcNow;
@@ -32,10 +32,10 @@ internal sealed class TransportDelayScheduler(PublishPipelineExecutor publishPip
         context.Delay = delay;
 
         await publishPipeline.ExecuteAsync(context, cancellationToken: cancellationToken);
-        return Guid.CreateVersion7().ToString();
+        return Guid.CreateVersion7();
     }
 
-    public Task CancelInternalAsync(string scheduleId, CancellationToken cancellationToken) =>
+    public Task CancelInternalAsync(Guid scheduleId, CancellationToken cancellationToken) =>
         throw new NotSupportedException(
             "The transport-delay scheduler does not support cancellation. " +
             "Use a scheduler that supports cancellation (e.g. TickerQ or EventBridge).");

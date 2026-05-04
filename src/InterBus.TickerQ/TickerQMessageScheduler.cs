@@ -30,29 +30,23 @@ public sealed class TickerQMessageScheduler : IMessageSchedulingProvider
     }
 
     /// <inheritdoc/>
-    public Task<string> ScheduleAsync(Uri destination, byte[] payload, MessageHeaders headers,
+    public Task ScheduleAsync(Guid scheduleId, Uri destination, byte[] payload, MessageHeaders headers,
         DateTimeOffset scheduledAt, CancellationToken cancellationToken)
     {
         var request = new ScheduledDeliveryRequest(destination, payload, headers);
-        return ScheduleAsync(TickerQDeliverFunction.FunctionName, request, scheduledAt, cancellationToken);
+        return ScheduleAsync(scheduleId, TickerQDeliverFunction.FunctionName, request, scheduledAt, cancellationToken);
     }
 
     /// <inheritdoc/>
-    public async Task CancelAsync(string scheduleId, CancellationToken cancellationToken)
-    {
-        if (!Guid.TryParse(scheduleId, out var id))
-            throw new ArgumentException(
-                $"'{scheduleId}' is not a valid TickerQ schedule ID.", nameof(scheduleId));
+    public Task CancelAsync(Guid scheduleId, CancellationToken cancellationToken) =>
+        _manager.DeleteAsync(scheduleId, cancellationToken);
 
-        await _manager.DeleteAsync(id, cancellationToken);
-    }
-
-    private async Task<string> ScheduleAsync<TRequest>(string functionName, TRequest request,
+    private async Task ScheduleAsync<TRequest>(Guid scheduleId, string functionName, TRequest request,
         DateTimeOffset scheduledAt, CancellationToken cancellationToken) where TRequest : class
     {
         var ticker = new TimeTickerEntity
         {
-            Id = Guid.CreateVersion7(),
+            Id = scheduleId,
             Function = functionName,
             ExecutionTime = scheduledAt.UtcDateTime,
             Request = TickerHelper.CreateTickerRequest(request)
@@ -63,7 +57,5 @@ public sealed class TickerQMessageScheduler : IMessageSchedulingProvider
         // Notify the host scheduler so it can wake up if the new job is earlier than the
         // next scheduled poll, giving more precise delivery timing.
         _hostScheduler.RestartIfNeeded(ticker.ExecutionTime);
-
-        return ticker.Id.ToString();
     }
 }

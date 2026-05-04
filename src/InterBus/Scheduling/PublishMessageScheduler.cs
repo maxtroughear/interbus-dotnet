@@ -13,8 +13,10 @@ namespace InterBus.Scheduling;
 /// or in a dedicated consumer service.
 /// </para>
 /// <para>
-/// Cancellation is not supported by this scheduler. <see cref="CancelInternalAsync"/> always
-/// throws <see cref="NotSupportedException"/>.
+/// Cancellation is supported: <see cref="CancelInternalAsync"/> publishes a
+/// <see cref="CancelScheduleCommand"/> that is consumed by <see cref="CancelSchedulingConsumer"/>,
+/// which forwards the cancellation to the registered <see cref="IMessageSchedulingProvider"/>.
+/// Requires <c>bus.AddSchedulingConsumer()</c> to be registered.
 /// </para>
 /// </summary>
 internal sealed class PublishMessageScheduler(
@@ -22,23 +24,25 @@ internal sealed class PublishMessageScheduler(
     IMessageSerializer serializer)
     : IMessageScheduler
 {
-    public async Task<string> ScheduleInternalAsync<T>(PublishContext<T> context, DateTimeOffset scheduledAt,
+    public async Task<Guid> ScheduleInternalAsync<T>(PublishContext<T> context, DateTimeOffset scheduledAt,
         CancellationToken cancellationToken) where T : class
     {
+        var scheduleId = Guid.CreateVersion7();
         var payload = serializer.Serialize(context.Message);
         var command = new ScheduleDeliveryCommand
         {
+            ScheduleId = scheduleId,
             Destination = context.Destination.ToString(),
             Payload = payload,
             Headers = new Dictionary<string, string>(context.Headers),
             ScheduledAt = scheduledAt
         };
         await publisher.SendAsync<SchedulingConsumer, ScheduleDeliveryCommand>(command, cancellationToken);
-        return Guid.CreateVersion7().ToString();
+        return scheduleId;
     }
 
-    public Task CancelInternalAsync(string scheduleId, CancellationToken cancellationToken) =>
-        throw new NotSupportedException(
-            "The publish-based scheduler does not support cancellation. " +
-            "Use a scheduler that supports cancellation (e.g. TickerQ or EventBridge).");
+    public Task CancelInternalAsync(Guid scheduleId, CancellationToken cancellationToken) =>
+        publisher.SendAsync<CancelSchedulingConsumer, CancelScheduleCommand>(
+            new CancelScheduleCommand { ScheduleId = scheduleId },
+            cancellationToken);
 }

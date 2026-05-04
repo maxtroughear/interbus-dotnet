@@ -27,9 +27,11 @@ public static class SchedulerBuilderExtensions
         }
 
         /// <summary>
-        /// Register the <see cref="SchedulingConsumer"/> that processes scheduling command messages
-        /// published by <see cref="SchedulerBuilderExtensions.ViaPublish"/> and enlists the registered
-        /// <see cref="IMessageSchedulingProvider"/> to perform the actual deferred delivery.
+        /// Register the <see cref="SchedulingConsumer"/> and <see cref="CancelSchedulingConsumer"/>
+        /// that process scheduling command messages published by
+        /// <see cref="SchedulerBuilderExtensions.ViaPublish"/> and enlist the registered
+        /// <see cref="IMessageSchedulingProvider"/> to perform the actual deferred delivery or
+        /// cancellation.
         /// <para>
         /// Requires an <see cref="IMessageSchedulingProvider"/> to be registered in DI
         /// (e.g. via <c>AddTickerQScheduler()</c>).
@@ -39,6 +41,7 @@ public static class SchedulerBuilderExtensions
         {
             ArgumentNullException.ThrowIfNull(builder);
             builder.Bus.AddConsumer<SchedulingConsumer>();
+            builder.Bus.AddConsumer<CancelSchedulingConsumer>();
             return builder;
         }
 

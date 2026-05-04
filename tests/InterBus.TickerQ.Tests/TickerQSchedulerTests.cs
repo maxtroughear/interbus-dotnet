@@ -56,10 +56,11 @@ public sealed class TickerQSchedulerTests
         var manager = new StubTimeTickerManager();
         var scheduler = new TickerQMessageScheduler(manager, new NoOpHostScheduler());
 
+        var scheduleId = Guid.CreateVersion7();
         var scheduledAt = DateTimeOffset.UtcNow.AddHours(1);
         var destination = new Uri("memoryqueue://interbus/my-queue");
-        var scheduleId = await scheduler.ScheduleAsync(
-            destination, [1, 2], new MessageHeaders(), scheduledAt,
+        await scheduler.ScheduleAsync(
+            scheduleId, destination, [1, 2], new MessageHeaders(), scheduledAt,
             TestContext.Current.CancellationToken);
 
         var ticker = Assert.Single(manager.Added);
@@ -70,9 +71,8 @@ public sealed class TickerQSchedulerTests
         var request = TickerHelper.ReadTickerRequest<ScheduledDeliveryRequest>(ticker.Request!);
         Assert.Equal(destination.ToString(), request.Destination);
 
-        // Returned schedule ID should be a valid GUID matching the ticker ID.
-        Assert.True(Guid.TryParse(scheduleId, out _));
-        Assert.Equal(ticker.Id.ToString(), scheduleId);
+        // Ticker ID must equal the pre-generated schedule ID.
+        Assert.Equal(scheduleId, ticker.Id);
     }
 
     [Fact]
@@ -81,11 +81,12 @@ public sealed class TickerQSchedulerTests
         var manager = new StubTimeTickerManager();
         var scheduler = new TickerQMessageScheduler(manager, new NoOpHostScheduler());
 
+        var scheduleId = Guid.CreateVersion7();
         var payload = new byte[] { 10, 20, 30 };
         var scheduledAt = DateTimeOffset.UtcNow.AddMinutes(5);
         var destination = new Uri("memorytopic://interbus/orders");
 
-        var scheduleId = await scheduler.ScheduleAsync(destination, payload, new MessageHeaders(), scheduledAt,
+        await scheduler.ScheduleAsync(scheduleId, destination, payload, new MessageHeaders(), scheduledAt,
             TestContext.Current.CancellationToken);
 
         var ticker = Assert.Single(manager.Added);
@@ -95,7 +96,7 @@ public sealed class TickerQSchedulerTests
         var request = TickerHelper.ReadTickerRequest<ScheduledDeliveryRequest>(ticker.Request!);
         Assert.Equal(destination.ToString(), request.Destination);
         Assert.Equal(payload, request.Payload);
-        Assert.True(Guid.TryParse(scheduleId, out _));
+        Assert.Equal(scheduleId, ticker.Id);
     }
 
     [Fact]
@@ -106,7 +107,7 @@ public sealed class TickerQSchedulerTests
 
         var headers = new MessageHeaders { [InterBusHeaders.MessageType] = "MyEvent" };
         var destination = new Uri("memorytopic://interbus/topic");
-        await scheduler.ScheduleAsync(destination, [1], headers,
+        await scheduler.ScheduleAsync(Guid.CreateVersion7(), destination, [1], headers,
             DateTimeOffset.UtcNow.AddSeconds(10), TestContext.Current.CancellationToken);
 
         var ticker = Assert.Single(manager.Added);
@@ -123,7 +124,7 @@ public sealed class TickerQSchedulerTests
 
         var destination = new Uri("memoryqueue://interbus/q");
         await scheduler.ScheduleAsync(
-            destination, [1], new MessageHeaders(), DateTimeOffset.UtcNow.AddSeconds(30),
+            Guid.CreateVersion7(), destination, [1], new MessageHeaders(), DateTimeOffset.UtcNow.AddSeconds(30),
             TestContext.Current.CancellationToken);
 
         Assert.Equal(1, hostScheduler.RestartIfNeededCallCount);
@@ -135,25 +136,16 @@ public sealed class TickerQSchedulerTests
         var manager = new StubTimeTickerManager();
         var scheduler = new TickerQMessageScheduler(manager, new NoOpHostScheduler());
 
+        var scheduleId = Guid.CreateVersion7();
         var destination = new Uri("memoryqueue://interbus/q");
-        var scheduleId = await scheduler.ScheduleAsync(
-            destination, [1], new MessageHeaders(), DateTimeOffset.UtcNow.AddSeconds(30),
+        await scheduler.ScheduleAsync(
+            scheduleId, destination, [1], new MessageHeaders(), DateTimeOffset.UtcNow.AddSeconds(30),
             TestContext.Current.CancellationToken);
 
         await scheduler.CancelAsync(scheduleId, TestContext.Current.CancellationToken);
 
         var deletedId = Assert.Single(manager.Deleted);
-        Assert.Equal(Guid.Parse(scheduleId), deletedId);
-    }
-
-    [Fact]
-    public async Task CancelAsync_WithInvalidId_ThrowsArgumentException()
-    {
-        var manager = new StubTimeTickerManager();
-        var scheduler = new TickerQMessageScheduler(manager, new NoOpHostScheduler());
-
-        await Assert.ThrowsAsync<ArgumentException>(
-            () => scheduler.CancelAsync("not-a-guid", TestContext.Current.CancellationToken));
+        Assert.Equal(scheduleId, deletedId);
     }
 
     #endregion

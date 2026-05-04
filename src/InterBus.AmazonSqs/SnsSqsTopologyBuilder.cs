@@ -30,6 +30,7 @@ public sealed partial class SnsSqsTopologyBuilder(
     private GetCallerIdentityResponse? _callerIdentity;
     private ConcurrentDictionary<string, Task<string>> EnsuredTopics { get; } = new(StringComparer.Ordinal);
     private ConcurrentDictionary<string, Task<string>> EnsuredQueues { get; } = new(StringComparer.Ordinal);
+    private ConcurrentDictionary<string, Task<string>> EnsuredQueueArns { get; } = new(StringComparer.Ordinal);
 
     /// <summary>
     /// Declares (or verifies) the consumer topology for every registered consumer, populating the
@@ -80,6 +81,33 @@ public sealed partial class SnsSqsTopologyBuilder(
             ct => transportOptions.TopologyMode == TopologyMode.VerifyOnly
                 ? VerifyQueueAsync(queueName, ct)
                 : CreateQueueAsync(queueName, ct),
+            cancellationToken);
+    }
+
+    public async Task<string> EnsureQueueArnAsync(string rawQueueName, CancellationToken cancellationToken)
+    {
+        var queueName = topology.BuildSqsQueueName(rawQueueName);
+
+        if (topology.QueueArns.TryGetValue(queueName, out var cachedArn))
+            return cachedArn;
+
+        return await EnsureWithCacheAsync(
+            EnsuredQueueArns,
+            queueName,
+            async ct =>
+            {
+                var queueUrl = await EnsureQueueAsync(rawQueueName, ct);
+                var attrs = await sqsClient.GetQueueAttributesAsync(
+                    new GetQueueAttributesRequest
+                    {
+                        QueueUrl = queueUrl,
+                        AttributeNames = ["QueueArn"],
+                    },
+                    ct);
+                var arn = attrs.QueueARN;
+                topology.QueueArns.TryAdd(queueName, arn);
+                return arn;
+            },
             cancellationToken);
     }
 

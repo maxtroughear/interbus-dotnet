@@ -1,8 +1,5 @@
-using System.Collections.Concurrent;
 using Amazon.Scheduler;
 using Amazon.Scheduler.Model;
-using Amazon.SQS;
-using Amazon.SQS.Model;
 
 namespace InterBus.AmazonSqs;
 
@@ -30,27 +27,6 @@ internal sealed class AmazonEventBridgeScheduleStore(IAmazonScheduler client) : 
 
     public Task DeleteScheduleAsync(DeleteScheduleRequest request, CancellationToken cancellationToken) =>
         client.DeleteScheduleAsync(request, cancellationToken);
-}
-
-/// <summary>
-/// Internal abstraction over <see cref="IAmazonSQS"/> for resolving queue ARNs.
-/// Simplifies unit testing.
-/// </summary>
-internal interface ISqsQueueArnResolver
-{
-    /// <summary>Returns the ARN of the SQS queue identified by <paramref name="queueUrl"/>.</summary>
-    Task<GetQueueAttributesResponse> GetQueueAttributesAsync(
-        GetQueueAttributesRequest request, CancellationToken cancellationToken);
-}
-
-/// <summary>
-/// Default <see cref="ISqsQueueArnResolver"/> implementation backed by <see cref="IAmazonSQS"/>.
-/// </summary>
-internal sealed class AmazonSqsQueueArnResolver(IAmazonSQS client) : ISqsQueueArnResolver
-{
-    public Task<GetQueueAttributesResponse> GetQueueAttributesAsync(
-        GetQueueAttributesRequest request, CancellationToken cancellationToken) =>
-        client.GetQueueAttributesAsync(request, cancellationToken);
 }
 
 /// <summary>
@@ -82,28 +58,18 @@ internal sealed class AmazonSqsQueueArnResolver(IAmazonSQS client) : ISqsQueueAr
 public sealed class EventBridgeSchedulingProvider : IMessageSchedulingProvider
 {
     private readonly IEventBridgeScheduleStore _scheduleStore;
-    private readonly ISqsQueueArnResolver _sqsArnResolver;
     private readonly ITopologyBuilder _topologyBuilder;
     private readonly EventBridgeSchedulerOptions _options;
 
-    // Cache: SQS queue URL → queue ARN.
-    private readonly ConcurrentDictionary<string, string> _queueArns =
-        new(StringComparer.Ordinal);
-
     /// <summary>
     /// Initializes a new instance of <see cref="EventBridgeSchedulingProvider"/> using
-    /// the real <see cref="IAmazonScheduler"/> and <see cref="IAmazonSQS"/> clients.
+    /// the real <see cref="IAmazonScheduler"/> client.
     /// </summary>
     public EventBridgeSchedulingProvider(
         IAmazonScheduler schedulerClient,
-        IAmazonSQS sqsClient,
         ITopologyBuilder topologyBuilder,
         EventBridgeSchedulerOptions options)
-        : this(
-            new AmazonEventBridgeScheduleStore(schedulerClient),
-            new AmazonSqsQueueArnResolver(sqsClient),
-            topologyBuilder,
-            options)
+        : this(new AmazonEventBridgeScheduleStore(schedulerClient), topologyBuilder, options)
     {
     }
 
@@ -112,32 +78,30 @@ public sealed class EventBridgeSchedulingProvider : IMessageSchedulingProvider
     /// </summary>
     internal EventBridgeSchedulingProvider(
         IEventBridgeScheduleStore scheduleStore,
-        ISqsQueueArnResolver sqsArnResolver,
         ITopologyBuilder topologyBuilder,
         EventBridgeSchedulerOptions options)
     {
         _scheduleStore = scheduleStore;
-        _sqsArnResolver = sqsArnResolver;
         _topologyBuilder = topologyBuilder;
         _options = options;
     }
 
     /// <inheritdoc/>
-    public async Task<string> ScheduleAsync(
+    public async Task ScheduleAsync(
+        Guid scheduleId,
         Uri destination,
         byte[] payload,
         MessageHeaders headers,
         DateTimeOffset scheduledAt,
         CancellationToken cancellationToken)
     {
-        var scheduleId = Guid.CreateVersion7().ToString();
         var input = SnsSqsMessageEnvelope.Serialize(payload, headers);
         var targetArn = await ResolveTargetArnAsync(destination, cancellationToken);
 
         await _scheduleStore.CreateScheduleAsync(
             new CreateScheduleRequest
             {
-                Name = scheduleId,
+                Name = scheduleId.ToString(),
                 GroupName = _options.ScheduleGroupName,
                 // One-time schedule expressed as an absolute UTC timestamp.
                 ScheduleExpression = $"at({scheduledAt.UtcDateTime:yyyy-MM-ddTHH:mm:ss})",
@@ -156,16 +120,14 @@ public sealed class EventBridgeSchedulingProvider : IMessageSchedulingProvider
                 ActionAfterCompletion = ActionAfterCompletion.DELETE,
             },
             cancellationToken);
-
-        return scheduleId;
     }
 
     /// <inheritdoc/>
-    public Task CancelAsync(string scheduleId, CancellationToken cancellationToken) =>
+    public Task CancelAsync(Guid scheduleId, CancellationToken cancellationToken) =>
         _scheduleStore.DeleteScheduleAsync(
             new DeleteScheduleRequest
             {
-                Name = scheduleId,
+                Name = scheduleId.ToString(),
                 GroupName = _options.ScheduleGroupName,
             },
             cancellationToken);
@@ -186,32 +148,13 @@ public sealed class EventBridgeSchedulingProvider : IMessageSchedulingProvider
         if (destination.Scheme == SqsTransport.QueueScheme)
         {
             var rawQueueName = RoutingConventions.GetDestinationName(destination);
-            // EnsureQueueAsync returns the SQS queue URL; we then resolve the ARN.
-            var queueUrl = await _topologyBuilder.EnsureQueueAsync(rawQueueName, cancellationToken);
-            return await ResolveQueueArnAsync(queueUrl, cancellationToken);
+            // EnsureQueueArnAsync returns the SQS queue ARN (cached in the topology builder).
+            return await _topologyBuilder.EnsureQueueArnAsync(rawQueueName, cancellationToken);
         }
 
         throw new ArgumentException(
             $"Unsupported destination URI scheme '{destination.Scheme}' for EventBridge Scheduler. " +
             $"Expected '{SnsTransport.TopicScheme}' or '{SqsTransport.QueueScheme}'.",
             nameof(destination));
-    }
-
-    private async Task<string> ResolveQueueArnAsync(string queueUrl, CancellationToken cancellationToken)
-    {
-        if (_queueArns.TryGetValue(queueUrl, out var cached))
-            return cached;
-
-        var attrs = await _sqsArnResolver.GetQueueAttributesAsync(
-            new GetQueueAttributesRequest
-            {
-                QueueUrl = queueUrl,
-                AttributeNames = ["QueueArn"],
-            },
-            cancellationToken);
-
-        var arn = attrs.QueueARN;
-        _queueArns.TryAdd(queueUrl, arn);
-        return arn;
     }
 }

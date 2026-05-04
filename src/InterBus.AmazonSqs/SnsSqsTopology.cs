@@ -34,6 +34,12 @@ public sealed class SnsSqsTopology(SnsSqsTransportOptions options)
         new(StringComparer.Ordinal);
 
     /// <summary>
+    /// Application-level cache: sanitised queue name → SQS Queue ARN.
+    /// </summary>
+    internal ConcurrentDictionary<string, string> QueueArns { get; } =
+        new(StringComparer.Ordinal);
+
+    /// <summary>
     /// Converts a raw InterBus topic name (e.g. a fully-qualified .NET type name) into a
     /// valid SNS topic name, replacing dots and other invalid characters with hyphens and
     /// trimming to the 256-character limit.

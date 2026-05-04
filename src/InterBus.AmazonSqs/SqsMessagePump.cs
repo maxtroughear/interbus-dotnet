@@ -96,6 +96,11 @@ internal sealed class SqsMessagePump(
             List<Message> messages;
             try
             {
+                logger.LogTrace(
+                    "InterBus AmazonSqs: polling queue {QueueName} (maxFetch={MaxFetch})",
+                    queueName,
+                    maxFetch);
+
                 var response = await sqsClient.ReceiveMessageAsync(
                     new ReceiveMessageRequest
                     {
@@ -124,11 +129,10 @@ internal sealed class SqsMessagePump(
                 continue;
             }
 
-            if (messages.Count > 0)
-                logger.LogTrace(
-                    "InterBus AmazonSqs: received {Count} message(s) from queue {QueueName}",
-                    messages.Count,
-                    queueName);
+            logger.LogTrace(
+                "InterBus AmazonSqs: received {Count} message(s) from queue {QueueName}",
+                messages.Count,
+                queueName);
 
             var prefetchedMessages =
                 messages.Select(message => StartPrefetchedMessage(queueUrl, message, stoppingToken))

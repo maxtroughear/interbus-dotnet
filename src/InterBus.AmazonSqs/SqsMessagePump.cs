@@ -108,6 +108,7 @@ internal sealed class SqsMessagePump(
                         QueueUrl = queueUrl,
                         MaxNumberOfMessages = Math.Clamp(maxFetch, 1, 10),
                         WaitTimeSeconds = options.ReceiveWaitTimeSeconds,
+                        MessageAttributeNames = ["All"],
                         VisibilityTimeout = (int)options.VisibilityTimeout.TotalSeconds,
                     },
                     stoppingToken);
@@ -248,29 +249,29 @@ internal sealed class SqsMessagePump(
 
         try
         {
+            var deadLetterMessageAttributes = message.MessageAttributes ?? new Dictionary<string, MessageAttributeValue>(StringComparer.Ordinal);
+            deadLetterMessageAttributes[InterBusHeaders.DeadLetterReason] = new MessageAttributeValue
+            {
+                DataType = "String",
+                StringValue = ex.Reason
+            };
+            deadLetterMessageAttributes[InterBusHeaders.DeadLetterError] = new MessageAttributeValue
+            {
+                DataType = "String",
+                StringValue = ex.Error
+            };
+            deadLetterMessageAttributes[InterBusHeaders.DeadLetteredAt] = new MessageAttributeValue
+            {
+                DataType = "String",
+                StringValue = ex.DeadLetteredAtUtc.ToString("O")
+            }
+
             await sqsClient.SendMessageAsync(
                 new SendMessageRequest
                 {
                     QueueUrl = deadLetterQueueUrl,
                     MessageBody = message.Body,
-                    MessageAttributes = new Dictionary<string, MessageAttributeValue>(StringComparer.Ordinal)
-                    {
-                        [InterBusHeaders.DeadLetterReason] = new()
-                        {
-                            DataType = "String",
-                            StringValue = ex.Reason
-                        },
-                        [InterBusHeaders.DeadLetterError] = new()
-                        {
-                            DataType = "String",
-                            StringValue = ex.Error
-                        },
-                        [InterBusHeaders.DeadLetteredAt] = new()
-                        {
-                            DataType = "String",
-                            StringValue = ex.DeadLetteredAtUtc.ToString("O")
-                        }
-                    }
+                    MessageAttributes = deadLetterMessageAttributes
                 },
                 CancellationToken.None);
 

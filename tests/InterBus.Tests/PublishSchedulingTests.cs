@@ -20,7 +20,7 @@ public sealed class PublishSchedulingTests
         {
             bus.Services.AddKeyedSingleton<ITransport>("topic", transport);
             bus.Services.AddKeyedSingleton<ITransport>("queue", transport);
-            bus.AddScheduling(builder => builder.ViaPublish().AddSchedulingConsumer());
+            bus.AddScheduling(builder => builder.ViaSend().AddSchedulingConsumer());
             configureBus?.Invoke(bus);
         });
 
@@ -28,41 +28,6 @@ public sealed class PublishSchedulingTests
         var scope = provider.CreateScope();
         var scheduler = scope.ServiceProvider.GetRequiredService<IScheduler>();
         return (scheduler, transport);
-    }
-
-    #endregion
-
-    #region AddPublishScheduling - registration
-
-    [Fact]
-    public void AddPublishScheduling_RegistersIMessageScheduler()
-    {
-        var services = new ServiceCollection();
-        services.AddLogging();
-        services.AddInterBus(bus =>
-        {
-            bus.Services.AddSingleton<ITransport, NoOpTransport>();
-            bus.AddScheduling(builder => builder.ViaPublish());
-        });
-
-        var provider = services.BuildServiceProvider();
-        using var scope = provider.CreateScope();
-        var scheduler = scope.ServiceProvider.GetService<IScheduler>();
-
-        Assert.NotNull(scheduler);
-    }
-
-    [Fact]
-    public void AddPublishScheduling_NotRegistered_WhenNotConfigured()
-    {
-        var services = new ServiceCollection();
-        services.AddLogging();
-        services.AddInterBus(bus => { bus.Services.AddSingleton<ITransport, NoOpTransport>(); });
-
-        var provider = services.BuildServiceProvider();
-        var scheduler = provider.GetService<IScheduler>();
-
-        Assert.Null(scheduler);
     }
 
     #endregion
@@ -134,32 +99,6 @@ public sealed class PublishSchedulingTests
 
         var call = Assert.Single(transport.Sends);
         Assert.Contains("SchedulingConsumer", call.Destination.AbsolutePath);
-    }
-
-    #endregion
-
-    #region AddSchedulingConsumer - consumer is registered with the transport
-
-    [Fact]
-    public void AddSchedulingConsumer_RegistersConsumer()
-    {
-        var services = new ServiceCollection();
-        services.AddLogging();
-        InterBusOptions? capturedOptions = null;
-        services.AddInterBus(bus =>
-        {
-            bus.Services.AddSingleton<ITransport, NoOpTransport>();
-            bus.AddScheduling(builder => builder.AddSchedulingConsumer());
-            capturedOptions = bus.Options;
-        });
-
-        Assert.NotNull(capturedOptions);
-        var consumer = Assert.Single(capturedOptions.Consumers,
-            c => c.ConsumerType.Name == "SchedulingConsumer");
-        // SchedulePublishCommand and ScheduleSendCommand were merged into a single
-        // ScheduleDeliveryCommand, so the consumer now handles exactly one message type.
-        Assert.Single(consumer.MessageTypes);
-        Assert.Equal("ScheduleDeliveryCommand", consumer.MessageTypes[0].Name);
     }
 
     #endregion

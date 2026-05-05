@@ -43,7 +43,6 @@ public sealed class EventBridgeSchedulingProvider(
             {
                 Name = scheduleId.ToString(),
                 GroupName = options.ScheduleGroupName,
-                // One-time schedule expressed as an absolute UTC timestamp.
                 ScheduleExpression = $"at({scheduledAt.UtcDateTime:yyyy-MM-ddTHH:mm:ss})",
                 ScheduleExpressionTimezone = "UTC",
                 FlexibleTimeWindow = new FlexibleTimeWindow
@@ -55,8 +54,12 @@ public sealed class EventBridgeSchedulingProvider(
                     Arn = targetArn,
                     RoleArn = options.TargetRoleArn,
                     Input = input,
+                    RetryPolicy = new RetryPolicy
+                    {
+                        MaximumRetryAttempts = 10,
+                        MaximumEventAgeInSeconds = 3600 // 1 hour
+                    },
                 },
-                // Automatically clean up the schedule once it has fired.
                 ActionAfterCompletion = ActionAfterCompletion.DELETE,
             },
             cancellationToken);

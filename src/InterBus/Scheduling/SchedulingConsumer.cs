@@ -2,7 +2,7 @@ namespace InterBus.Scheduling;
 
 /// <summary>
 /// Consumer that processes <see cref="ScheduleDeliveryCommand"/> messages published by
-/// <see cref="PublishMessageScheduler"/>. Enlists the registered
+/// <see cref="SendMessageScheduler"/>. Enlists the registered
 /// <see cref="IMessageSchedulingProvider"/> to perform the actual deferred delivery.
 /// <para>
 /// Register via <c>bus.AddSchedulingConsumer()</c> alongside an
@@ -10,7 +10,8 @@ namespace InterBus.Scheduling;
 /// </para>
 /// </summary>
 internal sealed class SchedulingConsumer(IMessageSchedulingProvider provider) :
-    IConsumer<ScheduleDeliveryCommand>
+    IConsumer<ScheduleDeliveryCommand>,
+    IConsumer<CancelDeliveryCommand>
 {
     public Task Consume(ScheduleDeliveryCommand message, IConsumeContext context,
         CancellationToken cancellationToken = default) =>
@@ -21,4 +22,8 @@ internal sealed class SchedulingConsumer(IMessageSchedulingProvider provider) :
             new MessageHeaders(message.Headers),
             message.ScheduledAt,
             cancellationToken);
+
+    public Task Consume(CancelDeliveryCommand message, IConsumeContext context,
+        CancellationToken cancellationToken = default) =>
+        provider.CancelAsync(message.ScheduleId, cancellationToken);
 }

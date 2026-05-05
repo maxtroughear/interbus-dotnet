@@ -19,17 +19,16 @@ public static class SchedulerBuilderExtensions
         /// consumer service to process the scheduling commands.
         /// </para>
         /// </summary>
-        public ISchedulerBuilder ViaPublish()
+        public ISchedulerBuilder ViaSend()
         {
             ArgumentNullException.ThrowIfNull(builder);
-            builder.Services.AddScoped<IMessageScheduler, PublishMessageScheduler>();
+            builder.Services.AddScoped<IMessageScheduler, SendMessageScheduler>();
             return builder;
         }
 
         /// <summary>
-        /// Register the <see cref="SchedulingConsumer"/> and <see cref="CancelSchedulingConsumer"/>
-        /// that process scheduling command messages published by
-        /// <see cref="SchedulerBuilderExtensions.ViaPublish"/> and enlist the registered
+        /// Register the <see cref="SchedulingConsumer"/> that processes scheduling command messages sent by
+        /// <see cref="SchedulerBuilderExtensions.ViaSend"/> and enlist the registered
         /// <see cref="IMessageSchedulingProvider"/> to perform the actual deferred delivery or
         /// cancellation.
         /// <para>
@@ -41,7 +40,6 @@ public static class SchedulerBuilderExtensions
         {
             ArgumentNullException.ThrowIfNull(builder);
             builder.Bus.AddConsumer<SchedulingConsumer>();
-            builder.Bus.AddConsumer<CancelSchedulingConsumer>();
             return builder;
         }
 

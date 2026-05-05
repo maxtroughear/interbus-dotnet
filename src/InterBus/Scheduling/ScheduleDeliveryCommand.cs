@@ -10,20 +10,20 @@ namespace InterBus.Scheduling;
 internal sealed class ScheduleDeliveryCommand
 {
     /// <summary>The pre-generated schedule identifier to use when registering with the provider.</summary>
-    public Guid ScheduleId { get; init; }
+    public required Guid ScheduleId { get; init; }
 
     /// <summary>
     /// The destination URI (e.g. <c>memorytopic://interbus/my-topic</c> or
     /// <c>memoryqueue://interbus/my-queue</c>).
     /// </summary>
-    public string Destination { get; init; } = string.Empty;
+    public required string Destination { get; init; }
 
     /// <summary>The serialized original message payload.</summary>
-    public byte[] Payload { get; init; } = [];
+    public required byte[] Payload { get; init; }
 
     /// <summary>The enriched headers to forward on delivery, including the original message type.</summary>
-    public Dictionary<string, string> Headers { get; init; } = [];
+    public required Dictionary<string, string> Headers { get; init; }
 
     /// <summary>The UTC time at which the original message should be delivered.</summary>
-    public DateTimeOffset ScheduledAt { get; init; }
+    public required DateTimeOffset ScheduledAt { get; init; }
 }

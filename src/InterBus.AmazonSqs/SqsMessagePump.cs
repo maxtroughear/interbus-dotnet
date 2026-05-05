@@ -120,7 +120,6 @@ internal sealed class SqsMessagePump(
                         QueueUrl = queueUrl,
                         MaxNumberOfMessages = Math.Clamp(maxFetch, 1, 10),
                         WaitTimeSeconds = 20,
-                        MessageAttributeNames = ["All"],
                         VisibilityTimeout = (int)options.VisibilityTimeout.TotalSeconds,
                     },
                     requestCts.Token);

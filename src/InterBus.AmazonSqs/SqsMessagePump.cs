@@ -133,18 +133,22 @@ internal sealed class SqsMessagePump(
                 // a half-open state and the AWS SDK may not unblock in time.
                 // Task.WhenAny with an independent Task.Delay is unaffected by SDK or TCP internals
                 // and guarantees the pump moves on after ReceiveRequestTimeout regardless.
-                if (await Task.WhenAny(receiveTask, Task.Delay(ReceiveRequestTimeout, stoppingToken))
+                // CancellationToken.None is intentional: stoppingToken cancellation is handled
+                // through requestCts (linked to stoppingToken) which propagates into receiveTask
+                // as OperationCanceledException, caught below. Using stoppingToken on the delay
+                // would cause the timeout path to fire even when receiveTask has already completed.
+                if (await Task.WhenAny(receiveTask, Task.Delay(ReceiveRequestTimeout, CancellationToken.None))
                         != receiveTask)
                 {
-                    // Deadline or stoppingToken fired before the receive completed.
+                    // Deadline fired before the receive completed.
                     // Cancel requestCts so the SDK abandons its request promptly.
                     await requestCts.CancelAsync();
 
                     // Observe any exception from the now-abandoned task so it is not
                     // reported as an unobserved task exception.
                     _ = receiveTask.ContinueWith(
-                        static t => { _ = t.Exception; },
-                        TaskContinuationOptions.OnlyOnFaulted);
+                        static t => { if (t.IsFaulted) _ = t.Exception; },
+                        TaskContinuationOptions.ExecuteSynchronously);
 
                     if (stoppingToken.IsCancellationRequested) break;
 

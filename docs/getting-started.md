@@ -2,14 +2,16 @@
 
 ## Installation
 
-Add the NuGet packages to your project:
+Add the core package plus a transport package. For local development and tests, the in-memory transport is the easiest place to start:
 
-```
+```bash
 dotnet add package InterBus
 dotnet add package InterBus.InMemory
 ```
 
-## Basic Usage
+`InterBus.InMemory` includes the source generator used for compile-time consumer registration.
+
+## Basic usage
 
 ### 1. Define a message
 
@@ -20,19 +22,28 @@ public record OrderPlaced(Guid OrderId, string CustomerEmail, decimal Total);
 ### 2. Implement a consumer
 
 ```csharp
-public class OrderPlacedConsumer : IConsumer<OrderPlaced>
+public sealed class OrderPlacedConsumer : IConsumer<OrderPlaced>
 {
-    public Task Consume(OrderPlaced message, CancellationToken cancellationToken = default)
+    public Task Consume(
+        OrderPlaced message,
+        IConsumeContext context,
+        CancellationToken cancellationToken = default)
     {
-        Console.WriteLine($"Order {message.OrderId} placed by {message.CustomerEmail}");
+        Console.WriteLine(
+            $"Order {message.OrderId} placed by {message.CustomerEmail} for {message.Total:C}");
+
         return Task.CompletedTask;
     }
 }
 ```
 
-### 3. Register with DI
+### 3. Register InterBus
 
 ```csharp
+using InterBus.Extensions;
+using InterBus.Generated;
+using InterBus.InMemory.Extensions;
+
 builder.Services.AddInterBus(bus =>
 {
     bus.AddInMemoryTransport();
@@ -40,32 +51,49 @@ builder.Services.AddInterBus(bus =>
 });
 ```
 
+`AddConsumer<TConsumer>()` is generated at compile time, so you should import `InterBus.Generated`.
+
 ### 4. Publish a message
 
 ```csharp
-public class OrderService
+public sealed class OrderService(IPublisher publisher)
 {
-    private readonly IMessagePublisher _publisher;
-
-    public OrderService(IMessagePublisher publisher) => _publisher = publisher;
-
-    public async Task PlaceOrderAsync(Order order)
+    public Task PlaceOrderAsync(Order order, CancellationToken cancellationToken = default)
     {
-        // ... business logic ...
-        await _publisher.Publish(new OrderPlaced(order.Id, order.Email, order.Total));
+        return publisher.PublishAsync(
+            new OrderPlaced(order.Id, order.Email, order.Total),
+            cancellationToken);
     }
 }
 ```
 
-## Publish vs Send
+### 5. Run the host
 
-- **`Publish<T>`** — sends to the topic; all registered consumers for `T` receive the message (fan-out).
-- **`Send<TConsumer, T>`** — sends directly to a specific consumer's queue; no other consumer receives it.
+InterBus transports use hosted background services. In ASP.NET Core, `app.Run()` starts them automatically. In console or worker-style apps, start the host before publishing:
 
 ```csharp
-// Fan-out to all consumers of OrderPlaced
-await publisher.Publish(new OrderPlaced(...));
+var host = builder.Build();
 
-// Direct send to a specific consumer only
-await publisher.Send<AuditConsumer, OrderPlaced>(new OrderPlaced(...));
+await host.StartAsync();
+
+using var scope = host.Services.CreateScope();
+var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
+await publisher.PublishAsync(new OrderPlaced(Guid.NewGuid(), "alice@example.com", 42m));
+
+await host.StopAsync();
 ```
+
+## Publish vs send
+
+- **`PublishAsync<T>`** sends to the topic for `T`, so every registered consumer for that message type receives a copy
+- **`SendAsync<TConsumer, T>`** sends directly to one consumer queue and bypasses topic fan-out
+
+```csharp
+await publisher.PublishAsync(new OrderPlaced(...));
+await publisher.SendAsync<AuditConsumer, OrderPlaced>(new OrderPlaced(...));
+```
+
+## Next steps
+
+- For a deeper architectural overview, see `docs/architecture.md`
+- For runnable examples, see the projects under `samples/`

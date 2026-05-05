@@ -1,6 +1,5 @@
 using InterBus.DynamoDB.Sagas;
 using InterBus.Sagas;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace InterBus.DynamoDB.Extensions;

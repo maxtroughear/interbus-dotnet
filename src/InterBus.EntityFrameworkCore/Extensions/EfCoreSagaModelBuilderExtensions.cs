@@ -3,7 +3,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace InterBus.EntityFrameworkCore.Extensions;
 
-/// <summary>Extension methods for configuring the InterBus saga state entity mapping.</summary>
+/// <summary>Extension methods for configuring the InterBus saga state entity mapping</summary>
 public static class EfCoreSagaModelBuilderExtensions
 {
     /// <summary>
@@ -30,8 +30,6 @@ public static class EfCoreSagaModelBuilderExtensions
             b.Property(e => e.IsCompleted).IsRequired();
             b.Property(e => e.ExpiresAtUtc);
 
-            // Index to support efficient TTL expiry cleanup queries and
-            // per-saga-type filtering.
             b.HasIndex(e => new { e.SagaType, e.ExpiresAtUtc });
         });
 

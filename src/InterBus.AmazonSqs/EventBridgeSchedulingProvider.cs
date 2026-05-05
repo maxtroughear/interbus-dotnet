@@ -14,21 +14,11 @@ namespace InterBus.AmazonSqs;
 /// <para>
 /// Register via <c>builder.AddEventBridgeScheduler()</c> on the <see cref="ISchedulerBuilder"/>.
 /// </para>
-/// <para>
-/// <strong>Caveats:</strong> Because delivery is handled entirely by EventBridge Scheduler,
-/// some InterBus pipeline features are not supported:
-/// <list type="bullet">
-///   <item><description>
-///     SNS message attributes (<c>interbus-message-type</c>, etc.) are not set when targeting
-///     SNS topics, so SNS subscription filter policies based on those attributes will not match
-///     EventBridge-scheduled messages.
-///   </description></item>
-///   <item><description>
-///     Cancellation of already-fired schedules is not possible.
-///   </description></item>
-/// </list>
-/// </para>
 /// </summary>
+/// <remarks>Because delivery is handled entirely by EventBridge Scheduler, some InterBus pipeline features are not
+/// supported. And SNS message attributes (<c>interbus-message-type</c>, etc.) are not set when targeting SNS topics, so
+/// SNS subscription filter policies based on those attributes will not match EventBridge-scheduled messages.
+/// </remarks>
 public sealed class EventBridgeSchedulingProvider(
     IAmazonScheduler schedulerClient,
     SnsSqsTopology topology,

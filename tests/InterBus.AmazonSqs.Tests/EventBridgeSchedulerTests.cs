@@ -1,4 +1,3 @@
-using Amazon.Extensions.NETCore.Setup;
 using Amazon.Scheduler;
 using Amazon.Scheduler.Model;
 using Amazon.SecurityToken;

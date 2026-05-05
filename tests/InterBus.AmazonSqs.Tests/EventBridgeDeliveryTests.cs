@@ -89,24 +89,40 @@ public sealed class EventBridgeDeliveryTests
             foreach (var svc in provider.GetServices<IHostedService>())
                 await svc.StartAsync(cts.Token);
 
-            // Schedule the message 2 minutes from now to satisfy EventBridge minimum delay.
-            var scheduledAt = DateTimeOffset.UtcNow.AddMinutes(2);
             using var scope = provider.CreateScope();
+            var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
             var scheduler = scope.ServiceProvider.GetRequiredService<IScheduler>();
-            var msg = new OrderPlaced(Guid.NewGuid(), "eventbridge@test.com", 42.00m);
-            await scheduler.ScheduleSendAsync<OrderPlacedConsumer, OrderPlaced>(msg, scheduledAt, ct);
+
+            // Step 1: Direct send to verify the consumer is up and processing messages.
+            var directMsg = new OrderPlaced(Guid.NewGuid(), "direct@test.com", 1.00m);
+            await publisher.SendAsync<OrderPlacedConsumer, OrderPlaced>(directMsg, ct);
+
+            await TestHelpers.WaitUntilAsync(
+                () => tracker.Messages.Count >= 1,
+                timeoutMs: 30_000,
+                intervalMs: 1_000,
+                cancellationToken: ct);
+
+            Assert.That(tracker.Messages, Has.Count.EqualTo(1),
+                "Direct send was not received — consumer is not responsive.");
+
+            // Step 2: Schedule the message 2 minutes from now to satisfy EventBridge minimum delay.
+            var scheduledAt = DateTimeOffset.UtcNow.AddMinutes(2);
+            var scheduledMsg = new OrderPlaced(Guid.NewGuid(), "eventbridge@test.com", 42.00m);
+            await scheduler.ScheduleSendAsync<OrderPlacedConsumer, OrderPlaced>(scheduledMsg, scheduledAt, ct);
 
             // Wait up to 8 minutes — EventBridge fires ~1 min after the scheduled time.
             await TestHelpers.WaitUntilAsync(
-                () => tracker.Messages.Count >= 1,
+                () => tracker.Messages.Count >= 2,
                 timeoutMs: 8 * 60 * 1_000,
                 intervalMs: 5_000,
                 cancellationToken: ct);
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(tracker.Messages, Has.Count.EqualTo(1));
-                Assert.That(tracker.Messages.Single().OrderId, Is.EqualTo(msg.OrderId));
+                Assert.That(tracker.Messages, Has.Count.EqualTo(2));
+                Assert.That(tracker.Messages, Has.Some.Matches<OrderPlaced>(m => m.OrderId == directMsg.OrderId));
+                Assert.That(tracker.Messages, Has.Some.Matches<OrderPlaced>(m => m.OrderId == scheduledMsg.OrderId));
             }
         }
         finally

@@ -264,7 +264,7 @@ internal sealed class SqsMessagePump(
             {
                 DataType = "String",
                 StringValue = ex.DeadLetteredAtUtc.ToString("O")
-            }
+            };
 
             await sqsClient.SendMessageAsync(
                 new SendMessageRequest

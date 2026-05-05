@@ -112,6 +112,14 @@ internal sealed class SqsMessagePump(
                     },
                     stoppingToken);
 
+                if (response?.Messages is null || !response.Messages.Any())
+                {
+                    logger.LogTrace(
+                        "InterBus AmazonSqs: no messages received from queue {QueueName}",
+                        queueName);
+                    continue;
+                }
+
                 messages = response.Messages;
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)

@@ -37,11 +37,18 @@ internal sealed class SqsMessagePump(
     : BackgroundService
 {
     /// <summary>
-    /// Per-request timeout for <c>ReceiveMessageAsync</c>: slightly longer than
-    /// <c>WaitTimeSeconds</c> (20 s) to ensure the call is cancelled and retried
-    /// if the underlying HTTP connection is silently dropped by a NAT gateway or firewall.
+    /// Long-poll wait time passed to SQS. The SQS endpoint holds the request open for up to
+    /// this many seconds before returning an empty response when no messages are available.
     /// </summary>
-    private static readonly TimeSpan ReceiveRequestTimeout = TimeSpan.FromSeconds(30);
+    private const int LongPollWaitSeconds = 20;
+
+    /// <summary>
+    /// Per-request deadline for <c>ReceiveMessageAsync</c>: slightly longer than
+    /// <see cref="LongPollWaitSeconds"/> so that SQS has time to respond before the deadline
+    /// fires. If the deadline fires first (e.g. because the underlying TCP connection was
+    /// silently dropped by a NAT gateway), the pump retries with a fresh connection.
+    /// </summary>
+    private static readonly TimeSpan ReceiveRequestTimeout = TimeSpan.FromSeconds(LongPollWaitSeconds + 5);
 
     private sealed class PrefetchedMessage(
         Message message,
@@ -108,23 +115,46 @@ internal sealed class SqsMessagePump(
                     queueName,
                     maxFetch);
 
-                // Use a per-request timeout slightly longer than WaitTimeSeconds to guard
-                // against silent connection drops by NAT gateways or firewalls in cloud
-                // environments, which would otherwise cause the call to hang indefinitely.
                 using var requestCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
-                requestCts.CancelAfter(ReceiveRequestTimeout);
 
-                var response = await sqsClient.ReceiveMessageAsync(
+                var receiveTask = sqsClient.ReceiveMessageAsync(
                     new ReceiveMessageRequest
                     {
                         QueueUrl = queueUrl,
                         MaxNumberOfMessages = Math.Clamp(maxFetch, 1, 10),
-                        WaitTimeSeconds = 20,
+                        WaitTimeSeconds = LongPollWaitSeconds,
                         VisibilityTimeout = (int)options.VisibilityTimeout.TotalSeconds,
                     },
                     requestCts.Token);
 
-                messages = response.Messages;
+                // Task.WhenAny is the primary deadline mechanism.
+                // CancellationToken.CancelAfter alone is unreliable when the underlying TCP
+                // connection is silently dropped by a NAT gateway: the OS socket can remain in
+                // a half-open state and the AWS SDK may not unblock in time.
+                // Task.WhenAny with an independent Task.Delay is unaffected by SDK or TCP internals
+                // and guarantees the pump moves on after ReceiveRequestTimeout regardless.
+                if (await Task.WhenAny(receiveTask, Task.Delay(ReceiveRequestTimeout, stoppingToken))
+                        != receiveTask)
+                {
+                    // Deadline or stoppingToken fired before the receive completed.
+                    // Cancel requestCts so the SDK abandons its request promptly.
+                    await requestCts.CancelAsync();
+
+                    // Observe any exception from the now-abandoned task so it is not
+                    // reported as an unobserved task exception.
+                    _ = receiveTask.ContinueWith(
+                        static t => { _ = t.Exception; },
+                        TaskContinuationOptions.OnlyOnFaulted);
+
+                    if (stoppingToken.IsCancellationRequested) break;
+
+                    logger.LogTrace(
+                        "InterBus AmazonSqs: receive timed out on queue {QueueName}; retrying",
+                        queueName);
+                    continue;
+                }
+
+                messages = (await receiveTask).Messages;
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -132,7 +162,8 @@ internal sealed class SqsMessagePump(
             }
             catch (OperationCanceledException)
             {
-                // Per-request timeout fired (connection likely dropped silently); retry immediately.
+                // requestCts was cancelled (e.g. stoppingToken transitively) before Task.WhenAny fired;
+                // treat as a timeout and retry.
                 logger.LogTrace(
                     "InterBus AmazonSqs: receive timed out on queue {QueueName}; retrying",
                     queueName);

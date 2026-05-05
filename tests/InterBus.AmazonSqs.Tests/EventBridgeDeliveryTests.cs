@@ -50,6 +50,19 @@ public sealed class EventBridgeDeliveryTests
         Assume.That(TestHelpers.UseRealAws, Is.True,
             "Skipped: requires real AWS credentials. Set INTERBUS_USE_REAL_AWS=true to run.");
 
+        // Enable AWS SDK internal diagnostic logging for this real-AWS test.
+        // System.Diagnostics logging captures HTTP-level details (request sent, response
+        // received, retries) that are not surfaced via Microsoft.Extensions.Logging, making
+        // it possible to diagnose connection hangs in CI.
+        var previousLogTo = Amazon.AWSConfigs.LoggingConfig.LogTo;
+        var previousLogMetrics = Amazon.AWSConfigs.LoggingConfig.LogMetrics;
+        var previousLogResponses = Amazon.AWSConfigs.LoggingConfig.LogResponses;
+        Amazon.AWSConfigs.LoggingConfig.LogTo = Amazon.LoggingOptions.SystemDiagnostics;
+        Amazon.AWSConfigs.LoggingConfig.LogMetrics = true;
+        Amazon.AWSConfigs.LoggingConfig.LogResponses = Amazon.ResponseLoggingOption.Always;
+        var traceListener = new System.Diagnostics.ConsoleTraceListener();
+        System.Diagnostics.Trace.Listeners.Add(traceListener);
+
         var ct = TestContext.CurrentContext.CancellationToken;
         var runId = Guid.NewGuid().ToString("N")[..8];
         var queuePrefix = $"q-eb-{runId}-";
@@ -127,6 +140,12 @@ public sealed class EventBridgeDeliveryTests
         }
         finally
         {
+            // Restore AWS SDK logging config so it does not affect other tests.
+            Amazon.AWSConfigs.LoggingConfig.LogTo = previousLogTo;
+            Amazon.AWSConfigs.LoggingConfig.LogMetrics = previousLogMetrics;
+            Amazon.AWSConfigs.LoggingConfig.LogResponses = previousLogResponses;
+            System.Diagnostics.Trace.Listeners.Remove(traceListener);
+
             await cts.CancelAsync();
 
             foreach (var svc in provider.GetServices<IHostedService>())

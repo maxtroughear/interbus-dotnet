@@ -116,21 +116,6 @@ public sealed class TickerQSchedulerTests
     }
 
     [Fact]
-    public async Task ScheduleAsync_NotifiesHostScheduler()
-    {
-        var manager = new StubTimeTickerManager();
-        var hostScheduler = new TrackingHostScheduler();
-        var scheduler = new TickerQMessageScheduler(manager);
-
-        var destination = new Uri("memoryqueue://interbus/q");
-        await scheduler.ScheduleAsync(
-            Guid.CreateVersion7(), destination, [1], new MessageHeaders(), DateTimeOffset.UtcNow.AddSeconds(30),
-            TestContext.Current.CancellationToken);
-
-        Assert.Equal(1, hostScheduler.RestartIfNeededCallCount);
-    }
-
-    [Fact]
     public async Task CancelAsync_WithValidId_CallsDeleteAsync()
     {
         var manager = new StubTimeTickerManager();

@@ -46,25 +46,25 @@ internal sealed partial class DynamoDbOutboxInlineDeliveryConsumeMiddleware(
 
         var groupIdStr = groupId.ToString("N");
 
-        // Query message items for this group.
+        // Query all items for this group (header + messages), then exclude the header
+        // client-side. DynamoDB does not allow primary key attributes in FilterExpression.
         var queryResponse = await dynamoDb.QueryAsync(new QueryRequest
         {
             TableName = options.TableName,
             KeyConditionExpression = "#gid = :gid",
-            FilterExpression = "#eid <> :group",
             ExpressionAttributeNames = new Dictionary<string, string>
             {
                 ["#gid"] = DynamoDbOutboxContext.AttrGroupId,
-                ["#eid"] = DynamoDbOutboxContext.AttrEntryId,
             },
             ExpressionAttributeValues = new Dictionary<string, AttributeValue>
             {
                 [":gid"] = new() { S = groupIdStr },
-                [":group"] = new() { S = DynamoDbOutboxContext.GroupEntryId },
             },
         }, cancellationToken);
 
-        var messages = queryResponse.Items;
+        var messages = queryResponse.Items
+            .Where(i => i[DynamoDbOutboxContext.AttrEntryId].S != DynamoDbOutboxContext.GroupEntryId)
+            .ToList();
 
         if (messages.Count == 0)
             return;

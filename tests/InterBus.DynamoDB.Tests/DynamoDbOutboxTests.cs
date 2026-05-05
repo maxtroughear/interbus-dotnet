@@ -8,7 +8,6 @@ using InterBus.Generated;
 using InterBus.InMemory.Extensions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-
 using Testcontainers.LocalStack;
 
 namespace InterBus.DynamoDB.Tests;
@@ -317,6 +316,10 @@ public class DynamoDbOutboxTests
 
         try
         {
+            // Start hosted services BEFORE publishing so the InMemory transport topology
+            // is built and the consumer can receive the OutboxOrderPlaced message.
+            await StartHostedServicesAsync(provider, cts.Token);
+
             await using (var scope = provider.CreateAsyncScope())
             {
                 var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
@@ -324,8 +327,6 @@ public class DynamoDbOutboxTests
                     new OutboxOrderPlaced(Guid.NewGuid(), "consumer@example.com"),
                     CancellationToken.None);
             }
-
-            await StartHostedServicesAsync(provider, cts.Token);
 
             await TestHelpers.WaitUntilAsync(() => shippedTracker.Messages.Count == 1);
 

@@ -75,6 +75,9 @@ internal sealed partial class DynamoDbOutboxProcessor(
         var nowEpoch = now.ToUnixTimeSeconds().ToString();
 
         // Scan for GROUP header items that are visible and not locked by another processor.
+        // Only group header items carry the VisibleAt attribute; message items do not.
+        // DynamoDB does not allow primary key attributes (GroupId, EntryId) in FilterExpression,
+        // so we identify group headers by the presence of VisibleAt.
         // The outbox table is expected to be small (messages are deleted after delivery)
         // so a scan is acceptable. A GSI on VisibleAt can be added for higher-throughput
         // scenarios if needed.
@@ -82,18 +85,16 @@ internal sealed partial class DynamoDbOutboxProcessor(
         {
             TableName = options.TableName,
             FilterExpression =
-                "#eid = :group AND #vat <= :now AND " +
+                "attribute_exists(#vat) AND #vat <= :now AND " +
                 "(attribute_not_exists(#pid) OR #ple < :now)",
             ExpressionAttributeNames = new Dictionary<string, string>
             {
-                ["#eid"] = DynamoDbOutboxContext.AttrEntryId,
                 ["#vat"] = DynamoDbOutboxContext.AttrVisibleAt,
                 ["#pid"] = DynamoDbOutboxContext.AttrProcessorId,
                 ["#ple"] = DynamoDbOutboxContext.AttrProcessorLockExpiresAt,
             },
             ExpressionAttributeValues = new Dictionary<string, AttributeValue>
             {
-                [":group"] = new() { S = DynamoDbOutboxContext.GroupEntryId },
                 [":now"] = new() { N = nowEpoch },
             },
         }, cancellationToken);
@@ -136,25 +137,26 @@ internal sealed partial class DynamoDbOutboxProcessor(
             return true;
         }
 
-        // Query all message items for this group (i.e. SK != "GROUP").
+        // Query all items for this group (both header and messages), then exclude the header
+        // client-side. DynamoDB does not allow primary key attributes (EntryId) in
+        // FilterExpression on Query operations.
         var queryResponse = await dynamoDb.QueryAsync(new QueryRequest
         {
             TableName = options.TableName,
             KeyConditionExpression = "#gid = :gid",
-            FilterExpression = "#eid <> :group",
             ExpressionAttributeNames = new Dictionary<string, string>
             {
                 ["#gid"] = DynamoDbOutboxContext.AttrGroupId,
-                ["#eid"] = DynamoDbOutboxContext.AttrEntryId,
             },
             ExpressionAttributeValues = new Dictionary<string, AttributeValue>
             {
                 [":gid"] = new() { S = groupId },
-                [":group"] = new() { S = DynamoDbOutboxContext.GroupEntryId },
             },
         }, cancellationToken);
 
-        var messages = queryResponse.Items;
+        var messages = queryResponse.Items
+            .Where(i => i[DynamoDbOutboxContext.AttrEntryId].S != DynamoDbOutboxContext.GroupEntryId)
+            .ToList();
 
         LogForwardingGroup(groupId, messages.Count);
 

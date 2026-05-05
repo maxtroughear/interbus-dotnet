@@ -54,7 +54,7 @@ public sealed class TickerQSchedulerTests
     public async Task ScheduleAsync_WithQueueUri_CreatesTimeTicker_WithDeliverFunctionName()
     {
         var manager = new StubTimeTickerManager();
-        var scheduler = new TickerQMessageScheduler(manager, new NoOpHostScheduler());
+        var scheduler = new TickerQMessageScheduler(manager);
 
         var scheduleId = Guid.CreateVersion7();
         var scheduledAt = DateTimeOffset.UtcNow.AddHours(1);
@@ -79,7 +79,7 @@ public sealed class TickerQSchedulerTests
     public async Task ScheduleAsync_WithTopicUri_CreatesTimeTicker_WithDeliverFunctionName()
     {
         var manager = new StubTimeTickerManager();
-        var scheduler = new TickerQMessageScheduler(manager, new NoOpHostScheduler());
+        var scheduler = new TickerQMessageScheduler(manager);
 
         var scheduleId = Guid.CreateVersion7();
         var payload = new byte[] { 10, 20, 30 };
@@ -103,7 +103,7 @@ public sealed class TickerQSchedulerTests
     public async Task ScheduleAsync_Headers_ArePersisted()
     {
         var manager = new StubTimeTickerManager();
-        var scheduler = new TickerQMessageScheduler(manager, new NoOpHostScheduler());
+        var scheduler = new TickerQMessageScheduler(manager);
 
         var headers = new MessageHeaders { [InterBusHeaders.MessageType] = "MyEvent" };
         var destination = new Uri("memorytopic://interbus/topic");
@@ -120,7 +120,7 @@ public sealed class TickerQSchedulerTests
     {
         var manager = new StubTimeTickerManager();
         var hostScheduler = new TrackingHostScheduler();
-        var scheduler = new TickerQMessageScheduler(manager, hostScheduler);
+        var scheduler = new TickerQMessageScheduler(manager);
 
         var destination = new Uri("memoryqueue://interbus/q");
         await scheduler.ScheduleAsync(
@@ -134,7 +134,7 @@ public sealed class TickerQSchedulerTests
     public async Task CancelAsync_WithValidId_CallsDeleteAsync()
     {
         var manager = new StubTimeTickerManager();
-        var scheduler = new TickerQMessageScheduler(manager, new NoOpHostScheduler());
+        var scheduler = new TickerQMessageScheduler(manager);
 
         var scheduleId = Guid.CreateVersion7();
         var destination = new Uri("memoryqueue://interbus/q");

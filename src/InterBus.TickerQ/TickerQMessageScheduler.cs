@@ -1,7 +1,6 @@
 using InterBus.TickerQ.Internal;
 using TickerQ.Utilities;
 using TickerQ.Utilities.Entities;
-using TickerQ.Utilities.Interfaces;
 using TickerQ.Utilities.Interfaces.Managers;
 
 namespace InterBus.TickerQ;
@@ -13,49 +12,20 @@ namespace InterBus.TickerQ;
 /// Register via <c>builder.AddTickerQScheduler()</c> on the <see cref="IInterBusBuilder"/>.
 /// </para>
 /// </summary>
-public sealed class TickerQMessageScheduler : IMessageSchedulingProvider
+public sealed class TickerQMessageScheduler(ITimeTickerManager<TimeTickerEntity> manager) : IMessageSchedulingProvider
 {
-    private readonly ITimeTickerManager<TimeTickerEntity> _manager;
-    private readonly ITickerQHostScheduler _hostScheduler;
-
-    /// <summary>
-    /// Initializes a new instance of <see cref="TickerQMessageScheduler"/>.
-    /// </summary>
-    public TickerQMessageScheduler(
-        ITimeTickerManager<TimeTickerEntity> manager,
-        ITickerQHostScheduler hostScheduler)
-    {
-        _manager = manager;
-        _hostScheduler = hostScheduler;
-    }
-
     /// <inheritdoc/>
     public Task ScheduleAsync(Guid scheduleId, Uri destination, byte[] payload, MessageHeaders headers,
-        DateTimeOffset scheduledAt, CancellationToken cancellationToken)
-    {
-        var request = new ScheduledDeliveryRequest(destination, payload, headers);
-        return ScheduleAsync(scheduleId, TickerQDeliverFunction.FunctionName, request, scheduledAt, cancellationToken);
-    }
+        DateTimeOffset scheduledAt, CancellationToken cancellationToken) =>
+        manager.AddAsync(new TimeTickerEntity
+        {
+            Id = scheduleId,
+            Function = TickerQDeliverFunction.FunctionName,
+            ExecutionTime = scheduledAt.UtcDateTime,
+            Request = TickerHelper.CreateTickerRequest(new ScheduledDeliveryRequest(destination, payload, headers))
+        }, cancellationToken);
 
     /// <inheritdoc/>
     public Task CancelAsync(Guid scheduleId, CancellationToken cancellationToken) =>
-        _manager.DeleteAsync(scheduleId, cancellationToken);
-
-    private async Task ScheduleAsync<TRequest>(Guid scheduleId, string functionName, TRequest request,
-        DateTimeOffset scheduledAt, CancellationToken cancellationToken) where TRequest : class
-    {
-        var ticker = new TimeTickerEntity
-        {
-            Id = scheduleId,
-            Function = functionName,
-            ExecutionTime = scheduledAt.UtcDateTime,
-            Request = TickerHelper.CreateTickerRequest(request)
-        };
-
-        await _manager.AddAsync(ticker, cancellationToken);
-
-        // Notify the host scheduler so it can wake up if the new job is earlier than the
-        // next scheduled poll, giving more precise delivery timing.
-        _hostScheduler.RestartIfNeeded(ticker.ExecutionTime);
-    }
+        manager.DeleteAsync(scheduleId, cancellationToken);
 }

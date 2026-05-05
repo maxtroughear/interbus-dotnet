@@ -113,12 +113,6 @@ public sealed class PublishSchedulingTests
             CancellationToken cancellationToken = default) => Task.CompletedTask;
     }
 
-    private sealed class NoOpTransport : ITransport
-    {
-        public Task SendAsync(TransportSendContext context, CancellationToken cancellationToken) =>
-            Task.CompletedTask;
-    }
-
     private sealed class CapturingTransport : ITransport
     {
         public List<(Uri Destination, byte[] Payload, MessageHeaders Headers)> Sends { get; } = [];

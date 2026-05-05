@@ -9,6 +9,9 @@ namespace InterBus.Scheduling;
 /// </summary>
 internal sealed class ScheduleDeliveryCommand
 {
+    /// <summary>The pre-generated schedule identifier to use when registering with the provider.</summary>
+    public Guid ScheduleId { get; init; }
+
     /// <summary>
     /// The destination URI (e.g. <c>memorytopic://interbus/my-topic</c> or
     /// <c>memoryqueue://interbus/my-queue</c>).

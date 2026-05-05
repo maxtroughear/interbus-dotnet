@@ -30,18 +30,23 @@ public sealed class TickerQMessageScheduler : IMessageSchedulingProvider
     }
 
     /// <inheritdoc/>
-    public Task ScheduleAsync(Uri destination, byte[] payload, MessageHeaders headers,
+    public Task ScheduleAsync(Guid scheduleId, Uri destination, byte[] payload, MessageHeaders headers,
         DateTimeOffset scheduledAt, CancellationToken cancellationToken)
     {
         var request = new ScheduledDeliveryRequest(destination, payload, headers);
-        return ScheduleAsync(TickerQDeliverFunction.FunctionName, request, scheduledAt, cancellationToken);
+        return ScheduleAsync(scheduleId, TickerQDeliverFunction.FunctionName, request, scheduledAt, cancellationToken);
     }
 
-    private async Task ScheduleAsync<TRequest>(string functionName, TRequest request,
+    /// <inheritdoc/>
+    public Task CancelAsync(Guid scheduleId, CancellationToken cancellationToken) =>
+        _manager.DeleteAsync(scheduleId, cancellationToken);
+
+    private async Task ScheduleAsync<TRequest>(Guid scheduleId, string functionName, TRequest request,
         DateTimeOffset scheduledAt, CancellationToken cancellationToken) where TRequest : class
     {
         var ticker = new TimeTickerEntity
         {
+            Id = scheduleId,
             Function = functionName,
             ExecutionTime = scheduledAt.UtcDateTime,
             Request = TickerHelper.CreateTickerRequest(request)

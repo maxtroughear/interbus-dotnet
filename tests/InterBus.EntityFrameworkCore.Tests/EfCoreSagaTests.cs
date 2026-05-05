@@ -17,7 +17,9 @@ namespace InterBus.EntityFrameworkCore.Tests;
 // ---------------------------------------------------------------------------
 
 public record EfSagaOrderStarted(Guid OrderId, string CustomerEmail);
+
 public record EfSagaOrderConfirmed(Guid OrderId);
+
 public record EfSagaOrderCancelled(Guid OrderId);
 
 // ---------------------------------------------------------------------------
@@ -172,8 +174,13 @@ public class EfCoreSagaTests
         await cts.CancelAsync();
         foreach (var svc in provider.GetServices<IHostedService>())
         {
-            try { await svc.StopAsync(CancellationToken.None); }
-            catch (OperationCanceledException) { }
+            try
+            {
+                await svc.StopAsync(CancellationToken.None);
+            }
+            catch (OperationCanceledException)
+            {
+            }
         }
 
         await provider.DisposeAsync();
@@ -208,11 +215,12 @@ public class EfCoreSagaTests
         {
             await using var scope = provider.CreateAsyncScope();
             var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
-            await publisher.PublishAsync(new EfSagaOrderStarted(orderId, "test@example.com"));
+            await publisher.PublishAsync(new EfSagaOrderStarted(orderId, "test@example.com"),
+                TestContext.Current.CancellationToken);
 
             await WaitUntilAsync(async () =>
                 (await GetSagaEntryAsync<EfSagaOrderSaga>(provider, orderId.ToString()))
-                    ?.State.MessageCount == 1);
+                ?.State.MessageCount == 1);
 
             var entry = await GetSagaEntryAsync<EfSagaOrderSaga>(provider, orderId.ToString());
 
@@ -243,12 +251,12 @@ public class EfCoreSagaTests
             await using var scope = provider.CreateAsyncScope();
             var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
 
-            await publisher.PublishAsync(new EfSagaOrderStarted(orderId, "order@test.com"));
-            await publisher.PublishAsync(new EfSagaOrderConfirmed(orderId));
+            await publisher.PublishAsync(new EfSagaOrderStarted(orderId, "order@test.com"), TestContext.Current.CancellationToken);
+            await publisher.PublishAsync(new EfSagaOrderConfirmed(orderId), TestContext.Current.CancellationToken);
 
             await WaitUntilAsync(async () =>
                 (await GetSagaEntryAsync<EfSagaOrderSaga>(provider, orderId.ToString()))
-                    ?.State.MessageCount == 2);
+                ?.State.MessageCount == 2);
 
             var entry = await GetSagaEntryAsync<EfSagaOrderSaga>(provider, orderId.ToString());
 
@@ -281,8 +289,8 @@ public class EfCoreSagaTests
             await using var scope = provider.CreateAsyncScope();
             var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
 
-            await publisher.PublishAsync(new EfSagaOrderStarted(orderId1, "first@test.com"));
-            await publisher.PublishAsync(new EfSagaOrderStarted(orderId2, "second@test.com"));
+            await publisher.PublishAsync(new EfSagaOrderStarted(orderId1, "first@test.com"), TestContext.Current.CancellationToken);
+            await publisher.PublishAsync(new EfSagaOrderStarted(orderId2, "second@test.com"), TestContext.Current.CancellationToken);
 
             await WaitUntilAsync(async () =>
             {
@@ -322,16 +330,16 @@ public class EfCoreSagaTests
             await using var scope = provider.CreateAsyncScope();
             var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
 
-            await publisher.PublishAsync(new EfSagaOrderStarted(orderId, "cancel@test.com"));
+            await publisher.PublishAsync(new EfSagaOrderStarted(orderId, "cancel@test.com"), TestContext.Current.CancellationToken);
 
             await WaitUntilAsync(async () =>
                 (await GetSagaEntryAsync<EfSagaOrderWithDeletionSaga>(provider, orderId.ToString()))
-                    ?.State.MessageCount == 1);
+                ?.State.MessageCount == 1);
 
-            await publisher.PublishAsync(new EfSagaOrderCancelled(orderId));
+            await publisher.PublishAsync(new EfSagaOrderCancelled(orderId), TestContext.Current.CancellationToken);
 
             await WaitUntilAsync(async () =>
-                await GetSagaEntryAsync<EfSagaOrderWithDeletionSaga>(provider, orderId.ToString()) == null,
+                    await GetSagaEntryAsync<EfSagaOrderWithDeletionSaga>(provider, orderId.ToString()) == null,
                 timeoutMs: 3000);
 
             var entry = await GetSagaEntryAsync<EfSagaOrderWithDeletionSaga>(provider, orderId.ToString());
@@ -360,15 +368,15 @@ public class EfCoreSagaTests
             await using var scope = provider.CreateAsyncScope();
             var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
 
-            await publisher.PublishAsync(new EfSagaOrderStarted(orderId, "complete@test.com"));
+            await publisher.PublishAsync(new EfSagaOrderStarted(orderId, "complete@test.com"), TestContext.Current.CancellationToken);
             await WaitUntilAsync(async () =>
                 (await GetSagaEntryAsync<EfSagaCompletingOrderSaga>(provider, orderId.ToString()))
-                    ?.State.MessageCount == 1);
+                ?.State.MessageCount == 1);
 
-            await publisher.PublishAsync(new EfSagaOrderConfirmed(orderId));
+            await publisher.PublishAsync(new EfSagaOrderConfirmed(orderId), TestContext.Current.CancellationToken);
             await WaitUntilAsync(async () =>
                 (await GetSagaEntryAsync<EfSagaCompletingOrderSaga>(provider, orderId.ToString()))
-                    ?.IsCompleted == true);
+                ?.IsCompleted == true);
 
             var completedEntry = await GetSagaEntryAsync<EfSagaCompletingOrderSaga>(provider, orderId.ToString());
             Assert.NotNull(completedEntry);
@@ -377,9 +385,9 @@ public class EfCoreSagaTests
             Assert.Equal(2, completedEntry.State.MessageCount);
 
             // A further message must be silently dropped (saga is completed).
-            await publisher.PublishAsync(new EfSagaOrderStarted(orderId, "new@test.com"));
+            await publisher.PublishAsync(new EfSagaOrderStarted(orderId, "new@test.com"), TestContext.Current.CancellationToken);
             await WaitUntilAsync(async () =>
-                (await GetSagaEntryAsync<EfSagaCompletingOrderSaga>(provider, orderId.ToString()))
+                    (await GetSagaEntryAsync<EfSagaCompletingOrderSaga>(provider, orderId.ToString()))
                     ?.State.CustomerEmail == "new@test.com",
                 timeoutMs: 500, intervalMs: 10);
 
@@ -413,13 +421,13 @@ public class EfCoreSagaTests
             await using var scope = provider.CreateAsyncScope();
             var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
 
-            await publisher.PublishAsync(new EfSagaOrderStarted(orderId, "ttl@test.com"));
+            await publisher.PublishAsync(new EfSagaOrderStarted(orderId, "ttl@test.com"), TestContext.Current.CancellationToken);
 
             await WaitUntilAsync(async () =>
                 await GetSagaEntryAsync<EfSagaOrderSaga>(provider, orderId.ToString()) != null);
 
             // Wait for the entry to expire.
-            await Task.Delay(200);
+            await Task.Delay(200, TestContext.Current.CancellationToken);
 
             var entry = await GetSagaEntryAsync<EfSagaOrderSaga>(provider, orderId.ToString());
             Assert.Null(entry);

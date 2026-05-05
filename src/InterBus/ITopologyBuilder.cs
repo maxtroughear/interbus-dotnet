@@ -19,9 +19,11 @@ public interface ITopologyBuilder
             "Topic topology must be implemented by the transport-specific topology builder");
 
     /// <summary>
-    /// Ensure a send queue exists (or is verified) and return its transport-specific identifier.
+    /// Ensure a send queue exists (or is verified) and return its transport-specific identifier
+    /// (e.g. a queue URL for SQS).
     /// </summary>
     Task<string> EnsureQueueAsync(string rawQueueName, CancellationToken cancellationToken) =>
         throw new NotSupportedException(
             "Queue topology must be implemented by the transport-specific topology builder");
+
 }

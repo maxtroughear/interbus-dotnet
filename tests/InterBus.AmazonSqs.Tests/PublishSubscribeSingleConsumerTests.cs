@@ -1,4 +1,3 @@
-using Amazon.Extensions.NETCore.Setup;
 using Amazon.SimpleNotificationService;
 using Amazon.SQS;
 using InterBus.AmazonSqs.Extensions;
@@ -52,13 +51,14 @@ public class PublishSubscribeSingleConsumerTests
         services.AddLogging();
         services.AddSingleton(_orderTracker);
 
-        // Register AWS clients pointing at the LocalStack container (or real AWS when
-        // INTERBUS_USE_REAL_AWS=true). In production the app registers clients once
-        // (e.g. via AddAWSService<T>()) and InterBus simply resolves them from DI.
-        AWSOptions awsOptions = TestHelpers.CreateAwsOptions(Container);
-        services.AddAWSService<IAmazonSimpleNotificationService>(awsOptions);
-        services.AddAWSService<IAmazonSQS>(awsOptions);
-        services.AddAWSService<Amazon.SecurityToken.IAmazonSecurityTokenService>(awsOptions);
+        var awsOptions = TestHelpers.CreateAwsOptions(Container);
+        
+        if (awsOptions is not null)
+            services.AddDefaultAWSOptions(awsOptions);
+        
+        services.AddAWSService<IAmazonSimpleNotificationService>();
+        services.AddAWSService<IAmazonSQS>();
+        services.AddAWSService<Amazon.SecurityToken.IAmazonSecurityTokenService>();
 
         services.AddInterBus(bus =>
         {

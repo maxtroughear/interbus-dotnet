@@ -123,6 +123,24 @@ public sealed class SnsSqsTransportOptions
     public string DeadLetterQueueSuffix { get; set; } = "-dlq";
 
     /// <summary>
+    /// SQS <c>WaitTimeSeconds</c> passed to each <c>ReceiveMessage</c> call.
+    /// <para>
+    /// Set to a positive value (max 20) to use SQS long polling, which holds the HTTP
+    /// connection open until a message arrives or the wait time elapses. Long polling
+    /// reduces empty-response noise and lowers cost.
+    /// </para>
+    /// <para>
+    /// Set to <c>0</c> for short polling, which returns immediately even when the queue is
+    /// empty. Short polling is useful in tests that need to react quickly to messages without
+    /// relying on the 20-second long-poll window.
+    /// </para>
+    /// <para>
+    /// Defaults to <c>20</c> (maximum long-poll wait).
+    /// </para>
+    /// </summary>
+    public int ReceiveWaitTimeSeconds { get; set; } = 20;
+
+    /// <summary>
     /// Effective lease renewal interval: <see cref="LeaseRenewalInterval"/> when set,
     /// otherwise half of <see cref="VisibilityTimeout"/> (minimum 1 second).
     /// </summary>

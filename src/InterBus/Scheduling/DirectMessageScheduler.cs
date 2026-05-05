@@ -12,11 +12,16 @@ internal sealed class DirectMessageScheduler(
     IMessageSerializer serializer)
     : IMessageScheduler
 {
-    public Task ScheduleInternalAsync<T>(PublishContext<T> context, DateTimeOffset scheduledAt,
+    public async Task<Guid> ScheduleInternalAsync<T>(PublishContext<T> context, DateTimeOffset scheduledAt,
         CancellationToken cancellationToken) where T : class
     {
+        var scheduleId = Guid.CreateVersion7();
         var payload = serializer.Serialize(context.Message);
-        return schedulingProvider.ScheduleAsync(context.Destination, payload, context.Headers, scheduledAt,
+        await schedulingProvider.ScheduleAsync(scheduleId, context.Destination, payload, context.Headers, scheduledAt,
             cancellationToken);
+        return scheduleId;
     }
+
+    public Task CancelInternalAsync(Guid scheduleId, CancellationToken cancellationToken) =>
+        schedulingProvider.CancelAsync(scheduleId, cancellationToken);
 }

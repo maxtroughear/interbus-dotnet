@@ -12,11 +12,15 @@ namespace InterBus.Scheduling;
 /// that support deferred visibility (e.g. PostgreSQL <c>visible_at</c>) will honour the delay;
 /// transports that do not may deliver the message immediately.
 /// </para>
+/// <para>
+/// Cancellation is not supported by this scheduler. <see cref="CancelInternalAsync"/> always
+/// throws <see cref="NotSupportedException"/>.
+/// </para>
 /// </summary>
 internal sealed class TransportDelayScheduler(PublishPipelineExecutor publishPipeline)
     : IMessageScheduler
 {
-    public Task ScheduleInternalAsync<T>(PublishContext<T> context, DateTimeOffset scheduledAt,
+    public async Task<Guid> ScheduleInternalAsync<T>(PublishContext<T> context, DateTimeOffset scheduledAt,
         CancellationToken cancellationToken) where T : class
     {
         var delay = scheduledAt - DateTimeOffset.UtcNow;
@@ -27,6 +31,12 @@ internal sealed class TransportDelayScheduler(PublishPipelineExecutor publishPip
 
         context.Delay = delay;
 
-        return publishPipeline.ExecuteAsync(context, cancellationToken: cancellationToken);
+        await publishPipeline.ExecuteAsync(context, cancellationToken: cancellationToken);
+        return Guid.CreateVersion7();
     }
+
+    public Task CancelInternalAsync(Guid scheduleId, CancellationToken cancellationToken) =>
+        throw new NotSupportedException(
+            "The transport-delay scheduler does not support cancellation. " +
+            "Use a scheduler that supports cancellation (e.g. TickerQ or EventBridge).");
 }

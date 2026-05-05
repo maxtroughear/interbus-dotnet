@@ -246,32 +246,35 @@ public sealed class RedeliverySchedulingMiddlewareTests
     {
         public List<ScheduledMessage<object>> Scheduled { get; } = [];
 
-        public Task SchedulePublishAsync<T>(T message, DateTimeOffset scheduledAt,
-            CancellationToken cancellationToken = default) where T : class => Task.CompletedTask;
+        public Task<Guid> SchedulePublishAsync<T>(T message, DateTimeOffset scheduledAt,
+            CancellationToken cancellationToken = default) where T : class =>
+            Task.FromResult(Guid.CreateVersion7());
 
-        public Task SchedulePublishAsync<T>(T message, DateTimeOffset scheduledAt, Action<PublishContext<T>> configure,
-            CancellationToken cancellationToken = default) where T : class => Task.CompletedTask;
+        public Task<Guid> SchedulePublishAsync<T>(T message, DateTimeOffset scheduledAt, Action<PublishContext<T>> configure,
+            CancellationToken cancellationToken = default) where T : class =>
+            Task.FromResult(Guid.CreateVersion7());
 
-        public Task ScheduleSendAsync<TConsumer, T>(T message, DateTimeOffset scheduledAt,
+        public Task<Guid> ScheduleSendAsync<TConsumer, T>(T message, DateTimeOffset scheduledAt,
             CancellationToken cancellationToken = default) where TConsumer : IConsumer<T> where T : class =>
-            Task.CompletedTask;
+            Task.FromResult(Guid.CreateVersion7());
 
-        public Task ScheduleSendAsync<TConsumer, T>(T message, DateTimeOffset scheduledAt,
+        public Task<Guid> ScheduleSendAsync<TConsumer, T>(T message, DateTimeOffset scheduledAt,
             Action<PublishContext<T>> configure,
             CancellationToken cancellationToken = default) where TConsumer : IConsumer<T> where T : class =>
-            Task.CompletedTask;
+            Task.FromResult(Guid.CreateVersion7());
 
-        public Task ScheduleSendAsync<T>(string queueName, T message, DateTimeOffset scheduledAt,
-            CancellationToken cancellationToken = default) where T : class => Task.CompletedTask;
+        public Task<Guid> ScheduleSendAsync<T>(string queueName, T message, DateTimeOffset scheduledAt,
+            CancellationToken cancellationToken = default) where T : class =>
+            Task.FromResult(Guid.CreateVersion7());
 
-        public Task ScheduleSendAsync<T>(string queueName, T message, DateTimeOffset scheduledAt,
+        public Task<Guid> ScheduleSendAsync<T>(string queueName, T message, DateTimeOffset scheduledAt,
             Action<PublishContext<T>> configure,
             CancellationToken cancellationToken = default) where T : class =>
             ScheduleSendAsync(new Uri("queue://interbus/" + queueName), message, scheduledAt, configure,
                 cancellationToken);
 
 
-        public Task ScheduleSendAsync<T>(Uri queue, T message, DateTimeOffset scheduledAt,
+        public Task<Guid> ScheduleSendAsync<T>(Uri queue, T message, DateTimeOffset scheduledAt,
             Action<PublishContext<T>> configure,
             CancellationToken cancellationToken = default) where T : class
         {
@@ -279,8 +282,11 @@ public sealed class RedeliverySchedulingMiddlewareTests
             configure(context);
             Scheduled.Add(new ScheduledMessage<object>(RoutingConventions.GetDestinationName(queue), message,
                 context.Headers, scheduledAt));
-            return Task.CompletedTask;
+            return Task.FromResult(Guid.CreateVersion7());
         }
+
+        public Task CancelAsync(Guid scheduleId, CancellationToken cancellationToken = default) =>
+            Task.CompletedTask;
     }
 
     private sealed record SentMessage<T>(string QueueName, T Payload, MessageHeaders Headers);

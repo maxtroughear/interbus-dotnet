@@ -1,7 +1,6 @@
 using InterBus.EntityFrameworkCore.Extensions;
 using InterBus.EntityFrameworkCore.Sagas;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.DependencyInjection;
 
 namespace InterBus.EntityFrameworkCore.SqlServer.IntegrationTests;
 

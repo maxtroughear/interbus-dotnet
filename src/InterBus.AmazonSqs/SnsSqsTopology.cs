@@ -22,15 +22,21 @@ public sealed class SnsSqsTopology(SnsSqsTransportOptions options)
     private const int MaxSnsTopicNameLength = 256;
 
     /// <summary>
-    /// Application-level cache: sanitised topic name → SNS Topic ARN.
+    /// Application-level cache: sanitised topic name → SNS Topic ARN
     /// </summary>
     internal ConcurrentDictionary<string, string> TopicArns { get; } =
         new(StringComparer.Ordinal);
 
     /// <summary>
-    /// Application-level cache: sanitised queue name → SQS Queue URL.
+    /// Application-level cache: sanitised queue name → SQS Queue URL
     /// </summary>
     internal ConcurrentDictionary<string, string> QueueUrls { get; } =
+        new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Application-level cache: SQS Queue URL → SQS Queue ARN
+    /// </summary>
+    internal ConcurrentDictionary<string, string> QueueArns { get; } =
         new(StringComparer.Ordinal);
 
     /// <summary>

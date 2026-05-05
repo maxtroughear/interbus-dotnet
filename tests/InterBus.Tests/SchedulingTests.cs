@@ -220,12 +220,15 @@ public sealed class SchedulingTests
     {
         public List<SchedulingCall> Calls { get; } = [];
 
-        public Task ScheduleAsync(Uri destination, byte[] payload, MessageHeaders headers,
+        public Task ScheduleAsync(Guid scheduleId, Uri destination, byte[] payload, MessageHeaders headers,
             DateTimeOffset scheduledAt, CancellationToken cancellationToken)
         {
             Calls.Add(new SchedulingCall(destination, headers, scheduledAt));
             return Task.CompletedTask;
         }
+
+        public Task CancelAsync(Guid scheduleId, CancellationToken cancellationToken) =>
+            Task.CompletedTask;
     }
 
     private sealed record SchedulingCall(

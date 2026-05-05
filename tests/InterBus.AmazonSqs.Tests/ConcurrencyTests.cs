@@ -14,14 +14,14 @@ namespace InterBus.AmazonSqs.Tests;
 [TestFixture]
 public class ConcurrencyTests
 {
-    private static readonly LocalStackContainer? Container = TestHelpers.CreateLocalStackContainer();
+    private readonly LocalStackContainer? _container = TestHelpers.CreateLocalStackContainer();
 
     private ServiceProvider _provider;
     private CancellationTokenSource _cts;
     private OrderPlacedTracker _orderTracker;
-    private string _runId = null!;
-    private string _queuePrefix = null!;
-    private string _topicPrefix = null!;
+    private string _runId;
+    private string _queuePrefix;
+    private string _topicPrefix;
 
     /// <summary>Number of concurrent publishers used in the concurrency test.</summary>
     private const int PublisherCount = 10;
@@ -32,17 +32,17 @@ public class ConcurrencyTests
     [OneTimeSetUp]
     public async Task OneTimeSetUp()
     {
-        if (Container is not null)
-            await Container.StartAsync();
+        if (_container is not null)
+            await _container.StartAsync();
     }
 
     [OneTimeTearDown]
     public async Task OneTimeTearDown()
     {
-        if (Container is not null)
+        if (_container is not null)
         {
-            await Container.StopAsync();
-            await Container.DisposeAsync();
+            await _container.StopAsync();
+            await _container.DisposeAsync();
         }
     }
 
@@ -58,10 +58,14 @@ public class ConcurrencyTests
         services.AddLogging();
         services.AddSingleton(_orderTracker);
 
-        var awsOptions = TestHelpers.CreateAwsOptions(Container);
-        services.AddAWSService<IAmazonSimpleNotificationService>(awsOptions);
-        services.AddAWSService<IAmazonSQS>(awsOptions);
-        services.AddAWSService<Amazon.SecurityToken.IAmazonSecurityTokenService>(awsOptions);
+        var awsOptions = TestHelpers.CreateAwsOptions(_container);
+        
+        if (awsOptions is not null)
+            services.AddDefaultAWSOptions(awsOptions);
+        
+        services.AddAWSService<IAmazonSimpleNotificationService>();
+        services.AddAWSService<IAmazonSQS>();
+        services.AddAWSService<Amazon.SecurityToken.IAmazonSecurityTokenService>();
 
         services.AddInterBus(bus =>
         {

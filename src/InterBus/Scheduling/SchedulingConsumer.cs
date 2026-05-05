@@ -15,6 +15,7 @@ internal sealed class SchedulingConsumer(IMessageSchedulingProvider provider) :
     public Task Consume(ScheduleDeliveryCommand message, IConsumeContext context,
         CancellationToken cancellationToken = default) =>
         provider.ScheduleAsync(
+            message.ScheduleId,
             new Uri(message.Destination),
             message.Payload,
             new MessageHeaders(message.Headers),

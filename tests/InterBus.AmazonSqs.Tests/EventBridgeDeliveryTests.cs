@@ -85,6 +85,7 @@ public sealed class EventBridgeDeliveryTests
             {
                 o.QueuePrefix = queuePrefix;
                 o.TopicPrefix = topicPrefix;
+                o.ReceiveWaitTimeSeconds = 0; // short polling so the pump cycles immediately in tests
             });
             bus.AddConsumer<OrderPlacedConsumer>();
             bus.AddScheduling(sched =>

@@ -28,15 +28,20 @@ public static class S3ClaimCheckBuilderExtensions
         /// <em>before</em> calling this method.
         /// </para>
         /// </summary>
-        /// <param name="configure">
-        /// Optional delegate to configure <see cref="S3ClaimCheckOptions"/>.
-        /// At minimum <see cref="S3ClaimCheckOptions.BucketName"/> must be set.
+        /// <param name="bucketName">
+        /// The S3 bucket name where large message payloads are stored.
         /// </param>
-        public IInterBusBuilder AddS3ClaimCheck(Action<S3ClaimCheckOptions>? configure = null)
+        /// <param name="configure">
+        /// Optional delegate to configure additional <see cref="S3ClaimCheckOptions"/> settings
+        /// such as <see cref="S3ClaimCheckOptions.SizeThresholdBytes"/> and
+        /// <see cref="S3ClaimCheckOptions.KeyPrefix"/>.
+        /// </param>
+        public IInterBusBuilder AddS3ClaimCheck(string bucketName, Action<S3ClaimCheckOptions>? configure = null)
         {
             ArgumentNullException.ThrowIfNull(builder);
+            ArgumentException.ThrowIfNullOrWhiteSpace(bucketName);
 
-            var options = new S3ClaimCheckOptions();
+            var options = new S3ClaimCheckOptions { BucketName = bucketName };
             configure?.Invoke(options);
 
             builder.Services.AddSingleton(options);

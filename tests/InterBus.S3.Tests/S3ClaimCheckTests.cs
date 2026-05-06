@@ -121,7 +121,8 @@ public sealed class S3ClaimCheckTests
 
         var (provider, cts) = await StartBusAsync(
             services => services.AddSingleton(tracker),
-            options => { options.BucketName = _bucketName; options.SizeThresholdBytes = 256 * 1024; });
+            _bucketName,
+            options => options.SizeThresholdBytes = 256 * 1024);
 
         try
         {
@@ -160,7 +161,8 @@ public sealed class S3ClaimCheckTests
         // Set a very small threshold so any message triggers the claim check.
         var (provider, cts) = await StartBusAsync(
             services => services.AddSingleton(tracker),
-            options => { options.BucketName = _bucketName; options.SizeThresholdBytes = 1; });
+            _bucketName,
+            options => options.SizeThresholdBytes = 1);
 
         try
         {
@@ -198,7 +200,8 @@ public sealed class S3ClaimCheckTests
 
         var (provider, cts) = await StartBusAsync(
             services => services.AddSingleton(tracker),
-            options => { options.BucketName = _bucketName; options.SizeThresholdBytes = 1; });
+            _bucketName,
+            options => options.SizeThresholdBytes = 1);
 
         try
         {
@@ -234,7 +237,8 @@ public sealed class S3ClaimCheckTests
 
     private async Task<(ServiceProvider Provider, CancellationTokenSource Cts)> StartBusAsync(
         Action<IServiceCollection> registerServices,
-        Action<S3ClaimCheckOptions> configureClaimCheck)
+        string bucketName,
+        Action<S3ClaimCheckOptions>? configure = null)
     {
         var services = new ServiceCollection();
         services.AddLogging();
@@ -246,7 +250,7 @@ public sealed class S3ClaimCheckTests
         services.AddInterBus(bus =>
         {
             bus.AddInMemoryTransport();
-            bus.AddS3ClaimCheck(configureClaimCheck);
+            bus.AddS3ClaimCheck(bucketName, configure);
             bus.AddConsumer<LargePayloadConsumer>(c => c.UseS3ClaimCheck());
         });
 

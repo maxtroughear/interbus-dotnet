@@ -71,12 +71,16 @@ public static class DynamoDbSagaTable
         string tableName,
         CancellationToken cancellationToken)
     {
-        while (!cancellationToken.IsCancellationRequested)
+        var deadline = DateTimeOffset.UtcNow.AddSeconds(60);
+        while (!cancellationToken.IsCancellationRequested && DateTimeOffset.UtcNow < deadline)
         {
             var desc = await dynamoDb.DescribeTableAsync(tableName, cancellationToken);
             if (desc.Table.TableStatus == TableStatus.ACTIVE)
                 return;
             await Task.Delay(TimeSpan.FromMilliseconds(500), cancellationToken);
         }
+        cancellationToken.ThrowIfCancellationRequested();
+        throw new TimeoutException(
+            $"DynamoDB table '{tableName}' did not become ACTIVE within the expected time.");
     }
 }

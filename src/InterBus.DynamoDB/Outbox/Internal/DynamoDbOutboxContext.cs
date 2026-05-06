@@ -1,3 +1,4 @@
+using System.IO.Hashing;
 using System.Text.Json;
 using Amazon.DynamoDBv2;
 using Amazon.DynamoDBv2.Model;
@@ -64,7 +65,7 @@ internal sealed class DynamoDbOutboxContext(
 
             // Assign the group to a shard deterministically by hashing the group ID.
             var shardBytes = groupIdGuid.ToByteArray();
-            var shardIndex = (int)(BitConverter.ToUInt32(shardBytes, 0) % (uint)options.ShardCount);
+            var shardIndex = (int)(XxHash3.HashToUInt64(shardBytes) % (ulong)options.ShardCount);
 
             // Group header item
             items.Add(new TransactWriteItem

@@ -11,14 +11,20 @@ namespace InterBus.DynamoDB.Outbox.Internal;
 /// Background service that continuously polls the DynamoDB outbox table for pending groups and
 /// forwards their messages to the configured transport via <see cref="SendPipelineExecutor"/>.
 /// <para>
-/// Each iteration scans for one eligible group (where <c>VisibleAt</c> has elapsed and no
-/// active processor lock is held), acquires an optimistic lock using a conditional
-/// <c>UpdateItem</c>, forwards all messages in the group, then deletes the group and messages
-/// atomically via <c>TransactWriteItems</c>.
+/// When a <see cref="DynamoDbOutboxOptions.GsiIndexName"/> is configured, each iteration
+/// queries the GSI for one eligible group per shard (partition key <c>Shard</c>, sort key
+/// <c>VisibleAt &lt;= now</c>). Without a GSI, it falls back to a full-table scan.
 /// </para>
 /// <para>
-/// The poll delay (<see cref="DynamoDbOutboxOptions.PollInterval"/>) is only applied when the
-/// outbox is empty. While messages are available the processor loops immediately.
+/// Locking is implemented by pushing <c>VisibleAt</c> forward to
+/// <c>now + ProcessorLockDuration</c> via a conditional <c>UpdateItem</c>. This prevents
+/// other processors from picking up the same group until the lock expires, without requiring
+/// additional attributes. On failure the lock is released by resetting <c>VisibleAt</c> to
+/// <c>now</c>.
+/// </para>
+/// <para>
+/// The poll delay (<see cref="DynamoDbOutboxOptions.PollInterval"/>) is only applied when all
+/// shards are empty. While messages are available the processor loops immediately.
 /// </para>
 /// <para>
 /// Delivery is at-least-once: if the process crashes after forwarding but before deleting, the
@@ -67,31 +73,96 @@ internal sealed partial class DynamoDbOutboxProcessor(
 
     /// <summary>
     /// Processes one group. Returns <c>true</c> if a group was found (and forwarded or
-    /// failed); <c>false</c> when the outbox is empty.
+    /// failed); <c>false</c> when all shards are empty.
     /// </summary>
     private async Task<bool> ProcessGroupAsync(CancellationToken cancellationToken)
     {
         var now = DateTimeOffset.UtcNow;
         var nowEpoch = now.ToUnixTimeSeconds().ToString();
 
-        // Scan for GROUP header items that are visible and not locked by another processor.
-        // Only group header items carry the VisibleAt attribute; message items do not.
-        // DynamoDB does not allow primary key attributes (GroupId, EntryId) in FilterExpression,
-        // so we identify group headers by the presence of VisibleAt.
-        // The outbox table is expected to be small (messages are deleted after delivery)
-        // so a scan is acceptable. A GSI on VisibleAt can be added for higher-throughput
-        // scenarios if needed.
+        for (var shard = 0; shard < options.ShardCount; shard++)
+        {
+            var groupItem = await FindEligibleGroupAsync(shard, nowEpoch, cancellationToken);
+            if (groupItem is null)
+                continue;
+
+            var groupId = groupItem[DynamoDbOutboxContext.AttrGroupId].S;
+            var currentVisibleAt = groupItem[DynamoDbOutboxContext.AttrVisibleAt].N;
+
+            // Acquire lock by pushing VisibleAt into the future. The condition ensures we
+            // win a race against another processor that may have read the same group.
+            var lockExpiry = now.Add(options.ProcessorLockDuration).ToUnixTimeSeconds().ToString();
+            try
+            {
+                await dynamoDb.UpdateItemAsync(new UpdateItemRequest
+                {
+                    TableName = options.TableName,
+                    Key = BuildGroupKey(groupId),
+                    UpdateExpression = "SET #vat = :lockExpiry",
+                    ConditionExpression = "#vat = :currentVat",
+                    ExpressionAttributeNames = new Dictionary<string, string>
+                    {
+                        ["#vat"] = DynamoDbOutboxContext.AttrVisibleAt,
+                    },
+                    ExpressionAttributeValues = new Dictionary<string, AttributeValue>
+                    {
+                        [":lockExpiry"] = new() { N = lockExpiry },
+                        [":currentVat"] = new() { N = currentVisibleAt },
+                    },
+                }, cancellationToken);
+            }
+            catch (ConditionalCheckFailedException)
+            {
+                // Another processor grabbed this group — try the next shard.
+                return true;
+            }
+
+            await ForwardGroupAsync(groupId, nowEpoch, cancellationToken);
+            return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Finds one eligible group header for the given shard. Uses the GSI when configured,
+    /// otherwise falls back to a full-table scan.
+    /// </summary>
+    private async Task<Dictionary<string, AttributeValue>?> FindEligibleGroupAsync(
+        int shard, string nowEpoch, CancellationToken cancellationToken)
+    {
+        if (options.GsiIndexName is { } gsiName)
+        {
+            var queryResponse = await dynamoDb.QueryAsync(new QueryRequest
+            {
+                TableName = options.TableName,
+                IndexName = gsiName,
+                KeyConditionExpression = "#shard = :shard AND #vat <= :now",
+                Limit = 1,
+                ExpressionAttributeNames = new Dictionary<string, string>
+                {
+                    ["#shard"] = DynamoDbOutboxContext.AttrShard,
+                    ["#vat"] = DynamoDbOutboxContext.AttrVisibleAt,
+                },
+                ExpressionAttributeValues = new Dictionary<string, AttributeValue>
+                {
+                    [":shard"] = new() { N = shard.ToString() },
+                    [":now"] = new() { N = nowEpoch },
+                },
+            }, cancellationToken);
+
+            return queryResponse.Count > 0 ? queryResponse.Items[0] : null;
+        }
+
+        // Fallback: full-table scan for group headers (no GSI required).
         var scanResponse = await dynamoDb.ScanAsync(new ScanRequest
         {
             TableName = options.TableName,
-            FilterExpression =
-                "attribute_exists(#vat) AND #vat <= :now AND " +
-                "(attribute_not_exists(#pid) OR #ple < :now)",
+            FilterExpression = "attribute_exists(#vat) AND #vat <= :now",
+            Limit = 1,
             ExpressionAttributeNames = new Dictionary<string, string>
             {
                 ["#vat"] = DynamoDbOutboxContext.AttrVisibleAt,
-                ["#pid"] = DynamoDbOutboxContext.AttrProcessorId,
-                ["#ple"] = DynamoDbOutboxContext.AttrProcessorLockExpiresAt,
             },
             ExpressionAttributeValues = new Dictionary<string, AttributeValue>
             {
@@ -99,47 +170,18 @@ internal sealed partial class DynamoDbOutboxProcessor(
             },
         }, cancellationToken);
 
-        if (scanResponse.Count == 0)
-            return false;
+        return scanResponse.Count > 0 ? scanResponse.Items[0] : null;
+    }
 
-        var groupItem = scanResponse.Items[0];
-        var groupId = groupItem[DynamoDbOutboxContext.AttrGroupId].S;
-
-        // Try to acquire the processor lock via a conditional update.
-        var processorId = Guid.NewGuid().ToString("N");
-        var lockExpiresAt = now.Add(options.ProcessorLockDuration).ToUnixTimeSeconds().ToString();
-
-        try
-        {
-            await dynamoDb.UpdateItemAsync(new UpdateItemRequest
-            {
-                TableName = options.TableName,
-                Key = BuildGroupKey(groupId),
-                UpdateExpression = "SET #pid = :pid, #ple = :ple",
-                ConditionExpression = "attribute_not_exists(#pid) OR #ple < :now",
-                ExpressionAttributeNames = new Dictionary<string, string>
-                {
-                    ["#pid"] = DynamoDbOutboxContext.AttrProcessorId,
-                    ["#ple"] = DynamoDbOutboxContext.AttrProcessorLockExpiresAt,
-                },
-                ExpressionAttributeValues = new Dictionary<string, AttributeValue>
-                {
-                    [":pid"] = new() { S = processorId },
-                    [":ple"] = new() { N = lockExpiresAt },
-                    [":now"] = new() { N = nowEpoch },
-                },
-            }, cancellationToken);
-        }
-        catch (ConditionalCheckFailedException)
-        {
-            // Another processor grabbed this group — return true so the caller retries
-            // immediately without waiting the poll interval.
-            return true;
-        }
-
-        // Query all items for this group (both header and messages), then exclude the header
-        // client-side. DynamoDB does not allow primary key attributes (EntryId) in
-        // FilterExpression on Query operations.
+    /// <summary>
+    /// Fetches all message items for <paramref name="groupId"/>, forwards them to the
+    /// transport, then deletes the group atomically.
+    /// </summary>
+    private async Task ForwardGroupAsync(string groupId, string nowEpoch,
+        CancellationToken cancellationToken)
+    {
+        // Query all items for this group (header + messages), then exclude the header
+        // client-side. DynamoDB does not allow primary key attributes in FilterExpression.
         var queryResponse = await dynamoDb.QueryAsync(new QueryRequest
         {
             TableName = options.TableName,
@@ -197,8 +239,8 @@ internal sealed partial class DynamoDbOutboxProcessor(
                     "InterBus DynamoDB outbox: failed to forward message {MessageId} to {Destination}",
                     msgId, dest);
 
-                await ReleaseLockAsync(groupId, processorId);
-                return true; // group existed; retry next iteration
+                await ReleaseLockAsync(groupId, nowEpoch);
+                return;
             }
         }
 
@@ -248,13 +290,16 @@ internal sealed partial class DynamoDbOutboxProcessor(
             logger.LogError(ex,
                 "InterBus DynamoDB outbox: failed to delete group {GroupId} after forwarding",
                 groupId);
-            await ReleaseLockAsync(groupId, processorId);
+            await ReleaseLockAsync(groupId, nowEpoch);
         }
-
-        return true;
     }
 
-    private async Task ReleaseLockAsync(string groupId, string processorId)
+    /// <summary>
+    /// Releases the lock on <paramref name="groupId"/> by resetting <c>VisibleAt</c> to
+    /// <paramref name="nowEpoch"/>, making the group immediately eligible for the next
+    /// processing attempt.
+    /// </summary>
+    private async Task ReleaseLockAsync(string groupId, string nowEpoch)
     {
         try
         {
@@ -262,23 +307,23 @@ internal sealed partial class DynamoDbOutboxProcessor(
             {
                 TableName = options.TableName,
                 Key = BuildGroupKey(groupId),
-                UpdateExpression = "REMOVE #pid, #ple",
-                ConditionExpression = "#pid = :pid",
+                UpdateExpression = "SET #vat = :now",
+                ConditionExpression = "attribute_exists(#gid)",
                 ExpressionAttributeNames = new Dictionary<string, string>
                 {
-                    ["#pid"] = DynamoDbOutboxContext.AttrProcessorId,
-                    ["#ple"] = DynamoDbOutboxContext.AttrProcessorLockExpiresAt,
+                    ["#vat"] = DynamoDbOutboxContext.AttrVisibleAt,
+                    ["#gid"] = DynamoDbOutboxContext.AttrGroupId,
                 },
                 ExpressionAttributeValues = new Dictionary<string, AttributeValue>
                 {
-                    [":pid"] = new() { S = processorId },
+                    [":now"] = new() { N = nowEpoch },
                 },
             });
         }
         catch (Exception ex) when (
             ex is ConditionalCheckFailedException or ResourceNotFoundException)
         {
-            // Lock already released or group deleted — nothing to do.
+            // Group already deleted — nothing to do.
         }
     }
 

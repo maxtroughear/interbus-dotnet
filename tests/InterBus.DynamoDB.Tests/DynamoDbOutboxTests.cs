@@ -153,7 +153,7 @@ public class DynamoDbOutboxTests
             bus.AddInMemoryTransport();
             bus.AddConsumer<OutboxOrderPlacedConsumer>();
             // Long poll interval so the processor does not run during assertions.
-            bus.UseOutbox(o => o
+            bus.UseDynamoDbOutbox(o => o
                 .WithTableName(_tableName)
                 .WithPollInterval(TimeSpan.FromHours(1))
                 .DisableOutboxProcessor());
@@ -212,7 +212,7 @@ public class DynamoDbOutboxTests
         {
             bus.AddInMemoryTransport();
             bus.AddConsumer<OutboxOrderPlacedConsumer>();
-            bus.UseOutbox(o => o
+            bus.UseDynamoDbOutbox(o => o
                 .WithTableName(_tableName)
                 .WithPollInterval(TimeSpan.FromMilliseconds(50)));
         }, services => services.AddSingleton(tracker));
@@ -261,7 +261,7 @@ public class DynamoDbOutboxTests
         {
             bus.AddInMemoryTransport();
             bus.AddConsumer<OutboxOrderPlacedConsumer>();
-            bus.UseOutbox(o => o
+            bus.UseDynamoDbOutbox(o => o
                 .WithTableName(_tableName)
                 .WithPollInterval(TimeSpan.FromMilliseconds(50)));
         }, services => services.AddSingleton(tracker));
@@ -307,9 +307,9 @@ public class DynamoDbOutboxTests
         var (provider, cts) = await StartBusAsync(bus =>
         {
             bus.AddInMemoryTransport();
-            bus.AddConsumer<OutboxOrderPlacedPublishingConsumer>(c => c.UseOutbox());
+            bus.AddConsumer<OutboxOrderPlacedPublishingConsumer>(c => c.UseDynamoDbOutbox());
             bus.AddConsumer<OutboxOrderShippedConsumer>();
-            bus.AddOutbox(o => o
+            bus.AddDynamoDbOutbox(o => o
                 .WithTableName(_tableName)
                 .WithPollInterval(TimeSpan.FromMilliseconds(50)));
         }, services => services.AddSingleton(shippedTracker));
@@ -353,7 +353,7 @@ public class DynamoDbOutboxTests
         {
             bus.AddInMemoryTransport();
             bus.AddConsumer<OutboxOrderPlacedConsumer>();
-            bus.UseOutbox(o => o
+            bus.UseDynamoDbOutbox(o => o
                 .WithTableName(_tableName)
                 .WithPollInterval(TimeSpan.FromHours(1))
                 .DisableOutboxProcessor());
@@ -434,9 +434,9 @@ public class DynamoDbOutboxTests
         {
             bus.AddInMemoryTransport();
             bus.AddConsumer<OutboxOrderPlacedPublishingConsumer>(
-                c => c.UseOutboxWithInlineDelivery());
+                c => c.UseDynamoDbOutboxWithInlineDelivery());
             bus.AddConsumer<OutboxOrderShippedConsumer>();
-            bus.AddOutbox(o => o
+            bus.AddDynamoDbOutbox(o => o
                 .WithTableName(_tableName)
                 .WithPollInterval(TimeSpan.FromHours(1))
                 .DisableOutboxProcessor());
@@ -533,6 +533,8 @@ public class DynamoDbOutboxTests
         }
         catch (ResourceNotFoundException)
         {
+            var gsiName = new DynamoDbOutboxOptions().GsiIndexName!;
+
             await dynamoDb.CreateTableAsync(new CreateTableRequest
             {
                 TableName = tableName,
@@ -545,6 +547,21 @@ public class DynamoDbOutboxTests
                 [
                     new AttributeDefinition(DynamoDbOutboxTable.GroupId, ScalarAttributeType.S),
                     new AttributeDefinition(DynamoDbOutboxTable.EntryId, ScalarAttributeType.S),
+                    new AttributeDefinition(DynamoDbOutboxTable.Shard, ScalarAttributeType.N),
+                    new AttributeDefinition(DynamoDbOutboxTable.VisibleAt, ScalarAttributeType.N),
+                ],
+                GlobalSecondaryIndexes =
+                [
+                    new GlobalSecondaryIndex
+                    {
+                        IndexName = gsiName,
+                        KeySchema =
+                        [
+                            new KeySchemaElement(DynamoDbOutboxTable.Shard, KeyType.HASH),
+                            new KeySchemaElement(DynamoDbOutboxTable.VisibleAt, KeyType.RANGE),
+                        ],
+                        Projection = new Projection { ProjectionType = ProjectionType.ALL },
+                    },
                 ],
                 BillingMode = BillingMode.PAY_PER_REQUEST,
             });

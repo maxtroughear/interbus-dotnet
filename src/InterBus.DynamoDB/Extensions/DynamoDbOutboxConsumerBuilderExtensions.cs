@@ -23,14 +23,14 @@ public static class DynamoDbOutboxConsumerBuilderExtensions
         /// </para>
         /// <para>
         /// To also attempt immediate ("inline") delivery after <c>Consume</c> returns, use
-        /// <see cref="UseOutboxWithInlineDelivery(IConsumerBuilder)"/> instead.
+        /// <see cref="UseDynamoDbOutboxWithInlineDelivery(IConsumerBuilder)"/> instead.
         /// </para>
         /// <para>
-        /// Requires <c>bus.AddOutbox()</c> or <c>bus.UseOutbox()</c> to have been called on the
-        /// InterBus builder so that the outbox infrastructure is registered.
+        /// Requires <c>bus.AddDynamoDbOutbox()</c> or <c>bus.UseDynamoDbOutbox()</c> to have
+        /// been called on the InterBus builder so that the outbox infrastructure is registered.
         /// </para>
         /// </summary>
-        public IConsumerBuilder UseOutbox()
+        public IConsumerBuilder UseDynamoDbOutbox()
         {
             ArgumentNullException.ThrowIfNull(builder);
 
@@ -59,11 +59,11 @@ public static class DynamoDbOutboxConsumerBuilderExtensions
         /// <see cref="DynamoDbOutboxOptions.ConsumerVisibilityTimeout"/> has elapsed.
         /// </para>
         /// <para>
-        /// Requires <c>bus.AddOutbox()</c> or <c>bus.UseOutbox()</c> to have been called on the
-        /// InterBus builder.
+        /// Requires <c>bus.AddDynamoDbOutbox()</c> or <c>bus.UseDynamoDbOutbox()</c> to have
+        /// been called on the InterBus builder.
         /// </para>
         /// </summary>
-        public IConsumerBuilder UseOutboxWithInlineDelivery()
+        public IConsumerBuilder UseDynamoDbOutboxWithInlineDelivery()
         {
             ArgumentNullException.ThrowIfNull(builder);
 

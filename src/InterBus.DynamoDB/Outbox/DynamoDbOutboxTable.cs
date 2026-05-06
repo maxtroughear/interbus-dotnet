@@ -7,6 +7,14 @@ namespace InterBus.DynamoDB.Outbox;
 /// The table must be created with partition key <see cref="GroupId"/> (String) and sort key
 /// <see cref="EntryId"/> (String).
 /// </para>
+/// <para>
+/// To enable efficient sharded queries and avoid full-table scans, create a Global Secondary
+/// Index (GSI) with partition key <see cref="Shard"/> (Number) and sort key
+/// <see cref="VisibleAt"/> (Number). Set <see cref="DynamoDbOutboxOptions.GsiIndexName"/> to
+/// the name of this index. The recommended index name is
+/// <c>"InterBusOutbox-VisibleAt-index"</c>. Multiple processor instances can each handle a
+/// dedicated shard for horizontal scaling.
+/// </para>
 /// </summary>
 public static class DynamoDbOutboxTable
 {
@@ -24,22 +32,22 @@ public static class DynamoDbOutboxTable
     public const string GroupEntryValue = "GROUP";
 
     /// <summary>
+    /// Shard number assigned to group header items. Number attribute (0-based).
+    /// Used as the partition key of the optional <see cref="DynamoDbOutboxOptions.GsiIndexName"/>
+    /// GSI to allow efficient per-shard queries and horizontal scaling.
+    /// </summary>
+    public const string Shard = "Shard";
+
+    /// <summary>
     /// Unix epoch seconds when the group becomes eligible for processing. Number attribute.
+    /// Also serves as the processor lock: when a processor acquires a group it sets
+    /// <c>VisibleAt</c> to <c>now + ProcessorLockDuration</c>, hiding it from other
+    /// processors until the lock expires or the group is deleted.
     /// </summary>
     public const string VisibleAt = "VisibleAt";
 
     /// <summary>Unix epoch seconds when the item was created. Number attribute.</summary>
     public const string CreatedAt = "CreatedAt";
-
-    /// <summary>
-    /// UUID of the processor currently holding a lock on this group. String attribute (optional).
-    /// </summary>
-    public const string ProcessorId = "ProcessorId";
-
-    /// <summary>
-    /// Unix epoch seconds when the processor lock expires. Number attribute (optional).
-    /// </summary>
-    public const string ProcessorLockExpiresAt = "ProcessorLockExpiresAt";
 
     /// <summary>Destination URI for this message. String attribute.</summary>
     public const string Destination = "Destination";

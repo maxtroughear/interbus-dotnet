@@ -15,16 +15,16 @@ public static class DynamoDbOutboxBuilderExtensions
         /// <see cref="IDynamoDbOutboxContext"/>, shared <see cref="DynamoDbOutboxOptions"/>,
         /// <see cref="DynamoDbOutboxConsumeState"/>, and the background
         /// <see cref="DynamoDbOutboxProcessor"/>. Does <b>not</b> add the bus-level publish
-        /// middleware — call <see cref="UseOutbox(IInterBusBuilder, Action{DynamoDbOutboxBuilder}?)"/>
+        /// middleware — call <see cref="UseDynamoDbOutbox(IInterBusBuilder, Action{DynamoDbOutboxBuilder}?)"/>
         /// to also route <see cref="IPublisher"/> calls through the outbox.
         /// <para>
         /// Call this method when you only want consumers (not the global bus publisher) to write
         /// to the outbox. Consumers opt in individually via
-        /// <c>bus.AddConsumer&lt;T&gt;(c =&gt; c.UseOutbox())</c>.
+        /// <c>bus.AddConsumer&lt;T&gt;(c =&gt; c.UseDynamoDbOutbox())</c>.
         /// </para>
         /// </summary>
         /// <param name="configure">Optional delegate to configure the <see cref="DynamoDbOutboxBuilder"/>.</param>
-        public IInterBusBuilder AddOutbox(Action<DynamoDbOutboxBuilder>? configure = null)
+        public IInterBusBuilder AddDynamoDbOutbox(Action<DynamoDbOutboxBuilder>? configure = null)
         {
             ArgumentNullException.ThrowIfNull(builder);
 
@@ -72,11 +72,11 @@ public static class DynamoDbOutboxBuilderExtensions
         /// </para>
         /// </summary>
         /// <param name="configure">Optional delegate to configure the <see cref="DynamoDbOutboxBuilder"/>.</param>
-        public IInterBusBuilder UseOutbox(Action<DynamoDbOutboxBuilder>? configure = null)
+        public IInterBusBuilder UseDynamoDbOutbox(Action<DynamoDbOutboxBuilder>? configure = null)
         {
             ArgumentNullException.ThrowIfNull(builder);
 
-            builder.AddOutbox(configure);
+            builder.AddDynamoDbOutbox(configure);
             builder.UsePublishMiddleware<DynamoDbOutboxPublishMiddleware>();
 
             return builder;

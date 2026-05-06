@@ -4,8 +4,8 @@ namespace InterBus.DynamoDB.Outbox;
 
 /// <summary>
 /// Fluent builder for configuring the InterBus DynamoDB transactional outbox.
-/// Obtained via <c>bus.UseOutbox(outbox =&gt; { ... })</c> or
-/// <c>bus.AddOutbox(outbox =&gt; { ... })</c>.
+/// Obtained via <c>bus.UseDynamoDbOutbox(outbox =&gt; { ... })</c> or
+/// <c>bus.AddDynamoDbOutbox(outbox =&gt; { ... })</c>.
 /// </summary>
 public sealed class DynamoDbOutboxBuilder
 {
@@ -48,6 +48,29 @@ public sealed class DynamoDbOutboxBuilder
     public DynamoDbOutboxBuilder WithTableName(string tableName)
     {
         Options.TableName = tableName;
+        return this;
+    }
+
+    /// <summary>
+    /// Sets the number of shards for distributing outbox groups. Higher values allow more
+    /// processor instances to work in parallel (one per shard) without contention.
+    /// Requires a GSI — see <see cref="WithGsiIndexName"/>. Defaults to 1.
+    /// </summary>
+    public DynamoDbOutboxBuilder WithShardCount(int shardCount)
+    {
+        Options.ShardCount = shardCount;
+        return this;
+    }
+
+    /// <summary>
+    /// Sets the name of the GSI used to query eligible groups by shard and <c>VisibleAt</c>.
+    /// The index must have <c>Shard</c> (Number) as the partition key and <c>VisibleAt</c>
+    /// (Number) as the sort key. Set to <c>null</c> to fall back to a full-table scan.
+    /// Defaults to <c>"InterBusOutbox-VisibleAt-index"</c>.
+    /// </summary>
+    public DynamoDbOutboxBuilder WithGsiIndexName(string? indexName)
+    {
+        Options.GsiIndexName = indexName;
         return this;
     }
 

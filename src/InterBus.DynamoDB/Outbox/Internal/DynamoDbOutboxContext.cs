@@ -21,10 +21,9 @@ internal sealed class DynamoDbOutboxContext(
     // Delegate to public DynamoDbOutboxTable constants so internal code and tests use the same values.
     internal const string AttrGroupId = DynamoDbOutboxTable.GroupId;
     internal const string AttrEntryId = DynamoDbOutboxTable.EntryId;
+    internal const string AttrShard = DynamoDbOutboxTable.Shard;
     internal const string AttrVisibleAt = DynamoDbOutboxTable.VisibleAt;
     internal const string AttrCreatedAt = DynamoDbOutboxTable.CreatedAt;
-    internal const string AttrProcessorId = DynamoDbOutboxTable.ProcessorId;
-    internal const string AttrProcessorLockExpiresAt = DynamoDbOutboxTable.ProcessorLockExpiresAt;
     internal const string AttrDestination = DynamoDbOutboxTable.Destination;
     internal const string AttrPayload = DynamoDbOutboxTable.Payload;
     internal const string AttrHeadersJson = DynamoDbOutboxTable.HeadersJson;
@@ -72,6 +71,7 @@ internal sealed class DynamoDbOutboxContext(
                     {
                         [AttrGroupId] = new() { S = groupId },
                         [AttrEntryId] = new() { S = GroupEntryId },
+                        [AttrShard] = new() { N = Random.Shared.Next(0, options.ShardCount).ToString() },
                         [AttrVisibleAt] = new() { N = visibleAtEpoch },
                         [AttrCreatedAt] = new() { N = createdAtEpoch },
                     },

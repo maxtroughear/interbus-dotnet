@@ -9,16 +9,16 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="AWSSDK.Extensions.NETCore.Setup" Version="4.0.3.35" />
-        <PackageReference Include="AWSSDK.Signin" Version="4.0.0.22" />
+        <PackageReference Include="AWSSDK.Extensions.NETCore.Setup" Version="4.0.3.36" />
+        <PackageReference Include="AWSSDK.Signin" Version="4.0.0.23" />
         <PackageReference Include="coverlet.collector" Version="10.0.0">
             <PrivateAssets>all</PrivateAssets>
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
         </PackageReference>
         <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.7" />
         <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.5.1" />
-        <PackageReference Include="NUnit" Version="4.5.1" />
-        <PackageReference Include="NUnit.Analyzers" Version="4.12.0">
+        <PackageReference Include="NUnit" Version="4.6.0" />
+        <PackageReference Include="NUnit.Analyzers" Version="4.13.0">
             <PrivateAssets>all</PrivateAssets>
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
         </PackageReference>

@@ -247,7 +247,7 @@ public sealed class S3ClaimCheckTests
         {
             bus.AddInMemoryTransport();
             bus.AddS3ClaimCheck(configureClaimCheck);
-            bus.AddConsumer<LargePayloadConsumer>();
+            bus.AddConsumer<LargePayloadConsumer>(c => c.UseS3ClaimCheck());
         });
 
         var provider = services.BuildServiceProvider();

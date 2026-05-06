@@ -143,15 +143,4 @@ internal sealed class InterBusBuilder : IInterBusBuilder
         Services.AddKeyedScoped<ISendMiddleware, TMiddleware>(InterBusConstants.BusContext);
         return this;
     }
-
-    /// <inheritdoc/>
-    public IInterBusBuilder UseDispatchMiddleware<
-        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
-        TMiddleware>()
-        where TMiddleware : class, IDispatchMiddleware
-    {
-        // Keyed to bus
-        Services.AddKeyedScoped<IDispatchMiddleware, TMiddleware>(InterBusConstants.BusContext);
-        return this;
-    }
 }

@@ -11,7 +11,7 @@ public static class S3ClaimCheckBuilderExtensions
     extension(IInterBusBuilder builder)
     {
         /// <summary>
-        /// Registers the S3 claim check send and dispatch middleware for all consumers.
+        /// Registers the S3 claim check options and send middleware at the bus level.
         /// <para>
         /// The send middleware uploads the message payload to S3 and replaces it with an empty
         /// byte array when the total estimated message size exceeds
@@ -19,10 +19,8 @@ public static class S3ClaimCheckBuilderExtensions
         /// <see cref="S3Headers.ClaimCheckKey"/> header is set to the S3 object key.
         /// </para>
         /// <para>
-        /// The dispatch middleware checks for the <see cref="S3Headers.ClaimCheckKey"/>
-        /// header on every incoming message. When present, it downloads the original payload from
-        /// S3 and replaces <see cref="InterBus.Dispatching.DispatchContext.Payload"/> before
-        /// passing control to the next middleware step.
+        /// To also receive messages that used the claim check, add dispatch middleware per
+        /// consumer via <see cref="UseS3ClaimCheck"/>.
         /// </para>
         /// <para>
         /// <strong>Prerequisites:</strong> Register <see cref="Amazon.S3.IAmazonS3"/> in the
@@ -43,9 +41,6 @@ public static class S3ClaimCheckBuilderExtensions
 
             builder.Services.AddSingleton(options);
 
-            // Dispatch middleware resolves the claim check on every incoming message.
-            builder.UseDispatchMiddleware<S3ClaimCheckDispatchMiddleware>();
-
             // Send middleware offloads large payloads to S3 before transport delivery.
             builder.UseSendMiddleware<S3ClaimCheckSendMiddleware>();
 
@@ -56,7 +51,12 @@ public static class S3ClaimCheckBuilderExtensions
     extension(IConsumerBuilder builder)
     {
         /// <summary>
-        /// Registers the S3 claim check send and dispatch middleware for this consumer only.
+        /// Registers the S3 claim check send and dispatch middleware for this consumer.
+        /// <para>
+        /// The send middleware offloads large outbound payloads to S3. The dispatch middleware
+        /// transparently fetches offloaded payloads back from S3 before handing the message
+        /// to the consumer handler.
+        /// </para>
         /// <para>
         /// Requires <c>bus.AddS3ClaimCheck()</c> to have been called on the InterBus builder
         /// so that <see cref="S3ClaimCheckOptions"/> and <see cref="Amazon.S3.IAmazonS3"/> are

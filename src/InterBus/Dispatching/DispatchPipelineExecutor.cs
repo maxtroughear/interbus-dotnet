@@ -10,15 +10,7 @@ public sealed class DispatchPipelineExecutor(
     {
         var pipeline = TerminalDispatchDelegate;
 
-        // Consumer-specific dispatch middleware runs inner (closer to the handler).
         foreach (var middleware in middlewareFactory.Resolve<IDispatchMiddleware>(context.Descriptor.ConsumerType))
-        {
-            var next = pipeline;
-            pipeline = (ctx, ct) => middleware.InvokeAsync(ctx, next, ct);
-        }
-
-        // Bus-level dispatch middleware runs outer (first to execute).
-        foreach (var middleware in middlewareFactory.Resolve<IDispatchMiddleware>())
         {
             var next = pipeline;
             pipeline = (ctx, ct) => middleware.InvokeAsync(ctx, next, ct);

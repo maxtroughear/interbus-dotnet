@@ -136,21 +136,4 @@ public interface IInterBusBuilder
         [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
         TMiddleware>()
         where TMiddleware : class, ISendMiddleware;
-
-    /// <summary>
-    /// Add a middleware step to the dispatch pipeline, used in the bus context.
-    /// Dispatch middleware runs before the consumer's handler and its consume middleware.
-    /// Steps are executed in registration order - the first registered step is outermost
-    /// and runs first.
-    /// </summary>
-    /// <remarks>
-    /// Bus-level dispatch middleware registered here is combined with any consumer-specific
-    /// dispatch middleware registered via <see cref="IConsumerBuilder.UseDispatchMiddleware{TMiddleware}"/>.
-    /// Use <see cref="IConsumerBuilder.UseDispatchMiddleware{TMiddleware}"/> to add dispatch
-    /// middleware for a specific consumer only.
-    /// </remarks>
-    IInterBusBuilder UseDispatchMiddleware<
-        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
-        TMiddleware>()
-        where TMiddleware : class, IDispatchMiddleware;
 }

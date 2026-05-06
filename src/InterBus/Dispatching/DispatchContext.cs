@@ -7,7 +7,11 @@ public sealed class DispatchContext(ConsumerDescriptor descriptor, byte[] payloa
 {
     public ConsumerDescriptor Descriptor { get; } = descriptor;
 
-    public byte[] Payload { get; } = payload;
+    /// <summary>
+    /// The raw message payload. Dispatch middleware may replace this value, for example
+    /// to retrieve the original body from external storage (Claim Check).
+    /// </summary>
+    public byte[] Payload { get; set; } = payload;
 
     public MessageHeaders Headers { get; } = headers;
 }

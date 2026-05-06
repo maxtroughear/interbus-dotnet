@@ -75,4 +75,11 @@ public static class InterBusHeaders
     /// Header key storing the UTC time when the message was dead-lettered.
     /// </summary>
     public const string DeadLetteredAt = "interbus-dead-lettered-at";
+
+    /// <summary>
+    /// Header key for the S3 claim check. When present, the message payload has been stored
+    /// in S3 and the header value is the S3 object key. The dispatch middleware reads this
+    /// header, fetches the payload from S3, and replaces the message payload before dispatch.
+    /// </summary>
+    public const string S3ClaimCheckKey = "interbus-s3-claim-check";
 }

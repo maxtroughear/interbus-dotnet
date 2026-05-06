@@ -153,10 +153,12 @@ public class DynamoDbOutboxTests
             bus.AddInMemoryTransport();
             bus.AddConsumer<OutboxOrderPlacedConsumer>();
             // Long poll interval so the processor does not run during assertions.
-            bus.UseDynamoDbOutbox(o => o
-                .WithTableName(_tableName)
-                .WithPollInterval(TimeSpan.FromHours(1))
-                .DisableOutboxProcessor());
+            bus.UseDynamoDbOutbox(o =>
+            {
+                o.TableName = _tableName;
+                o.PollInterval = TimeSpan.FromHours(1);
+                o.RunOutboxProcessor = false;
+            });
         }, services => services.AddSingleton(tracker));
 
         try
@@ -212,9 +214,11 @@ public class DynamoDbOutboxTests
         {
             bus.AddInMemoryTransport();
             bus.AddConsumer<OutboxOrderPlacedConsumer>();
-            bus.UseDynamoDbOutbox(o => o
-                .WithTableName(_tableName)
-                .WithPollInterval(TimeSpan.FromMilliseconds(50)));
+            bus.UseDynamoDbOutbox(o =>
+            {
+                o.TableName = _tableName;
+                o.PollInterval = TimeSpan.FromMilliseconds(50);
+            });
         }, services => services.AddSingleton(tracker));
 
         try
@@ -261,9 +265,11 @@ public class DynamoDbOutboxTests
         {
             bus.AddInMemoryTransport();
             bus.AddConsumer<OutboxOrderPlacedConsumer>();
-            bus.UseDynamoDbOutbox(o => o
-                .WithTableName(_tableName)
-                .WithPollInterval(TimeSpan.FromMilliseconds(50)));
+            bus.UseDynamoDbOutbox(o =>
+            {
+                o.TableName = _tableName;
+                o.PollInterval = TimeSpan.FromMilliseconds(50);
+            });
         }, services => services.AddSingleton(tracker));
 
         try
@@ -309,9 +315,11 @@ public class DynamoDbOutboxTests
             bus.AddInMemoryTransport();
             bus.AddConsumer<OutboxOrderPlacedPublishingConsumer>(c => c.UseDynamoDbOutbox());
             bus.AddConsumer<OutboxOrderShippedConsumer>();
-            bus.AddDynamoDbOutbox(o => o
-                .WithTableName(_tableName)
-                .WithPollInterval(TimeSpan.FromMilliseconds(50)));
+            bus.AddDynamoDbOutbox(o =>
+            {
+                o.TableName = _tableName;
+                o.PollInterval = TimeSpan.FromMilliseconds(50);
+            });
         }, services => services.AddSingleton(shippedTracker));
 
         try
@@ -353,10 +361,12 @@ public class DynamoDbOutboxTests
         {
             bus.AddInMemoryTransport();
             bus.AddConsumer<OutboxOrderPlacedConsumer>();
-            bus.UseDynamoDbOutbox(o => o
-                .WithTableName(_tableName)
-                .WithPollInterval(TimeSpan.FromHours(1))
-                .DisableOutboxProcessor());
+            bus.UseDynamoDbOutbox(o =>
+            {
+                o.TableName = _tableName;
+                o.PollInterval = TimeSpan.FromHours(1);
+                o.RunOutboxProcessor = false;
+            });
         }, services => services.AddSingleton(tracker));
 
         try
@@ -436,10 +446,12 @@ public class DynamoDbOutboxTests
             bus.AddConsumer<OutboxOrderPlacedPublishingConsumer>(
                 c => c.UseDynamoDbOutboxWithInlineDelivery());
             bus.AddConsumer<OutboxOrderShippedConsumer>();
-            bus.AddDynamoDbOutbox(o => o
-                .WithTableName(_tableName)
-                .WithPollInterval(TimeSpan.FromHours(1))
-                .DisableOutboxProcessor());
+            bus.AddDynamoDbOutbox(o =>
+            {
+                o.TableName = _tableName;
+                o.PollInterval = TimeSpan.FromHours(1);
+                o.RunOutboxProcessor = false;
+            });
         }, services => services.AddSingleton(shippedTracker));
 
         try

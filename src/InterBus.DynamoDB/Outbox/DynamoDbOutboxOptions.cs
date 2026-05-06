@@ -73,7 +73,13 @@ public sealed class DynamoDbOutboxOptions
     /// </summary>
     public int ProcessorQueryBatchSize { get; set; } = 5;
 
-    internal bool RunOutboxProcessor { get; set; } = true;
+    /// <summary>
+    /// When <c>true</c>, the background <see cref="Internal.DynamoDbOutboxProcessor"/> hosted
+    /// service is registered. Set to <c>false</c> when the processor runs in a separate
+    /// process or when tests need direct control over message forwarding. Defaults to
+    /// <c>true</c>.
+    /// </summary>
+    public bool RunOutboxProcessor { get; set; } = true;
 
     internal int EffectiveProcessorShardCount => ProcessorShardCount ?? ShardCount;
 

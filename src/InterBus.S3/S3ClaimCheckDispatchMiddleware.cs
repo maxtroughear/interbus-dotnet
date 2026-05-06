@@ -7,7 +7,7 @@ namespace InterBus.S3;
 /// <summary>
 /// Dispatch middleware that resolves the S3 claim check for incoming messages.
 /// <para>
-/// When the <see cref="InterBusHeaders.S3ClaimCheckKey"/> header is present, the middleware
+/// When the <see cref="S3Headers.ClaimCheckKey"/> header is present, the middleware
 /// downloads the original payload from S3 using the key stored in the header and replaces
 /// <see cref="DispatchContext.Payload"/> before passing control to the next step.
 /// Messages without the header pass through unchanged.
@@ -23,7 +23,7 @@ internal sealed class S3ClaimCheckDispatchMiddleware(
         Func<DispatchContext, CancellationToken, Task> next,
         CancellationToken cancellationToken = default)
     {
-        if (context.Headers.TryGetValue(InterBusHeaders.S3ClaimCheckKey, out var key))
+        if (context.Headers.TryGetValue(S3Headers.ClaimCheckKey, out var key))
         {
             var response = await s3Client.GetObjectAsync(new GetObjectRequest
             {

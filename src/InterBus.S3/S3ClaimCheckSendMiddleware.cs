@@ -10,7 +10,7 @@ namespace InterBus.S3;
 /// <para>
 /// When the estimated total message size (payload + headers) exceeds
 /// <see cref="S3ClaimCheckOptions.SizeThresholdBytes"/>, the payload is uploaded to S3
-/// and replaced with an empty byte array. The <see cref="InterBusHeaders.S3ClaimCheckKey"/>
+/// and replaced with an empty byte array. The <see cref="S3Headers.ClaimCheckKey"/>
 /// header is set to the S3 object key so the receiving end can retrieve the original payload.
 /// </para>
 /// </summary>
@@ -39,7 +39,7 @@ internal sealed class S3ClaimCheckSendMiddleware(
                 ContentType = "application/octet-stream",
             }, cancellationToken);
 
-            context.Headers[InterBusHeaders.S3ClaimCheckKey] = key;
+            context.Headers[S3Headers.ClaimCheckKey] = key;
             context.Payload = [];
         }
 

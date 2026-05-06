@@ -1,15 +1,24 @@
+using InterBus.Middleware;
+
 namespace InterBus.Dispatching;
 
 public sealed class DispatchPipelineExecutor(
-    IEnumerable<IDispatchMiddleware> middlewares,
+    IMiddlewareFactory middlewareFactory,
     IServiceProvider serviceProvider)
 {
-    private readonly IEnumerable<IDispatchMiddleware> _middlewares = middlewares.Reverse().ToList();
-
     public Task ExecuteAsync(DispatchContext context, CancellationToken cancellationToken = default)
     {
         var pipeline = TerminalDispatchDelegate;
-        foreach (var middleware in _middlewares)
+
+        // Consumer-specific dispatch middleware runs inner (closer to the handler).
+        foreach (var middleware in middlewareFactory.Resolve<IDispatchMiddleware>(context.Descriptor.ConsumerType))
+        {
+            var next = pipeline;
+            pipeline = (ctx, ct) => middleware.InvokeAsync(ctx, next, ct);
+        }
+
+        // Bus-level dispatch middleware runs outer (first to execute).
+        foreach (var middleware in middlewareFactory.Resolve<IDispatchMiddleware>())
         {
             var next = pipeline;
             pipeline = (ctx, ct) => middleware.InvokeAsync(ctx, next, ct);

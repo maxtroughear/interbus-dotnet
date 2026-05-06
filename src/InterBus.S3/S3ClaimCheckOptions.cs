@@ -13,9 +13,9 @@ public sealed class S3ClaimCheckOptions
     /// <summary>
     /// The size threshold in bytes above which the claim check is used.
     /// The threshold is applied to the total estimated message size: payload plus headers.
-    /// Defaults to 256 KB.
+    /// Defaults to 240 KB to leave headroom for transport-level attributes and metadata.
     /// </summary>
-    public int SizeThresholdBytes { get; set; } = 256 * 1024;
+    public int SizeThresholdBytes { get; set; } = 240 * 1024;
 
     /// <summary>
     /// Optional S3 key prefix applied to every stored payload object.

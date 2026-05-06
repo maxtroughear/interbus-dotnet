@@ -1,6 +1,8 @@
 using InterBus.DynamoDB.Sagas;
 using InterBus.Sagas;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Hosting;
 
 namespace InterBus.DynamoDB.Extensions;
 
@@ -33,6 +35,9 @@ public static class DynamoDbSagaBuilderExtensions
         builder.Services.TryAddSingleton(sagaOptions);
         builder.Services.TryAddSingleton<ISagaRepository<TSaga, TState>,
             DynamoDbSagaRepository<TSaga, TState>>();
+
+        if (sagaOptions.CreateTableOnStartup)
+            builder.Services.AddHostedService<DynamoDbSagaTableInitializer>();
 
         return builder;
     }

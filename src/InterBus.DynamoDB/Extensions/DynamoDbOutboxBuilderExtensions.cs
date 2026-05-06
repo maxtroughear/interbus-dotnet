@@ -2,6 +2,7 @@ using InterBus.DynamoDB.Outbox;
 using InterBus.DynamoDB.Outbox.Internal;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Hosting;
 
 namespace InterBus.DynamoDB.Extensions;
 
@@ -44,6 +45,9 @@ public static class DynamoDbOutboxBuilderExtensions
 
             if (outboxBuilder.Options.RunOutboxProcessor)
                 builder.Services.AddHostedService<DynamoDbOutboxProcessor>();
+
+            if (outboxBuilder.Options.CreateTableOnStartup)
+                builder.Services.AddHostedService<DynamoDbOutboxTableInitializer>();
 
             return builder;
         }

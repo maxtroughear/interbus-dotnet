@@ -29,4 +29,14 @@ public sealed class DynamoDbSagaOptions
     /// Defaults to 60 seconds.
     /// </summary>
     public TimeSpan LockAcquireTimeout { get; set; } = TimeSpan.FromSeconds(60);
+
+    /// <summary>
+    /// When <c>true</c>, the DynamoDB saga table is automatically created on application startup
+    /// if it does not already exist. Defaults to <c>false</c>.
+    /// <para>
+    /// The table is created with partition key <c>CorrelationId</c> (String) and sort key
+    /// <c>SagaType</c> (String), using on-demand billing mode.
+    /// </para>
+    /// </summary>
+    public bool CreateTableOnStartup { get; set; }
 }

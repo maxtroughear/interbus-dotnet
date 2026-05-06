@@ -76,4 +76,15 @@ public sealed class DynamoDbOutboxOptions
     internal bool RunOutboxProcessor { get; set; } = true;
 
     internal int EffectiveProcessorShardCount => ProcessorShardCount ?? ShardCount;
+
+    /// <summary>
+    /// When <c>true</c>, the DynamoDB outbox table (and its GSI when
+    /// <see cref="GsiIndexName"/> is set) are automatically created on application startup
+    /// if they do not already exist. Defaults to <c>false</c>.
+    /// <para>
+    /// The table is created with partition key <c>GroupId</c> (String) and sort key
+    /// <c>EntryId</c> (String), using on-demand billing mode.
+    /// </para>
+    /// </summary>
+    public bool CreateTableOnStartup { get; set; }
 }

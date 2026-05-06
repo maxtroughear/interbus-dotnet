@@ -1,5 +1,6 @@
 using System.Diagnostics.CodeAnalysis;
 using InterBus.Consuming;
+using InterBus.Dispatching;
 using InterBus.Publishing;
 using InterBus.Sending;
 using Microsoft.Extensions.DependencyInjection;
@@ -63,4 +64,17 @@ public interface IConsumerBuilder
         [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
         TMiddleware>()
         where TMiddleware : class, IPublishMiddleware;
+
+    /// <summary>
+    /// Add a middleware step to the dispatch pipeline for this consumer only.
+    /// Dispatch middleware runs before the consumer's handler and its consume middleware.
+    /// Steps are executed in registration order - the first registered step is outermost.
+    /// </summary>
+    /// <remarks>
+    /// The middleware type is automatically registered as a scoped service in the DI container.
+    /// </remarks>
+    public IConsumerBuilder UseDispatchMiddleware<
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
+        TMiddleware>()
+        where TMiddleware : class, IDispatchMiddleware;
 }

@@ -1,5 +1,6 @@
 using System.Diagnostics.CodeAnalysis;
 using InterBus.Consuming;
+using InterBus.Dispatching;
 using InterBus.Publishing;
 using InterBus.Sending;
 using Microsoft.Extensions.DependencyInjection;
@@ -56,6 +57,16 @@ internal sealed class SagaBuilder<TSaga, TState>(
         where TMiddleware : class, IPublishMiddleware
     {
         _inner.UsePublishMiddleware<TMiddleware>();
+        return this;
+    }
+
+    /// <inheritdoc/>
+    public IConsumerBuilder UseDispatchMiddleware<
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
+        TMiddleware>()
+        where TMiddleware : class, IDispatchMiddleware
+    {
+        _inner.UseDispatchMiddleware<TMiddleware>();
         return this;
     }
 

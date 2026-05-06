@@ -63,14 +63,35 @@ public sealed class DynamoDbOutboxBuilder
     }
 
     /// <summary>
+    /// Sets the number of shards the background processor monitors. When not set, the
+    /// processor uses <see cref="DynamoDbOutboxOptions.ShardCount"/>. Set this to a higher
+    /// value than <see cref="WithShardCount"/> to drain messages written before a
+    /// shard-count reduction.
+    /// </summary>
+    public DynamoDbOutboxBuilder WithProcessorShardCount(int processorShardCount)
+    {
+        Options.ProcessorShardCount = processorShardCount;
+        return this;
+    }
+
+    /// <summary>
     /// Sets the name of the GSI used to query eligible groups by shard and <c>VisibleAt</c>.
     /// The index must have <c>Shard</c> (Number) as the partition key and <c>VisibleAt</c>
-    /// (Number) as the sort key. Set to <c>null</c> to fall back to a full-table scan.
-    /// Defaults to <c>"InterBusOutbox-VisibleAt-index"</c>.
+    /// (Number) as the sort key. Defaults to <c>"InterBusOutbox-VisibleAt-index"</c>.
     /// </summary>
-    public DynamoDbOutboxBuilder WithGsiIndexName(string? indexName)
+    public DynamoDbOutboxBuilder WithGsiIndexName(string indexName)
     {
         Options.GsiIndexName = indexName;
+        return this;
+    }
+
+    /// <summary>
+    /// Sets the maximum number of group candidates fetched per shard per poll iteration.
+    /// Higher values reduce round trips under high contention. Defaults to 5.
+    /// </summary>
+    public DynamoDbOutboxBuilder WithProcessorQueryBatchSize(int batchSize)
+    {
+        Options.ProcessorQueryBatchSize = batchSize;
         return this;
     }
 

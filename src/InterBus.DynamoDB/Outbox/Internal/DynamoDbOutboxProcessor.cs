@@ -11,20 +11,22 @@ namespace InterBus.DynamoDB.Outbox.Internal;
 /// Background service that continuously polls the DynamoDB outbox table for pending groups and
 /// forwards their messages to the configured transport via <see cref="SendPipelineExecutor"/>.
 /// <para>
-/// When a <see cref="DynamoDbOutboxOptions.GsiIndexName"/> is configured, each iteration
-/// queries the GSI for one eligible group per shard (partition key <c>Shard</c>, sort key
-/// <c>VisibleAt &lt;= now</c>). Without a GSI, it falls back to a full-table scan.
+/// One independent poll loop runs per processor shard (see
+/// <see cref="DynamoDbOutboxOptions.ProcessorShardCount"/>). All loops execute in parallel,
+/// allowing multiple host instances to share throughput with minimal coordination. Each loop
+/// queries the GSI for up to <see cref="DynamoDbOutboxOptions.ProcessorQueryBatchSize"/>
+/// candidates and tries each in turn, avoiding additional round trips when another instance
+/// wins the lock on the first candidate.
 /// </para>
 /// <para>
 /// Locking is implemented by pushing <c>VisibleAt</c> forward to
-/// <c>now + ProcessorLockDuration</c> via a conditional <c>UpdateItem</c>. This prevents
-/// other processors from picking up the same group until the lock expires, without requiring
-/// additional attributes. On failure the lock is released by resetting <c>VisibleAt</c> to
-/// <c>now</c>.
+/// <c>now + ProcessorLockDuration</c> via a conditional <c>UpdateItem</c>
+/// (<c>VisibleAt = :currentVat</c>). On failure the lock is released by resetting
+/// <c>VisibleAt</c> to <c>now</c>.
 /// </para>
 /// <para>
-/// The poll delay (<see cref="DynamoDbOutboxOptions.PollInterval"/>) is only applied when all
-/// shards are empty. While messages are available the processor loops immediately.
+/// The poll delay (<see cref="DynamoDbOutboxOptions.PollInterval"/>) is only applied when a
+/// shard is empty. While messages are available the loop continues immediately.
 /// </para>
 /// <para>
 /// Delivery is at-least-once: if the process crashes after forwarding but before deleting, the
@@ -38,14 +40,30 @@ internal sealed partial class DynamoDbOutboxProcessor(
     ILogger<DynamoDbOutboxProcessor> logger)
     : BackgroundService
 {
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    protected override Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        var processorShardCount = options.EffectiveProcessorShardCount;
+
+        // For a single shard, run inline to avoid unnecessary Task allocation.
+        if (processorShardCount <= 1)
+            return RunShardLoopAsync(0, stoppingToken);
+
+        // Spawn one independent loop per shard so they run in parallel.
+        var shardTasks = Enumerable.Range(0, processorShardCount)
+            .Select(shard => RunShardLoopAsync(shard, stoppingToken))
+            .ToArray();
+
+        return Task.WhenAll(shardTasks);
+    }
+
+    private async Task RunShardLoopAsync(int shard, CancellationToken stoppingToken)
     {
         while (!stoppingToken.IsCancellationRequested)
         {
             bool hadMessages;
             try
             {
-                hadMessages = await ProcessGroupAsync(stoppingToken);
+                hadMessages = await ProcessShardAsync(shard, stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -53,7 +71,9 @@ internal sealed partial class DynamoDbOutboxProcessor(
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "InterBus DynamoDB outbox: unexpected error during group processing");
+                logger.LogError(ex,
+                    "InterBus DynamoDB outbox: unexpected error during group processing for shard {Shard}",
+                    shard);
                 hadMessages = false;
             }
 
@@ -72,26 +92,26 @@ internal sealed partial class DynamoDbOutboxProcessor(
     }
 
     /// <summary>
-    /// Processes one group. Returns <c>true</c> if a group was found (and forwarded or
-    /// failed); <c>false</c> when all shards are empty.
+    /// Processes one eligible group from <paramref name="shard"/>. Returns <c>true</c> if a
+    /// group was found (and forwarded or failed); <c>false</c> when the shard is empty.
     /// </summary>
-    private async Task<bool> ProcessGroupAsync(CancellationToken cancellationToken)
+    private async Task<bool> ProcessShardAsync(int shard, CancellationToken cancellationToken)
     {
         var now = DateTimeOffset.UtcNow;
         var nowEpoch = now.ToUnixTimeSeconds().ToString();
+        var lockExpiry = now.Add(options.ProcessorLockDuration).ToUnixTimeSeconds().ToString();
 
-        for (var shard = 0; shard < options.ShardCount; shard++)
+        // Fetch multiple candidates so that, when another processor wins the lock on the
+        // first item, we can try the next candidate without a round trip to the GSI.
+        var candidates = await QueryEligibleGroupsAsync(shard, nowEpoch, cancellationToken);
+
+        foreach (var groupItem in candidates)
         {
-            var groupItem = await FindEligibleGroupAsync(shard, nowEpoch, cancellationToken);
-            if (groupItem is null)
-                continue;
-
             var groupId = groupItem[DynamoDbOutboxContext.AttrGroupId].S;
             var currentVisibleAt = groupItem[DynamoDbOutboxContext.AttrVisibleAt].N;
 
             // Acquire lock by pushing VisibleAt into the future. The condition ensures we
             // win a race against another processor that may have read the same group.
-            var lockExpiry = now.Add(options.ProcessorLockDuration).ToUnixTimeSeconds().ToString();
             try
             {
                 await dynamoDb.UpdateItemAsync(new UpdateItemRequest
@@ -113,8 +133,8 @@ internal sealed partial class DynamoDbOutboxProcessor(
             }
             catch (ConditionalCheckFailedException)
             {
-                // Another processor grabbed this group — try the next shard.
-                return true;
+                // Another processor grabbed this group — try the next candidate.
+                continue;
             }
 
             await ForwardGroupAsync(groupId, nowEpoch, cancellationToken);
@@ -125,52 +145,36 @@ internal sealed partial class DynamoDbOutboxProcessor(
     }
 
     /// <summary>
-    /// Finds one eligible group header for the given shard. Uses the GSI when configured,
-    /// otherwise falls back to a full-table scan.
+    /// Queries the GSI for up to <see cref="DynamoDbOutboxOptions.ProcessorQueryBatchSize"/>
+    /// eligible group headers in the given shard.
     /// </summary>
-    private async Task<Dictionary<string, AttributeValue>?> FindEligibleGroupAsync(
+    /// <remarks>
+    /// GSI queries in DynamoDB always use eventually consistent reads; strongly consistent
+    /// reads are not supported on GSIs. This is acceptable here because the conditional
+    /// <c>UpdateItem</c> (lock acquisition) provides the authoritative consistency guarantee.
+    /// </remarks>
+    private async Task<List<Dictionary<string, AttributeValue>>> QueryEligibleGroupsAsync(
         int shard, string nowEpoch, CancellationToken cancellationToken)
     {
-        if (options.GsiIndexName is { } gsiName)
-        {
-            var queryResponse = await dynamoDb.QueryAsync(new QueryRequest
-            {
-                TableName = options.TableName,
-                IndexName = gsiName,
-                KeyConditionExpression = "#shard = :shard AND #vat <= :now",
-                Limit = 1,
-                ExpressionAttributeNames = new Dictionary<string, string>
-                {
-                    ["#shard"] = DynamoDbOutboxContext.AttrShard,
-                    ["#vat"] = DynamoDbOutboxContext.AttrVisibleAt,
-                },
-                ExpressionAttributeValues = new Dictionary<string, AttributeValue>
-                {
-                    [":shard"] = new() { N = shard.ToString() },
-                    [":now"] = new() { N = nowEpoch },
-                },
-            }, cancellationToken);
-
-            return queryResponse.Count > 0 ? queryResponse.Items[0] : null;
-        }
-
-        // Fallback: full-table scan for group headers (no GSI required).
-        var scanResponse = await dynamoDb.ScanAsync(new ScanRequest
+        var queryResponse = await dynamoDb.QueryAsync(new QueryRequest
         {
             TableName = options.TableName,
-            FilterExpression = "attribute_exists(#vat) AND #vat <= :now",
-            Limit = 1,
+            IndexName = options.GsiIndexName,
+            KeyConditionExpression = "#shard = :shard AND #vat <= :now",
+            Limit = options.ProcessorQueryBatchSize,
             ExpressionAttributeNames = new Dictionary<string, string>
             {
+                ["#shard"] = DynamoDbOutboxContext.AttrShard,
                 ["#vat"] = DynamoDbOutboxContext.AttrVisibleAt,
             },
             ExpressionAttributeValues = new Dictionary<string, AttributeValue>
             {
+                [":shard"] = new() { N = shard.ToString() },
                 [":now"] = new() { N = nowEpoch },
             },
         }, cancellationToken);
 
-        return scanResponse.Count > 0 ? scanResponse.Items[0] : null;
+        return queryResponse.Items;
     }
 
     /// <summary>
@@ -236,8 +240,8 @@ internal sealed partial class DynamoDbOutboxProcessor(
                     ? d.S
                     : "unknown";
                 logger.LogError(ex,
-                    "InterBus DynamoDB outbox: failed to forward message {MessageId} to {Destination}",
-                    msgId, dest);
+                    "InterBus DynamoDB outbox: failed to forward message {MessageId} in group {GroupId} to {Destination}",
+                    msgId, groupId, dest);
 
                 await ReleaseLockAsync(groupId, nowEpoch);
                 return;

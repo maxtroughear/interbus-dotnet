@@ -54,12 +54,17 @@ internal sealed class DynamoDbOutboxContext(
 
         if (_outboxMessages.Count > 0)
         {
-            var groupId = _groupId!.Value.ToString("N");
+            var groupIdGuid = _groupId!.Value;
+            var groupId = groupIdGuid.ToString("N");
             var now = DateTimeOffset.UtcNow;
             var createdAtEpoch = now.ToUnixTimeSeconds().ToString();
             var visibleAtEpoch = (consumeState.IsDeliveryInline
                 ? now.Add(options.ConsumerVisibilityTimeout)
                 : now).ToUnixTimeSeconds().ToString();
+
+            // Assign the group to a shard deterministically by hashing the group ID.
+            var shardBytes = groupIdGuid.ToByteArray();
+            var shardIndex = (int)(BitConverter.ToUInt32(shardBytes, 0) % (uint)options.ShardCount);
 
             // Group header item
             items.Add(new TransactWriteItem
@@ -71,7 +76,7 @@ internal sealed class DynamoDbOutboxContext(
                     {
                         [AttrGroupId] = new() { S = groupId },
                         [AttrEntryId] = new() { S = GroupEntryId },
-                        [AttrShard] = new() { N = Random.Shared.Next(0, options.ShardCount).ToString() },
+                        [AttrShard] = new() { N = shardIndex.ToString() },
                         [AttrVisibleAt] = new() { N = visibleAtEpoch },
                         [AttrCreatedAt] = new() { N = createdAtEpoch },
                     },

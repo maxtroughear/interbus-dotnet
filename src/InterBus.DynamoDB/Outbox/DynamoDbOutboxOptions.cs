@@ -25,7 +25,7 @@ public sealed class DynamoDbOutboxOptions
     /// <summary>
     /// How long after a group is created by a consumer's consume handler before the outbox
     /// processor is allowed to pick it up. Only applies when inline delivery is configured
-    /// via <c>UseOutboxWithInlineDelivery()</c>. Defaults to 5 seconds.
+    /// via <c>UseDynamoDbOutboxWithInlineDelivery()</c>. Defaults to 5 seconds.
     /// </summary>
     public TimeSpan ConsumerVisibilityTimeout { get; set; } = TimeSpan.FromSeconds(5);
 
@@ -39,8 +39,8 @@ public sealed class DynamoDbOutboxOptions
 
     /// <summary>
     /// Number of shards used to distribute outbox groups across the GSI partition space.
-    /// Each group header is assigned to a shard between 0 (inclusive) and
-    /// <see cref="ShardCount"/> (exclusive) at creation time.
+    /// Each group header is assigned to a shard deterministically via a hash of its group ID
+    /// modulo <see cref="ShardCount"/>.
     /// <para>
     /// Higher values allow more processor instances to run in parallel (one per shard)
     /// without contention. Requires a GSI — see <see cref="GsiIndexName"/>. Defaults to 1.
@@ -49,13 +49,31 @@ public sealed class DynamoDbOutboxOptions
     public int ShardCount { get; set; } = 1;
 
     /// <summary>
-    /// Name of the Global Secondary Index (GSI) to query for eligible groups instead of
-    /// performing a full-table scan. The GSI must have <c>Shard</c> (Number) as the partition
-    /// key and <c>VisibleAt</c> (Number) as the sort key. Set to <c>null</c> to fall back to a
-    /// full-table scan (suitable for low-throughput scenarios). Defaults to
+    /// Number of shards the background processor monitors. When <c>null</c> (the default),
+    /// the processor uses <see cref="ShardCount"/>. Set this to a higher value than
+    /// <see cref="ShardCount"/> to drain messages that were written before a shard-count
+    /// reduction — the processor will keep polling old shard numbers until they are empty,
+    /// then you can lower this value back to <see cref="ShardCount"/>.
+    /// </summary>
+    public int? ProcessorShardCount { get; set; }
+
+    /// <summary>
+    /// Name of the Global Secondary Index (GSI) used to query eligible groups by shard and
+    /// <c>VisibleAt</c>. The GSI must have <c>Shard</c> (Number) as the partition key and
+    /// <c>VisibleAt</c> (Number) as the sort key. Defaults to
     /// <c>"InterBusOutbox-VisibleAt-index"</c>.
     /// </summary>
-    public string? GsiIndexName { get; set; } = "InterBusOutbox-VisibleAt-index";
+    public string GsiIndexName { get; set; } = "InterBusOutbox-VisibleAt-index";
+
+    /// <summary>
+    /// Maximum number of candidates fetched from the GSI per shard per poll iteration.
+    /// When multiple processors compete for the same shard, fetching more candidates allows
+    /// the processor to try the next item immediately rather than making an additional
+    /// round trip. Defaults to 5.
+    /// </summary>
+    public int ProcessorQueryBatchSize { get; set; } = 5;
 
     internal bool RunOutboxProcessor { get; set; } = true;
+
+    internal int EffectiveProcessorShardCount => ProcessorShardCount ?? ShardCount;
 }

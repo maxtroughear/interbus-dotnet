@@ -65,7 +65,7 @@ internal sealed class DynamoDbOutboxContext(
 
             // Assign the group to a shard deterministically by hashing the group ID.
             var shardBytes = groupIdGuid.ToByteArray();
-            var shardIndex = (int)(XxHash3.HashToUInt64(shardBytes) % (ulong)options.ShardCount);
+            var shardIndex = XxHash3.HashToUInt64(shardBytes) % (ulong)options.ShardCount;
 
             // Group header item
             items.Add(new TransactWriteItem

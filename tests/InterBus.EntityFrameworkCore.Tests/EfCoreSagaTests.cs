@@ -141,15 +141,26 @@ public class EfCoreSagaTests
             await Task.Delay(intervalMs);
     }
 
-    private static async Task<(ServiceProvider Provider, CancellationTokenSource Cts, SqliteConnection Connection)>
+    private static async Task<(ServiceProvider Provider, CancellationTokenSource Cts, SqliteConnection KeepAlive)>
         StartAsync(Action<IInterBusBuilder> configureBus)
     {
-        var connection = new SqliteConnection("Data Source=:memory:");
-        await connection.OpenAsync();
+        // Use a unique named in-memory database with shared cache so that each DbContext
+        // instance (from the message pump and from test-polling helpers) opens its own
+        // SqliteConnection. A single shared SqliteConnection is not thread-safe; when the
+        // message-pump background thread and the test-polling thread access it concurrently
+        // the connection can enter an invalid state, causing GetAsync to return null and the
+        // completed saga to incorrectly process the dropped message.
+        var dbName = $"interbus_saga_test_{Guid.NewGuid():N}";
+        var connectionString = $"Data Source={dbName};Mode=Memory;Cache=Shared";
+
+        // Keep one connection open for the lifetime of the test so the shared in-memory
+        // database is not destroyed while the service provider is still running.
+        var keepAlive = new SqliteConnection(connectionString);
+        await keepAlive.OpenAsync();
 
         var services = new ServiceCollection();
         services.AddLogging();
-        services.AddDbContext<SagaTestDbContext>(o => o.UseSqlite(connection));
+        services.AddDbContext<SagaTestDbContext>(o => o.UseSqlite(connectionString));
         services.AddInterBus(configureBus);
 
         var provider = services.BuildServiceProvider();
@@ -165,11 +176,11 @@ public class EfCoreSagaTests
         foreach (var svc in provider.GetServices<IHostedService>())
             await svc.StartAsync(cts.Token);
 
-        return (provider, cts, connection);
+        return (provider, cts, keepAlive);
     }
 
     private static async Task StopAsync(ServiceProvider provider, CancellationTokenSource cts,
-        SqliteConnection connection)
+        SqliteConnection keepAlive)
     {
         await cts.CancelAsync();
         foreach (var svc in provider.GetServices<IHostedService>())
@@ -185,7 +196,7 @@ public class EfCoreSagaTests
 
         await provider.DisposeAsync();
         cts.Dispose();
-        await connection.DisposeAsync();
+        await keepAlive.DisposeAsync();
     }
 
     // Helper to load a saga entry in its own scope (needed because DbContext is scoped).

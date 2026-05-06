@@ -7,8 +7,9 @@
     </PropertyGroup>
     <ItemGroup>
         <PackageReference Include="AWSSDK.DynamoDBv2" Version="4.0.17.11" />
+        <PackageReference Include="System.IO.Hashing" Version="10.0.7" />
     </ItemGroup>
     <ItemGroup>
-        <ProjectReference Include="..\InterBus\InterBus.csproj"/>
+        <ProjectReference Include="..\InterBus\InterBus.csproj" />
     </ItemGroup>
 </Project>

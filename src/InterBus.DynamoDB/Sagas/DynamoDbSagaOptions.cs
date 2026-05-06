@@ -37,6 +37,11 @@ public sealed class DynamoDbSagaOptions
     /// The table is created with partition key <c>CorrelationId</c> (String) and sort key
     /// <c>SagaType</c> (String), using on-demand billing mode.
     /// </para>
+    /// <para>
+    /// <b>This option is intended for development and testing only.</b> For production
+    /// environments, prefer managing DynamoDB tables with an Infrastructure-as-Code tool
+    /// such as Terraform, AWS CloudFormation, or AWS CDK.
+    /// </para>
     /// </summary>
     public bool CreateTableOnStartup { get; set; }
 }

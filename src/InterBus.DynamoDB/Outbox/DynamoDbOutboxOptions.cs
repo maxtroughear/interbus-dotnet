@@ -73,7 +73,29 @@ public sealed class DynamoDbOutboxOptions
     /// </summary>
     public int ProcessorQueryBatchSize { get; set; } = 5;
 
-    internal bool RunOutboxProcessor { get; set; } = true;
+    /// <summary>
+    /// When <c>true</c>, the background <see cref="Internal.DynamoDbOutboxProcessor"/> hosted
+    /// service is registered. Set to <c>false</c> when the processor runs in a separate
+    /// process or when tests need direct control over message forwarding. Defaults to
+    /// <c>true</c>.
+    /// </summary>
+    public bool RunOutboxProcessor { get; set; } = true;
 
     internal int EffectiveProcessorShardCount => ProcessorShardCount ?? ShardCount;
+
+    /// <summary>
+    /// When <c>true</c>, the DynamoDB outbox table (and its GSI when
+    /// <see cref="GsiIndexName"/> is set) are automatically created on application startup
+    /// if they do not already exist. Defaults to <c>false</c>.
+    /// <para>
+    /// The table is created with partition key <c>GroupId</c> (String) and sort key
+    /// <c>EntryId</c> (String), using on-demand billing mode.
+    /// </para>
+    /// <para>
+    /// <b>This option is intended for development and testing only.</b> For production
+    /// environments, prefer managing DynamoDB tables with an Infrastructure-as-Code tool
+    /// such as Terraform, AWS CloudFormation, or AWS CDK.
+    /// </para>
+    /// </summary>
+    public bool CreateTableOnStartup { get; set; }
 }

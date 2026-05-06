@@ -125,7 +125,7 @@ public class DynamoDbOutboxTests
         var provider = services.BuildServiceProvider();
         _dynamoDb = provider.GetRequiredService<IAmazonDynamoDB>();
 
-        await EnsureOutboxTableExistsAsync(_dynamoDb, _tableName);
+        await DynamoDbOutboxTable.EnsureTableCreatedAsync(_dynamoDb, _tableName, new DynamoDbOutboxOptions().GsiIndexName);
     }
 
     [TearDown]
@@ -153,10 +153,12 @@ public class DynamoDbOutboxTests
             bus.AddInMemoryTransport();
             bus.AddConsumer<OutboxOrderPlacedConsumer>();
             // Long poll interval so the processor does not run during assertions.
-            bus.UseDynamoDbOutbox(o => o
-                .WithTableName(_tableName)
-                .WithPollInterval(TimeSpan.FromHours(1))
-                .DisableOutboxProcessor());
+            bus.UseDynamoDbOutbox(o =>
+            {
+                o.TableName = _tableName;
+                o.PollInterval = TimeSpan.FromHours(1);
+                o.RunOutboxProcessor = false;
+            });
         }, services => services.AddSingleton(tracker));
 
         try
@@ -212,9 +214,11 @@ public class DynamoDbOutboxTests
         {
             bus.AddInMemoryTransport();
             bus.AddConsumer<OutboxOrderPlacedConsumer>();
-            bus.UseDynamoDbOutbox(o => o
-                .WithTableName(_tableName)
-                .WithPollInterval(TimeSpan.FromMilliseconds(50)));
+            bus.UseDynamoDbOutbox(o =>
+            {
+                o.TableName = _tableName;
+                o.PollInterval = TimeSpan.FromMilliseconds(50);
+            });
         }, services => services.AddSingleton(tracker));
 
         try
@@ -261,9 +265,11 @@ public class DynamoDbOutboxTests
         {
             bus.AddInMemoryTransport();
             bus.AddConsumer<OutboxOrderPlacedConsumer>();
-            bus.UseDynamoDbOutbox(o => o
-                .WithTableName(_tableName)
-                .WithPollInterval(TimeSpan.FromMilliseconds(50)));
+            bus.UseDynamoDbOutbox(o =>
+            {
+                o.TableName = _tableName;
+                o.PollInterval = TimeSpan.FromMilliseconds(50);
+            });
         }, services => services.AddSingleton(tracker));
 
         try
@@ -309,9 +315,11 @@ public class DynamoDbOutboxTests
             bus.AddInMemoryTransport();
             bus.AddConsumer<OutboxOrderPlacedPublishingConsumer>(c => c.UseDynamoDbOutbox());
             bus.AddConsumer<OutboxOrderShippedConsumer>();
-            bus.AddDynamoDbOutbox(o => o
-                .WithTableName(_tableName)
-                .WithPollInterval(TimeSpan.FromMilliseconds(50)));
+            bus.AddDynamoDbOutbox(o =>
+            {
+                o.TableName = _tableName;
+                o.PollInterval = TimeSpan.FromMilliseconds(50);
+            });
         }, services => services.AddSingleton(shippedTracker));
 
         try
@@ -353,10 +361,12 @@ public class DynamoDbOutboxTests
         {
             bus.AddInMemoryTransport();
             bus.AddConsumer<OutboxOrderPlacedConsumer>();
-            bus.UseDynamoDbOutbox(o => o
-                .WithTableName(_tableName)
-                .WithPollInterval(TimeSpan.FromHours(1))
-                .DisableOutboxProcessor());
+            bus.UseDynamoDbOutbox(o =>
+            {
+                o.TableName = _tableName;
+                o.PollInterval = TimeSpan.FromHours(1);
+                o.RunOutboxProcessor = false;
+            });
         }, services => services.AddSingleton(tracker));
 
         try
@@ -436,10 +446,12 @@ public class DynamoDbOutboxTests
             bus.AddConsumer<OutboxOrderPlacedPublishingConsumer>(
                 c => c.UseDynamoDbOutboxWithInlineDelivery());
             bus.AddConsumer<OutboxOrderShippedConsumer>();
-            bus.AddDynamoDbOutbox(o => o
-                .WithTableName(_tableName)
-                .WithPollInterval(TimeSpan.FromHours(1))
-                .DisableOutboxProcessor());
+            bus.AddDynamoDbOutbox(o =>
+            {
+                o.TableName = _tableName;
+                o.PollInterval = TimeSpan.FromHours(1);
+                o.RunOutboxProcessor = false;
+            });
         }, services => services.AddSingleton(shippedTracker));
 
         try
@@ -525,51 +537,6 @@ public class DynamoDbOutboxTests
         cts.Dispose();
     }
 
-    internal static async Task EnsureOutboxTableExistsAsync(IAmazonDynamoDB dynamoDb, string tableName)
-    {
-        try
-        {
-            await dynamoDb.DescribeTableAsync(tableName);
-        }
-        catch (ResourceNotFoundException)
-        {
-            var gsiName = new DynamoDbOutboxOptions().GsiIndexName!;
-
-            await dynamoDb.CreateTableAsync(new CreateTableRequest
-            {
-                TableName = tableName,
-                KeySchema =
-                [
-                    new KeySchemaElement(DynamoDbOutboxTable.GroupId, KeyType.HASH),
-                    new KeySchemaElement(DynamoDbOutboxTable.EntryId, KeyType.RANGE),
-                ],
-                AttributeDefinitions =
-                [
-                    new AttributeDefinition(DynamoDbOutboxTable.GroupId, ScalarAttributeType.S),
-                    new AttributeDefinition(DynamoDbOutboxTable.EntryId, ScalarAttributeType.S),
-                    new AttributeDefinition(DynamoDbOutboxTable.Shard, ScalarAttributeType.N),
-                    new AttributeDefinition(DynamoDbOutboxTable.VisibleAt, ScalarAttributeType.N),
-                ],
-                GlobalSecondaryIndexes =
-                [
-                    new GlobalSecondaryIndex
-                    {
-                        IndexName = gsiName,
-                        KeySchema =
-                        [
-                            new KeySchemaElement(DynamoDbOutboxTable.Shard, KeyType.HASH),
-                            new KeySchemaElement(DynamoDbOutboxTable.VisibleAt, KeyType.RANGE),
-                        ],
-                        Projection = new Projection { ProjectionType = ProjectionType.ALL },
-                    },
-                ],
-                BillingMode = BillingMode.PAY_PER_REQUEST,
-            });
-
-            await WaitForTableActiveAsync(dynamoDb, tableName);
-        }
-    }
-
     private static async Task EnsureSimpleTableExistsAsync(IAmazonDynamoDB dynamoDb, string tableName)
     {
         await dynamoDb.CreateTableAsync(new CreateTableRequest
@@ -580,11 +547,6 @@ public class DynamoDbOutboxTests
             BillingMode = BillingMode.PAY_PER_REQUEST,
         });
 
-        await WaitForTableActiveAsync(dynamoDb, tableName);
-    }
-
-    private static async Task WaitForTableActiveAsync(IAmazonDynamoDB dynamoDb, string tableName)
-    {
         var deadline = DateTime.UtcNow.AddSeconds(30);
         while (DateTime.UtcNow < deadline)
         {

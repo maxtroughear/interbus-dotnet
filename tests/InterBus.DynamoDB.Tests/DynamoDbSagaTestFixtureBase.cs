@@ -1,5 +1,4 @@
 using Amazon.DynamoDBv2;
-using Amazon.DynamoDBv2.Model;
 using InterBus.DynamoDB.Sagas;
 using InterBus.Extensions;
 using Microsoft.Extensions.DependencyInjection;
@@ -53,8 +52,7 @@ public abstract class DynamoDbSagaTestFixtureBase
         DynamoDb = provider.GetRequiredService<IAmazonDynamoDB>();
         Options = new DynamoDbSagaOptions { TableName = TableName };
 
-        // TODO: Manage table creation as part of the library, not the test suite
-        await EnsureTableExistsAsync(DynamoDb, TableName);
+        await DynamoDbSagaTable.EnsureTableCreatedAsync(DynamoDb, TableName);
     }
 
     [TearDown]
@@ -106,44 +104,5 @@ public abstract class DynamoDbSagaTestFixtureBase
 
         await provider.DisposeAsync();
         cts.Dispose();
-    }
-
-    private static async Task EnsureTableExistsAsync(IAmazonDynamoDB dynamoDb, string tableName)
-    {
-        try
-        {
-            await dynamoDb.DescribeTableAsync(tableName);
-        }
-        catch (ResourceNotFoundException)
-        {
-            await dynamoDb.CreateTableAsync(new CreateTableRequest
-            {
-                TableName = tableName,
-                KeySchema =
-                [
-                    new KeySchemaElement(DynamoDbSagaRepository<OrderSaga, OrderSagaState>.AttrCorrelationId,
-                        KeyType.HASH),
-                    new KeySchemaElement(DynamoDbSagaRepository<OrderSaga, OrderSagaState>.AttrSagaType, KeyType.RANGE),
-                ],
-                AttributeDefinitions =
-                [
-                    new AttributeDefinition(DynamoDbSagaRepository<OrderSaga, OrderSagaState>.AttrCorrelationId,
-                        ScalarAttributeType.S),
-                    new AttributeDefinition(DynamoDbSagaRepository<OrderSaga, OrderSagaState>.AttrSagaType,
-                        ScalarAttributeType.S),
-                ],
-                BillingMode = BillingMode.PAY_PER_REQUEST,
-            });
-
-            var deadline = DateTime.UtcNow.AddSeconds(30);
-            while (DateTime.UtcNow < deadline)
-            {
-                var desc = await dynamoDb.DescribeTableAsync(tableName);
-                if (desc.Table.TableStatus == TableStatus.ACTIVE)
-                    break;
-
-                await Task.Delay(200);
-            }
-        }
     }
 }

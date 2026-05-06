@@ -29,4 +29,19 @@ public sealed class DynamoDbSagaOptions
     /// Defaults to 60 seconds.
     /// </summary>
     public TimeSpan LockAcquireTimeout { get; set; } = TimeSpan.FromSeconds(60);
+
+    /// <summary>
+    /// When <c>true</c>, the DynamoDB saga table is automatically created on application startup
+    /// if it does not already exist. Defaults to <c>false</c>.
+    /// <para>
+    /// The table is created with partition key <c>CorrelationId</c> (String) and sort key
+    /// <c>SagaType</c> (String), using on-demand billing mode.
+    /// </para>
+    /// <para>
+    /// <b>This option is intended for development and testing only.</b> For production
+    /// environments, prefer managing DynamoDB tables with an Infrastructure-as-Code tool
+    /// such as Terraform, AWS CloudFormation, or AWS CDK.
+    /// </para>
+    /// </summary>
+    public bool CreateTableOnStartup { get; set; }
 }

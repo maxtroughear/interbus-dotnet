@@ -1,3 +1,6 @@
+using Amazon.DynamoDBv2;
+using Amazon.DynamoDBv2.Model;
+
 namespace InterBus.DynamoDB.Outbox;
 
 /// <summary>
@@ -62,4 +65,97 @@ public static class DynamoDbOutboxTable
     /// Optional message delivery delay in whole seconds. Number attribute (optional).
     /// </summary>
     public const string Delay = "Delay";
+
+    /// <summary>
+    /// Creates the DynamoDB outbox table if it does not already exist, then waits until it is
+    /// active. The table is created with <see cref="GroupId"/> as the partition key and
+    /// <see cref="EntryId"/> as the sort key, using on-demand billing mode.
+    /// When <paramref name="gsiIndexName"/> is provided, a Global Secondary Index with
+    /// <see cref="Shard"/> (Number) as the partition key and <see cref="VisibleAt"/> (Number)
+    /// as the sort key is also created.
+    /// If the table already exists this method returns immediately without making any changes.
+    /// </summary>
+    /// <param name="dynamoDb">The DynamoDB client.</param>
+    /// <param name="tableName">The name of the table to create.</param>
+    /// <param name="gsiIndexName">
+    /// Optional name of the Global Secondary Index to create alongside the table.
+    /// Pass <c>null</c> or an empty string to skip GSI creation.
+    /// </param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    public static async Task EnsureTableCreatedAsync(
+        IAmazonDynamoDB dynamoDb,
+        string tableName,
+        string? gsiIndexName = null,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            await dynamoDb.DescribeTableAsync(tableName, cancellationToken);
+            return;
+        }
+        catch (ResourceNotFoundException)
+        {
+            // Table does not exist — create it below.
+        }
+
+        var request = new CreateTableRequest
+        {
+            TableName = tableName,
+            KeySchema =
+            [
+                new KeySchemaElement(GroupId, KeyType.HASH),
+                new KeySchemaElement(EntryId, KeyType.RANGE),
+            ],
+            AttributeDefinitions =
+            [
+                new AttributeDefinition(GroupId, ScalarAttributeType.S),
+                new AttributeDefinition(EntryId, ScalarAttributeType.S),
+            ],
+            BillingMode = BillingMode.PAY_PER_REQUEST,
+        };
+
+        if (!string.IsNullOrEmpty(gsiIndexName))
+        {
+            request.AttributeDefinitions.Add(
+                new AttributeDefinition(Shard, ScalarAttributeType.N));
+            request.AttributeDefinitions.Add(
+                new AttributeDefinition(VisibleAt, ScalarAttributeType.N));
+
+            request.GlobalSecondaryIndexes =
+            [
+                new GlobalSecondaryIndex
+                {
+                    IndexName = gsiIndexName,
+                    KeySchema =
+                    [
+                        new KeySchemaElement(Shard, KeyType.HASH),
+                        new KeySchemaElement(VisibleAt, KeyType.RANGE),
+                    ],
+                    Projection = new Projection { ProjectionType = ProjectionType.ALL },
+                },
+            ];
+        }
+
+        await dynamoDb.CreateTableAsync(request, cancellationToken);
+
+        await WaitForTableActiveAsync(dynamoDb, tableName, cancellationToken);
+    }
+
+    private static async Task WaitForTableActiveAsync(
+        IAmazonDynamoDB dynamoDb,
+        string tableName,
+        CancellationToken cancellationToken)
+    {
+        var deadline = DateTimeOffset.UtcNow.AddSeconds(60);
+        while (!cancellationToken.IsCancellationRequested && DateTimeOffset.UtcNow < deadline)
+        {
+            var desc = await dynamoDb.DescribeTableAsync(tableName, cancellationToken);
+            if (desc.Table.TableStatus == TableStatus.ACTIVE)
+                return;
+            await Task.Delay(TimeSpan.FromMilliseconds(500), cancellationToken);
+        }
+        cancellationToken.ThrowIfCancellationRequested();
+        throw new TimeoutException(
+            $"DynamoDB table '{tableName}' did not become ACTIVE within the expected time.");
+    }
 }

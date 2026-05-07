@@ -7,6 +7,7 @@ using InterBus.Middleware.Internal;
 using InterBus.Publishing;
 using InterBus.Sending;
 using InterBus.Serialization;
+using InterBus.Telemetry;
 using InterBus.Transporting;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -50,6 +51,11 @@ public static class ServiceCollectionExtensions
 
         // Register options so transports can resolve them.
         services.AddSingleton(options);
+
+        // Telemetry (ActivitySource + Meter) — registered before anything that uses them.
+        services.AddSingleton<InterBusDiagnostics>();
+        services.AddSingleton<IInterBusDiagnostics>(sp => sp.GetRequiredService<InterBusDiagnostics>());
+        services.AddSingleton<InterBusMetrics>();
 
         // Register the default serialiser if the user has not supplied one via UseSerializer<T>()
         // or a direct services.AddSingleton<IMessageSerializer>(...) call inside configure

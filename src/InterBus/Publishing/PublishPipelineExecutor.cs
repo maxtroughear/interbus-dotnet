@@ -3,7 +3,6 @@ using InterBus.Consuming;
 using InterBus.Middleware;
 using InterBus.Sending;
 using InterBus.Telemetry;
-using Microsoft.Extensions.DependencyInjection;
 
 namespace InterBus.Publishing;
 
@@ -13,10 +12,8 @@ public sealed class PublishPipelineExecutor(
     IMiddlewareFactory middlewareFactory,
     ConsumeContextAccessor contextAccessor,
     IInterBusDiagnostics diagnostics,
-    IServiceProvider serviceProvider)
+    InterBusMetrics metrics)
 {
-    private InterBusMetrics Metrics => serviceProvider.GetRequiredService<InterBusMetrics>();
-
     public async Task ExecuteAsync<TMessage>(PublishContext<TMessage> context, CancellationToken cancellationToken = default)
         where TMessage : class
     {
@@ -47,7 +44,7 @@ public sealed class PublishPipelineExecutor(
 
         await pipeline(context, cancellationToken);
 
-        Metrics.MessagesPublished.Add(1,
+        metrics.MessagesPublished.Add(1,
             new TagList
             {
                 { "messaging.system", "interbus" },

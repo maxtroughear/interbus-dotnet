@@ -1,7 +1,6 @@
 using System.Diagnostics;
 using InterBus.Middleware;
 using InterBus.Telemetry;
-using Microsoft.Extensions.DependencyInjection;
 
 namespace InterBus.Consuming;
 
@@ -16,10 +15,8 @@ public sealed class ConsumePipelineExecutor(
     IMiddlewareFactory middlewareFactory,
     ConsumeContextAccessor contextAccessor,
     IInterBusDiagnostics diagnostics,
-    IServiceProvider serviceProvider)
+    InterBusMetrics metrics)
 {
-    private InterBusMetrics Metrics => serviceProvider.GetRequiredService<InterBusMetrics>();
-
     /// <summary>
     /// Builds and runs the consume pipeline for the given <paramref name="context"/> and
     /// <paramref name="finalDelegate"/>
@@ -51,7 +48,7 @@ public sealed class ConsumePipelineExecutor(
             await pipeline(context, cancellationToken);
 
             activity?.SetStatus(ActivityStatusCode.Ok);
-            Metrics.MessagesConsumed.Add(1,
+            metrics.MessagesConsumed.Add(1,
                 new TagList
                 {
                     { "messaging.system", "interbus" },
@@ -62,7 +59,7 @@ public sealed class ConsumePipelineExecutor(
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
-            Metrics.MessagesFailed.Add(1,
+            metrics.MessagesFailed.Add(1,
                 new TagList
                 {
                     { "messaging.system", "interbus" },

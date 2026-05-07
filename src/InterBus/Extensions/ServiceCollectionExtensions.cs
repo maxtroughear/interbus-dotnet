@@ -47,15 +47,19 @@ public static class ServiceCollectionExtensions
 
         services.AddHostedService<InterBusTopologyHostedService>();
 
-        configure(builder);
-
-        // Register options so transports can resolve them.
-        services.AddSingleton(options);
-
         // Telemetry (ActivitySource + Meter) — registered before anything that uses them.
         services.AddSingleton<InterBusDiagnostics>();
         services.AddSingleton<IInterBusDiagnostics>(sp => sp.GetRequiredService<InterBusDiagnostics>());
         services.AddSingleton<InterBusMetrics>();
+
+        // Register the bus-level telemetry publish middleware first so it is outermost for
+        // standalone publishes (outside a consumer context).
+        services.AddKeyedScoped<IPublishMiddleware, TelemetryPublishMiddleware>(InterBusConstants.BusContext);
+
+        configure(builder);
+
+        // Register options so transports can resolve them.
+        services.AddSingleton(options);
 
         // Register the default serialiser if the user has not supplied one via UseSerializer<T>()
         // or a direct services.AddSingleton<IMessageSerializer>(...) call inside configure

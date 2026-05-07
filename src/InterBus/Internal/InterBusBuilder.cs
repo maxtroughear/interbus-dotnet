@@ -6,6 +6,7 @@ using InterBus.Logging;
 using InterBus.Publishing;
 using InterBus.Sagas;
 using InterBus.Sending;
+using InterBus.Telemetry;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
@@ -73,6 +74,10 @@ internal sealed class InterBusBuilder : IInterBusBuilder
         var descriptor = new ConsumerDescriptor(typeof(TConsumer), queue, messageTypes, dispatch);
         var consumerBuilder = new ConsumerBuilder(descriptor, Services);
 
+        // Telemetry must be the outermost dispatch and publish middleware.
+        consumerBuilder.UseDispatchMiddleware<TelemetryDispatchMiddleware>();
+        consumerBuilder.UsePublishMiddleware<TelemetryPublishMiddleware>();
+
         consumerBuilder.UseConsumeMiddleware<DeadLetterConsumeMiddleware>();
         consumerBuilder.UseConsumeMiddleware<ExceptionLoggingConsumeMiddleware>();
 
@@ -98,6 +103,10 @@ internal sealed class InterBusBuilder : IInterBusBuilder
         var descriptor = new ConsumerDescriptor(typeof(TSaga), queue, messageTypes, dispatch);
         var sagaOptions = new SagaOptions<TSaga>();
         var sagaBuilder = new SagaBuilder<TSaga, TState>(descriptor, Services, sagaOptions);
+
+        // Apply telemetry as the outermost dispatch and publish middleware.
+        sagaBuilder.UseDispatchMiddleware<TelemetryDispatchMiddleware>();
+        sagaBuilder.UsePublishMiddleware<TelemetryPublishMiddleware>();
 
         // Apply the same default middleware as regular consumers.
         sagaBuilder.UseConsumeMiddleware<DeadLetterConsumeMiddleware>();

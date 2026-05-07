@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using InterBus.Consuming;
+using InterBus.Dispatching;
 using InterBus.Extensions;
 using InterBus.Telemetry;
 using InterBus.Transporting;
@@ -10,8 +11,7 @@ namespace InterBus.Tests;
 
 /// <summary>
 /// Unit tests for InterBus telemetry — <see cref="IInterBusDiagnostics"/>, <see cref="InterBusTelemetry"/>,
-/// and activity/metrics integration in <see cref="ConsumePipelineExecutor"/> and
-/// <c>PublishPipelineExecutor</c>.
+/// <see cref="TelemetryDispatchMiddleware"/>, and <see cref="TelemetryPublishMiddleware"/>.
 /// </summary>
 public sealed class TelemetryTests
 {
@@ -39,9 +39,7 @@ public sealed class TelemetryTests
         services.AddInterBus(_ => { });
 
         using var provider = services.BuildServiceProvider();
-        var diagnostics = provider.GetService<IInterBusDiagnostics>();
-
-        Assert.NotNull(diagnostics);
+        Assert.NotNull(provider.GetService<IInterBusDiagnostics>());
     }
 
     [Fact]
@@ -71,54 +69,42 @@ public sealed class TelemetryTests
         Assert.Same(a, b);
     }
 
-    // ── ConsumePipelineExecutor starts a Consumer activity ───────────────────
+    // ── TelemetryDispatchMiddleware ───────────────────────────────────────────
 
     [Fact]
-    public async Task ConsumePipelineExecutor_StartsConsumerActivity_WhenListenerRegistered()
+    public async Task DispatchMiddleware_StartsConsumerActivity_WhenListenerRegistered()
     {
-        var activities = new List<Activity>();
-        using var listener = BuildListener(activities.Add);
+        var started = new List<Activity>();
+        using var listener = BuildListener(started.Add);
 
-        var services = new ServiceCollection();
-        services.AddLogging();
-        services.AddInterBus(_ => { });
-
-        await using var provider = services.BuildServiceProvider();
-        await using var scope = provider.CreateAsyncScope();
-
-        var executor = scope.ServiceProvider.GetRequiredService<ConsumePipelineExecutor>();
-        var context = BuildConsumeContext(headers: new MessageHeaders
+        var middleware = BuildDispatchMiddleware();
+        var context = BuildDispatchContext(new MessageHeaders
         {
             [InterBusHeaders.MessageType] = "TestMessage",
         });
 
-        await executor.ExecuteAsync(context, (_, _, _) => Task.CompletedTask, TestContext.Current.CancellationToken);
+        await middleware.InvokeAsync(context, (_, _) => Task.CompletedTask,
+            TestContext.Current.CancellationToken);
 
-        Assert.Single(activities, a =>
+        Assert.Single(started, a =>
             a.OperationName == "NoOpConsumer process" && a.Kind == ActivityKind.Consumer);
     }
 
     [Fact]
-    public async Task ConsumePipelineExecutor_SetsConsumerActivityTags()
+    public async Task DispatchMiddleware_SetsConsumerActivityTags()
     {
         var stopped = new List<Activity>();
         using var listener = BuildListener(onStopped: stopped.Add);
 
-        var services = new ServiceCollection();
-        services.AddLogging();
-        services.AddInterBus(_ => { });
-
-        await using var provider = services.BuildServiceProvider();
-        await using var scope = provider.CreateAsyncScope();
-
-        var executor = scope.ServiceProvider.GetRequiredService<ConsumePipelineExecutor>();
-        var context = BuildConsumeContext(headers: new MessageHeaders
+        var middleware = BuildDispatchMiddleware();
+        var context = BuildDispatchContext(new MessageHeaders
         {
             [InterBusHeaders.MessageType] = "TestMessage",
             [InterBusHeaders.MessageId] = "msg-123",
         });
 
-        await executor.ExecuteAsync(context, (_, _, _) => Task.CompletedTask, TestContext.Current.CancellationToken);
+        await middleware.InvokeAsync(context, (_, _) => Task.CompletedTask,
+            TestContext.Current.CancellationToken);
 
         var activity = Assert.Single(stopped);
         Assert.Equal("interbus", GetTag(activity, "messaging.system"));
@@ -130,23 +116,16 @@ public sealed class TelemetryTests
     }
 
     [Fact]
-    public async Task ConsumePipelineExecutor_SetsErrorStatus_WhenConsumerThrows()
+    public async Task DispatchMiddleware_SetsErrorStatus_WhenConsumerThrows()
     {
         var stopped = new List<Activity>();
         using var listener = BuildListener(onStopped: stopped.Add);
 
-        var services = new ServiceCollection();
-        services.AddLogging();
-        services.AddInterBus(_ => { });
-
-        await using var provider = services.BuildServiceProvider();
-        await using var scope = provider.CreateAsyncScope();
-
-        var executor = scope.ServiceProvider.GetRequiredService<ConsumePipelineExecutor>();
-        var context = BuildConsumeContext();
+        var middleware = BuildDispatchMiddleware();
+        var context = BuildDispatchContext();
 
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            executor.ExecuteAsync(context, (_, _, _) => throw new InvalidOperationException("boom"),
+            middleware.InvokeAsync(context, (_, _) => throw new InvalidOperationException("boom"),
                 TestContext.Current.CancellationToken));
 
         var activity = Assert.Single(stopped);
@@ -155,39 +134,33 @@ public sealed class TelemetryTests
     }
 
     [Fact]
-    public async Task ConsumePipelineExecutor_RestoresParentContext_FromTraceparentHeader()
+    public async Task DispatchMiddleware_RestoresParentContext_FromTraceparentHeader()
     {
         var started = new List<Activity>();
         using var listener = BuildListener(started.Add);
-
-        var services = new ServiceCollection();
-        services.AddLogging();
-        services.AddInterBus(_ => { });
-
-        await using var provider = services.BuildServiceProvider();
-        await using var scope = provider.CreateAsyncScope();
 
         var traceId = ActivityTraceId.CreateRandom();
         var parentSpanId = ActivitySpanId.CreateRandom();
         var traceparent = $"00-{traceId}-{parentSpanId}-01";
 
-        var executor = scope.ServiceProvider.GetRequiredService<ConsumePipelineExecutor>();
-        var context = BuildConsumeContext(headers: new MessageHeaders
+        var middleware = BuildDispatchMiddleware();
+        var context = BuildDispatchContext(new MessageHeaders
         {
             ["traceparent"] = traceparent,
         });
 
-        await executor.ExecuteAsync(context, (_, _, _) => Task.CompletedTask, TestContext.Current.CancellationToken);
+        await middleware.InvokeAsync(context, (_, _) => Task.CompletedTask,
+            TestContext.Current.CancellationToken);
 
         var activity = Assert.Single(started);
         Assert.Equal(traceId, activity.TraceId);
         Assert.Equal(parentSpanId, activity.ParentSpanId);
     }
 
-    // ── PublishPipelineExecutor starts a Producer activity ───────────────────
+    // ── TelemetryPublishMiddleware ────────────────────────────────────────────
 
     [Fact]
-    public async Task PublishPipelineExecutor_StartsProducerActivity_WhenListenerRegistered()
+    public async Task PublishMiddleware_StartsProducerActivity_WhenListenerRegistered()
     {
         var started = new List<Activity>();
         using var listener = BuildListener(started.Add);
@@ -211,7 +184,7 @@ public sealed class TelemetryTests
     }
 
     [Fact]
-    public async Task PublishPipelineExecutor_InjectsTraceparentHeader_IntoOutgoingMessage()
+    public async Task PublishMiddleware_InjectsTraceparentHeader_IntoOutgoingMessage()
     {
         using var listener = BuildListener();
 
@@ -233,7 +206,7 @@ public sealed class TelemetryTests
         Assert.Single(transport.Sends);
         var (_, _, headers) = transport.Sends[0];
         Assert.True(headers.ContainsKey("traceparent"),
-            "Expected 'traceparent' header to be injected by PublishPipelineExecutor");
+            "Expected 'traceparent' header to be injected by TelemetryPublishMiddleware");
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
@@ -253,7 +226,14 @@ public sealed class TelemetryTests
         return listener;
     }
 
-    private static ConsumeContext<TestMessage> BuildConsumeContext(MessageHeaders? headers = null)
+    private static TelemetryDispatchMiddleware BuildDispatchMiddleware()
+    {
+        var diagnostics = new StubDiagnostics();
+        var metrics = new InterBusMetrics();
+        return new TelemetryDispatchMiddleware(diagnostics, metrics);
+    }
+
+    private static DispatchContext BuildDispatchContext(MessageHeaders? headers = null)
     {
         var descriptor = new ConsumerDescriptor(
             typeof(NoOpConsumer),
@@ -261,7 +241,7 @@ public sealed class TelemetryTests
             [typeof(TestMessage)],
             (_, _, _) => Task.CompletedTask);
 
-        return new ConsumeContext<TestMessage>(descriptor, new TestMessage(), headers ?? new MessageHeaders());
+        return new DispatchContext(descriptor, [], headers ?? new MessageHeaders());
     }
 
     private static string? GetTag(Activity activity, string key) =>
@@ -285,5 +265,10 @@ public sealed class TelemetryTests
             Sends.Add((context.Destination, context.Payload, context.Headers));
             return Task.CompletedTask;
         }
+    }
+
+    private sealed class StubDiagnostics : IInterBusDiagnostics
+    {
+        public ActivitySource ActivitySource { get; } = new(InterBusTelemetry.ActivitySourceName);
     }
 }

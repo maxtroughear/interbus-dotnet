@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using InterBus.Consuming;
 using InterBus.Middleware;
 
@@ -15,11 +14,4 @@ public sealed class DispatchContext(ConsumerDescriptor descriptor, byte[] payloa
     public byte[] Payload { get; set; } = payload;
 
     public MessageHeaders Headers { get; } = headers;
-
-    /// <summary>
-    /// W3C trace parent context extracted from the message headers by the message pump.
-    /// When set, <see cref="Telemetry.TelemetryDispatchMiddleware"/> uses this as the parent
-    /// for the consumer activity instead of re-parsing the headers inside the middleware.
-    /// </summary>
-    public ActivityContext? RemoteParentContext { get; init; }
 }

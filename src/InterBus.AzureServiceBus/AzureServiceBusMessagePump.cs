@@ -6,6 +6,7 @@ using InterBus.Telemetry;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using System.Diagnostics;
 
 namespace InterBus.AzureServiceBus;
 
@@ -27,6 +28,7 @@ internal sealed class AzureServiceBusMessagePump(
     AzureServiceBusTransportOptions options,
     InterBusOptions busOptions,
     IServiceScopeFactory scopeFactory,
+    IInterBusDiagnostics diagnostics,
     InterBusMetrics metrics,
     ILogger<AzureServiceBusMessagePump> logger)
     : BackgroundService
@@ -117,10 +119,16 @@ internal sealed class AzureServiceBusMessagePump(
             return;
         }
 
+        var headers = ParseApplicationProperties(args.Message.ApplicationProperties);
+        Activity? activity = null;
         try
         {
-            await DispatchAsync(descriptor, args.Message, args.CancellationToken);
+            activity = InterBusTelemetry.StartConsumerActivity(
+                diagnostics, headers, descriptor.ConsumerType.Name, descriptor.QueueName);
+
+            await DispatchAsync(descriptor, args.Message.Body.ToArray(), headers, args.CancellationToken);
             await args.CompleteMessageAsync(args.Message);
+            activity?.SetStatus(ActivityStatusCode.Ok);
             metrics.RecordConsumed(descriptor.ConsumerType.Name, descriptor.QueueName);
         }
         catch (OperationCanceledException) when (args.CancellationToken.IsCancellationRequested)
@@ -147,6 +155,7 @@ internal sealed class AzureServiceBusMessagePump(
                 descriptor.ConsumerType.Name,
                 descriptor.Queue);
 
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Reason);
             metrics.RecordFailed(descriptor.ConsumerType.Name, descriptor.QueueName);
         }
         catch (Exception ex)
@@ -157,7 +166,12 @@ internal sealed class AzureServiceBusMessagePump(
                 descriptor.ConsumerType.Name,
                 descriptor.Queue);
 
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
             await args.AbandonMessageAsync(args.Message, cancellationToken: CancellationToken.None);
+        }
+        finally
+        {
+            activity?.Dispose();
         }
     }
 
@@ -174,17 +188,13 @@ internal sealed class AzureServiceBusMessagePump(
 
     private async Task DispatchAsync(
         ConsumerDescriptor descriptor,
-        ServiceBusReceivedMessage message,
+        byte[] body,
+        MessageHeaders headers,
         CancellationToken ct)
     {
         await using var scope = scopeFactory.CreateAsyncScope();
         var executor = scope.ServiceProvider.GetRequiredService<DispatchPipelineExecutor>();
-        var headers = ParseApplicationProperties(message.ApplicationProperties);
-        var hasParent = InterBusTelemetry.TryExtractParentContext(headers, out var parentContext);
-        var context = new DispatchContext(descriptor, message.Body.ToArray(), headers)
-        {
-            RemoteParentContext = hasParent ? parentContext : null,
-        };
+        var context = new DispatchContext(descriptor, body, headers);
         await executor.ExecuteAsync(context, ct);
     }
 

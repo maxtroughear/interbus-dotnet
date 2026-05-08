@@ -8,6 +8,7 @@ using Microsoft.Extensions.Logging;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
 using RabbitMQ.Client.Exceptions;
+using System.Diagnostics;
 
 namespace InterBus.RabbitMQ;
 
@@ -30,6 +31,7 @@ internal sealed class RabbitMqMessagePump(
     RabbitMqTransportOptions options,
     InterBusOptions busOptions,
     IServiceScopeFactory scopeFactory,
+    IInterBusDiagnostics diagnostics,
     InterBusMetrics metrics,
     ILogger<RabbitMqMessagePump> logger)
     : BackgroundService
@@ -140,10 +142,16 @@ internal sealed class RabbitMqMessagePump(
                 return;
             }
 
+            var headers = RabbitMqHeaders.ParseAmqpHeaders(ea.BasicProperties.Headers);
+            Activity? activity = null;
             try
             {
-                await DispatchAsync(descriptor, ea, stoppingToken);
+                activity = InterBusTelemetry.StartConsumerActivity(
+                    diagnostics, headers, descriptor.ConsumerType.Name, descriptor.QueueName);
+
+                await DispatchAsync(descriptor, ea.Body.ToArray(), headers, stoppingToken);
                 await channel.BasicAckAsync(ea.DeliveryTag, multiple: false);
+                activity?.SetStatus(ActivityStatusCode.Ok);
                 metrics.RecordConsumed(descriptor.ConsumerType.Name, descriptor.QueueName);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -152,7 +160,7 @@ internal sealed class RabbitMqMessagePump(
             }
             catch (DeadLetterException deadLetterException)
             {
-                await DeadLetterAsync(channel, descriptor, ea, deadLetterException);
+                await DeadLetterAsync(channel, descriptor, ea, deadLetterException, activity);
             }
             catch (Exception ex)
             {
@@ -162,7 +170,12 @@ internal sealed class RabbitMqMessagePump(
                     descriptor.ConsumerType.Name,
                     descriptor.QueueName);
 
+                activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
                 await channel.BasicNackAsync(ea.DeliveryTag, multiple: false, requeue: true);
+            }
+            finally
+            {
+                activity?.Dispose();
             }
 
             // ReSharper restore MethodSupportsCancellation
@@ -192,16 +205,11 @@ internal sealed class RabbitMqMessagePump(
         await channel.DisposeAsync();
     }
 
-    private async Task DispatchAsync(ConsumerDescriptor descriptor, BasicDeliverEventArgs ea, CancellationToken ct)
+    private async Task DispatchAsync(ConsumerDescriptor descriptor, byte[] body, MessageHeaders headers, CancellationToken ct)
     {
         await using var scope = scopeFactory.CreateAsyncScope();
         var executor = scope.ServiceProvider.GetRequiredService<DispatchPipelineExecutor>();
-        var headers = RabbitMqHeaders.ParseAmqpHeaders(ea.BasicProperties.Headers);
-        var hasParent = InterBusTelemetry.TryExtractParentContext(headers, out var parentContext);
-        var context = new DispatchContext(descriptor, ea.Body.ToArray(), headers)
-        {
-            RemoteParentContext = hasParent ? parentContext : null,
-        };
+        var context = new DispatchContext(descriptor, body, headers);
         await executor.ExecuteAsync(context, ct);
     }
 
@@ -209,7 +217,8 @@ internal sealed class RabbitMqMessagePump(
         IChannel consumeChannel,
         ConsumerDescriptor descriptor,
         BasicDeliverEventArgs ea,
-        DeadLetterException ex)
+        DeadLetterException ex,
+        Activity? activity)
     {
         var deadLetterExchangeName = descriptor.QueueName + options.DeadLetterExchangeSuffix;
         var publishConnection = await connectionProvider.GetPublishConnectionAsync(CancellationToken.None);
@@ -252,6 +261,7 @@ internal sealed class RabbitMqMessagePump(
             descriptor.QueueName,
             deadLetterExchangeName);
 
+        activity?.SetStatus(ActivityStatusCode.Error, ex.Reason);
         metrics.RecordFailed(descriptor.ConsumerType.Name, descriptor.QueueName);
     }
 

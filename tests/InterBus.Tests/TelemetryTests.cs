@@ -72,69 +72,99 @@ public sealed class TelemetryTests
     // ── TelemetryDispatchMiddleware ───────────────────────────────────────────
 
     [Fact]
-    public async Task DispatchMiddleware_StartsConsumerActivity_WhenListenerRegistered()
+    public async Task DispatchMiddleware_SetsErrorStatus_WhenConsumerThrows()
+    {
+        using var listener = BuildListener();
+
+        var diagnostics = new StubDiagnostics();
+        var context = BuildDispatchContext();
+        var middleware = BuildDispatchMiddleware();
+
+        // Activity must be started by the pump (caller) before entering the middleware.
+        using var activity = InterBusTelemetry.StartConsumerActivity(
+            diagnostics, context.Headers, "NoOpConsumer", "test-queue");
+
+        Assert.NotNull(activity);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            middleware.InvokeAsync(context, (_, _) => throw new InvalidOperationException("boom"),
+                TestContext.Current.CancellationToken));
+
+        Assert.Equal(ActivityStatusCode.Error, activity.Status);
+        Assert.Equal("boom", activity.StatusDescription);
+    }
+
+    [Fact]
+    public async Task DispatchMiddleware_DoesNotSetErrorStatus_WhenOperationCancelled()
+    {
+        using var listener = BuildListener();
+
+        var diagnostics = new StubDiagnostics();
+        var context = BuildDispatchContext();
+        var middleware = BuildDispatchMiddleware();
+
+        using var activity = InterBusTelemetry.StartConsumerActivity(
+            diagnostics, context.Headers, "NoOpConsumer", "test-queue");
+
+        Assert.NotNull(activity);
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() =>
+            middleware.InvokeAsync(context, (_, _) => throw new OperationCanceledException(),
+                TestContext.Current.CancellationToken));
+
+        Assert.Equal(ActivityStatusCode.Unset, activity.Status);
+    }
+
+    // ── InterBusTelemetry.StartConsumerActivity ──────────────────────────────
+
+    [Fact]
+    public void StartConsumerActivity_StartsConsumerActivity_WhenListenerRegistered()
     {
         var started = new List<Activity>();
         using var listener = BuildListener(started.Add);
 
-        var middleware = BuildDispatchMiddleware();
-        var context = BuildDispatchContext(new MessageHeaders
+        var diagnostics = new StubDiagnostics();
+        var headers = new MessageHeaders
         {
             [InterBusHeaders.MessageType] = "TestMessage",
-        });
+        };
 
-        await middleware.InvokeAsync(context, (_, _) => Task.CompletedTask,
-            TestContext.Current.CancellationToken);
+        using var activity = InterBusTelemetry.StartConsumerActivity(
+            diagnostics, headers, "NoOpConsumer", "test-queue");
 
         Assert.Single(started, a =>
             a.OperationName == "NoOpConsumer process" && a.Kind == ActivityKind.Consumer);
     }
 
     [Fact]
-    public async Task DispatchMiddleware_SetsConsumerActivityTags()
+    public void StartConsumerActivity_SetsConsumerActivityTags()
     {
         var stopped = new List<Activity>();
         using var listener = BuildListener(onStopped: stopped.Add);
 
-        var middleware = BuildDispatchMiddleware();
-        var context = BuildDispatchContext(new MessageHeaders
+        var diagnostics = new StubDiagnostics();
+        var headers = new MessageHeaders
         {
             [InterBusHeaders.MessageType] = "TestMessage",
             [InterBusHeaders.MessageId] = "msg-123",
-        });
+        };
 
-        await middleware.InvokeAsync(context, (_, _) => Task.CompletedTask,
-            TestContext.Current.CancellationToken);
+        {
+            using var activity = InterBusTelemetry.StartConsumerActivity(
+                diagnostics, headers, "NoOpConsumer", "test-queue");
+        }
 
-        var activity = Assert.Single(stopped);
-        Assert.Equal("interbus", GetTag(activity, "messaging.system"));
-        Assert.Equal("process", GetTag(activity, "messaging.operation.type"));
-        Assert.Equal("test-queue", GetTag(activity, "messaging.destination.name"));
-        Assert.Equal("NoOpConsumer", GetTag(activity, "messaging.consumer.name"));
-        Assert.Equal("TestMessage", GetTag(activity, "messaging.message.type"));
-        Assert.Equal("msg-123", GetTag(activity, "messaging.message.id"));
+        var act = Assert.Single(stopped);
+        Assert.Equal("interbus", GetTag(act, "messaging.system"));
+        Assert.Equal("process", GetTag(act, "messaging.operation.type"));
+        Assert.Equal("test-queue", GetTag(act, "messaging.destination.name"));
+        Assert.Equal("NoOpConsumer", GetTag(act, "messaging.consumer.name"));
+        Assert.Equal("TestMessage", GetTag(act, "messaging.message.type"));
+        Assert.Equal("msg-123", GetTag(act, "messaging.message.id"));
     }
 
     [Fact]
-    public async Task DispatchMiddleware_SetsErrorStatus_WhenConsumerThrows()
-    {
-        var stopped = new List<Activity>();
-        using var listener = BuildListener(onStopped: stopped.Add);
-
-        var middleware = BuildDispatchMiddleware();
-        var context = BuildDispatchContext();
-
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            middleware.InvokeAsync(context, (_, _) => throw new InvalidOperationException("boom"),
-                TestContext.Current.CancellationToken));
-
-        var activity = Assert.Single(stopped);
-        Assert.Equal(ActivityStatusCode.Error, activity.Status);
-        Assert.Equal("boom", activity.StatusDescription);
-    }
-
-    [Fact]
-    public async Task DispatchMiddleware_RestoresParentContext_FromRemoteParentContext()
+    public void StartConsumerActivity_RestoresParentContext_FromHeaders()
     {
         var started = new List<Activity>();
         using var listener = BuildListener(started.Add);
@@ -143,43 +173,18 @@ public sealed class TelemetryTests
         var parentSpanId = ActivitySpanId.CreateRandom();
         var traceparent = $"00-{traceId}-{parentSpanId}-01";
 
-        ActivityContext.TryParse(traceparent, null, isRemote: true, out var parentCtx);
-
-        var middleware = BuildDispatchMiddleware();
-        var context = BuildDispatchContext(remoteParentContext: parentCtx);
-
-        await middleware.InvokeAsync(context, (_, _) => Task.CompletedTask,
-            TestContext.Current.CancellationToken);
-
-        var activity = Assert.Single(started, a => a.OperationName == "NoOpConsumer process");
-        Assert.Equal(traceId, activity.TraceId);
-        Assert.Equal(parentSpanId, activity.ParentSpanId);
-    }
-
-    [Fact]
-    public void TryExtractParentContext_ReturnsTrue_WhenValidTraceparentPresent()
-    {
-        var traceId = ActivityTraceId.CreateRandom();
-        var spanId = ActivitySpanId.CreateRandom();
-        var traceparent = $"00-{traceId}-{spanId}-01";
-
+        var diagnostics = new StubDiagnostics();
         var headers = new MessageHeaders
         {
             [InterBusHeaders.Traceparent] = traceparent,
         };
 
-        var result = InterBusTelemetry.TryExtractParentContext(headers, out var ctx);
+        using var activity = InterBusTelemetry.StartConsumerActivity(
+            diagnostics, headers, "NoOpConsumer", "test-queue");
 
-        Assert.True(result);
-        Assert.Equal(traceId, ctx.TraceId);
-        Assert.Equal(spanId, ctx.SpanId);
-    }
-
-    [Fact]
-    public void TryExtractParentContext_ReturnsFalse_WhenNoTraceparentHeader()
-    {
-        var result = InterBusTelemetry.TryExtractParentContext(new MessageHeaders(), out _);
-        Assert.False(result);
+        var act = Assert.Single(started, a => a.OperationName == "NoOpConsumer process");
+        Assert.Equal(traceId, act.TraceId);
+        Assert.Equal(parentSpanId, act.ParentSpanId);
     }
 
     // ── TelemetryPublishMiddleware ────────────────────────────────────────────
@@ -251,14 +256,10 @@ public sealed class TelemetryTests
         return listener;
     }
 
-    private static TelemetryDispatchMiddleware BuildDispatchMiddleware()
-    {
-        var diagnostics = new StubDiagnostics();
-        return new TelemetryDispatchMiddleware(diagnostics);
-    }
+    private static TelemetryDispatchMiddleware BuildDispatchMiddleware() =>
+        new TelemetryDispatchMiddleware();
 
-    private static DispatchContext BuildDispatchContext(MessageHeaders? headers = null,
-        ActivityContext? remoteParentContext = null)
+    private static DispatchContext BuildDispatchContext(MessageHeaders? headers = null)
     {
         var descriptor = new ConsumerDescriptor(
             typeof(NoOpConsumer),
@@ -266,10 +267,7 @@ public sealed class TelemetryTests
             [typeof(TestMessage)],
             (_, _, _) => Task.CompletedTask);
 
-        return new DispatchContext(descriptor, [], headers ?? new MessageHeaders())
-        {
-            RemoteParentContext = remoteParentContext,
-        };
+        return new DispatchContext(descriptor, [], headers ?? new MessageHeaders());
     }
 
     private static string? GetTag(Activity activity, string key) =>

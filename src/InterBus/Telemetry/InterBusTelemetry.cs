@@ -22,24 +22,50 @@ public static class InterBusTelemetry
     public const string MeterName = "InterBus";
 
     /// <summary>
-    /// Extracts the W3C distributed trace parent context from InterBus message headers.
-    /// Called by each message pump before dispatching so that the consumer activity is
-    /// created with the correct remote parent without re-parsing headers inside middleware.
+    /// Extracts the W3C trace parent from incoming message headers, starts a consumer
+    /// <see cref="Activity"/> and sets the standard messaging semantic-convention tags.
+    /// Call this in the message pump before dispatching; the returned activity must be disposed
+    /// after the broker acknowledgement (or dead-letter) to correctly span the full message lifetime.
     /// </summary>
+    /// <param name="diagnostics">The InterBus <see cref="IInterBusDiagnostics"/> singleton.</param>
     /// <param name="headers">Incoming message headers.</param>
-    /// <param name="parentContext">
-    /// The parsed <see cref="ActivityContext"/> when the method returns <c>true</c>;
-    /// otherwise <c>default</c>.
-    /// </param>
-    /// <returns><c>true</c> if a valid <c>traceparent</c> header was found and parsed.</returns>
-    public static bool TryExtractParentContext(MessageHeaders headers, out ActivityContext parentContext)
+    /// <param name="consumerName">Consumer type name, used as the activity operation name suffix.</param>
+    /// <param name="queueName">Name of the queue being consumed.</param>
+    /// <returns>
+    /// The started <see cref="Activity"/>, or <c>null</c> when no listener has subscribed to the source.
+    /// </returns>
+    public static Activity? StartConsumerActivity(
+        IInterBusDiagnostics diagnostics,
+        MessageHeaders headers,
+        string consumerName,
+        string queueName)
     {
-        if (headers.TryGetValue(InterBusHeaders.Traceparent, out var traceparent)
+        var hasParent = headers.TryGetValue(InterBusHeaders.Traceparent, out var traceparent)
             && ActivityContext.TryParse(traceparent, headers.GetValueOrDefault(InterBusHeaders.Tracestate),
-                isRemote: true, out parentContext))
-            return true;
+                isRemote: true, out var parentContext);
 
-        parentContext = default;
-        return false;
+        var activityName = $"{consumerName} process";
+        var activity = hasParent
+            ? diagnostics.ActivitySource.StartActivity(activityName, ActivityKind.Consumer, parentContext)
+            : diagnostics.ActivitySource.StartActivity(activityName, ActivityKind.Consumer);
+
+        if (activity is null)
+            return null;
+
+        activity.SetTag("messaging.system", "interbus");
+        activity.SetTag("messaging.operation.type", "process");
+        activity.SetTag("messaging.destination.name", queueName);
+        activity.SetTag("messaging.consumer.name", consumerName);
+
+        if (headers.TryGetValue(InterBusHeaders.MessageType, out var messageType))
+            activity.SetTag("messaging.message.type", messageType);
+
+        if (headers.TryGetValue(InterBusHeaders.MessageId, out var messageId))
+            activity.SetTag("messaging.message.id", messageId);
+
+        if (headers.TryGetValue(InterBusHeaders.CorrelationId, out var correlationId))
+            activity.SetTag("messaging.message.correlation_id", correlationId);
+
+        return activity;
     }
 }

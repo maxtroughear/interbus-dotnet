@@ -7,6 +7,7 @@ using InterBus.Telemetry;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using System.Diagnostics;
 
 namespace InterBus.AmazonSqs;
 
@@ -34,6 +35,7 @@ internal sealed class SqsMessagePump(
     SnsSqsTransportOptions options,
     InterBusOptions busOptions,
     IServiceScopeFactory scopeFactory,
+    IInterBusDiagnostics diagnostics,
     InterBusMetrics metrics,
     ILogger<SqsMessagePump> logger)
     : BackgroundService
@@ -195,9 +197,30 @@ internal sealed class SqsMessagePump(
             message.Body?.Length ?? 0,
             message.MessageAttributes?.Count ?? 0);
 
+        Activity? activity = null;
         try
         {
-            await DispatchAsync(descriptor, message, ct);
+            logger.LogTrace(
+                "InterBus AmazonSqs: deserialising message {MessageId}; raw body (first 500 chars): {Body}",
+                message.MessageId,
+                message.Body?.Length > 500 ? message.Body[..500] + "..." : message.Body);
+
+            if (message.Body is null)
+                throw new InvalidOperationException(
+                    $"SQS message {message.MessageId} has a null body and cannot be deserialised.");
+
+            var (payload, headers) = SnsSqsMessageEnvelope.Deserialize(message.Body);
+
+            logger.LogTrace(
+                "InterBus AmazonSqs: dispatching message {MessageId} with {HeaderCount} headers to consumer {ConsumerType}",
+                message.MessageId,
+                headers.Count,
+                descriptor.ConsumerType.Name);
+
+            activity = InterBusTelemetry.StartConsumerActivity(
+                diagnostics, headers, descriptor.ConsumerType.Name, descriptor.QueueName);
+
+            await DispatchAsync(descriptor, payload, headers, ct);
 
             await prefetched.RenewalCts.CancelAsync();
 
@@ -212,6 +235,7 @@ internal sealed class SqsMessagePump(
             await sqsClient.DeleteMessageAsync(queueUrl, message.ReceiptHandle,
                 CancellationToken.None);
 
+            activity?.SetStatus(ActivityStatusCode.Ok);
             metrics.RecordConsumed(descriptor.ConsumerType.Name, descriptor.QueueName);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -223,6 +247,7 @@ internal sealed class SqsMessagePump(
             if (await TryDeadLetterAsync(descriptor, message, ex))
             {
                 await sqsClient.DeleteMessageAsync(queueUrl, message.ReceiptHandle, CancellationToken.None);
+                activity?.SetStatus(ActivityStatusCode.Error, ex.Reason);
                 metrics.RecordFailed(descriptor.ConsumerType.Name, descriptor.QueueName);
             }
         }
@@ -233,9 +258,12 @@ internal sealed class SqsMessagePump(
                 "InterBus AmazonSqs: consumer {ConsumerType} failed for queue {QueueName}; message will be redelivered after visibility timeout",
                 descriptor.ConsumerType.Name,
                 descriptor.Queue);
+
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
         }
         finally
         {
+            activity?.Dispose();
             await StopRenewalAsync(prefetched);
             semaphore.Release();
         }
@@ -376,34 +404,11 @@ internal sealed class SqsMessagePump(
         }
     }
 
-    private async Task DispatchAsync(ConsumerDescriptor descriptor, Message message, CancellationToken ct)
+    private async Task DispatchAsync(ConsumerDescriptor descriptor, byte[] payload, MessageHeaders headers, CancellationToken ct)
     {
         await using var scope = scopeFactory.CreateAsyncScope();
         var executor = scope.ServiceProvider.GetRequiredService<DispatchPipelineExecutor>();
-
-        logger.LogTrace(
-            "InterBus AmazonSqs: deserialising message {MessageId}; raw body (first 500 chars): {Body}",
-            message.MessageId,
-            message.Body?.Length > 500 ? message.Body[..500] + "..." : message.Body);
-
-        if (message.Body is null)
-            throw new InvalidOperationException(
-                $"SQS message {message.MessageId} has a null body and cannot be deserialised.");
-
-        // Deserialise the JSON envelope to recover the original payload bytes and headers.
-        var (payload, headers) = SnsSqsMessageEnvelope.Deserialize(message.Body);
-
-        logger.LogTrace(
-            "InterBus AmazonSqs: dispatching message {MessageId} with {HeaderCount} headers to consumer {ConsumerType}",
-            message.MessageId,
-            headers.Count,
-            descriptor.ConsumerType.Name);
-
-        var hasParent = InterBusTelemetry.TryExtractParentContext(headers, out var parentContext);
-        var context = new DispatchContext(descriptor, payload, headers)
-        {
-            RemoteParentContext = hasParent ? parentContext : null,
-        };
+        var context = new DispatchContext(descriptor, payload, headers);
         await executor.ExecuteAsync(context, ct);
     }
 }

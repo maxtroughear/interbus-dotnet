@@ -1,4 +1,5 @@
 using InterBus.Consuming;
+using InterBus.Telemetry;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Npgsql;
@@ -29,8 +30,9 @@ internal class PostgreSqlTransactionalMessagePump : PostgreSqlMessagePumpBase
         PostgreSqlTransportOptions options,
         InterBusOptions busOptions,
         IServiceScopeFactory scopeFactory,
+        InterBusMetrics metrics,
         ILogger<PostgreSqlTransactionalMessagePump> logger) : base(dataSource, options, busOptions, scopeFactory,
-        logger)
+        metrics, logger)
     {
         _logger = logger;
     }
@@ -93,6 +95,7 @@ internal class PostgreSqlTransactionalMessagePump : PostgreSqlMessagePumpBase
             await ackCmd.ExecuteNonQueryAsync(stoppingToken);
 
             await tx.CommitAsync(stoppingToken);
+            Metrics.RecordConsumed(descriptor.ConsumerType.Name, descriptor.QueueName);
             return true;
         }
         catch (OperationCanceledException)

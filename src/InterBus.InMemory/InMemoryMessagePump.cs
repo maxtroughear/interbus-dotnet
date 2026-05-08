@@ -1,6 +1,7 @@
 using InterBus.Consuming;
 using InterBus.DeadLettering;
 using InterBus.Dispatching;
+using InterBus.Telemetry;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -16,6 +17,7 @@ namespace InterBus.InMemory;
 internal sealed class InMemoryMessagePump(
     InMemoryBroker broker,
     IServiceScopeFactory scopeFactory,
+    InterBusMetrics metrics,
     ILogger<InMemoryMessagePump> logger)
     : BackgroundService
 {
@@ -44,6 +46,9 @@ internal sealed class InMemoryMessagePump(
             try
             {
                 await DispatchAsync(queue.Descriptor, envelope, stoppingToken);
+
+                // ACK: the message was read from the channel and processed successfully.
+                metrics.RecordConsumed(queue.Descriptor.ConsumerType.Name, queue.Descriptor.QueueName);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -59,6 +64,8 @@ internal sealed class InMemoryMessagePump(
                     "InterBus InMemory: consumer {ConsumerType} failed for queue {QueueName}; message dead-lettered and discarded",
                     queue.Descriptor.ConsumerType.Name,
                     queue.Descriptor.QueueName);
+
+                metrics.RecordFailed(queue.Descriptor.ConsumerType.Name, queue.Descriptor.QueueName);
             }
             catch (Exception ex)
             {
@@ -86,7 +93,12 @@ internal sealed class InMemoryMessagePump(
     {
         await using var scope = scopeFactory.CreateAsyncScope();
         var executor = scope.ServiceProvider.GetRequiredService<DispatchPipelineExecutor>();
-        var context = new DispatchContext(descriptor, envelope.Payload, envelope.Headers);
+
+        var hasParent = InterBusTelemetry.TryExtractParentContext(envelope.Headers, out var parentContext);
+        var context = new DispatchContext(descriptor, envelope.Payload, envelope.Headers)
+        {
+            RemoteParentContext = hasParent ? parentContext : null,
+        };
         await executor.ExecuteAsync(context, ct);
     }
 }

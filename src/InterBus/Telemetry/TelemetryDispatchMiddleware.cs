@@ -4,12 +4,17 @@ using InterBus.Dispatching;
 namespace InterBus.Telemetry;
 
 /// <summary>
-/// Dispatch middleware that creates a consumer <see cref="Activity"/> for each incoming message,
-/// propagates W3C trace context from the message headers, and records consume/fail counters.
+/// Dispatch middleware that creates a consumer <see cref="Activity"/> for each incoming message
+/// and marks it OK or Error based on the outcome of the dispatch pipeline.
 /// Registered as the outermost dispatch middleware so it wraps the entire message processing span
 /// (deserialization + consume pipeline).
+/// <para>
+/// The parent trace context must be extracted from the incoming message headers by the message
+/// pump (via <see cref="InterBusTelemetry.TryExtractParentContext"/>) and stored on
+/// <see cref="DispatchContext.RemoteParentContext"/> before reaching this middleware.
+/// </para>
 /// </summary>
-public sealed class TelemetryDispatchMiddleware(IInterBusDiagnostics diagnostics, InterBusMetrics metrics)
+public sealed class TelemetryDispatchMiddleware(IInterBusDiagnostics diagnostics)
     : IDispatchMiddleware
 {
     public async Task InvokeAsync(
@@ -26,38 +31,20 @@ public sealed class TelemetryDispatchMiddleware(IInterBusDiagnostics diagnostics
         {
             await next(context, cancellationToken);
             activity?.SetStatus(ActivityStatusCode.Ok);
-            metrics.MessagesConsumed.Add(1,
-                new TagList
-                {
-                    { "messaging.system", "interbus" },
-                    { "messaging.consumer.name", consumerName },
-                    { "messaging.destination.name", context.Descriptor.QueueName },
-                });
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
-            metrics.MessagesFailed.Add(1,
-                new TagList
-                {
-                    { "messaging.system", "interbus" },
-                    { "messaging.consumer.name", consumerName },
-                    { "messaging.destination.name", context.Descriptor.QueueName },
-                });
             throw;
         }
     }
 
     private Activity? StartActivity(DispatchContext context, string consumerName, string? messageType)
     {
-        ActivityContext parentContext = default;
-        var hasParent = context.Headers.TryGetValue(InterBusHeaders.Traceparent, out var traceparent)
-            && ActivityContext.TryParse(traceparent, context.Headers.GetValueOrDefault(InterBusHeaders.Tracestate),
-                isRemote: true, out parentContext);
-
         var activityName = $"{consumerName} process";
-        var activity = hasParent
-            ? diagnostics.ActivitySource.StartActivity(activityName, ActivityKind.Consumer, parentContext)
+        var activity = context.RemoteParentContext.HasValue
+            ? diagnostics.ActivitySource.StartActivity(activityName, ActivityKind.Consumer,
+                context.RemoteParentContext.Value)
             : diagnostics.ActivitySource.StartActivity(activityName, ActivityKind.Consumer);
 
         if (activity is null)

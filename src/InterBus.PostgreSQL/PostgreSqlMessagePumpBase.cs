@@ -1,5 +1,6 @@
 using InterBus.Consuming;
 using InterBus.Dispatching;
+using InterBus.Telemetry;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -12,11 +13,13 @@ internal abstract class PostgreSqlMessagePumpBase(
     PostgreSqlTransportOptions options,
     InterBusOptions busOptions,
     IServiceScopeFactory scopeFactory,
+    InterBusMetrics metrics,
     ILogger<PostgreSqlMessagePumpBase> logger)
     : BackgroundService
 {
     protected readonly NpgsqlDataSource DataSource = dataSource;
     protected readonly PostgreSqlTransportOptions Options = options;
+    protected readonly InterBusMetrics Metrics = metrics;
 
     // Populated in StartAsync (before base.StartAsync) so topic subscriptions are in the DB
     // before StartAsync returns. BackgroundService guarantees ExecuteAsync runs only after
@@ -185,7 +188,11 @@ internal abstract class PostgreSqlMessagePumpBase(
     {
         await using var scope = scopeFactory.CreateAsyncScope();
         var executor = scope.ServiceProvider.GetRequiredService<DispatchPipelineExecutor>();
-        var context = new DispatchContext(descriptor, payload, headers);
+        var hasParent = InterBusTelemetry.TryExtractParentContext(headers, out var parentContext);
+        var context = new DispatchContext(descriptor, payload, headers)
+        {
+            RemoteParentContext = hasParent ? parentContext : null,
+        };
         await executor.ExecuteAsync(context, ct);
     }
 

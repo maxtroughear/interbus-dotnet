@@ -2,6 +2,7 @@ using Azure.Messaging.ServiceBus;
 using InterBus.Consuming;
 using InterBus.DeadLettering;
 using InterBus.Dispatching;
+using InterBus.Telemetry;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -26,6 +27,7 @@ internal sealed class AzureServiceBusMessagePump(
     AzureServiceBusTransportOptions options,
     InterBusOptions busOptions,
     IServiceScopeFactory scopeFactory,
+    InterBusMetrics metrics,
     ILogger<AzureServiceBusMessagePump> logger)
     : BackgroundService
 {
@@ -119,6 +121,7 @@ internal sealed class AzureServiceBusMessagePump(
         {
             await DispatchAsync(descriptor, args.Message, args.CancellationToken);
             await args.CompleteMessageAsync(args.Message);
+            metrics.RecordConsumed(descriptor.ConsumerType.Name, descriptor.QueueName);
         }
         catch (OperationCanceledException) when (args.CancellationToken.IsCancellationRequested)
         {
@@ -143,6 +146,8 @@ internal sealed class AzureServiceBusMessagePump(
                 "InterBus AzureServiceBus: consumer {ConsumerType} failed for queue {QueueName}; message moved to dead-letter queue",
                 descriptor.ConsumerType.Name,
                 descriptor.Queue);
+
+            metrics.RecordFailed(descriptor.ConsumerType.Name, descriptor.QueueName);
         }
         catch (Exception ex)
         {
@@ -175,7 +180,11 @@ internal sealed class AzureServiceBusMessagePump(
         await using var scope = scopeFactory.CreateAsyncScope();
         var executor = scope.ServiceProvider.GetRequiredService<DispatchPipelineExecutor>();
         var headers = ParseApplicationProperties(message.ApplicationProperties);
-        var context = new DispatchContext(descriptor, message.Body.ToArray(), headers);
+        var hasParent = InterBusTelemetry.TryExtractParentContext(headers, out var parentContext);
+        var context = new DispatchContext(descriptor, message.Body.ToArray(), headers)
+        {
+            RemoteParentContext = hasParent ? parentContext : null,
+        };
         await executor.ExecuteAsync(context, ct);
     }
 

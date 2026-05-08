@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Diagnostics.Metrics;
 
 namespace InterBus.Telemetry;
@@ -15,7 +16,7 @@ public sealed class InterBusMetrics : IDisposable
     /// <summary>Number of messages successfully processed by a consumer.</summary>
     internal Counter<long> MessagesConsumed { get; }
 
-    /// <summary>Number of messages that threw an unhandled exception during consumption.</summary>
+    /// <summary>Number of messages that were dead-lettered during consumption.</summary>
     internal Counter<long> MessagesFailed { get; }
 
     public InterBusMetrics()
@@ -33,8 +34,32 @@ public sealed class InterBusMetrics : IDisposable
         MessagesFailed = _meter.CreateCounter<long>(
             "interbus.messages.failed",
             unit: "{message}",
-            description: "Number of messages that failed during consumption by InterBus.");
+            description: "Number of messages that were dead-lettered during consumption by InterBus.");
     }
+
+    /// <summary>
+    /// Increments the <c>interbus.messages.consumed</c> counter.
+    /// Called by message pumps after a successful broker acknowledgement / delete.
+    /// </summary>
+    public void RecordConsumed(string consumerName, string queueName) =>
+        MessagesConsumed.Add(1, new TagList
+        {
+            { "messaging.system", "interbus" },
+            { "messaging.consumer.name", consumerName },
+            { "messaging.destination.name", queueName },
+        });
+
+    /// <summary>
+    /// Increments the <c>interbus.messages.failed</c> counter.
+    /// Called by message pumps after successfully moving a message to the dead-letter destination.
+    /// </summary>
+    public void RecordFailed(string consumerName, string queueName) =>
+        MessagesFailed.Add(1, new TagList
+        {
+            { "messaging.system", "interbus" },
+            { "messaging.consumer.name", consumerName },
+            { "messaging.destination.name", queueName },
+        });
 
     public void Dispose() => _meter.Dispose();
 }

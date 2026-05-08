@@ -134,7 +134,7 @@ public sealed class TelemetryTests
     }
 
     [Fact]
-    public async Task DispatchMiddleware_RestoresParentContext_FromTraceparentHeader()
+    public async Task DispatchMiddleware_RestoresParentContext_FromRemoteParentContext()
     {
         var started = new List<Activity>();
         using var listener = BuildListener(started.Add);
@@ -143,18 +143,43 @@ public sealed class TelemetryTests
         var parentSpanId = ActivitySpanId.CreateRandom();
         var traceparent = $"00-{traceId}-{parentSpanId}-01";
 
+        ActivityContext.TryParse(traceparent, null, isRemote: true, out var parentCtx);
+
         var middleware = BuildDispatchMiddleware();
-        var context = BuildDispatchContext(new MessageHeaders
-        {
-            [InterBusHeaders.Traceparent] = traceparent,
-        });
+        var context = BuildDispatchContext(remoteParentContext: parentCtx);
 
         await middleware.InvokeAsync(context, (_, _) => Task.CompletedTask,
             TestContext.Current.CancellationToken);
 
-        var activity = Assert.Single(started);
+        var activity = Assert.Single(started, a => a.OperationName == "NoOpConsumer process");
         Assert.Equal(traceId, activity.TraceId);
         Assert.Equal(parentSpanId, activity.ParentSpanId);
+    }
+
+    [Fact]
+    public void TryExtractParentContext_ReturnsTrue_WhenValidTraceparentPresent()
+    {
+        var traceId = ActivityTraceId.CreateRandom();
+        var spanId = ActivitySpanId.CreateRandom();
+        var traceparent = $"00-{traceId}-{spanId}-01";
+
+        var headers = new MessageHeaders
+        {
+            [InterBusHeaders.Traceparent] = traceparent,
+        };
+
+        var result = InterBusTelemetry.TryExtractParentContext(headers, out var ctx);
+
+        Assert.True(result);
+        Assert.Equal(traceId, ctx.TraceId);
+        Assert.Equal(spanId, ctx.SpanId);
+    }
+
+    [Fact]
+    public void TryExtractParentContext_ReturnsFalse_WhenNoTraceparentHeader()
+    {
+        var result = InterBusTelemetry.TryExtractParentContext(new MessageHeaders(), out _);
+        Assert.False(result);
     }
 
     // ── TelemetryPublishMiddleware ────────────────────────────────────────────
@@ -229,11 +254,11 @@ public sealed class TelemetryTests
     private static TelemetryDispatchMiddleware BuildDispatchMiddleware()
     {
         var diagnostics = new StubDiagnostics();
-        var metrics = new InterBusMetrics();
-        return new TelemetryDispatchMiddleware(diagnostics, metrics);
+        return new TelemetryDispatchMiddleware(diagnostics);
     }
 
-    private static DispatchContext BuildDispatchContext(MessageHeaders? headers = null)
+    private static DispatchContext BuildDispatchContext(MessageHeaders? headers = null,
+        ActivityContext? remoteParentContext = null)
     {
         var descriptor = new ConsumerDescriptor(
             typeof(NoOpConsumer),
@@ -241,7 +266,10 @@ public sealed class TelemetryTests
             [typeof(TestMessage)],
             (_, _, _) => Task.CompletedTask);
 
-        return new DispatchContext(descriptor, [], headers ?? new MessageHeaders());
+        return new DispatchContext(descriptor, [], headers ?? new MessageHeaders())
+        {
+            RemoteParentContext = remoteParentContext,
+        };
     }
 
     private static string? GetTag(Activity activity, string key) =>

@@ -1,4 +1,5 @@
 using InterBus.Consuming;
+using InterBus.Telemetry;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Npgsql;
@@ -33,7 +34,8 @@ internal sealed class PostgreSqlLeaseMessagePump : PostgreSqlMessagePumpBase
         PostgreSqlTransportOptions options,
         InterBusOptions busOptions,
         IServiceScopeFactory scopeFactory,
-        ILogger<PostgreSqlLeaseMessagePump> logger) : base(dataSource, options, busOptions, scopeFactory, logger)
+        InterBusMetrics metrics,
+        ILogger<PostgreSqlLeaseMessagePump> logger) : base(dataSource, options, busOptions, scopeFactory, metrics, logger)
     {
         _logger = logger;
         _leaseDuration = options.LeaseDuration;
@@ -68,12 +70,17 @@ internal sealed class PostgreSqlLeaseMessagePump : PostgreSqlMessagePumpBase
                     claim.MessageId,
                     descriptor.QueueName);
             }
-            else if (!leaseStillOwned)
+            else
             {
-                _logger.LogDebug(
-                    "InterBus PostgreSQL: message {MessageId} on queue {QueueName} completed after at least one unsuccessful lease renewal attempt",
-                    claim.MessageId,
-                    descriptor.QueueName);
+                if (!leaseStillOwned)
+                {
+                    _logger.LogDebug(
+                        "InterBus PostgreSQL: message {MessageId} on queue {QueueName} completed after at least one unsuccessful lease renewal attempt",
+                        claim.MessageId,
+                        descriptor.QueueName);
+                }
+
+                Metrics.RecordConsumed(descriptor.ConsumerType.Name, descriptor.QueueName);
             }
 
             return true;

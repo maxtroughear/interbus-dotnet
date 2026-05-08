@@ -3,6 +3,7 @@ using Amazon.SQS.Model;
 using InterBus.Consuming;
 using InterBus.DeadLettering;
 using InterBus.Dispatching;
+using InterBus.Telemetry;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -33,6 +34,7 @@ internal sealed class SqsMessagePump(
     SnsSqsTransportOptions options,
     InterBusOptions busOptions,
     IServiceScopeFactory scopeFactory,
+    InterBusMetrics metrics,
     ILogger<SqsMessagePump> logger)
     : BackgroundService
 {
@@ -209,6 +211,8 @@ internal sealed class SqsMessagePump(
             // successfully-dispatched messages to be redelivered unnecessarily.
             await sqsClient.DeleteMessageAsync(queueUrl, message.ReceiptHandle,
                 CancellationToken.None);
+
+            metrics.RecordConsumed(descriptor.ConsumerType.Name, descriptor.QueueName);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -217,7 +221,10 @@ internal sealed class SqsMessagePump(
         catch (DeadLetterException ex)
         {
             if (await TryDeadLetterAsync(descriptor, message, ex))
+            {
                 await sqsClient.DeleteMessageAsync(queueUrl, message.ReceiptHandle, CancellationToken.None);
+                metrics.RecordFailed(descriptor.ConsumerType.Name, descriptor.QueueName);
+            }
         }
         catch (Exception ex)
         {
@@ -392,7 +399,11 @@ internal sealed class SqsMessagePump(
             headers.Count,
             descriptor.ConsumerType.Name);
 
-        var context = new DispatchContext(descriptor, payload, headers);
+        var hasParent = InterBusTelemetry.TryExtractParentContext(headers, out var parentContext);
+        var context = new DispatchContext(descriptor, payload, headers)
+        {
+            RemoteParentContext = hasParent ? parentContext : null,
+        };
         await executor.ExecuteAsync(context, ct);
     }
 }

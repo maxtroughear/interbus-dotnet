@@ -1,6 +1,7 @@
 using InterBus.Consuming;
 using InterBus.DeadLettering;
 using InterBus.Dispatching;
+using InterBus.Telemetry;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -29,6 +30,7 @@ internal sealed class RabbitMqMessagePump(
     RabbitMqTransportOptions options,
     InterBusOptions busOptions,
     IServiceScopeFactory scopeFactory,
+    InterBusMetrics metrics,
     ILogger<RabbitMqMessagePump> logger)
     : BackgroundService
 {
@@ -142,6 +144,7 @@ internal sealed class RabbitMqMessagePump(
             {
                 await DispatchAsync(descriptor, ea, stoppingToken);
                 await channel.BasicAckAsync(ea.DeliveryTag, multiple: false);
+                metrics.RecordConsumed(descriptor.ConsumerType.Name, descriptor.QueueName);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -194,7 +197,11 @@ internal sealed class RabbitMqMessagePump(
         await using var scope = scopeFactory.CreateAsyncScope();
         var executor = scope.ServiceProvider.GetRequiredService<DispatchPipelineExecutor>();
         var headers = RabbitMqHeaders.ParseAmqpHeaders(ea.BasicProperties.Headers);
-        var context = new DispatchContext(descriptor, ea.Body.ToArray(), headers);
+        var hasParent = InterBusTelemetry.TryExtractParentContext(headers, out var parentContext);
+        var context = new DispatchContext(descriptor, ea.Body.ToArray(), headers)
+        {
+            RemoteParentContext = hasParent ? parentContext : null,
+        };
         await executor.ExecuteAsync(context, ct);
     }
 
@@ -244,6 +251,8 @@ internal sealed class RabbitMqMessagePump(
             descriptor.ConsumerType.Name,
             descriptor.QueueName,
             deadLetterExchangeName);
+
+        metrics.RecordFailed(descriptor.ConsumerType.Name, descriptor.QueueName);
     }
 
     public override async Task StopAsync(CancellationToken cancellationToken)

@@ -51,8 +51,8 @@ public sealed class TelemetryDispatchMiddleware(IInterBusDiagnostics diagnostics
     private Activity? StartActivity(DispatchContext context, string consumerName, string? messageType)
     {
         ActivityContext parentContext = default;
-        var hasParent = context.Headers.TryGetValue("traceparent", out var traceparent)
-            && ActivityContext.TryParse(traceparent, context.Headers.GetValueOrDefault("tracestate"),
+        var hasParent = context.Headers.TryGetValue(InterBusHeaders.Traceparent, out var traceparent)
+            && ActivityContext.TryParse(traceparent, context.Headers.GetValueOrDefault(InterBusHeaders.Tracestate),
                 isRemote: true, out parentContext);
 
         var activityName = $"{consumerName} process";

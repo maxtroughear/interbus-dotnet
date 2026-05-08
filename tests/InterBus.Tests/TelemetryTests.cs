@@ -146,7 +146,7 @@ public sealed class TelemetryTests
         var middleware = BuildDispatchMiddleware();
         var context = BuildDispatchContext(new MessageHeaders
         {
-            ["traceparent"] = traceparent,
+            [InterBusHeaders.Traceparent] = traceparent,
         });
 
         await middleware.InvokeAsync(context, (_, _) => Task.CompletedTask,
@@ -205,7 +205,7 @@ public sealed class TelemetryTests
 
         Assert.Single(transport.Sends);
         var (_, _, headers) = transport.Sends[0];
-        Assert.True(headers.ContainsKey("traceparent"),
+        Assert.True(headers.ContainsKey(InterBusHeaders.Traceparent),
             "Expected 'traceparent' header to be injected by TelemetryPublishMiddleware");
     }
 

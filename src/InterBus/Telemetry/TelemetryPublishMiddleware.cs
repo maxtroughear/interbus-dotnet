@@ -25,9 +25,9 @@ public sealed class TelemetryPublishMiddleware(IInterBusDiagnostics diagnostics,
         if (activity is not null)
         {
             if (activity.Id is not null)
-                context.Headers["traceparent"] = activity.Id;
+                context.Headers[InterBusHeaders.Traceparent] = activity.Id;
             if (!string.IsNullOrEmpty(activity.TraceStateString))
-                context.Headers["tracestate"] = activity.TraceStateString;
+                context.Headers[InterBusHeaders.Tracestate] = activity.TraceStateString;
         }
 
         await next(context, cancellationToken);

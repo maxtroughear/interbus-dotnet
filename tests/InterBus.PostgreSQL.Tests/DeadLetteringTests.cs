@@ -56,7 +56,7 @@ public class DeadLetteringTests(string imageTag)
             Assert.That(row!.QueueName, Does.Contain(nameof(DeadLetterOrderPlacedConsumer)));
             Assert.That(row.Reason, Is.EqualTo("Unhandled exception in consume pipeline"));
             Assert.That(row.Error, Does.Contain("Simulated dead-letter failure"));
-            Assert.That(row.DeliveryCount, Is.GreaterThanOrEqualTo(1));
+            Assert.That(row.DeliveryCount, Is.EqualTo(1));
             Assert.That(counter.Count, Is.EqualTo(1), "Message should be dead-lettered on the first attempt, not retried");
         }
     }

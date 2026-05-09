@@ -27,17 +27,13 @@ public sealed class TelemetryDispatchMiddleware(
             activity?.SetStatus(ActivityStatusCode.Ok);
             metrics.RecordConsumed(consumerName, queueName);
         }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
         catch (DeadLetterException ex)
         {
             activity?.SetStatus(ActivityStatusCode.Error, ex.Reason);
             metrics.RecordFailed(consumerName, queueName);
             throw;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
             throw;

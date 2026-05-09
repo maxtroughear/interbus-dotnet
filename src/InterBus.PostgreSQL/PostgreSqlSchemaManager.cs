@@ -78,7 +78,22 @@ internal sealed class PostgreSqlSchemaManager(
                 $"    queue_id   BIGINT NOT NULL REFERENCES {s}.queues(id),\n" +
                 $"    topic_id   BIGINT NOT NULL REFERENCES {s}.topics(id),\n" +
                 "    PRIMARY KEY (queue_id, topic_id)\n" +
-                ");";
+                ");\n" +
+                // Dead-letter messages: persists messages that failed consumer dispatch.
+                // Denormalised (queue_name stored as text) for simple inspection and archival.
+                $"CREATE TABLE IF NOT EXISTS {s}.dead_letter_messages (\n" +
+                "    id               BIGSERIAL   PRIMARY KEY,\n" +
+                "    queue_name       TEXT        NOT NULL,\n" +
+                "    payload          BYTEA       NOT NULL,\n" +
+                "    headers          TEXT        NOT NULL,\n" +
+                "    reason           TEXT        NOT NULL,\n" +
+                "    error            TEXT        NOT NULL,\n" +
+                "    dead_lettered_at TIMESTAMPTZ NOT NULL,\n" +
+                "    delivery_count   INTEGER     NOT NULL DEFAULT 0\n" +
+                ");\n" +
+                // Index to support per-queue dead-letter queries ordered by time.
+                "CREATE INDEX IF NOT EXISTS ix_dead_letter_messages_queue\n" +
+                $"    ON {s}.dead_letter_messages (queue_name, dead_lettered_at);";
             await cmd.ExecuteNonQueryAsync(cancellationToken);
         }
 
@@ -321,6 +336,67 @@ internal sealed class PostgreSqlSchemaManager(
         "BEGIN\n" +
         $"    DELETE FROM {s}.message_payloads\n" +
         $"    WHERE NOT EXISTS (SELECT 1 FROM {s}.messages WHERE payload_id = message_payloads.id);\n" +
+        "END;\n" +
+        "$$;\n\n" +
+
+        // dead_letter_claim: atomically moves a leased message into the dead-letter table.
+        // Validates the lease token and expiry before moving, so a worker that lost its lease
+        // window cannot dead-letter a message that has already been re-claimed by another worker.
+        // Returns TRUE when the move succeeded; FALSE when the lease was already lost or expired.
+        $"CREATE OR REPLACE FUNCTION {s}.dead_letter_claim(\n" +
+        "    p_message_id       BIGINT,\n" +
+        "    p_payload_id       BIGINT,\n" +
+        "    p_lease_token      TEXT,\n" +
+        "    p_queue_name       TEXT,\n" +
+        "    p_reason           TEXT,\n" +
+        "    p_error            TEXT,\n" +
+        "    p_dead_lettered_at TIMESTAMPTZ\n" +
+        ")\n" +
+        "RETURNS BOOLEAN LANGUAGE plpgsql AS $$\n" +
+        "DECLARE\n" +
+        "    v_delivery_count INTEGER;\n" +
+        "BEGIN\n" +
+        $"    SELECT m.delivery_count INTO v_delivery_count\n" +
+        $"    FROM {s}.messages m\n" +
+        "    WHERE m.id = p_message_id\n" +
+        "      AND m.lease_token = p_lease_token\n" +
+        "      AND m.lease_expires_at > NOW()\n" +
+        "    FOR UPDATE;\n" +
+        "    IF NOT FOUND THEN RETURN FALSE; END IF;\n" +
+        $"    INSERT INTO {s}.dead_letter_messages (queue_name, payload, headers, reason, error, dead_lettered_at, delivery_count)\n" +
+        $"    SELECT p_queue_name, mp.payload, mp.headers, p_reason, p_error, p_dead_lettered_at, v_delivery_count\n" +
+        $"    FROM {s}.message_payloads mp\n" +
+        "    WHERE mp.id = p_payload_id;\n" +
+        $"    DELETE FROM {s}.messages WHERE id = p_message_id;\n" +
+        $"    DELETE FROM {s}.message_payloads WHERE id = p_payload_id\n" +
+        $"        AND NOT EXISTS (SELECT 1 FROM {s}.messages WHERE payload_id = p_payload_id);\n" +
+        "    RETURN TRUE;\n" +
+        "END;\n" +
+        "$$;\n\n" +
+
+        // dead_letter_message: moves a message into the dead-letter table within the caller's
+        // open transaction. Must be called from the transactional pump which already holds the
+        // row lock via consume_next (SELECT … FOR UPDATE SKIP LOCKED).
+        $"CREATE OR REPLACE FUNCTION {s}.dead_letter_message(\n" +
+        "    p_message_id       BIGINT,\n" +
+        "    p_payload_id       BIGINT,\n" +
+        "    p_queue_name       TEXT,\n" +
+        "    p_reason           TEXT,\n" +
+        "    p_error            TEXT,\n" +
+        "    p_dead_lettered_at TIMESTAMPTZ\n" +
+        ")\n" +
+        "RETURNS VOID LANGUAGE plpgsql AS $$\n" +
+        "DECLARE\n" +
+        "    v_delivery_count INTEGER;\n" +
+        "BEGIN\n" +
+        $"    SELECT m.delivery_count INTO v_delivery_count FROM {s}.messages m WHERE m.id = p_message_id;\n" +
+        $"    INSERT INTO {s}.dead_letter_messages (queue_name, payload, headers, reason, error, dead_lettered_at, delivery_count)\n" +
+        $"    SELECT p_queue_name, mp.payload, mp.headers, p_reason, p_error, p_dead_lettered_at, COALESCE(v_delivery_count, 0)\n" +
+        $"    FROM {s}.message_payloads mp\n" +
+        "    WHERE mp.id = p_payload_id;\n" +
+        $"    DELETE FROM {s}.messages WHERE id = p_message_id;\n" +
+        $"    DELETE FROM {s}.message_payloads WHERE id = p_payload_id\n" +
+        $"        AND NOT EXISTS (SELECT 1 FROM {s}.messages WHERE payload_id = p_payload_id);\n" +
         "END;\n" +
         "$$;";
 

@@ -1,4 +1,5 @@
 using InterBus.Consuming;
+using InterBus.DeadLettering;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Npgsql;
@@ -85,6 +86,38 @@ internal sealed class PostgreSqlLeaseMessagePump : PostgreSqlMessagePumpBase
             await BestEffortReleaseClaimAsync(claim.MessageId, descriptor.QueueName, leaseToken);
             throw;
         }
+        catch (DeadLetterException ex)
+        {
+            await renewalCts.CancelAsync();
+            await AwaitLeaseRenewalLoopAsync(renewalTask);
+
+            var deadLettered = await DeadLetterClaimAsync(
+                claim.MessageId,
+                claim.PayloadId,
+                leaseToken,
+                descriptor.QueueName,
+                ex,
+                CancellationToken.None);
+
+            if (deadLettered)
+            {
+                _logger.LogWarning(
+                    ex,
+                    "InterBus PostgreSQL: lease consumer {ConsumerType} failed for queue {QueueName}; message moved to dead-letter",
+                    descriptor.ConsumerType.Name,
+                    descriptor.QueueName);
+            }
+            else
+            {
+                _logger.LogWarning(
+                    ex,
+                    "InterBus PostgreSQL: lease consumer {ConsumerType} failed for queue {QueueName}; could not dead-letter because lease was already lost",
+                    descriptor.ConsumerType.Name,
+                    descriptor.QueueName);
+            }
+
+            return false;
+        }
         catch (Exception ex)
         {
             await renewalCts.CancelAsync();
@@ -150,6 +183,31 @@ internal sealed class PostgreSqlLeaseMessagePump : PostgreSqlMessagePumpBase
         cmd.Parameters.Add(new NpgsqlParameter<long> { TypedValue = messageId });
         cmd.Parameters.Add(new NpgsqlParameter<long> { TypedValue = payloadId });
         cmd.Parameters.Add(new NpgsqlParameter<string> { TypedValue = leaseToken });
+        return (bool)(await cmd.ExecuteScalarAsync(cancellationToken))!;
+    }
+
+    private async Task<bool> DeadLetterClaimAsync(
+        long messageId,
+        long payloadId,
+        string leaseToken,
+        string queueName,
+        DeadLetterException ex,
+        CancellationToken cancellationToken)
+    {
+        await using var cmd = DataSource.CreateCommand();
+        cmd.CommandText =
+            $"SELECT \"{EscapeIdentifier(Options.SchemaName)}\".dead_letter_claim($1, $2, $3, $4, $5, $6, $7)";
+        cmd.Parameters.Add(new NpgsqlParameter<long> { TypedValue = messageId });
+        cmd.Parameters.Add(new NpgsqlParameter<long> { TypedValue = payloadId });
+        cmd.Parameters.Add(new NpgsqlParameter<string> { TypedValue = leaseToken });
+        cmd.Parameters.Add(new NpgsqlParameter<string> { TypedValue = queueName });
+        cmd.Parameters.Add(new NpgsqlParameter<string> { TypedValue = ex.Reason });
+        cmd.Parameters.Add(new NpgsqlParameter<string> { TypedValue = ex.Error });
+        cmd.Parameters.Add(new NpgsqlParameter<DateTimeOffset>
+        {
+            TypedValue = ex.DeadLetteredAtUtc,
+            NpgsqlDbType = NpgsqlDbType.TimestampTz
+        });
         return (bool)(await cmd.ExecuteScalarAsync(cancellationToken))!;
     }
 

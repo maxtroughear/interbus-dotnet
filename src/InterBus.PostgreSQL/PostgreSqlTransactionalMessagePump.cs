@@ -1,9 +1,7 @@
 using InterBus.Consuming;
-using InterBus.Telemetry;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Npgsql;
-using System.Diagnostics;
 
 namespace InterBus.PostgreSQL;
 
@@ -31,10 +29,8 @@ internal class PostgreSqlTransactionalMessagePump : PostgreSqlMessagePumpBase
         PostgreSqlTransportOptions options,
         InterBusOptions busOptions,
         IServiceScopeFactory scopeFactory,
-        IInterBusDiagnostics diagnostics,
-        InterBusMetrics metrics,
         ILogger<PostgreSqlTransactionalMessagePump> logger) : base(dataSource, options, busOptions, scopeFactory,
-        diagnostics, metrics, logger)
+        logger)
     {
         _logger = logger;
     }
@@ -83,12 +79,8 @@ internal class PostgreSqlTransactionalMessagePump : PostgreSqlMessagePumpBase
         // AsyncLocal flows the value into all child async operations (including the consumer's
         // Consume method) without affecting the caller's execution context.
         PostgreSqlTransactionContext.Current.Value = tx;
-        Activity? activity = null;
         try
         {
-            activity = InterBusTelemetry.StartConsumerActivity(
-                Diagnostics, headers, descriptor.ConsumerType.Name, descriptor.QueueName);
-
             await DispatchAsync(descriptor, payload, headers, stoppingToken);
 
             // Delete the routing row and (when unreferenced) the shared payload in one round trip.
@@ -101,8 +93,6 @@ internal class PostgreSqlTransactionalMessagePump : PostgreSqlMessagePumpBase
             await ackCmd.ExecuteNonQueryAsync(stoppingToken);
 
             await tx.CommitAsync(stoppingToken);
-            activity?.SetStatus(ActivityStatusCode.Ok);
-            Metrics.RecordConsumed(descriptor.ConsumerType.Name, descriptor.QueueName);
             return true;
         }
         catch (OperationCanceledException)
@@ -121,15 +111,12 @@ internal class PostgreSqlTransactionalMessagePump : PostgreSqlMessagePumpBase
             // Roll back so the message remains in the table for the next delivery attempt.
             await tx.RollbackAsync(CancellationToken.None);
 
-            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
-
             // Return false so the processing loop backs off; the message will be re-delivered
             // on the next NOTIFY or on the next fallback poll.
             return false;
         }
         finally
         {
-            activity?.Dispose();
             PostgreSqlTransactionContext.Current.Value = null;
         }
     }

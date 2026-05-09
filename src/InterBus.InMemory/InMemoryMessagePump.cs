@@ -1,11 +1,9 @@
 using InterBus.Consuming;
 using InterBus.DeadLettering;
 using InterBus.Dispatching;
-using InterBus.Telemetry;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using System.Diagnostics;
 
 namespace InterBus.InMemory;
 
@@ -18,8 +16,6 @@ namespace InterBus.InMemory;
 internal sealed class InMemoryMessagePump(
     InMemoryBroker broker,
     IServiceScopeFactory scopeFactory,
-    IInterBusDiagnostics diagnostics,
-    InterBusMetrics metrics,
     ILogger<InMemoryMessagePump> logger)
     : BackgroundService
 {
@@ -45,18 +41,9 @@ internal sealed class InMemoryMessagePump(
 
         await foreach (var envelope in queue.ReadAllAsync(stoppingToken))
         {
-            Activity? activity = null;
             try
             {
-                activity = InterBusTelemetry.StartConsumerActivity(
-                    diagnostics, envelope.Headers,
-                    queue.Descriptor.ConsumerType.Name, queue.Descriptor.QueueName);
-
                 await DispatchAsync(queue.Descriptor, envelope, stoppingToken);
-
-                // ACK: the message was read from the channel and processed successfully.
-                activity?.SetStatus(ActivityStatusCode.Ok);
-                metrics.RecordConsumed(queue.Descriptor.ConsumerType.Name, queue.Descriptor.QueueName);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -72,9 +59,6 @@ internal sealed class InMemoryMessagePump(
                     "InterBus InMemory: consumer {ConsumerType} failed for queue {QueueName}; message dead-lettered and discarded",
                     queue.Descriptor.ConsumerType.Name,
                     queue.Descriptor.QueueName);
-
-                activity?.SetStatus(ActivityStatusCode.Error, ex.Reason);
-                metrics.RecordFailed(queue.Descriptor.ConsumerType.Name, queue.Descriptor.QueueName);
             }
             catch (Exception ex)
             {
@@ -84,18 +68,12 @@ internal sealed class InMemoryMessagePump(
                     queue.Descriptor.ConsumerType.Name,
                     queue.Descriptor.QueueName);
 
-                activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
-
                 // In-memory transport simulates broker behaviour by re-enqueueing the same
                 // envelope when processing fails (no ACK semantics).
                 // Yield to the thread pool scheduler before re-enqueuing so that rapid failure
                 // loops do not starve other consumer pumps running on the same thread pool.
                 await Task.Yield();
                 await queue.WriteAsync(envelope, stoppingToken);
-            }
-            finally
-            {
-                activity?.Dispose();
             }
         }
 

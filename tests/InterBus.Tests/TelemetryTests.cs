@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using InterBus.Consuming;
+using InterBus.DeadLettering;
 using InterBus.Dispatching;
 using InterBus.Extensions;
 using InterBus.Telemetry;
@@ -72,47 +73,88 @@ public sealed class TelemetryTests
     // ── TelemetryDispatchMiddleware ───────────────────────────────────────────
 
     [Fact]
-    public async Task DispatchMiddleware_SetsErrorStatus_WhenConsumerThrows()
+    public async Task DispatchMiddleware_StartsConsumerActivity_WhenListenerRegistered()
     {
-        using var listener = BuildListener();
+        var started = new List<Activity>();
+        using var listener = BuildListener(onStarted: started.Add);
 
-        var diagnostics = new StubDiagnostics();
         var context = BuildDispatchContext();
         var middleware = BuildDispatchMiddleware();
 
-        // Activity must be started by the pump (caller) before entering the middleware.
-        using var activity = InterBusTelemetry.StartConsumerActivity(
-            diagnostics, context.Headers, "NoOpConsumer", "test-queue");
+        await middleware.InvokeAsync(context, (_, _) => Task.CompletedTask,
+            TestContext.Current.CancellationToken);
 
-        Assert.NotNull(activity);
+        Assert.Single(started, a => a.OperationName == "NoOpConsumer process" && a.Kind == ActivityKind.Consumer);
+    }
+
+    [Fact]
+    public async Task DispatchMiddleware_SetsOkStatus_WhenSuccessful()
+    {
+        var stopped = new List<Activity>();
+        using var listener = BuildListener(onStopped: stopped.Add);
+
+        var context = BuildDispatchContext();
+        var middleware = BuildDispatchMiddleware();
+
+        await middleware.InvokeAsync(context, (_, _) => Task.CompletedTask,
+            TestContext.Current.CancellationToken);
+
+        var act = Assert.Single(stopped);
+        Assert.Equal(ActivityStatusCode.Ok, act.Status);
+    }
+
+    [Fact]
+    public async Task DispatchMiddleware_SetsErrorStatus_WhenConsumerThrows()
+    {
+        var stopped = new List<Activity>();
+        using var listener = BuildListener(onStopped: stopped.Add);
+
+        var context = BuildDispatchContext();
+        var middleware = BuildDispatchMiddleware();
 
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             middleware.InvokeAsync(context, (_, _) => throw new InvalidOperationException("boom"),
                 TestContext.Current.CancellationToken));
 
-        Assert.Equal(ActivityStatusCode.Error, activity.Status);
-        Assert.Equal("boom", activity.StatusDescription);
+        var act = Assert.Single(stopped);
+        Assert.Equal(ActivityStatusCode.Error, act.Status);
+        Assert.Equal("boom", act.StatusDescription);
     }
 
     [Fact]
     public async Task DispatchMiddleware_DoesNotSetErrorStatus_WhenOperationCancelled()
     {
-        using var listener = BuildListener();
+        var stopped = new List<Activity>();
+        using var listener = BuildListener(onStopped: stopped.Add);
 
-        var diagnostics = new StubDiagnostics();
         var context = BuildDispatchContext();
         var middleware = BuildDispatchMiddleware();
-
-        using var activity = InterBusTelemetry.StartConsumerActivity(
-            diagnostics, context.Headers, "NoOpConsumer", "test-queue");
-
-        Assert.NotNull(activity);
 
         await Assert.ThrowsAsync<OperationCanceledException>(() =>
             middleware.InvokeAsync(context, (_, _) => throw new OperationCanceledException(),
                 TestContext.Current.CancellationToken));
 
-        Assert.Equal(ActivityStatusCode.Unset, activity.Status);
+        var act = Assert.Single(stopped);
+        Assert.Equal(ActivityStatusCode.Unset, act.Status);
+    }
+
+    [Fact]
+    public async Task DispatchMiddleware_SetsErrorStatus_WhenDeadLetterException()
+    {
+        var stopped = new List<Activity>();
+        using var listener = BuildListener(onStopped: stopped.Add);
+
+        var context = BuildDispatchContext();
+        var middleware = BuildDispatchMiddleware();
+
+        await Assert.ThrowsAsync<DeadLetterException>(() =>
+            middleware.InvokeAsync(context,
+                (_, _) => throw new DeadLetterException("dead-reason", "err", DateTimeOffset.UtcNow, new Exception()),
+                TestContext.Current.CancellationToken));
+
+        var act = Assert.Single(stopped);
+        Assert.Equal(ActivityStatusCode.Error, act.Status);
+        Assert.Equal("dead-reason", act.StatusDescription);
     }
 
     // ── InterBusTelemetry.StartConsumerActivity ──────────────────────────────
@@ -257,7 +299,7 @@ public sealed class TelemetryTests
     }
 
     private static TelemetryDispatchMiddleware BuildDispatchMiddleware() =>
-        new TelemetryDispatchMiddleware();
+        new(new StubDiagnostics(), new InterBusMetrics());
 
     private static DispatchContext BuildDispatchContext(MessageHeaders? headers = null)
     {

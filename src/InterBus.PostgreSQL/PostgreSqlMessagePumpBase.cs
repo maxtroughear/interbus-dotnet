@@ -1,6 +1,5 @@
 using InterBus.Consuming;
 using InterBus.Dispatching;
-using InterBus.Telemetry;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -13,15 +12,11 @@ internal abstract class PostgreSqlMessagePumpBase(
     PostgreSqlTransportOptions options,
     InterBusOptions busOptions,
     IServiceScopeFactory scopeFactory,
-    IInterBusDiagnostics diagnostics,
-    InterBusMetrics metrics,
     ILogger<PostgreSqlMessagePumpBase> logger)
     : BackgroundService
 {
     protected readonly NpgsqlDataSource DataSource = dataSource;
     protected readonly PostgreSqlTransportOptions Options = options;
-    protected readonly IInterBusDiagnostics Diagnostics = diagnostics;
-    protected readonly InterBusMetrics Metrics = metrics;
 
     // Populated in StartAsync (before base.StartAsync) so topic subscriptions are in the DB
     // before StartAsync returns. BackgroundService guarantees ExecuteAsync runs only after

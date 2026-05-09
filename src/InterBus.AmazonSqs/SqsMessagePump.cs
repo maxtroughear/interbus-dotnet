@@ -3,11 +3,9 @@ using Amazon.SQS.Model;
 using InterBus.Consuming;
 using InterBus.DeadLettering;
 using InterBus.Dispatching;
-using InterBus.Telemetry;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using System.Diagnostics;
 
 namespace InterBus.AmazonSqs;
 
@@ -35,8 +33,6 @@ internal sealed class SqsMessagePump(
     SnsSqsTransportOptions options,
     InterBusOptions busOptions,
     IServiceScopeFactory scopeFactory,
-    IInterBusDiagnostics diagnostics,
-    InterBusMetrics metrics,
     ILogger<SqsMessagePump> logger)
     : BackgroundService
 {
@@ -197,7 +193,6 @@ internal sealed class SqsMessagePump(
             message.Body?.Length ?? 0,
             message.MessageAttributes?.Count ?? 0);
 
-        Activity? activity = null;
         try
         {
             logger.LogTrace(
@@ -217,9 +212,6 @@ internal sealed class SqsMessagePump(
                 headers.Count,
                 descriptor.ConsumerType.Name);
 
-            activity = InterBusTelemetry.StartConsumerActivity(
-                diagnostics, headers, descriptor.ConsumerType.Name, descriptor.QueueName);
-
             await DispatchAsync(descriptor, payload, headers, ct);
 
             await prefetched.RenewalCts.CancelAsync();
@@ -234,9 +226,6 @@ internal sealed class SqsMessagePump(
             // successfully-dispatched messages to be redelivered unnecessarily.
             await sqsClient.DeleteMessageAsync(queueUrl, message.ReceiptHandle,
                 CancellationToken.None);
-
-            activity?.SetStatus(ActivityStatusCode.Ok);
-            metrics.RecordConsumed(descriptor.ConsumerType.Name, descriptor.QueueName);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -245,11 +234,7 @@ internal sealed class SqsMessagePump(
         catch (DeadLetterException ex)
         {
             if (await TryDeadLetterAsync(descriptor, message, ex))
-            {
                 await sqsClient.DeleteMessageAsync(queueUrl, message.ReceiptHandle, CancellationToken.None);
-                activity?.SetStatus(ActivityStatusCode.Error, ex.Reason);
-                metrics.RecordFailed(descriptor.ConsumerType.Name, descriptor.QueueName);
-            }
         }
         catch (Exception ex)
         {
@@ -258,12 +243,9 @@ internal sealed class SqsMessagePump(
                 "InterBus AmazonSqs: consumer {ConsumerType} failed for queue {QueueName}; message will be redelivered after visibility timeout",
                 descriptor.ConsumerType.Name,
                 descriptor.Queue);
-
-            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
         }
         finally
         {
-            activity?.Dispose();
             await StopRenewalAsync(prefetched);
             semaphore.Release();
         }

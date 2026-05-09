@@ -1,14 +1,12 @@
 using InterBus.Consuming;
 using InterBus.DeadLettering;
 using InterBus.Dispatching;
-using InterBus.Telemetry;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
 using RabbitMQ.Client.Exceptions;
-using System.Diagnostics;
 
 namespace InterBus.RabbitMQ;
 
@@ -31,8 +29,6 @@ internal sealed class RabbitMqMessagePump(
     RabbitMqTransportOptions options,
     InterBusOptions busOptions,
     IServiceScopeFactory scopeFactory,
-    IInterBusDiagnostics diagnostics,
-    InterBusMetrics metrics,
     ILogger<RabbitMqMessagePump> logger)
     : BackgroundService
 {
@@ -143,16 +139,10 @@ internal sealed class RabbitMqMessagePump(
             }
 
             var headers = RabbitMqHeaders.ParseAmqpHeaders(ea.BasicProperties.Headers);
-            Activity? activity = null;
             try
             {
-                activity = InterBusTelemetry.StartConsumerActivity(
-                    diagnostics, headers, descriptor.ConsumerType.Name, descriptor.QueueName);
-
                 await DispatchAsync(descriptor, ea.Body.ToArray(), headers, stoppingToken);
                 await channel.BasicAckAsync(ea.DeliveryTag, multiple: false);
-                activity?.SetStatus(ActivityStatusCode.Ok);
-                metrics.RecordConsumed(descriptor.ConsumerType.Name, descriptor.QueueName);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -160,7 +150,7 @@ internal sealed class RabbitMqMessagePump(
             }
             catch (DeadLetterException deadLetterException)
             {
-                await DeadLetterAsync(channel, descriptor, ea, deadLetterException, activity);
+                await DeadLetterAsync(channel, descriptor, ea, deadLetterException);
             }
             catch (Exception ex)
             {
@@ -170,12 +160,7 @@ internal sealed class RabbitMqMessagePump(
                     descriptor.ConsumerType.Name,
                     descriptor.QueueName);
 
-                activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
                 await channel.BasicNackAsync(ea.DeliveryTag, multiple: false, requeue: true);
-            }
-            finally
-            {
-                activity?.Dispose();
             }
 
             // ReSharper restore MethodSupportsCancellation
@@ -217,8 +202,7 @@ internal sealed class RabbitMqMessagePump(
         IChannel consumeChannel,
         ConsumerDescriptor descriptor,
         BasicDeliverEventArgs ea,
-        DeadLetterException ex,
-        Activity? activity)
+        DeadLetterException ex)
     {
         var deadLetterExchangeName = descriptor.QueueName + options.DeadLetterExchangeSuffix;
         var publishConnection = await connectionProvider.GetPublishConnectionAsync(CancellationToken.None);
@@ -260,9 +244,6 @@ internal sealed class RabbitMqMessagePump(
             descriptor.ConsumerType.Name,
             descriptor.QueueName,
             deadLetterExchangeName);
-
-        activity?.SetStatus(ActivityStatusCode.Error, ex.Reason);
-        metrics.RecordFailed(descriptor.ConsumerType.Name, descriptor.QueueName);
     }
 
     public override async Task StopAsync(CancellationToken cancellationToken)

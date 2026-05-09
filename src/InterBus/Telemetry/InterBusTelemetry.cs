@@ -24,8 +24,7 @@ public static class InterBusTelemetry
     /// <summary>
     /// Extracts the W3C trace parent from incoming message headers, starts a consumer
     /// <see cref="Activity"/> and sets the standard messaging semantic-convention tags.
-    /// Call this in the message pump before dispatching; the returned activity must be disposed
-    /// after the broker acknowledgement (or dead-letter) to correctly span the full message lifetime.
+    /// Called by <see cref="TelemetryDispatchMiddleware"/> before invoking the next middleware.
     /// </summary>
     /// <param name="diagnostics">The InterBus <see cref="IInterBusDiagnostics"/> singleton.</param>
     /// <param name="headers">Incoming message headers.</param>

@@ -1,10 +1,8 @@
 using InterBus.Consuming;
-using InterBus.Telemetry;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Npgsql;
 using NpgsqlTypes;
-using System.Diagnostics;
 
 namespace InterBus.PostgreSQL;
 
@@ -35,9 +33,7 @@ internal sealed class PostgreSqlLeaseMessagePump : PostgreSqlMessagePumpBase
         PostgreSqlTransportOptions options,
         InterBusOptions busOptions,
         IServiceScopeFactory scopeFactory,
-        IInterBusDiagnostics diagnostics,
-        InterBusMetrics metrics,
-        ILogger<PostgreSqlLeaseMessagePump> logger) : base(dataSource, options, busOptions, scopeFactory, diagnostics, metrics, logger)
+        ILogger<PostgreSqlLeaseMessagePump> logger) : base(dataSource, options, busOptions, scopeFactory, logger)
     {
         _logger = logger;
         _leaseDuration = options.LeaseDuration;
@@ -58,12 +54,8 @@ internal sealed class PostgreSqlLeaseMessagePump : PostgreSqlMessagePumpBase
         using var renewalCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
         var renewalTask = RunLeaseRenewalLoopAsync(claim.MessageId, descriptor.QueueName, leaseToken, renewalCts.Token);
 
-        Activity? activity = null;
         try
         {
-            activity = InterBusTelemetry.StartConsumerActivity(
-                Diagnostics, headers, descriptor.ConsumerType.Name, descriptor.QueueName);
-
             await DispatchAsync(descriptor, claim.Payload, headers, stoppingToken);
 
             await renewalCts.CancelAsync();
@@ -76,18 +68,12 @@ internal sealed class PostgreSqlLeaseMessagePump : PostgreSqlMessagePumpBase
                     claim.MessageId,
                     descriptor.QueueName);
             }
-            else
+            else if (!leaseStillOwned)
             {
-                if (!leaseStillOwned)
-                {
-                    _logger.LogDebug(
-                        "InterBus PostgreSQL: message {MessageId} on queue {QueueName} completed after at least one unsuccessful lease renewal attempt",
-                        claim.MessageId,
-                        descriptor.QueueName);
-                }
-
-                activity?.SetStatus(ActivityStatusCode.Ok);
-                Metrics.RecordConsumed(descriptor.ConsumerType.Name, descriptor.QueueName);
+                _logger.LogDebug(
+                    "InterBus PostgreSQL: message {MessageId} on queue {QueueName} completed after at least one unsuccessful lease renewal attempt",
+                    claim.MessageId,
+                    descriptor.QueueName);
             }
 
             return true;
@@ -125,12 +111,7 @@ internal sealed class PostgreSqlLeaseMessagePump : PostgreSqlMessagePumpBase
                     descriptor.QueueName);
             }
 
-            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
             return false;
-        }
-        finally
-        {
-            activity?.Dispose();
         }
     }
 

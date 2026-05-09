@@ -39,7 +39,7 @@ public sealed class InterBusMetrics : IDisposable
 
     /// <summary>
     /// Increments the <c>interbus.messages.consumed</c> counter.
-    /// Called by message pumps after a successful broker acknowledgement / delete.
+    /// Called by <see cref="TelemetryDispatchMiddleware"/> after the dispatch pipeline completes successfully.
     /// </summary>
     public void RecordConsumed(string consumerName, string queueName) =>
         MessagesConsumed.Add(1, new TagList
@@ -51,7 +51,7 @@ public sealed class InterBusMetrics : IDisposable
 
     /// <summary>
     /// Increments the <c>interbus.messages.failed</c> counter.
-    /// Called by message pumps after successfully moving a message to the dead-letter destination.
+    /// Called by <see cref="TelemetryDispatchMiddleware"/> when a <see cref="DeadLetterException"/> propagates through the dispatch pipeline.
     /// </summary>
     public void RecordFailed(string consumerName, string queueName) =>
         MessagesFailed.Add(1, new TagList

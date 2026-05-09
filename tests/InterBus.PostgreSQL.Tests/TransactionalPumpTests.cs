@@ -5,7 +5,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Npgsql;
 using Testcontainers.PostgreSql;
-
 namespace InterBus.PostgreSQL.Tests;
 
 /// <summary>
@@ -65,36 +64,36 @@ public class TransactionalPumpTests(string imageTag)
     }
 
     // ──────────────────────────────────────────────────────────────────────────
-    //  2. Failed consumer is retried after transaction rollback
+    //  2. Failed consumer is dead-lettered (not retried)
     // ──────────────────────────────────────────────────────────────────────────
 
     [Test]
-    public async Task Transactional_FailedConsumer_MessageIsRetried()
+    public async Task Transactional_FailedConsumer_MessageIsMovedToDeadLetterTable()
     {
-        var retryTracker = new OrderPlacedTracker();
         var receiveCounter = new TxReceiveCounter();
 
         await using var host = await BuildAndStartAsync(
-            svc =>
-            {
-                svc.AddSingleton(retryTracker);
-                svc.AddSingleton(receiveCounter);
-            },
+            svc => svc.AddSingleton(receiveCounter),
             bus => bus.AddConsumer<TransactionalFailingConsumer>());
 
         using var scope = host.CreateScope();
         var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
-        var msg = new OrderPlaced(Guid.NewGuid(), "tx-retry@test.com", 20m);
+        var msg = new OrderPlaced(Guid.NewGuid(), "tx-dlq@test.com", 20m);
         await publisher.PublishAsync(msg, TestContext.CurrentContext.CancellationToken);
 
-        await TestHelpers.WaitUntilAsync(
-            () => retryTracker.Messages.Count == 1,
-            timeoutMs: 15_000);
+        // Wait for the consumer to be called once.
+        await TestHelpers.WaitUntilAsync(() => receiveCounter.CallCount >= 1, timeoutMs: 15_000);
+
+        // Allow a short window for the pump to commit the dead-letter transaction.
+        await Task.Delay(500, TestContext.CurrentContext.CancellationToken);
+
+        var dataSource = scope.ServiceProvider.GetRequiredService<NpgsqlDataSource>();
+        var deadLetterCount = await CountDeadLetterRowsAsync(dataSource);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(retryTracker.Messages.Single().OrderId, Is.EqualTo(msg.OrderId));
-            Assert.That(receiveCounter.CallCount, Is.GreaterThanOrEqualTo(2));
+            Assert.That(deadLetterCount, Is.EqualTo(1), "Expected exactly one row in dead_letter_messages");
+            Assert.That(receiveCounter.CallCount, Is.EqualTo(1), "Failed message should be dead-lettered, not retried");
         }
     }
 
@@ -183,23 +182,22 @@ public class TransactionalPumpTests(string imageTag)
         return new TestHost(provider, cts);
     }
 
+    private static async Task<int> CountDeadLetterRowsAsync(NpgsqlDataSource dataSource)
+    {
+        await using var cmd = dataSource.CreateCommand("SELECT COUNT(*) FROM interbus.dead_letter_messages");
+        return Convert.ToInt32(await cmd.ExecuteScalarAsync());
+    }
+
     // ──────────────────────────────────────────────────────────────────────────
     //  Inner consumer types
     // ──────────────────────────────────────────────────────────────────────────
 
-    internal sealed class TransactionalFailingConsumer(
-        OrderPlacedTracker retryTracker,
-        TxReceiveCounter receiveCounter)
-        : IConsumer<OrderPlaced>
+    internal sealed class TransactionalFailingConsumer(TxReceiveCounter receiveCounter) : IConsumer<OrderPlaced>
     {
         public Task Consume(OrderPlaced message, IConsumeContext context, CancellationToken cancellationToken = default)
         {
-            var attempt = receiveCounter.Increment();
-            if (attempt < 2)
-                throw new InvalidOperationException("transient transactional failure");
-
-            retryTracker.Track(message);
-            return Task.CompletedTask;
+            receiveCounter.Increment();
+            throw new InvalidOperationException("transient transactional failure");
         }
     }
 

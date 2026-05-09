@@ -3,6 +3,7 @@ using InterBus.Generated;
 using InterBus.PostgreSQL.Extensions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Npgsql;
 using Testcontainers.PostgreSql;
 
 namespace InterBus.PostgreSQL.Tests;
@@ -50,45 +51,45 @@ public class LeasePumpTests(string imageTag)
     }
 
     // ──────────────────────────────────────────────────────────────────────────
-    //  2. Failure releases immediately – message is retried before lease expiry
+    //  2. Failure is dead-lettered immediately — message does not wait for
+    //     lease expiry before being moved to the dead-letter table
     // ──────────────────────────────────────────────────────────────────────────
 
     [Test]
-    public async Task Lease_FailedConsumer_IsReleasedImmediatelyAndRetried()
+    public async Task Lease_FailedConsumer_MessageIsDeadLetteredImmediately()
     {
-        var tracker = new OrderPlacedTracker();
         var counter = new LeaseAtomicCounter();
 
-        // 30 s lease; release_claim must make the message visible again immediately on
-        // failure so the retry arrives well within the 15 s test window.
+        // 30 s lease; dead_letter_claim must move the message to dead_letter_messages
+        // before the lease expiry, so the operation completes well within 15 s.
         await using var host = await BuildAndStartAsync(
             o =>
             {
                 o.MessagePumpMode = PostgreSqlMessagePumpMode.Lease;
                 o.LeaseDuration = TimeSpan.FromSeconds(30);
                 o.FallbackPollInterval = TimeSpan.FromMilliseconds(200);
-                o.FailureRedeliveryDelay = TimeSpan.Zero;
             },
-            svc =>
-            {
-                svc.AddSingleton(tracker);
-                svc.AddSingleton(counter);
-            },
-            bus => bus.AddConsumer<LeaseFailThenSucceedConsumer>());
+            svc => svc.AddSingleton(counter),
+            bus => bus.AddConsumer<LeaseAlwaysFailConsumer>());
 
         using var scope = host.CreateScope();
         var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
-        var msg = new OrderPlaced(Guid.NewGuid(), "release@test.com", 5m);
+        var msg = new OrderPlaced(Guid.NewGuid(), "deadletter@test.com", 5m);
         await publisher.PublishAsync(msg, TestContext.CurrentContext.CancellationToken);
 
-        await TestHelpers.WaitUntilAsync(
-            () => tracker.Messages.Count == 1,
-            timeoutMs: 15_000);
+        // Wait for the consumer to be called.
+        await TestHelpers.WaitUntilAsync(() => counter.Value >= 1, timeoutMs: 15_000);
+
+        // Allow a short window for the pump to write the dead-letter row.
+        await Task.Delay(500, TestContext.CurrentContext.CancellationToken);
+
+        var dataSource = scope.ServiceProvider.GetRequiredService<NpgsqlDataSource>();
+        var deadLetterCount = await CountDeadLetterRowsAsync(dataSource);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(tracker.Messages.Single().OrderId, Is.EqualTo(msg.OrderId));
-            Assert.That(counter.Value, Is.GreaterThanOrEqualTo(2));
+            Assert.That(deadLetterCount, Is.EqualTo(1), "Expected exactly one row in dead_letter_messages");
+            Assert.That(counter.Value, Is.EqualTo(1), "Failed message should be dead-lettered immediately without retry");
         }
     }
 
@@ -172,22 +173,23 @@ public class LeasePumpTests(string imageTag)
         return new TestHost(provider, cts);
     }
 
+    private static async Task<int> CountDeadLetterRowsAsync(NpgsqlDataSource dataSource)
+    {
+        await using var cmd = dataSource.CreateCommand("SELECT COUNT(*) FROM interbus.dead_letter_messages");
+        return Convert.ToInt32(await cmd.ExecuteScalarAsync());
+    }
+
     // ──────────────────────────────────────────────────────────────────────────
     //  Inner consumer types (source generator picks up all IConsumer<T> in project)
     // ──────────────────────────────────────────────────────────────────────────
 
-    /// <summary>Fails on the first attempt; succeeds from the second onward.</summary>
-    public sealed class LeaseFailThenSucceedConsumer(OrderPlacedTracker tracker, LeaseAtomicCounter counter)
-        : IConsumer<OrderPlaced>
+    /// <summary>Always fails; used to verify immediate dead-lettering without waiting for lease expiry.</summary>
+    public sealed class LeaseAlwaysFailConsumer(LeaseAtomicCounter counter) : IConsumer<OrderPlaced>
     {
         public Task Consume(OrderPlaced message, IConsumeContext context, CancellationToken cancellationToken = default)
         {
-            var attempt = counter.Increment();
-            if (attempt < 2)
-                throw new InvalidOperationException("intentional failure to exercise release_claim");
-
-            tracker.Track(message);
-            return Task.CompletedTask;
+            counter.Increment();
+            throw new InvalidOperationException("intentional failure to exercise dead_letter_claim");
         }
     }
 

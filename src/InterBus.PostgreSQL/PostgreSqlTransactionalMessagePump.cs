@@ -1,7 +1,9 @@
 using InterBus.Consuming;
+using InterBus.DeadLettering;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Npgsql;
+using NpgsqlTypes;
 
 namespace InterBus.PostgreSQL;
 
@@ -99,6 +101,35 @@ internal class PostgreSqlTransactionalMessagePump : PostgreSqlMessagePumpBase
         {
             await tx.RollbackAsync(CancellationToken.None);
             throw;
+        }
+        catch (DeadLetterException ex)
+        {
+            // Move the message to the dead-letter table within the same transaction so the
+            // row lock from consume_next is still held, preventing concurrent re-delivery.
+            await using var dlCmd = conn.CreateCommand();
+            dlCmd.Transaction = tx;
+            dlCmd.CommandText =
+                $"SELECT \"{EscapeIdentifier(Options.SchemaName)}\".dead_letter_message($1, $2, $3, $4, $5, $6)";
+            dlCmd.Parameters.Add(new NpgsqlParameter<long> { TypedValue = id });
+            dlCmd.Parameters.Add(new NpgsqlParameter<long> { TypedValue = payloadId });
+            dlCmd.Parameters.Add(new NpgsqlParameter<string> { TypedValue = descriptor.QueueName });
+            dlCmd.Parameters.Add(new NpgsqlParameter<string> { TypedValue = ex.Reason });
+            dlCmd.Parameters.Add(new NpgsqlParameter<string> { TypedValue = ex.Error });
+            dlCmd.Parameters.Add(new NpgsqlParameter<DateTimeOffset>
+            {
+                TypedValue = ex.DeadLetteredAtUtc,
+                NpgsqlDbType = NpgsqlDbType.TimestampTz
+            });
+            await dlCmd.ExecuteNonQueryAsync(CancellationToken.None);
+            await tx.CommitAsync(CancellationToken.None);
+
+            _logger.LogWarning(
+                ex,
+                "InterBus PostgreSQL: transactional consumer {ConsumerType} failed for queue {QueueName}; message moved to dead-letter",
+                descriptor.ConsumerType.Name,
+                descriptor.QueueName);
+
+            return false;
         }
         catch (Exception ex)
         {

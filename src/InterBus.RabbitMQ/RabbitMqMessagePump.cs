@@ -138,10 +138,9 @@ internal sealed class RabbitMqMessagePump(
                 return;
             }
 
-            var headers = RabbitMqHeaders.ParseAmqpHeaders(ea.BasicProperties.Headers);
             try
             {
-                await DispatchAsync(descriptor, ea.Body.ToArray(), headers, stoppingToken);
+                await DispatchAsync(descriptor, ea, stoppingToken);
                 await channel.BasicAckAsync(ea.DeliveryTag, multiple: false);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -190,11 +189,12 @@ internal sealed class RabbitMqMessagePump(
         await channel.DisposeAsync();
     }
 
-    private async Task DispatchAsync(ConsumerDescriptor descriptor, byte[] body, MessageHeaders headers, CancellationToken ct)
+    private async Task DispatchAsync(ConsumerDescriptor descriptor, BasicDeliverEventArgs ea, CancellationToken ct)
     {
         await using var scope = scopeFactory.CreateAsyncScope();
         var executor = scope.ServiceProvider.GetRequiredService<DispatchPipelineExecutor>();
-        var context = new DispatchContext(descriptor, body, headers);
+        var headers = RabbitMqHeaders.ParseAmqpHeaders(ea.BasicProperties.Headers);
+        var context = new DispatchContext(descriptor, ea.Body.ToArray(), headers);
         await executor.ExecuteAsync(context, ct);
     }
 

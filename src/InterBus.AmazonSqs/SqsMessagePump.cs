@@ -195,24 +195,7 @@ internal sealed class SqsMessagePump(
 
         try
         {
-            logger.LogTrace(
-                "InterBus AmazonSqs: deserialising message {MessageId}; raw body (first 500 chars): {Body}",
-                message.MessageId,
-                message.Body?.Length > 500 ? message.Body[..500] + "..." : message.Body);
-
-            if (message.Body is null)
-                throw new InvalidOperationException(
-                    $"SQS message {message.MessageId} has a null body and cannot be deserialised.");
-
-            var (payload, headers) = SnsSqsMessageEnvelope.Deserialize(message.Body);
-
-            logger.LogTrace(
-                "InterBus AmazonSqs: dispatching message {MessageId} with {HeaderCount} headers to consumer {ConsumerType}",
-                message.MessageId,
-                headers.Count,
-                descriptor.ConsumerType.Name);
-
-            await DispatchAsync(descriptor, payload, headers, ct);
+            await DispatchAsync(descriptor, message, ct);
 
             await prefetched.RenewalCts.CancelAsync();
 
@@ -386,10 +369,29 @@ internal sealed class SqsMessagePump(
         }
     }
 
-    private async Task DispatchAsync(ConsumerDescriptor descriptor, byte[] payload, MessageHeaders headers, CancellationToken ct)
+    private async Task DispatchAsync(ConsumerDescriptor descriptor, Message message, CancellationToken ct)
     {
         await using var scope = scopeFactory.CreateAsyncScope();
         var executor = scope.ServiceProvider.GetRequiredService<DispatchPipelineExecutor>();
+
+        logger.LogTrace(
+            "InterBus AmazonSqs: deserialising message {MessageId}; raw body (first 500 chars): {Body}",
+            message.MessageId,
+            message.Body?.Length > 500 ? message.Body[..500] + "..." : message.Body);
+
+        if (message.Body is null)
+            throw new InvalidOperationException(
+                $"SQS message {message.MessageId} has a null body and cannot be deserialised.");
+
+        // Deserialise the JSON envelope to recover the original payload bytes and headers.
+        var (payload, headers) = SnsSqsMessageEnvelope.Deserialize(message.Body);
+
+        logger.LogTrace(
+            "InterBus AmazonSqs: dispatching message {MessageId} with {HeaderCount} headers to consumer {ConsumerType}",
+            message.MessageId,
+            headers.Count,
+            descriptor.ConsumerType.Name);
+
         var context = new DispatchContext(descriptor, payload, headers);
         await executor.ExecuteAsync(context, ct);
     }

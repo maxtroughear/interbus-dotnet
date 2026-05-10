@@ -115,10 +115,9 @@ internal sealed class AzureServiceBusMessagePump(
             return;
         }
 
-        var headers = ParseApplicationProperties(args.Message.ApplicationProperties);
         try
         {
-            await DispatchAsync(descriptor, args.Message.Body.ToArray(), headers, args.CancellationToken);
+            await DispatchAsync(descriptor, args.Message, args.CancellationToken);
             await args.CompleteMessageAsync(args.Message);
         }
         catch (OperationCanceledException) when (args.CancellationToken.IsCancellationRequested)
@@ -170,13 +169,13 @@ internal sealed class AzureServiceBusMessagePump(
 
     private async Task DispatchAsync(
         ConsumerDescriptor descriptor,
-        byte[] body,
-        MessageHeaders headers,
+        ServiceBusReceivedMessage message,
         CancellationToken ct)
     {
         await using var scope = scopeFactory.CreateAsyncScope();
         var executor = scope.ServiceProvider.GetRequiredService<DispatchPipelineExecutor>();
-        var context = new DispatchContext(descriptor, body, headers);
+        var headers = ParseApplicationProperties(message.ApplicationProperties);
+        var context = new DispatchContext(descriptor, message.Body.ToArray(), headers);
         await executor.ExecuteAsync(context, ct);
     }
 

@@ -7,6 +7,7 @@ using InterBus.Middleware.Internal;
 using InterBus.Publishing;
 using InterBus.Sending;
 using InterBus.Serialization;
+using InterBus.Telemetry;
 using InterBus.Transporting;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -45,6 +46,15 @@ public static class ServiceCollectionExtensions
         var builder = new InterBusBuilder(services, options);
 
         services.AddHostedService<InterBusTopologyHostedService>();
+
+        // Telemetry (ActivitySource + Meter) — registered before anything that uses them.
+        services.AddSingleton<InterBusDiagnostics>();
+        services.AddSingleton<IInterBusDiagnostics>(sp => sp.GetRequiredService<InterBusDiagnostics>());
+        services.AddSingleton<InterBusMetrics>();
+
+        // Register the bus-level telemetry publish middleware first so it is outermost for
+        // standalone publishes (outside a consumer context).
+        services.AddKeyedScoped<IPublishMiddleware, TelemetryPublishMiddleware>(InterBusConstants.BusContext);
 
         configure(builder);
 

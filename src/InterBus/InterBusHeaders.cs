@@ -75,4 +75,19 @@ public static class InterBusHeaders
     /// Header key storing the UTC time when the message was dead-lettered.
     /// </summary>
     public const string DeadLetteredAt = "interbus-dead-lettered-at";
+
+    /// <summary>
+    /// W3C Trace Context header key for the trace parent.
+    /// Injected into outgoing messages by <c>TelemetryPublishMiddleware</c> and read by
+    /// <c>TelemetryDispatchMiddleware</c> to restore the distributed trace context.
+    /// </summary>
+    /// <seealso href="https://www.w3.org/TR/trace-context/#traceparent-header"/>
+    public const string Traceparent = "traceparent";
+
+    /// <summary>
+    /// W3C Trace Context header key for vendor-specific trace state.
+    /// Injected into outgoing messages alongside <see cref="Traceparent"/> when present.
+    /// </summary>
+    /// <seealso href="https://www.w3.org/TR/trace-context/#tracestate-header"/>
+    public const string Tracestate = "tracestate";
 }

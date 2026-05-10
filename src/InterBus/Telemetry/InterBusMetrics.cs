@@ -19,6 +19,9 @@ public sealed class InterBusMetrics : IDisposable
     /// <summary>Number of messages that were dead-lettered during consumption.</summary>
     internal Counter<long> MessagesFailed { get; }
 
+    /// <summary>Duration of the full consumer dispatch pipeline execution.</summary>
+    internal Histogram<double> ConsumerDuration { get; }
+
     public InterBusMetrics()
     {
         MessagesPublished = _meter.CreateCounter<long>(
@@ -35,6 +38,11 @@ public sealed class InterBusMetrics : IDisposable
             "interbus.messages.failed",
             unit: "{message}",
             description: "Number of messages that were dead-lettered during consumption by InterBus.");
+
+        ConsumerDuration = _meter.CreateHistogram<double>(
+            "interbus.consumer.duration",
+            unit: "s",
+            description: "Duration of the InterBus consumer dispatch pipeline execution in seconds.");
     }
 
     /// <summary>
@@ -55,6 +63,18 @@ public sealed class InterBusMetrics : IDisposable
     /// </summary>
     public void RecordFailed(string consumerName, string queueName) =>
         MessagesFailed.Add(1, new TagList
+        {
+            { "messaging.system", "interbus" },
+            { "messaging.consumer.name", consumerName },
+            { "messaging.destination.name", queueName },
+        });
+
+    /// <summary>
+    /// Records the duration of the consumer dispatch pipeline.
+    /// Called by <see cref="TelemetryDispatchMiddleware"/> after the pipeline completes (success or failure).
+    /// </summary>
+    public void RecordDuration(double seconds, string consumerName, string queueName) =>
+        ConsumerDuration.Record(seconds, new TagList
         {
             { "messaging.system", "interbus" },
             { "messaging.consumer.name", consumerName },

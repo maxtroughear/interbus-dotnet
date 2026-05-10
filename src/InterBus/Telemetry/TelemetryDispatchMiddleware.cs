@@ -21,6 +21,7 @@ public sealed class TelemetryDispatchMiddleware(
         var consumerName = context.Descriptor.ConsumerType.Name;
         var queueName = context.Descriptor.QueueName;
         var activity = InterBusTelemetry.StartConsumerActivity(diagnostics, context.Headers, consumerName, queueName);
+        var stopwatch = Stopwatch.StartNew();
         try
         {
             await next(context, cancellationToken);
@@ -40,6 +41,8 @@ public sealed class TelemetryDispatchMiddleware(
         }
         finally
         {
+            stopwatch.Stop();
+            metrics.RecordDuration(stopwatch.Elapsed.TotalSeconds, consumerName, queueName);
             activity?.Dispose();
         }
     }

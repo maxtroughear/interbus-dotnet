@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text;
 
 namespace InterBus.AmazonSqs;
 
@@ -47,4 +48,34 @@ internal sealed record SnsSqsMessageEnvelope(
 
         return (payload, headers);
     }
+
+    internal static (byte[] Payload, MessageHeaders Headers) DeserializeSnsSerialisedNotification(
+        string json)
+    {
+        var envelope = JsonSerializer.Deserialize(json, SnsSqsJsonContext.Default.SnsSqsNotificationEnvelope)
+                       ?? throw new InvalidOperationException(
+                           "Failed to deserialise SNS notification envelope");
+
+        var headers = new MessageHeaders();
+        if (envelope.MessageAttributes is not null)
+        {
+            foreach (var (key, value) in envelope.MessageAttributes)
+            {
+                if (string.IsNullOrEmpty(key) || value?.Value is null)
+                    continue;
+
+                headers[key] = value.Value;
+            }
+        }
+
+        return (Encoding.UTF8.GetBytes(envelope.Message ?? string.Empty), headers);
+    }
 }
+
+internal sealed record SnsSqsNotificationEnvelope(
+    [property: JsonPropertyName("Message")] string? Message,
+    [property: JsonPropertyName("MessageAttributes")] Dictionary<string, SnsSqsNotificationAttribute>? MessageAttributes);
+
+internal sealed record SnsSqsNotificationAttribute(
+    [property: JsonPropertyName("Type")] string? Type,
+    [property: JsonPropertyName("Value")] string? Value);

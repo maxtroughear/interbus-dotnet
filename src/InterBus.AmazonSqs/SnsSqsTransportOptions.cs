@@ -16,6 +16,20 @@ namespace InterBus.AmazonSqs;
 public sealed class SnsSqsTransportOptions
 {
     /// <summary>
+    /// Controls the default SNS→SQS wire format for consumers and SNS topic publishing.
+    /// <para>
+    /// When <c>false</c> (default), subscriptions use <c>RawMessageDelivery=true</c> and the
+    /// transport publishes the InterBus envelope body directly.
+    /// </para>
+    /// <para>
+    /// When <c>true</c>, subscriptions use <c>RawMessageDelivery=false</c> so SQS receives
+    /// SNS-serialised notifications. In this mode InterBus publishes the payload as plain UTF-8
+    /// text and writes headers to SNS message attributes.
+    /// </para>
+    /// </summary>
+    public bool UseSnsSerialisedMessageOnSqsByDefault { get; set; }
+
+    /// <summary>
     /// Prefix applied to SNS topic names. Defaults to <c>interbus-</c>.
     /// </summary>
     public string TopicPrefix { get; set; } = "interbus-";

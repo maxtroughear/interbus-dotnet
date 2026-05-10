@@ -578,7 +578,8 @@ public sealed class ConsumerRegistrationGeneratorTests
         var generated = result.GeneratedTrees[0].ToString();
 
         Assert.Contains("serializer.Deserialize<global::MyApp.OrderPlaced>(context.Payload)", generated);
-        Assert.Contains("GetRequiredService<global::InterBus.IMessageSerializer>()", generated);
+        Assert.Contains("GetKeyedService<global::InterBus.IMessageSerializer>(context.Descriptor.ConsumerType)", generated);
+        Assert.Contains("?? sp.GetRequiredService<global::InterBus.IMessageSerializer>()", generated);
         // No direct System.Text.Json references in the generated dispatch code.
         Assert.DoesNotContain("System.Text.Json.JsonSerializer", generated);
         Assert.DoesNotContain("JsonTypeInfo", generated);

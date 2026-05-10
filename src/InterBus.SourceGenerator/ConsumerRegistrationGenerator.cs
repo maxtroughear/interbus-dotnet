@@ -407,7 +407,8 @@ public sealed class ConsumerRegistrationGenerator : IIncrementalGenerator
         sb.AppendLine("                    if (!context.Headers.TryGetValue(global::InterBus.InterBusHeaders.MessageType, out var msgType))");
         sb.AppendLine("                        throw new global::System.InvalidOperationException(");
         sb.AppendLine($"                            $\"InterBus: message received without {{(global::InterBus.InterBusHeaders.MessageType)}} header for consumer {consumer.Name}\");");
-        sb.AppendLine("                    var serializer = sp.GetRequiredService<global::InterBus.IMessageSerializer>();");
+        sb.AppendLine("                    var serializer = sp.GetKeyedService<global::InterBus.IMessageSerializer>(context.Descriptor.ConsumerType)");
+        sb.AppendLine("                        ?? sp.GetRequiredService<global::InterBus.IMessageSerializer>();");
         sb.AppendLine("                    var consumePipeline = sp.GetRequiredService<global::InterBus.Consuming.ConsumePipelineExecutor>();");
         sb.AppendLine($"                    var consumer = sp.GetRequiredService<{consumerFqn}>();");
         sb.AppendLine($"                    var consumerExecutor = sp.GetRequiredService<global::InterBus.Consuming.ConsumerExecutor<{consumerFqn}>>();");
@@ -452,7 +453,8 @@ public sealed class ConsumerRegistrationGenerator : IIncrementalGenerator
         sb.AppendLine("                    if (!context.Headers.TryGetValue(global::InterBus.InterBusHeaders.MessageType, out var msgType))");
         sb.AppendLine("                        throw new global::System.InvalidOperationException(");
         sb.AppendLine($"                            $\"InterBus: message received without {{(global::InterBus.InterBusHeaders.MessageType)}} header for saga {saga.Name}\");");
-        sb.AppendLine("                    var serializer = sp.GetRequiredService<global::InterBus.IMessageSerializer>();");
+        sb.AppendLine("                    var serializer = sp.GetKeyedService<global::InterBus.IMessageSerializer>(context.Descriptor.ConsumerType)");
+        sb.AppendLine("                        ?? sp.GetRequiredService<global::InterBus.IMessageSerializer>();");
         sb.AppendLine("                    var consumePipeline = sp.GetRequiredService<global::InterBus.Consuming.ConsumePipelineExecutor>();");
         sb.AppendLine($"                    var saga = sp.GetRequiredService<{sagaFqn}>();");
         sb.AppendLine($"                    var sagaExecutor = sp.GetRequiredService<global::InterBus.Sagas.SagaExecutor<{sagaFqn}, {stateFqn}>>();");

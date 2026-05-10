@@ -17,9 +17,10 @@ namespace InterBus.AmazonSqs;
 /// startup by <see cref="SnsSqsTopologyBuilder"/> before polling begins.
 /// </para>
 /// <para>
-/// Messages delivered via SNS use <em>raw message delivery</em> so the SQS message body is
-/// a <see cref="SnsSqsMessageEnvelope"/> JSON string. Direct sends (<c>sqsqueue://</c>)
-/// use the same envelope format for consistency.
+/// Messages delivered via SNS can use either raw message delivery
+/// (<see cref="SnsSqsMessageEnvelope"/>) or SNS-serialised notifications on SQS
+/// (<c>RawMessageDelivery=false</c>) based on transport/consumer configuration.
+/// Direct sends (<c>sqsqueue://</c>) always use the InterBus envelope format.
 /// </para>
 /// <para>
 /// Successful dispatch deletes the SQS message (ACK). Unhandled consumer failures are copied to
@@ -383,8 +384,12 @@ internal sealed class SqsMessagePump(
             throw new InvalidOperationException(
                 $"SQS message {message.MessageId} has a null body and cannot be deserialised.");
 
-        // Deserialise the JSON envelope to recover the original payload bytes and headers.
-        var (payload, headers) = SnsSqsMessageEnvelope.Deserialize(message.Body);
+        var useSnsSerialisedMessageOnSqs = descriptor.UseSnsSerialisedMessageOnSqs
+                                          ?? options.UseSnsSerialisedMessageOnSqsByDefault;
+
+        var (payload, headers) = useSnsSerialisedMessageOnSqs
+            ? SnsSqsMessageEnvelope.DeserializeSnsSerialisedNotification(message.Body)
+            : SnsSqsMessageEnvelope.Deserialize(message.Body);
 
         logger.LogTrace(
             "InterBus AmazonSqs: dispatching message {MessageId} with {HeaderCount} headers to consumer {ConsumerType}",

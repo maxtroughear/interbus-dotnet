@@ -64,7 +64,7 @@ public sealed partial class SagaExecutor<TSaga, TState>(
         var sagaCtx = new SagaContext<TState>(entry, context);
 
         using var activity = diagnostics.ActivitySource.StartActivity(
-            $"{typeof(TSagaConsumer).Name} consume",
+            $"{typeof(TSaga).Name} consume",
             ActivityKind.Internal);
         try
         {

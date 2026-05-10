@@ -19,11 +19,12 @@ public sealed class ConsumerExecutor<TConsumer>(IInterBusDiagnostics diagnostics
     /// Sets <see cref="ActivityStatusCode.Error"/> on the activity if the consumer throws
     /// (except for <see cref="OperationCanceledException"/>).
     /// </summary>
-    public async Task ExecuteAsync<TMessage>(
-        TConsumer consumer,
+    public async Task ExecuteAsync<TActualConsumer, TMessage>(
+        TActualConsumer consumer,
         TMessage message,
         IConsumeContext context,
         CancellationToken cancellationToken)
+        where TActualConsumer : TConsumer, IConsumer<TMessage>
         where TMessage : class
     {
         using var activity = diagnostics.ActivitySource.StartActivity(
@@ -31,14 +32,20 @@ public sealed class ConsumerExecutor<TConsumer>(IInterBusDiagnostics diagnostics
             ActivityKind.Internal);
         try
         {
-            // Safe: the source generator only calls ExecuteAsync<TMessage> when TConsumer
-            // implements IConsumer<TMessage>.
-            await ((IConsumer<TMessage>)consumer).Consume(message, context, cancellationToken);
+            await consumer.Consume(message, context, cancellationToken);
             activity?.SetStatus(ActivityStatusCode.Ok);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+            activity?.AddEvent(new ActivityEvent(
+                "exception",
+                tags: new ActivityTagsCollection
+                {
+                    { "exception.type", ex.GetType().FullName! },
+                    { "exception.message", ex.Message },
+                    { "exception.stacktrace", ex.ToString() },
+                }));
             throw;
         }
     }

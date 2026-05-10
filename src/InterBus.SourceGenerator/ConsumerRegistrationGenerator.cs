@@ -423,7 +423,7 @@ public sealed class ConsumerRegistrationGenerator : IIncrementalGenerator
             sb.AppendLine($"                        var consumeContext = new global::InterBus.Consuming.ConsumeContext<{messageFqn}>(context.Descriptor, message, context.Headers);");
             sb.AppendLine("                        return consumePipeline.ExecuteAsync(");
             sb.AppendLine("                            consumeContext,");
-            sb.AppendLine($"                            (msg, ctx, innerCt) => consumerExecutor.ExecuteAsync<{messageFqn}>(consumer, msg, ctx, innerCt),");
+            sb.AppendLine($"                            (msg, ctx, innerCt) => consumerExecutor.ExecuteAsync<{consumerFqn}, {messageFqn}>(consumer, msg, ctx, innerCt),");
             sb.AppendLine("                            ct);");
             sb.AppendLine("                    }");
         }

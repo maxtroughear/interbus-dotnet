@@ -3,9 +3,11 @@ using InterBus.Consuming;
 using InterBus.DeadLettering;
 using InterBus.Dispatching;
 using InterBus.Extensions;
+using InterBus.Sagas;
 using InterBus.Telemetry;
 using InterBus.Transporting;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 namespace InterBus.Tests;
@@ -281,6 +283,148 @@ public sealed class TelemetryTests
             "Expected 'traceparent' header to be injected by TelemetryPublishMiddleware");
     }
 
+    // ── ConsumerExecutor ─────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task ConsumerExecutor_StartsChildActivity_WhenListenerRegistered()
+    {
+        var started = new List<Activity>();
+        using var listener = BuildListener(onStarted: started.Add);
+
+        var executor = new ConsumerExecutor<NoOpConsumer>(new StubDiagnostics());
+        var consumer = new NoOpConsumer();
+        var context = BuildConsumeContext();
+
+        await executor.ExecuteAsync(consumer, new TestMessage(), context,
+            TestContext.Current.CancellationToken);
+
+        Assert.Single(started,
+            a => a.OperationName == "NoOpConsumer consume" && a.Kind == ActivityKind.Internal);
+    }
+
+    [Fact]
+    public async Task ConsumerExecutor_SetsOkStatus_WhenSuccessful()
+    {
+        var stopped = new List<Activity>();
+        using var listener = BuildListener(onStopped: stopped.Add);
+
+        var executor = new ConsumerExecutor<NoOpConsumer>(new StubDiagnostics());
+        var consumer = new NoOpConsumer();
+        var context = BuildConsumeContext();
+
+        await executor.ExecuteAsync(consumer, new TestMessage(), context,
+            TestContext.Current.CancellationToken);
+
+        var act = Assert.Single(stopped);
+        Assert.Equal(ActivityStatusCode.Ok, act.Status);
+    }
+
+    [Fact]
+    public async Task ConsumerExecutor_SetsErrorStatus_WhenConsumerThrows()
+    {
+        var stopped = new List<Activity>();
+        using var listener = BuildListener(onStopped: stopped.Add);
+
+        var executor = new ConsumerExecutor<ThrowingConsumer>(new StubDiagnostics());
+        var consumer = new ThrowingConsumer();
+        var context = BuildConsumeContext();
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            executor.ExecuteAsync(consumer, new TestMessage(), context,
+                TestContext.Current.CancellationToken));
+
+        var act = Assert.Single(stopped);
+        Assert.Equal(ActivityStatusCode.Error, act.Status);
+        Assert.Equal("boom", act.StatusDescription);
+    }
+
+    [Fact]
+    public async Task ConsumerExecutor_DoesNotSetErrorStatus_WhenOperationCancelled()
+    {
+        var stopped = new List<Activity>();
+        using var listener = BuildListener(onStopped: stopped.Add);
+
+        var executor = new ConsumerExecutor<CancellingConsumer>(new StubDiagnostics());
+        var consumer = new CancellingConsumer();
+        var context = BuildConsumeContext();
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() =>
+            executor.ExecuteAsync(consumer, new TestMessage(), context,
+                TestContext.Current.CancellationToken));
+
+        var act = Assert.Single(stopped);
+        Assert.Equal(ActivityStatusCode.Unset, act.Status);
+    }
+
+    // ── SagaExecutor ─────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task SagaExecutor_StartsChildActivity_WhenListenerRegistered()
+    {
+        var started = new List<Activity>();
+        using var listener = BuildListener(onStarted: started.Add);
+
+        var executor = BuildSagaExecutor<NoOpSaga, NoOpSagaState>();
+
+        await executor.ExecuteAsync<NoOpSaga, TestMessage>(
+            new NoOpSaga(), new TestMessage(), BuildConsumeContext(),
+            TestContext.Current.CancellationToken);
+
+        Assert.Single(started,
+            a => a.OperationName == "NoOpSaga consume" && a.Kind == ActivityKind.Internal);
+    }
+
+    [Fact]
+    public async Task SagaExecutor_SetsOkStatus_WhenSuccessful()
+    {
+        var stopped = new List<Activity>();
+        using var listener = BuildListener(onStopped: stopped.Add);
+
+        var executor = BuildSagaExecutor<NoOpSaga, NoOpSagaState>();
+
+        await executor.ExecuteAsync<NoOpSaga, TestMessage>(
+            new NoOpSaga(), new TestMessage(), BuildConsumeContext(),
+            TestContext.Current.CancellationToken);
+
+        var act = Assert.Single(stopped);
+        Assert.Equal(ActivityStatusCode.Ok, act.Status);
+    }
+
+    [Fact]
+    public async Task SagaExecutor_SetsErrorStatus_WhenConsumeThrows()
+    {
+        var stopped = new List<Activity>();
+        using var listener = BuildListener(onStopped: stopped.Add);
+
+        var executor = BuildSagaExecutor<ThrowingSaga, NoOpSagaState>();
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            executor.ExecuteAsync<ThrowingSaga, TestMessage>(
+                new ThrowingSaga(), new TestMessage(), BuildConsumeContext(),
+                TestContext.Current.CancellationToken));
+
+        var act = Assert.Single(stopped);
+        Assert.Equal(ActivityStatusCode.Error, act.Status);
+        Assert.Equal("saga boom", act.StatusDescription);
+    }
+
+    [Fact]
+    public async Task SagaExecutor_DoesNotSetErrorStatus_WhenOperationCancelled()
+    {
+        var stopped = new List<Activity>();
+        using var listener = BuildListener(onStopped: stopped.Add);
+
+        var executor = BuildSagaExecutor<CancellingSaga, NoOpSagaState>();
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() =>
+            executor.ExecuteAsync<CancellingSaga, TestMessage>(
+                new CancellingSaga(), new TestMessage(), BuildConsumeContext(),
+                TestContext.Current.CancellationToken));
+
+        var act = Assert.Single(stopped);
+        Assert.Equal(ActivityStatusCode.Unset, act.Status);
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private static ActivityListener BuildListener(
@@ -315,6 +459,25 @@ public sealed class TelemetryTests
     private static string? GetTag(Activity activity, string key) =>
         activity.Tags.FirstOrDefault(t => t.Key == key).Value;
 
+    private static IConsumeContext BuildConsumeContext()
+    {
+        var descriptor = new ConsumerDescriptor(
+            typeof(NoOpConsumer),
+            RoutingConventions.QueueUri("queue", "test-queue"),
+            [typeof(TestMessage)],
+            (_, _, _) => Task.CompletedTask);
+        return new ConsumeContext<TestMessage>(descriptor, new TestMessage(), new MessageHeaders());
+    }
+
+    private static SagaExecutor<TSaga, TState> BuildSagaExecutor<TSaga, TState>()
+        where TSaga : class, ISaga<TState>
+        where TState : class, new()
+        => new(
+            new StubSagaRepository<TSaga, TState>(),
+            new SagaOptions<TSaga>(),
+            new StubDiagnostics(),
+            NullLogger<SagaExecutor<TSaga, TState>>.Instance);
+
     private sealed record TestMessage;
 
     private sealed class NoOpConsumer : IConsumer<TestMessage>
@@ -322,6 +485,20 @@ public sealed class TelemetryTests
         public Task Consume(TestMessage message, IConsumeContext context,
             CancellationToken cancellationToken = default)
             => Task.CompletedTask;
+    }
+
+    private sealed class ThrowingConsumer : IConsumer<TestMessage>
+    {
+        public Task Consume(TestMessage message, IConsumeContext context,
+            CancellationToken cancellationToken = default)
+            => throw new InvalidOperationException("boom");
+    }
+
+    private sealed class CancellingConsumer : IConsumer<TestMessage>
+    {
+        public Task Consume(TestMessage message, IConsumeContext context,
+            CancellationToken cancellationToken = default)
+            => throw new OperationCanceledException();
     }
 
     private sealed class CapturingTransport : ITransport
@@ -338,5 +515,63 @@ public sealed class TelemetryTests
     private sealed class StubDiagnostics : IInterBusDiagnostics
     {
         public ActivitySource ActivitySource { get; } = new(InterBusTelemetry.ActivitySourceName);
+    }
+
+    private sealed class NoOpSagaState;
+
+    private sealed class NoOpSaga :
+        ISagaConsumer<NoOpSagaState, TestMessage>
+    {
+        public string GetCorrelationId(TestMessage message) => "test";
+
+        public Task Consume(TestMessage message, ISagaContext<NoOpSagaState> context,
+            CancellationToken cancellationToken = default)
+            => Task.CompletedTask;
+    }
+
+    private sealed class ThrowingSaga :
+        ISagaConsumer<NoOpSagaState, TestMessage>
+    {
+        public string GetCorrelationId(TestMessage message) => "test";
+
+        public Task Consume(TestMessage message, ISagaContext<NoOpSagaState> context,
+            CancellationToken cancellationToken = default)
+            => throw new InvalidOperationException("saga boom");
+    }
+
+    private sealed class CancellingSaga :
+        ISagaConsumer<NoOpSagaState, TestMessage>
+    {
+        public string GetCorrelationId(TestMessage message) => "test";
+
+        public Task Consume(TestMessage message, ISagaContext<NoOpSagaState> context,
+            CancellationToken cancellationToken = default)
+            => throw new OperationCanceledException();
+    }
+
+    private sealed class StubSagaRepository<TSaga, TState> : ISagaRepository<TSaga, TState>
+        where TSaga : class, ISaga<TState>
+        where TState : class, new()
+    {
+        public Task<IAsyncDisposable> AcquireLockAsync(string correlationId,
+            CancellationToken cancellationToken = default)
+            => Task.FromResult<IAsyncDisposable>(new NullAsyncDisposable());
+
+        public Task<SagaEntry<TState>?> GetAsync(string correlationId,
+            CancellationToken cancellationToken = default)
+            => Task.FromResult<SagaEntry<TState>?>(null);
+
+        public Task SaveAsync(string correlationId, SagaEntry<TState> entry,
+            CancellationToken cancellationToken = default)
+            => Task.CompletedTask;
+
+        public Task DeleteAsync(string correlationId,
+            CancellationToken cancellationToken = default)
+            => Task.CompletedTask;
+
+        private sealed class NullAsyncDisposable : IAsyncDisposable
+        {
+            public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+        }
     }
 }

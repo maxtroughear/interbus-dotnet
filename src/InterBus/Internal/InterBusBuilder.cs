@@ -85,6 +85,7 @@ internal sealed class InterBusBuilder : IInterBusBuilder
 
         Options.AddConsumer(descriptor);
         Services.TryAddScoped<TConsumer>();
+        Services.TryAddScoped<ConsumerExecutor<TConsumer>>();
         return this;
     }
 

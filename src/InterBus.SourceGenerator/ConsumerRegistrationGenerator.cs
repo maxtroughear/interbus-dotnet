@@ -410,6 +410,7 @@ public sealed class ConsumerRegistrationGenerator : IIncrementalGenerator
         sb.AppendLine("                    var serializer = sp.GetRequiredService<global::InterBus.IMessageSerializer>();");
         sb.AppendLine("                    var consumePipeline = sp.GetRequiredService<global::InterBus.Consuming.ConsumePipelineExecutor>();");
         sb.AppendLine($"                    var consumer = sp.GetRequiredService<{consumerFqn}>();");
+        sb.AppendLine($"                    var consumerExecutor = sp.GetRequiredService<global::InterBus.Consuming.ConsumerExecutor<{consumerFqn}>>();");
 
         foreach (var message in messages)
         {
@@ -422,7 +423,7 @@ public sealed class ConsumerRegistrationGenerator : IIncrementalGenerator
             sb.AppendLine($"                        var consumeContext = new global::InterBus.Consuming.ConsumeContext<{messageFqn}>(context.Descriptor, message, context.Headers);");
             sb.AppendLine("                        return consumePipeline.ExecuteAsync(");
             sb.AppendLine("                            consumeContext,");
-            sb.AppendLine("                            consumer.Consume,");
+            sb.AppendLine($"                            (msg, ctx, innerCt) => consumerExecutor.ExecuteAsync<{consumerFqn}, {messageFqn}>(consumer, msg, ctx, innerCt),");
             sb.AppendLine("                            ct);");
             sb.AppendLine("                    }");
         }

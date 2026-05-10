@@ -587,6 +587,46 @@ public sealed class ConsumerRegistrationGeneratorTests
 
     #endregion
 
+    #region Consumer executor
+
+    [Fact]
+    public void Generator_SingleConsumer_UsesConsumerExecutorForDispatch()
+    {
+        const string source = """
+                              using System.Threading;
+                              using System.Threading.Tasks;
+                              using InterBus;
+
+                              namespace MyApp
+                              {
+                                  public record OrderPlaced(System.Guid OrderId);
+
+                                  public sealed class OrderPlacedConsumer : IConsumer<OrderPlaced>
+                                  {
+                                      public Task Consume(OrderPlaced message, IConsumeContext context, CancellationToken cancellationToken = default)
+                                          => Task.CompletedTask;
+                                  }
+                              }
+                              """;
+
+        var result = RunGenerator(source);
+
+        Assert.Empty(result.Diagnostics);
+        Assert.Single(result.GeneratedTrees);
+
+        var generated = result.GeneratedTrees[0].ToString();
+
+        // Dispatch resolves a ConsumerExecutor for the consumer type and uses it.
+        Assert.Contains(
+            "GetRequiredService<global::InterBus.Consuming.ConsumerExecutor<global::MyApp.OrderPlacedConsumer>>()",
+            generated);
+        Assert.Contains("consumerExecutor.ExecuteAsync<global::MyApp.OrderPlaced>", generated);
+        // Direct consumer.Consume delegate is no longer used — executor wraps the call.
+        Assert.DoesNotContain("consumer.Consume,", generated);
+    }
+
+    #endregion
+
     #region Helpers
 
     private static GeneratorDriverRunResult RunGenerator(string source)

@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using InterBus.Telemetry;
 using Microsoft.Extensions.Logging;
 
 namespace InterBus.Sagas;
@@ -15,6 +17,7 @@ namespace InterBus.Sagas;
 public sealed partial class SagaExecutor<TSaga, TState>(
     ISagaRepository<TSaga, TState> repository,
     SagaOptions<TSaga> options,
+    IInterBusDiagnostics diagnostics,
     ILogger<SagaExecutor<TSaga, TState>> logger)
     where TSaga : class, ISaga<TState>
     where TState : class, new()
@@ -60,7 +63,19 @@ public sealed partial class SagaExecutor<TSaga, TState>(
 
         var sagaCtx = new SagaContext<TState>(entry, context);
 
-        await saga.Consume(message, sagaCtx, cancellationToken);
+        using var activity = diagnostics.ActivitySource.StartActivity(
+            $"{typeof(TSagaConsumer).Name} consume",
+            ActivityKind.Internal);
+        try
+        {
+            await saga.Consume(message, sagaCtx, cancellationToken);
+            activity?.SetStatus(ActivityStatusCode.Ok);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+            throw;
+        }
 
         await repository.SaveAsync(correlationId, entry, cancellationToken);
 

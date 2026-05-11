@@ -9,7 +9,7 @@ namespace InterBus.Retry;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Configure via <see cref="IInterBusBuilder"/> using the
+/// Configure via <see cref="InterBusBuilder"/> using the
 /// <c>UseRetryMiddleware</c> extension method and supply a <see cref="RetryOptions"/>
 /// instance to control the retry count, delay strategy, and exception filter.
 /// </para>

@@ -1,3 +1,4 @@
+using InterBus.Scheduling;
 using InterBus.TickerQ.Internal;
 using Microsoft.Extensions.DependencyInjection;
 using TickerQ.Utilities;
@@ -6,11 +7,11 @@ using TickerQ.Utilities.Enums;
 
 namespace InterBus.TickerQ.Extensions;
 
-/// <summary>Extension methods for configuring the TickerQ scheduler on an <see cref="IInterBusBuilder"/>.</summary>
+/// <summary>Extension methods for configuring the TickerQ scheduler on an <see cref="InterBusBuilder"/>.</summary>
 public static class TickerQSchedulerBuilderExtensions
 {
     /// <param name="builder">The InterBus builder.</param>
-    extension(ISchedulerBuilder builder)
+    extension(SchedulerBuilder builder)
     {
         /// <summary>
         /// Register the TickerQ scheduler integration for InterBus.
@@ -37,7 +38,7 @@ public static class TickerQSchedulerBuilderExtensions
         /// TickerQ itself (<c>AddTickerQ</c>) must also be registered separately in application startup code.
         /// </para>
         /// </summary>
-        public ISchedulerBuilder AddTickerQScheduler()
+        public SchedulerBuilder AddTickerQScheduler()
         {
             ArgumentNullException.ThrowIfNull(builder);
 

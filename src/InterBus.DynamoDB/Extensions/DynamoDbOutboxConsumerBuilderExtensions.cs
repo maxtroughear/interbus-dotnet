@@ -1,3 +1,4 @@
+using InterBus.Consuming;
 using InterBus.DynamoDB.Outbox;
 using InterBus.DynamoDB.Outbox.Internal;
 using Microsoft.Extensions.DependencyInjection;
@@ -10,7 +11,7 @@ namespace InterBus.DynamoDB.Extensions;
 /// </summary>
 public static class DynamoDbOutboxConsumerBuilderExtensions
 {
-    extension(IConsumerBuilder builder)
+    extension(ConsumerBuilder builder)
     {
         /// <summary>
         /// Routes messages published by this consumer (from within its <c>Consume</c> handler)
@@ -23,14 +24,14 @@ public static class DynamoDbOutboxConsumerBuilderExtensions
         /// </para>
         /// <para>
         /// To also attempt immediate ("inline") delivery after <c>Consume</c> returns, use
-        /// <see cref="UseDynamoDbOutboxWithInlineDelivery(IConsumerBuilder)"/> instead.
+        /// <see cref="UseDynamoDbOutboxWithInlineDelivery(ConsumerBuilder)"/> instead.
         /// </para>
         /// <para>
         /// Requires <c>bus.AddDynamoDbOutbox()</c> or <c>bus.UseDynamoDbOutbox()</c> to have
         /// been called on the InterBus builder so that the outbox infrastructure is registered.
         /// </para>
         /// </summary>
-        public IConsumerBuilder UseDynamoDbOutbox()
+        public ConsumerBuilder UseDynamoDbOutbox()
         {
             ArgumentNullException.ThrowIfNull(builder);
 
@@ -63,7 +64,7 @@ public static class DynamoDbOutboxConsumerBuilderExtensions
         /// been called on the InterBus builder.
         /// </para>
         /// </summary>
-        public IConsumerBuilder UseDynamoDbOutboxWithInlineDelivery()
+        public ConsumerBuilder UseDynamoDbOutboxWithInlineDelivery()
         {
             ArgumentNullException.ThrowIfNull(builder);
 

@@ -125,7 +125,7 @@ public class OutboxTests
 
     private static async Task<(ServiceProvider Provider, CancellationTokenSource Cts, SqliteConnection Connection)>
         StartAsync(
-            Action<IInterBusBuilder> configureBus,
+            Action<InterBusBuilder> configureBus,
             Action<IServiceCollection>? extraServices = null)
     {
         // Use a single kept-open SqliteConnection so all DbContext instances share the same

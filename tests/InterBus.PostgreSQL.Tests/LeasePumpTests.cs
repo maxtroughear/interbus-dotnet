@@ -147,7 +147,7 @@ public class LeasePumpTests(string imageTag)
     private async Task<TestHost> BuildAndStartAsync(
         Action<PostgreSqlTransportOptions> configure,
         Action<IServiceCollection> configureServices,
-        Action<IInterBusBuilder> configureConsumers)
+        Action<InterBusBuilder> configureConsumers)
     {
         var cts = new CancellationTokenSource();
         var services = new ServiceCollection();

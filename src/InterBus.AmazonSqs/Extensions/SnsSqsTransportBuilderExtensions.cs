@@ -5,7 +5,7 @@ namespace InterBus.AmazonSqs.Extensions;
 
 /// <summary>
 /// Extension methods for configuring the Amazon SNS/SQS transport on an
-/// <see cref="IInterBusBuilder"/>.
+/// <see cref="InterBusBuilder"/>.
 /// </summary>
 public static class SnsSqsTransportBuilderExtensions
 {
@@ -52,8 +52,8 @@ public static class SnsSqsTransportBuilderExtensions
     /// <param name="configure">
     /// Optional delegate to configure <see cref="SnsSqsTransportOptions"/>.
     /// </param>
-    public static IInterBusBuilder AddAmazonSqsTransport(
-        this IInterBusBuilder builder,
+    public static InterBusBuilder AddAmazonSqsTransport(
+        this InterBusBuilder builder,
         Action<SnsSqsTransportOptions>? configure = null)
     {
         ArgumentNullException.ThrowIfNull(builder);

@@ -493,7 +493,7 @@ public class DynamoDbOutboxTests
     // -----------------------------------------------------------------------
 
     private async Task<(ServiceProvider Provider, CancellationTokenSource Cts)> StartBusAsync(
-        Action<IInterBusBuilder> configureBus,
+        Action<InterBusBuilder> configureBus,
         Action<IServiceCollection>? extraServices = null)
     {
         var services = new ServiceCollection();

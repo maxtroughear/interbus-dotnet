@@ -2,7 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace InterBus.InMemory.Extensions;
 
-/// <summary>Extension methods for configuring the in-memory transport on an <see cref="IInterBusBuilder"/>.</summary>
+/// <summary>Extension methods for configuring the in-memory transport on an <see cref="InterBusBuilder"/>.</summary>
 public static class InMemoryTransportBuilderExtensions
 {
     /// <summary>
@@ -14,7 +14,7 @@ public static class InMemoryTransportBuilderExtensions
     /// URI schemes for topic and queue messages respectively.
     /// </para>
     /// </summary>
-    public static IInterBusBuilder AddInMemoryTransport(this IInterBusBuilder builder)
+    public static InterBusBuilder AddInMemoryTransport(this InterBusBuilder builder)
     {
         // Register the URI schemes so MessagePublisher constructs the correct destination URIs.
         builder.Options.SetTransportUriSchemes(InMemoryBroker.TopicScheme, InMemoryBroker.QueueScheme);

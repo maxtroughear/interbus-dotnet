@@ -2,13 +2,12 @@ using InterBus.DynamoDB.Sagas;
 using InterBus.Sagas;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using Microsoft.Extensions.Hosting;
 
 namespace InterBus.DynamoDB.Extensions;
 
 /// <summary>
 /// Extension methods for configuring a DynamoDB-backed saga repository on an
-/// <see cref="ISagaBuilder{TSaga, TState}"/>.
+/// <see cref="SagaBuilder{TSaga, TState}"/>.
 /// </summary>
 public static class DynamoDbSagaBuilderExtensions
 {
@@ -23,8 +22,8 @@ public static class DynamoDbSagaBuilderExtensions
     /// </remarks>
     /// <param name="builder">The saga builder.</param>
     /// <param name="configure">Optional delegate to customise <see cref="DynamoDbSagaOptions"/>.</param>
-    public static ISagaBuilder<TSaga, TState> UseDynamoDbRepository<TSaga, TState>(
-        this ISagaBuilder<TSaga, TState> builder,
+    public static SagaBuilder<TSaga, TState> UseDynamoDbRepository<TSaga, TState>(
+        this SagaBuilder<TSaga, TState> builder,
         Action<DynamoDbSagaOptions>? configure = null)
         where TSaga : class, ISaga<TState>
         where TState : class, new()

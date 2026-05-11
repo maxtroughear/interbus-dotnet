@@ -1,84 +1,43 @@
-using System.Diagnostics.CodeAnalysis;
 using InterBus.Consuming;
-using InterBus.Dispatching;
-using InterBus.Publishing;
-using InterBus.Sending;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace InterBus.Sagas;
 
-/// <inheritdoc cref="ISagaBuilder{TSaga, TState}"/>
-internal sealed class SagaBuilder<TSaga, TState>(
+/// <summary>
+/// Fluent builder for configuring a registered saga.
+/// Extends <see cref="ConsumerBuilder"/> so that all consumer-level options
+/// (concurrency, middleware) are available alongside saga-specific settings.
+/// </summary>
+/// <typeparam name="TSaga">The saga type</typeparam>
+/// <typeparam name="TState">The saga state type</typeparam>
+public sealed class SagaBuilder<TSaga, TState>(
     ConsumerDescriptor descriptor,
     IServiceCollection services,
     SagaOptions<TSaga> options)
-    : ISagaBuilder<TSaga, TState>
+    : ConsumerBuilder<TSaga>(descriptor, services)
     where TSaga : class, ISaga<TState>
     where TState : class, new()
 {
-    private readonly ConsumerBuilder _inner = new(descriptor, services);
-
-    #region IConsumerBuilder
-
-    /// <inheritdoc/>
-    public IServiceCollection Services => services;
-
-    /// <inheritdoc/>
-    public Type ConsumerType => _inner.ConsumerType;
-
-    /// <inheritdoc/>
-    public IConsumerBuilder WithConcurrency(int concurrencyCount)
-    {
-        _inner.WithConcurrency(concurrencyCount);
-        return this;
-    }
-
-    /// <inheritdoc/>
-    public IConsumerBuilder UseConsumeMiddleware<
-        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
-        TMiddleware>()
-        where TMiddleware : class, IConsumeMiddleware
-    {
-        _inner.UseConsumeMiddleware<TMiddleware>();
-        return this;
-    }
-
-    /// <inheritdoc/>
-    public IConsumerBuilder UseSendMiddleware<
-        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
-        TMiddleware>()
-        where TMiddleware : class, ISendMiddleware
-    {
-        _inner.UseSendMiddleware<TMiddleware>();
-        return this;
-    }
-
-    /// <inheritdoc/>
-    public IConsumerBuilder UsePublishMiddleware<
-        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
-        TMiddleware>()
-        where TMiddleware : class, IPublishMiddleware
-    {
-        _inner.UsePublishMiddleware<TMiddleware>();
-        return this;
-    }
-
-    /// <inheritdoc/>
-    public IConsumerBuilder UseDispatchMiddleware<
-        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
-        TMiddleware>()
-        where TMiddleware : class, IDispatchMiddleware
-    {
-        _inner.UseDispatchMiddleware<TMiddleware>();
-        return this;
-    }
-
-    #endregion
-
-    /// <inheritdoc/>
-    public ISagaBuilder<TSaga, TState> WithTimeToLive(TimeSpan ttl)
+    /// <summary>
+    /// Sets the time-to-live for saga instances. Repository implementations will attempt to
+    /// expire stored state after this duration. The default is no expiry.
+    /// </summary>
+    public SagaBuilder<TSaga, TState> WithTimeToLive(TimeSpan ttl)
     {
         options.TimeToLive = ttl;
+        return this;
+    }
+
+    public new ConsumerBuilder Consumes<TSagaConsumer, TMessage>()
+        where TSagaConsumer : TSaga, ISagaConsumer<TState, TMessage>
+        where TMessage : class
+    {
+        Descriptor.MessageTypes.Add(typeof(TMessage));
+
+        Services.TryAddScoped<IConsumerExecutor<TSagaConsumer, TMessage>, 
+            SagaExecutor<TSagaConsumer, TState, TMessage>>();
+
         return this;
     }
 }

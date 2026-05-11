@@ -5,11 +5,11 @@ using Npgsql;
 
 namespace InterBus.PostgreSQL.Extensions;
 
-/// <summary>Extension methods for configuring the PostgreSQL transport on an <see cref="IInterBusBuilder"/>.</summary>
+/// <summary>Extension methods for configuring the PostgreSQL transport on an <see cref="InterBusBuilder"/>.</summary>
 public static class PostgreSqlTransportBuilderExtensions
 {
     /// <param name="builder">The InterBus builder.</param>
-    extension(IInterBusBuilder builder)
+    extension(InterBusBuilder builder)
     {
         /// <summary>
         /// Use a PostgreSQL-backed transport with <c>LISTEN</c>/<c>NOTIFY</c> for efficient message consumption.
@@ -32,7 +32,7 @@ public static class PostgreSqlTransportBuilderExtensions
         /// Delegate to configure <see cref="PostgreSqlTransportOptions"/>. At minimum set
         /// <see cref="PostgreSqlTransportOptions.ConnectionString"/>.
         /// </param>
-        public IInterBusBuilder AddPostgreSqlTransport(Action<PostgreSqlTransportOptions> configure)
+        public InterBusBuilder AddPostgreSqlTransport(Action<PostgreSqlTransportOptions> configure)
         {
             ArgumentNullException.ThrowIfNull(builder);
             ArgumentNullException.ThrowIfNull(configure);
@@ -77,7 +77,7 @@ public static class PostgreSqlTransportBuilderExtensions
         /// The <see cref="PostgreSqlTransportOptions.ConnectionString"/> is not used when a data source
         /// is provided directly.
         /// </param>
-        public IInterBusBuilder AddPostgreSqlTransport(NpgsqlDataSource dataSource,
+        public InterBusBuilder AddPostgreSqlTransport(NpgsqlDataSource dataSource,
             Action<PostgreSqlTransportOptions>? configure = null)
         {
             ArgumentNullException.ThrowIfNull(builder);
@@ -104,7 +104,7 @@ public static class PostgreSqlTransportBuilderExtensions
     /// <see cref="ITransport"/>, and as a keyed service for each supported URI scheme
     /// so the transport factory can resolve it by destination scheme.
     /// </summary>
-    private static void RegisterTransportServices(IInterBusBuilder builder)
+    private static void RegisterTransportServices(InterBusBuilder builder)
     {
         builder.Services.AddSingleton<ITopologyBuilder, PostgreSqlTopologyBuilder>();
 
@@ -124,7 +124,7 @@ public static class PostgreSqlTransportBuilderExtensions
     /// message pump. Hosted services start in registration order, so the schema initializer is
     /// always registered before the pump.
     /// </summary>
-    private static void RegisterCommonServices(IInterBusBuilder builder, PostgreSqlTransportOptions options)
+    private static void RegisterCommonServices(InterBusBuilder builder, PostgreSqlTransportOptions options)
     {
         if (options.RunSchemaMigrations)
         {

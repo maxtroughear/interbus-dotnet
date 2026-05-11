@@ -1,10 +1,13 @@
+using InterBus.Consuming;
 using InterBus.Middleware;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace InterBus.Dispatching;
 
 public sealed class DispatchPipelineExecutor(
     IMiddlewareFactory middlewareFactory,
-    IServiceProvider serviceProvider)
+    IServiceProvider serviceProvider,
+    ConsumePipelineExecutor consumePipelineExecutor)
 {
     public Task ExecuteAsync(DispatchContext context, CancellationToken cancellationToken = default)
     {
@@ -20,7 +23,7 @@ public sealed class DispatchPipelineExecutor(
 
         Task TerminalDispatchDelegate(DispatchContext ctx, CancellationToken ct)
         {
-            return context.Descriptor.Dispatch(context, serviceProvider, cancellationToken);
+            return context.Descriptor.Dispatch(context, consumePipelineExecutor, serviceProvider, cancellationToken);
         }
     }
 }

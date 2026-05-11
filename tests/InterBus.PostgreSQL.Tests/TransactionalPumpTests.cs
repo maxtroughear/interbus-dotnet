@@ -156,7 +156,7 @@ public class TransactionalPumpTests(string imageTag)
 
     private async Task<TestHost> BuildAndStartAsync(
         Action<IServiceCollection> configureServices,
-        Action<IInterBusBuilder> configureConsumers)
+        Action<InterBusBuilder> configureConsumers)
     {
         var cts = new CancellationTokenSource();
         var services = new ServiceCollection();

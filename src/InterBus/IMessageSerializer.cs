@@ -1,4 +1,3 @@
-using InterBus.Extensions;
 using InterBus.Serialization;
 
 namespace InterBus;
@@ -10,13 +9,19 @@ namespace InterBus;
 /// <remarks>
 /// The default implementation is <see cref="SystemTextJsonMessageSerializer"/>, which
 /// uses <see cref="System.Text.Json.JsonSerializer"/>. Register a custom implementation
-/// via <see cref="InterBusBuilderExtensions.UseSystemTextJsonSerializer"/> before calling <c>AddConsumers()</c>.
+/// via <see cref="InterBusBuilder.UseSystemTextJsonSerializer"/> before calling <c>AddConsumers()</c>.
 /// </remarks>
 public interface IMessageSerializer
 {
-    /// <summary>Serialises <paramref name="message"/> to a string payload.</summary>
+    /// <summary>Serialises <paramref name="message"/> to a byte array payload</summary>
     byte[] Serialize<T>(T message) where T : class;
 
-    /// <summary>Deserialises <paramref name="payload"/> to an instance of <typeparamref name="T"/>.</summary>
+    /// <summary>Deserialises <paramref name="payload"/> to an instance of <typeparamref name="T"/></summary>
     T? Deserialize<T>(byte[] payload) where T : class;
+
+    /// <summary>Serialises <paramref name="message"/> to a string payload</summary>   
+    // string SerializeToString<T>(T message) where T : class;
+    
+    /// <summary>Deserialises <paramref name="payload"/> to an instance of <typeparamref name="T"/></summary>  
+    // T? DeserializeFromString<T>(string payload) where T : class;
 }

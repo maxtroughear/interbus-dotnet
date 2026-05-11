@@ -8,7 +8,7 @@ namespace InterBus.Consuming;
 /// and executed in registration order (first registered = outermost).
 /// </summary>
 /// <remarks>
-/// Register via <see cref="IConsumerBuilder.UseConsumeMiddleware{TMiddleware}"/>.
+/// Register via <see cref="ConsumerBuilder.UseConsumeMiddleware{TMiddleware}"/>.
 /// </remarks>
 public interface IConsumeMiddleware : IMiddleware
 {

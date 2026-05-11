@@ -15,8 +15,7 @@ namespace InterBus.Consuming;
 public sealed class ConsumerDescriptor(
     Type consumerType,
     Uri queue,
-    IReadOnlyList<Type> messageTypes,
-    Func<DispatchContext, IServiceProvider, CancellationToken, Task> dispatch)
+    Func<DispatchContext, ConsumePipelineExecutor, IServiceProvider, CancellationToken, Task> dispatch)
 {
     /// <summary>The concrete consumer type.</summary>
     public Type ConsumerType { get; } = consumerType;
@@ -32,15 +31,13 @@ public sealed class ConsumerDescriptor(
     /// <summary>
     /// The message types this consumer handles
     /// </summary>
-    public IReadOnlyList<Type> MessageTypes { get; } = messageTypes;
+    public HashSet<Type> MessageTypes { get; } = [];
 
-    /// <summary>
-    /// Dispatch delegate. Reads the <see cref="InterBusHeaders.MessageType"/> header from the
-    /// incoming <see cref="IConsumeContext"/>, deserializes the payload to the matching type,
-    /// and invokes the correct <c>Consume</c> overload on the consumer. If the message type is
-    /// not handled by this consumer it logs an error and returns without throwing.
-    /// </summary>
-    internal Func<DispatchContext, IServiceProvider, CancellationToken, Task> Dispatch { get; } = dispatch;
+    internal Func<DispatchContext, ConsumePipelineExecutor, IServiceProvider, CancellationToken, Task> Dispatch
+    {
+        get;
+        set;
+    } = dispatch;
 
     /// <summary>
     /// The number of concurrent message handlers for this consumer's queue.

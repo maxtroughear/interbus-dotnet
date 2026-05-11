@@ -1,3 +1,4 @@
+using InterBus.Consuming;
 using InterBus.Retry;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -20,8 +21,8 @@ public static class RetryInterBusBuilderExtensions
     /// (3 retries, no delay, catch all exceptions).
     /// </param>
     /// <returns>The builder for fluent chaining.</returns>
-    public static IConsumerBuilder UseRetryMiddleware(
-        this IConsumerBuilder builder,
+    public static ConsumerBuilder UseRetryMiddleware(
+        this ConsumerBuilder builder,
         Action<RetryOptions>? configure = null)
     {
         var options = new RetryOptions();

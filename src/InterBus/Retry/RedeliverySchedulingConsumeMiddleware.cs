@@ -9,7 +9,7 @@ namespace InterBus.Retry;
 /// with configurable delay and retry count
 /// </summary>
 /// <remarks>
-/// Configure via <see cref="IInterBusBuilder"/> using <c>UseRedeliveryRetryMiddleware</c>
+/// Configure via <see cref="InterBusBuilder"/> using <c>UseRedeliveryRetryMiddleware</c>
 /// and supply <see cref="RedeliveryOptions"/> to control retry count, delay strategy,
 /// and exception filtering.
 /// </remarks>

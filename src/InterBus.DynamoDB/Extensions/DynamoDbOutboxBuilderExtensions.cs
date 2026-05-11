@@ -2,21 +2,20 @@ using InterBus.DynamoDB.Outbox;
 using InterBus.DynamoDB.Outbox.Internal;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using Microsoft.Extensions.Hosting;
 
 namespace InterBus.DynamoDB.Extensions;
 
 /// <summary>Extension methods for configuring the InterBus DynamoDB transactional outbox.</summary>
 public static class DynamoDbOutboxBuilderExtensions
 {
-    extension(IInterBusBuilder builder)
+    extension(InterBusBuilder builder)
     {
         /// <summary>
         /// Registers the DynamoDB outbox infrastructure: the scoped
         /// <see cref="IDynamoDbOutboxContext"/>, shared <see cref="DynamoDbOutboxOptions"/>,
         /// <see cref="DynamoDbOutboxConsumeState"/>, and the background
         /// <see cref="DynamoDbOutboxProcessor"/>. Does <b>not</b> add the bus-level publish
-        /// middleware — call <see cref="UseDynamoDbOutbox(IInterBusBuilder, Action{DynamoDbOutboxOptions}?)"/>
+        /// middleware — call <see cref="UseDynamoDbOutbox(InterBusBuilder, Action{DynamoDbOutboxOptions}?)"/>
         /// to also route <see cref="IPublisher"/> calls through the outbox.
         /// <para>
         /// Call this method when you only want consumers (not the global bus publisher) to write
@@ -25,7 +24,7 @@ public static class DynamoDbOutboxBuilderExtensions
         /// </para>
         /// </summary>
         /// <param name="configure">Optional delegate to configure <see cref="DynamoDbOutboxOptions"/>.</param>
-        public IInterBusBuilder AddDynamoDbOutbox(Action<DynamoDbOutboxOptions>? configure = null)
+        public InterBusBuilder AddDynamoDbOutbox(Action<DynamoDbOutboxOptions>? configure = null)
         {
             ArgumentNullException.ThrowIfNull(builder);
 
@@ -76,7 +75,7 @@ public static class DynamoDbOutboxBuilderExtensions
         /// </para>
         /// </summary>
         /// <param name="configure">Optional delegate to configure <see cref="DynamoDbOutboxOptions"/>.</param>
-        public IInterBusBuilder UseDynamoDbOutbox(Action<DynamoDbOutboxOptions>? configure = null)
+        public InterBusBuilder UseDynamoDbOutbox(Action<DynamoDbOutboxOptions>? configure = null)
         {
             ArgumentNullException.ThrowIfNull(builder);
 

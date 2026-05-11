@@ -4,12 +4,12 @@ namespace InterBus.AzureServiceBus.Extensions;
 
 /// <summary>
 /// Extension methods for configuring the Azure Service Bus transport on an
-/// <see cref="IInterBusBuilder"/>.
+/// <see cref="InterBusBuilder"/>.
 /// </summary>
 public static class AzureServiceBusTransportBuilderExtensions
 {
     /// <param name="builder">The InterBus builder.</param>
-    extension(IInterBusBuilder builder)
+    extension(InterBusBuilder builder)
     {
         /// <summary>
         /// Use an Azure Service Bus backed transport for message publishing and consumption.
@@ -36,7 +36,7 @@ public static class AzureServiceBusTransportBuilderExtensions
         /// Delegate to configure <see cref="AzureServiceBusTransportOptions"/>. At minimum set
         /// <see cref="AzureServiceBusTransportOptions.ConnectionString"/>.
         /// </param>
-        public IInterBusBuilder AddAzureServiceBusTransport(Action<AzureServiceBusTransportOptions>? configure = null)
+        public InterBusBuilder AddAzureServiceBusTransport(Action<AzureServiceBusTransportOptions>? configure = null)
         {
             ArgumentNullException.ThrowIfNull(builder);
 

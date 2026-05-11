@@ -26,7 +26,7 @@ namespace InterBus.EntityFrameworkCore.Internal;
 /// <para>
 /// This middleware must be registered <b>together</b> with
 /// <see cref="OutboxPublishMiddleware{TDbContext}"/> on the same consumer (via
-/// <c>IConsumerBuilder.UseOutboxWithInlineDelivery&lt;TDbContext&gt;()</c>) because it relies on
+/// <c>ConsumerBuilder.UseOutboxWithInlineDelivery&lt;TDbContext&gt;()</c>) because it relies on
 /// <see cref="OutboxConsumeState"/> being populated by the publish middleware.
 /// </para>
 /// </summary>

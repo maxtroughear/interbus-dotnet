@@ -42,89 +42,8 @@ public class SnsSerialisedMessageOnSqsTests
         }
     }
 
-    [TearDown]
-    public async Task TearDown()
-    {
-        if (_provider is null)
-            return;
-
-        await _cts.CancelAsync();
-        foreach (var svc in _provider.GetServices<IHostedService>())
-            await svc.StopAsync(CancellationToken.None);
-
-        _cts.Dispose();
-
-        var sqsClient = _provider.GetRequiredService<IAmazonSQS>();
-        var snsClient = _provider.GetRequiredService<IAmazonSimpleNotificationService>();
-        var logger = _provider.GetRequiredService<ILogger<SnsSerialisedMessageOnSqsTests>>();
-        await TestHelpers.CleanupResourcesByPrefixAsync(sqsClient, snsClient, _queuePrefix, _topicPrefix, logger);
-        await _provider.DisposeAsync();
-    }
-
-    [Test]
-    public async Task Consume_SnsSerialisedMessageOnSqs_PullsHeadersFromSnsMessageAttributes()
-    {
-        await SetupAsync(
-            configureTransport: _ => { },
-            configureBus: null,
-            configureConsumer: c => c.UseSnsSerialisedMessageOnSqs());
-
-        var sns = _provider.GetRequiredService<IAmazonSimpleNotificationService>();
-        var topicName = $"{_topicPrefix}{RoutingConventions.TopicName(typeof(OrderPlaced))}";
-        var topicArn = (await sns.CreateTopicAsync(topicName)).TopicArn;
-
-        var order = new OrderPlaced(Guid.NewGuid(), "interop@example.com", 5.20m);
-        var payload = JsonSerializer.Serialize(order);
-        var messageType = typeof(OrderPlaced).FullName!;
-        const string customHeader = "custom-value";
-
-        await sns.PublishAsync(
-            new PublishRequest
-            {
-                TopicArn = topicArn,
-                Message = payload,
-                MessageAttributes = new Dictionary<string, MessageAttributeValue>
-                {
-                    [InterBusHeaders.MessageType] = new() { DataType = "String", StringValue = messageType },
-                    [InterBusHeaders.MessageId] = new() { DataType = "String", StringValue = Guid.NewGuid().ToString("N") },
-                    ["x-custom"] = new() { DataType = "String", StringValue = customHeader },
-                },
-            },
-            TestContext.CurrentContext.CancellationToken);
-
-        await TestHelpers.WaitUntilAsync(() => _tracker.Messages.Count >= 1);
-
-        var consumed = _tracker.Messages.Single();
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(consumed.Message.OrderId, Is.EqualTo(order.OrderId));
-            Assert.That(consumed.Headers["x-custom"], Is.EqualTo(customHeader));
-            Assert.That(consumed.Headers[InterBusHeaders.MessageType], Is.EqualTo(messageType));
-        }
-    }
-
-    [Test]
-    public async Task Publish_DefaultSnsSerialisedMessageOnSqs_DeliversWithoutEnvelopeBase64()
-    {
-        await SetupAsync(
-            configureTransport: _ => { },
-            configureBus: b => b.UseSnsSerialisedMessageOnSqsByDefault(),
-            configureConsumer: null);
-
-        using var scope = _provider.CreateScope();
-        var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
-        var order = new OrderPlaced(Guid.NewGuid(), "publish@example.com", 10m);
-
-        await publisher.PublishAsync(order, TestContext.CurrentContext.CancellationToken);
-        await TestHelpers.WaitUntilAsync(() => _tracker.Messages.Count >= 1);
-
-        Assert.That(_tracker.Messages.Single().Message.OrderId, Is.EqualTo(order.OrderId));
-    }
-
-    private async Task SetupAsync(
-        Action<SnsSqsTransportOptions> configureTransport,
-        Action<IInterBusBuilder>? configureBus,
-        Action<IConsumerBuilder>? configureConsumer)
+    [SetUp]
+    public async Task Setup()
     {
         _runId = Guid.NewGuid().ToString("N")[..8];
         _queuePrefix = $"q-{_runId}-";
@@ -149,10 +68,8 @@ public class SnsSerialisedMessageOnSqsTests
             {
                 o.QueuePrefix = _queuePrefix;
                 o.TopicPrefix = _topicPrefix;
-                configureTransport(o);
             });
-            configureBus?.Invoke(bus);
-            bus.AddConsumer<SnsSerialisedOrderPlacedConsumer>(configureConsumer);
+            bus.AddConsumer<SnsSerialisedOrderPlacedConsumer>(c => c.UseSnsSerialisedMessageOnSqs());
         });
 
         _provider = services.BuildServiceProvider();
@@ -160,6 +77,60 @@ public class SnsSerialisedMessageOnSqsTests
 
         foreach (var svc in _provider.GetServices<IHostedService>())
             await svc.StartAsync(_cts.Token);
+    }
+
+    [TearDown]
+    public async Task TearDown()
+    {
+        await _cts.CancelAsync();
+        foreach (var svc in _provider.GetServices<IHostedService>())
+            await svc.StopAsync(CancellationToken.None);
+
+        _cts.Dispose();
+
+        var sqsClient = _provider.GetRequiredService<IAmazonSQS>();
+        var snsClient = _provider.GetRequiredService<IAmazonSimpleNotificationService>();
+        var logger = _provider.GetRequiredService<ILogger<SnsSerialisedMessageOnSqsTests>>();
+        await TestHelpers.CleanupResourcesByPrefixAsync(sqsClient, snsClient, _queuePrefix, _topicPrefix, logger);
+        await _provider.DisposeAsync();
+    }
+
+    [Test]
+    public async Task Consume_SnsSerialisedMessageOnSqs_PullsHeadersFromSnsMessageAttributes()
+    {
+        var sns = _provider.GetRequiredService<IAmazonSimpleNotificationService>();
+        var topicName = $"{_topicPrefix}{RoutingConventions.TopicName(typeof(OrderPlaced))}";
+        var topicArn = (await sns.CreateTopicAsync(topicName)).TopicArn;
+
+        var order = new OrderPlaced(Guid.NewGuid(), "interop@example.com", 5.20m);
+        var payload = JsonSerializer.Serialize(order);
+        var messageType = typeof(OrderPlaced).FullName!;
+        const string customHeader = "custom-value";
+
+        await sns.PublishAsync(
+            new PublishRequest
+            {
+                TopicArn = topicArn,
+                Message = payload,
+                MessageAttributes = new Dictionary<string, MessageAttributeValue>
+                {
+                    [InterBusHeaders.MessageType] = new() { DataType = "String", StringValue = messageType },
+                    [InterBusHeaders.MessageId] = new()
+                        { DataType = "String", StringValue = Guid.NewGuid().ToString("N") },
+                    ["x-custom"] = new() { DataType = "String", StringValue = customHeader },
+                },
+            },
+            TestContext.CurrentContext.CancellationToken);
+
+        await TestHelpers.WaitUntilAsync(() => _tracker.Messages.Count >= 1);
+
+        var consumed = _tracker.Messages.Single();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(consumed.Message.OrderId, Is.EqualTo(order.OrderId));
+            Assert.That(consumed.Headers["x-custom"], Is.EqualTo(customHeader));
+            Assert.That(consumed.Headers[InterBusHeaders.MessageType], Is.EqualTo(messageType));
+        }
     }
 }
 

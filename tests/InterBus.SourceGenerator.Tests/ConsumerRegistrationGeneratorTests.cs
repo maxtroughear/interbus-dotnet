@@ -80,7 +80,7 @@ public sealed class ConsumerRegistrationGeneratorTests
         var generated = result.GeneratedTrees[0].ToString();
 
         // A single generic AddConsumer<TConsumer>() extension method is generated.
-        Assert.Contains("public static global::InterBus.IInterBusBuilder AddConsumer<", generated);
+        Assert.Contains("public static global::InterBus.InterBusBuilder AddConsumer<", generated);
         Assert.Contains("where TConsumer : class, global::InterBus.IConsumer", generated);
         // The method uses per-module TryGetDispatch lookups.
         Assert.Contains("TryGetDispatch(", generated);
@@ -165,8 +165,8 @@ public sealed class ConsumerRegistrationGeneratorTests
         // Register() calls builder.AddConsumer<T> for each consumer (with dispatch args).
         Assert.Contains("builder.AddConsumer<global::MyApp.OrderPlacedConsumer>(", generated);
         Assert.Contains("builder.AddConsumer<global::MyApp.AuditConsumer>(", generated);
-        // One generic AddConsumer<TConsumer>() extension method is generated with an Action<IConsumerBuilder> delegate
-        var addConsumerMethodCount = Regex.Count(generated, @"public static global::InterBus\.IInterBusBuilder AddConsumer<");
+        // One generic AddConsumer<TConsumer>() extension method is generated with an Action<ConsumerBuilder> delegate
+        var addConsumerMethodCount = Regex.Count(generated, @"public static global::InterBus\.InterBusBuilder AddConsumer<");
         Assert.Equal(1, addConsumerMethodCount);
     }
 
@@ -317,7 +317,7 @@ public sealed class ConsumerRegistrationGeneratorTests
         // Names must be fully qualified so no using directives are required in the generated file.
         Assert.Contains("global::Deep.Nested.Namespace.MyConsumer", generated);
         Assert.Contains("global::Deep.Nested.Namespace.MyMessage", generated);
-        Assert.Contains("global::InterBus.IInterBusBuilder", generated);
+        Assert.Contains("global::InterBus.InterBusBuilder", generated);
     }
 
     [Fact]
@@ -614,7 +614,7 @@ public sealed class ConsumerRegistrationGeneratorTests
         {
             // Core BCL.
             MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
-            // InterBus: provides IConsumer<T> and IInterBusBuilder.
+            // InterBus: provides IConsumer<T> and InterBusBuilder.
             MetadataReference.CreateFromFile(typeof(IConsumer).Assembly.Location),
         };
 

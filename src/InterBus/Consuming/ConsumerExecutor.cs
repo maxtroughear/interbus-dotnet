@@ -6,12 +6,15 @@ namespace InterBus.Consuming;
 /// <summary>
 /// DI-registered consumer executor responsible for invoking the app's
 /// <see cref="IConsumer{TMessage}.Consume"/> method within a traced child activity.
-/// Registered as a scoped service by <see cref="IInterBusBuilder.AddConsumer{TConsumer}"/>;
+/// Registered as a scoped service by <see cref="InterBusBuilder.AddConsumer{TConsumer}"/>;
 /// dependencies are resolved from the container without any runtime reflection in the hot path.
 /// </summary>
-/// <typeparam name="TConsumer">The consumer type.</typeparam>
-public sealed class ConsumerExecutor<TConsumer>(IInterBusDiagnostics diagnostics)
-    where TConsumer : class, IConsumer
+/// <typeparam name="TConsumer">The consumer type</typeparam>
+/// <typeparam name="TMessage">The message type</typeparam>
+public sealed class ConsumerExecutor<TConsumer, TMessage>(IInterBusDiagnostics diagnostics, TConsumer consumer)
+    : IConsumerExecutor<TConsumer, TMessage>
+    where TConsumer : IConsumer<TMessage>
+    where TMessage : class
 {
     /// <summary>
     /// Invokes the consumer's <see cref="IConsumer{TMessage}.Consume"/> method within a
@@ -19,20 +22,15 @@ public sealed class ConsumerExecutor<TConsumer>(IInterBusDiagnostics diagnostics
     /// Sets <see cref="ActivityStatusCode.Error"/> on the activity if the consumer throws
     /// (except for <see cref="OperationCanceledException"/>).
     /// </summary>
-    public async Task ExecuteAsync<TMessageConsumer, TMessage>(
-        TMessageConsumer consumer,
-        TMessage message,
-        IConsumeContext context,
+    public async Task ExecuteAsync(
+        ConsumeContext<TMessage> context,
         CancellationToken cancellationToken)
-        where TMessageConsumer : TConsumer, IConsumer<TMessage>
-        where TMessage : class
     {
-        using var activity = diagnostics.ActivitySource.StartActivity(
-            $"{typeof(TConsumer).Name} consume",
-            ActivityKind.Internal);
+        using var activity = diagnostics.ActivitySource.StartActivity($"{typeof(TConsumer).Name} consume");
+
         try
         {
-            await consumer.Consume(message, context, cancellationToken);
+            await consumer.Consume(context.Message, context, cancellationToken);
             activity?.SetStatus(ActivityStatusCode.Ok);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)

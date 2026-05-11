@@ -1,14 +1,15 @@
+using InterBus.Consuming;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace InterBus.S3.Extensions;
 
 /// <summary>
 /// Extension methods for registering the S3 claim check middleware on
-/// <see cref="IInterBusBuilder"/> and <see cref="IConsumerBuilder"/>.
+/// <see cref="InterBusBuilder"/> and <see cref="ConsumerBuilder"/>.
 /// </summary>
 public static class S3ClaimCheckBuilderExtensions
 {
-    extension(IInterBusBuilder builder)
+    extension(InterBusBuilder builder)
     {
         /// <summary>
         /// Registers the S3 claim check options and send middleware at the bus level.
@@ -36,7 +37,7 @@ public static class S3ClaimCheckBuilderExtensions
         /// such as <see cref="S3ClaimCheckOptions.SizeThresholdBytes"/> and
         /// <see cref="S3ClaimCheckOptions.KeyPrefix"/>.
         /// </param>
-        public IInterBusBuilder AddS3ClaimCheck(string bucketName, Action<S3ClaimCheckOptions>? configure = null)
+        public InterBusBuilder AddS3ClaimCheck(string bucketName, Action<S3ClaimCheckOptions>? configure = null)
         {
             ArgumentNullException.ThrowIfNull(builder);
             ArgumentException.ThrowIfNullOrWhiteSpace(bucketName);
@@ -53,7 +54,7 @@ public static class S3ClaimCheckBuilderExtensions
         }
     }
 
-    extension(IConsumerBuilder builder)
+    extension(ConsumerBuilder builder)
     {
         /// <summary>
         /// Registers the S3 claim check send and dispatch middleware for this consumer.
@@ -68,7 +69,7 @@ public static class S3ClaimCheckBuilderExtensions
         /// registered in the DI container.
         /// </para>
         /// </summary>
-        public IConsumerBuilder UseS3ClaimCheck()
+        public ConsumerBuilder UseS3ClaimCheck()
         {
             ArgumentNullException.ThrowIfNull(builder);
 

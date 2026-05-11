@@ -1,5 +1,4 @@
 using InterBus.Extensions;
-using InterBus.Scheduling.Extensions;
 using InterBus.Transporting;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
@@ -11,7 +10,7 @@ public sealed class PublishSchedulingTests
     #region Helpers
 
     private static (IScheduler Scheduler, CapturingTransport Transport) BuildScheduler(
-        Action<IInterBusBuilder>? configureBus = null)
+        Action<InterBusBuilder>? configureBus = null)
     {
         var transport = new CapturingTransport();
         var services = new ServiceCollection();

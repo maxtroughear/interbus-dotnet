@@ -1,7 +1,6 @@
 using InterBus.Extensions;
 using InterBus.Publishing;
 using InterBus.Scheduling;
-using InterBus.Scheduling.Extensions;
 using InterBus.Transporting;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
@@ -17,7 +16,7 @@ public sealed class TransportDelaySchedulingTests
     #region Helpers
 
     private static (IScheduler Scheduler, RecordingTransport Transport) BuildScheduler(
-        Action<IInterBusBuilder>? configureBus = null)
+        Action<InterBusBuilder>? configureBus = null)
     {
         var transport = new RecordingTransport();
         var services = new ServiceCollection();

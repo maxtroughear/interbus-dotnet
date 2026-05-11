@@ -171,7 +171,7 @@ public class SagaTests
 
     private static async Task<(ServiceProvider Provider, CancellationTokenSource Cts)> StartAsync(
         Action<IServiceCollection>? registerSingletons,
-        Action<IInterBusBuilder> configureBus)
+        Action<InterBusBuilder> configureBus)
     {
         var services = new ServiceCollection();
         services.AddLogging();

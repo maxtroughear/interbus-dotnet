@@ -141,9 +141,7 @@ public sealed partial class SnsSqsTopologyBuilder(
                         Endpoint = queueArn,
                         Attributes = new Dictionary<string, string>
                         {
-                            ["RawMessageDelivery"] = envelope.UsesSnsSerialisedNotificationOnSqs
-                                ? "false"
-                                : "true",
+                            ["RawMessageDelivery"] = "true"
                         }
                     },
                     cancellationToken);

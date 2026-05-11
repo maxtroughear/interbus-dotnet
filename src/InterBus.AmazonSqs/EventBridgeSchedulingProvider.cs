@@ -1,5 +1,6 @@
 using Amazon.Scheduler;
 using Amazon.Scheduler.Model;
+using InterBus.Scheduling;
 
 namespace InterBus.AmazonSqs;
 
@@ -12,7 +13,7 @@ namespace InterBus.AmazonSqs;
 /// are automatically deleted by EventBridge after they fire.
 /// </para>
 /// <para>
-/// Register via <c>builder.AddEventBridgeScheduler()</c> on the <see cref="ISchedulerBuilder"/>.
+/// Register via <c>builder.AddEventBridgeScheduler()</c> on the <see cref="SchedulerBuilder"/>.
 /// </para>
 /// </summary>
 /// <remarks>Because delivery is handled entirely by EventBridge Scheduler, some InterBus pipeline features are not
@@ -23,7 +24,7 @@ public sealed class EventBridgeSchedulingProvider(
     IAmazonScheduler schedulerClient,
     SnsSqsTopology topology,
     ITopologyBuilder topologyBuilder,
-    SnsSqsMessageEnvelope rawEnvelope,
+    ISnsSqsMessageEnvelope rawEnvelope,
     EventBridgeSchedulerOptions options)
     : IMessageSchedulingProvider
 {

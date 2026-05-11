@@ -9,7 +9,7 @@ namespace InterBus.TickerQ;
 /// <see cref="IMessageSchedulingProvider"/> implementation that uses TickerQ to persist and fire
 /// scheduled InterBus messages at their specified delivery time.
 /// <para>
-/// Register via <c>builder.AddTickerQScheduler()</c> on the <see cref="IInterBusBuilder"/>.
+/// Register via <c>builder.AddTickerQScheduler()</c> on the <see cref="InterBusBuilder"/>.
 /// </para>
 /// </summary>
 public sealed class TickerQMessageScheduler(ITimeTickerManager<TimeTickerEntity> manager) : IMessageSchedulingProvider

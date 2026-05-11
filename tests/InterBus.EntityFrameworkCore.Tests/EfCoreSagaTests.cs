@@ -142,7 +142,7 @@ public class EfCoreSagaTests
     }
 
     private static async Task<(ServiceProvider Provider, CancellationTokenSource Cts, SqliteConnection KeepAlive)>
-        StartAsync(Action<IInterBusBuilder> configureBus)
+        StartAsync(Action<InterBusBuilder> configureBus)
     {
         // Use a unique named in-memory database with shared cache so that each DbContext
         // instance (from the message pump and from test-polling helpers) opens its own

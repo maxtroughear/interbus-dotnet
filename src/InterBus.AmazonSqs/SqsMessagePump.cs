@@ -384,12 +384,9 @@ internal sealed class SqsMessagePump(
             throw new InvalidOperationException(
                 $"SQS message {message.MessageId} has a null body and cannot be deserialised.");
 
-        var useSnsSerialisedMessageOnSqs = descriptor.UseSnsSerialisedMessageOnSqs
-                                          ?? options.UseSnsSerialisedMessageOnSqsByDefault;
-
-        var (payload, headers) = useSnsSerialisedMessageOnSqs
-            ? SnsSqsMessageEnvelope.DeserializeSnsSerialisedNotification(message.Body)
-            : SnsSqsMessageEnvelope.Deserialize(message.Body);
+        var envelope = scope.ServiceProvider.GetKeyedService<ISnsSqsMessageEnvelope>(descriptor.ConsumerType)
+                       ?? scope.ServiceProvider.GetRequiredService<ISnsSqsMessageEnvelope>();
+        var (payload, headers) = envelope.DeserializeFromSqs(message.Body);
 
         logger.LogTrace(
             "InterBus AmazonSqs: dispatching message {MessageId} with {HeaderCount} headers to consumer {ConsumerType}",

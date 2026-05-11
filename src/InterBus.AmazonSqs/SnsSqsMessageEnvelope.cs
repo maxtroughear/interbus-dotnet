@@ -1,45 +1,70 @@
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using System.Text;
+using Amazon.SimpleNotificationService.Model;
 
 namespace InterBus.AmazonSqs;
 
 /// <summary>
-/// Wire-format envelope for SNS/SQS messages. The envelope is serialised as JSON and used
-/// as the SQS/SNS message body, carrying both the raw (base-64 encoded) payload and the
-/// complete set of InterBus headers.
-/// <para>
-/// Placing all headers inside the envelope — rather than as SQS/SNS message attributes —
-/// removes the 10-attribute limit on SNS and SQS. A small subset of core headers
-/// (<see cref="InterBusHeaders.MessageType"/>, <see cref="InterBusHeaders.MessageId"/>,
-/// <see cref="InterBusHeaders.CorrelationId"/>) are still copied to message attributes so
-/// that SNS subscription filter policies can route messages by type.
-/// </para>
+/// Defines how InterBus serialises SNS publishes and deserialises SQS deliveries.
 /// </summary>
-internal sealed record SnsSqsMessageEnvelope(
-    [property: JsonPropertyName("p")] string Payload,
-    [property: JsonPropertyName("h")] Dictionary<string, string> Headers)
+public interface ISnsSqsMessageEnvelope
 {
-    /// <summary>
-    /// Serialises <paramref name="payload"/> and <paramref name="headers"/> into a JSON
-    /// envelope string suitable for use as an SQS or SNS message body.
-    /// </summary>
-    internal static string Serialize(byte[] payload, MessageHeaders headers)
+    bool UsesSnsSerialisedNotificationOnSqs { get; }
+    string SerializeForSnsPublish(byte[] payload, MessageHeaders headers);
+    Dictionary<string, MessageAttributeValue> BuildSnsMessageAttributes(MessageHeaders headers);
+    (byte[] Payload, MessageHeaders Headers) DeserializeFromSqs(string messageBody);
+}
+
+/// <summary>
+/// Default InterBus envelope format: payload is base64 in JSON body, headers are in JSON body.
+/// </summary>
+public sealed class SnsSqsMessageEnvelope : ISnsSqsMessageEnvelope
+{
+    private static readonly HashSet<string> CoreAttributeHeaders = new(StringComparer.Ordinal)
     {
-        var envelope = new SnsSqsMessageEnvelope(
+        InterBusHeaders.MessageType,
+        InterBusHeaders.MessageId,
+        InterBusHeaders.CorrelationId,
+    };
+
+    public bool UsesSnsSerialisedNotificationOnSqs => false;
+
+    public string SerializeForSnsPublish(byte[] payload, MessageHeaders headers)
+    {
+        var envelope = new InterBusEnvelopeBody(
             Convert.ToBase64String(payload),
             new Dictionary<string, string>(headers, StringComparer.Ordinal));
 
-        return JsonSerializer.Serialize(envelope, SnsSqsJsonContext.Default.SnsSqsMessageEnvelope);
+        return JsonSerializer.Serialize(envelope, SnsSqsJsonContext.Default.InterBusEnvelopeBody);
     }
 
-    /// <summary>
-    /// Deserialises a JSON envelope string produced by <see cref="Serialize"/> and returns
-    /// the original payload bytes and headers.
-    /// </summary>
-    internal static (byte[] Payload, MessageHeaders Headers) Deserialize(string json)
+    public Dictionary<string, MessageAttributeValue> BuildSnsMessageAttributes(MessageHeaders headers)
     {
-        var envelope = JsonSerializer.Deserialize(json, SnsSqsJsonContext.Default.SnsSqsMessageEnvelope)
+        var result = new Dictionary<string, MessageAttributeValue>(
+            CoreAttributeHeaders.Count,
+            StringComparer.Ordinal);
+
+        foreach (var (key, value) in headers)
+        {
+            if (!CoreAttributeHeaders.Contains(key))
+                continue;
+
+            result[key] = new MessageAttributeValue
+            {
+                DataType = "String",
+                StringValue = value,
+            };
+        }
+
+        return result;
+    }
+
+    public (byte[] Payload, MessageHeaders Headers) DeserializeFromSqs(string messageBody)
+    {
+        var envelope = JsonSerializer.Deserialize(
+            messageBody,
+            SnsSqsJsonContext.Default.InterBusEnvelopeBody)
                        ?? throw new InvalidOperationException("Failed to deserialise SNS/SQS message envelope");
 
         var payload = Convert.FromBase64String(envelope.Payload);
@@ -48,11 +73,40 @@ internal sealed record SnsSqsMessageEnvelope(
 
         return (payload, headers);
     }
+}
 
-    internal static (byte[] Payload, MessageHeaders Headers) DeserializeSnsSerialisedNotification(
-        string json)
+/// <summary>
+/// SNS-serialised notification format: payload is plain UTF-8 SNS message body and headers
+/// come from SNS message attributes.
+/// </summary>
+public sealed class SnsSerialisedMessageEnvelope : ISnsSqsMessageEnvelope
+{
+    public bool UsesSnsSerialisedNotificationOnSqs => true;
+
+    public string SerializeForSnsPublish(byte[] payload, MessageHeaders headers) =>
+        Encoding.UTF8.GetString(payload);
+
+    public Dictionary<string, MessageAttributeValue> BuildSnsMessageAttributes(MessageHeaders headers)
     {
-        var envelope = JsonSerializer.Deserialize(json, SnsSqsJsonContext.Default.SnsSqsNotificationEnvelope)
+        var result = new Dictionary<string, MessageAttributeValue>(headers.Count, StringComparer.Ordinal);
+
+        foreach (var (key, value) in headers)
+        {
+            result[key] = new MessageAttributeValue
+            {
+                DataType = "String",
+                StringValue = value,
+            };
+        }
+
+        return result;
+    }
+
+    public (byte[] Payload, MessageHeaders Headers) DeserializeFromSqs(string messageBody)
+    {
+        var envelope = JsonSerializer.Deserialize(
+            messageBody,
+            SnsSqsJsonContext.Default.SnsNotificationEnvelopeBody)
                        ?? throw new InvalidOperationException(
                            "Failed to deserialise SNS notification envelope");
 
@@ -72,10 +126,14 @@ internal sealed record SnsSqsMessageEnvelope(
     }
 }
 
-internal sealed record SnsSqsNotificationEnvelope(
-    [property: JsonPropertyName("Message")] string? Message,
-    [property: JsonPropertyName("MessageAttributes")] Dictionary<string, SnsSqsNotificationAttribute>? MessageAttributes);
+internal sealed record InterBusEnvelopeBody(
+    [property: JsonPropertyName("p")] string Payload,
+    [property: JsonPropertyName("h")] Dictionary<string, string> Headers);
 
-internal sealed record SnsSqsNotificationAttribute(
+internal sealed record SnsNotificationEnvelopeBody(
+    [property: JsonPropertyName("Message")] string? Message,
+    [property: JsonPropertyName("MessageAttributes")] Dictionary<string, SnsNotificationAttributeBody>? MessageAttributes);
+
+internal sealed record SnsNotificationAttributeBody(
     [property: JsonPropertyName("Type")] string? Type,
     [property: JsonPropertyName("Value")] string? Value);

@@ -75,7 +75,11 @@ public sealed class EventBridgeSchedulerTests
         _topologyBuilder = new SnsSqsTopologyBuilder(
             SnsClient, SqsClient,
             _serviceProvider.GetRequiredService<IAmazonSecurityTokenService>(),
-            _topology, transportOptions, new InterBusOptions(), logger);
+            _serviceProvider,
+            _topology,
+            transportOptions,
+            new InterBusOptions(),
+            logger);
     }
 
     [TearDown]
@@ -274,7 +278,7 @@ public sealed class EventBridgeSchedulerTests
     private EventBridgeSchedulingProvider BuildProvider(
         string? roleArn = null,
         string groupName = "default") =>
-        new(SchedulerClient, _topology, _topologyBuilder,
+        new(SchedulerClient, _topology, _topologyBuilder, new SnsSqsMessageEnvelope(),
             new EventBridgeSchedulerOptions
             {
                 TargetRoleArn = roleArn ?? TargetRoleArn,

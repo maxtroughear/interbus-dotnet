@@ -1,57 +1,45 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace InterBus.AmazonSqs.Extensions;
 
 /// <summary>
-/// Extension methods for per-consumer Amazon SNS/SQS configuration.
+/// Extension methods for per-consumer and default Amazon SNS/SQS wire-format configuration.
 /// </summary>
 public static class SnsSqsConsumerBuilderExtensions
 {
     extension(IConsumerBuilder builder)
     {
         /// <summary>
-        /// Configures whether this consumer should receive SNS-serialised messages on SQS
+        /// Configures whether this consumer should receive SNS-serialised notifications on SQS
         /// (<c>RawMessageDelivery=false</c>) or raw message bodies (<c>RawMessageDelivery=true</c>).
         /// </summary>
         public IConsumerBuilder UseSnsSerialisedMessageOnSqs(bool enabled = true)
         {
             ArgumentNullException.ThrowIfNull(builder);
 
-            builder.Descriptor.UseSnsSerialisedMessageOnSqs = enabled;
-            return builder;
-        }
-
-        /// <summary>
-        /// Registers a consumer-specific message serializer resolved by keyed DI using this
-        /// consumer type as the key.
-        /// </summary>
-        public IConsumerBuilder UseMessageSerializer<TSerializer>()
-            where TSerializer : class, IMessageSerializer
-        {
-            ArgumentNullException.ThrowIfNull(builder);
-
             builder.Services.Add(ServiceDescriptor.KeyedSingleton(
-                typeof(IMessageSerializer),
-                builder.Descriptor.ConsumerType,
-                typeof(TSerializer)));
+                typeof(ISnsSqsMessageEnvelope),
+                builder.ConsumerType,
+                enabled
+                    ? typeof(SnsSerialisedMessageEnvelope)
+                    : typeof(SnsSqsMessageEnvelope)));
 
             return builder;
         }
+    }
 
+    extension(IInterBusBuilder builder)
+    {
         /// <summary>
-        /// Registers a consumer-specific serializer instance resolved by keyed DI using this
-        /// consumer type as the key.
+        /// Sets SNS-serialised notifications (<c>RawMessageDelivery=false</c>) as the default
+        /// SNS/SQS wire format for all consumers that do not override it.
         /// </summary>
-        public IConsumerBuilder UseMessageSerializer(IMessageSerializer serializer)
+        public IInterBusBuilder UseSnsSerialisedMessageOnSqsByDefault()
         {
             ArgumentNullException.ThrowIfNull(builder);
-            ArgumentNullException.ThrowIfNull(serializer);
 
-            builder.Services.Add(ServiceDescriptor.KeyedSingleton(
-                typeof(IMessageSerializer),
-                builder.Descriptor.ConsumerType,
-                serializer));
-
+            builder.Services.Replace(ServiceDescriptor.Singleton<ISnsSqsMessageEnvelope, SnsSerialisedMessageEnvelope>());
             return builder;
         }
     }

@@ -54,11 +54,4 @@ public sealed class ConsumerDescriptor(
     /// 
     /// </summary>
     public TimeSpan? Timeout { get; internal set; }
-
-    /// <summary>
-    /// When set, overrides the Amazon SNS/SQS transport default for this consumer and controls
-    /// whether the queue receives SNS-serialised notifications (<c>RawMessageDelivery=false</c>)
-    /// or raw message bodies (<c>RawMessageDelivery=true</c>).
-    /// </summary>
-    public bool? UseSnsSerialisedMessageOnSqs { get; set; }
 }

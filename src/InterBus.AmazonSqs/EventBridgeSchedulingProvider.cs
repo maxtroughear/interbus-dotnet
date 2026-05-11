@@ -23,6 +23,7 @@ public sealed class EventBridgeSchedulingProvider(
     IAmazonScheduler schedulerClient,
     SnsSqsTopology topology,
     ITopologyBuilder topologyBuilder,
+    SnsSqsMessageEnvelope rawEnvelope,
     EventBridgeSchedulerOptions options)
     : IMessageSchedulingProvider
 {
@@ -35,7 +36,7 @@ public sealed class EventBridgeSchedulingProvider(
         DateTimeOffset scheduledAt,
         CancellationToken cancellationToken)
     {
-        var input = SnsSqsMessageEnvelope.Serialize(payload, headers);
+        var input = rawEnvelope.SerializeForSnsPublish(payload, headers);
         var targetArn = await ResolveTargetArnAsync(destination, cancellationToken);
 
         await schedulerClient.CreateScheduleAsync(

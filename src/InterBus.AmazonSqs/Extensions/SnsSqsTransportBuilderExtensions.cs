@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace InterBus.AmazonSqs.Extensions;
 
@@ -64,6 +65,9 @@ public static class SnsSqsTransportBuilderExtensions
         builder.Services.AddSingleton(options);
         builder.Services.AddSingleton<SnsSqsTopology>();
         builder.Services.AddSingleton<ITopologyBuilder, SnsSqsTopologyBuilder>();
+        builder.Services.TryAddSingleton<SnsSqsMessageEnvelope>();
+        builder.Services.TryAddSingleton<SnsSerialisedMessageEnvelope>();
+        builder.Services.TryAddSingleton<ISnsSqsMessageEnvelope, SnsSqsMessageEnvelope>();
 
         builder.Services.AddKeyedScoped<ITransport, SnsTransport>(SnsTransport.TopicScheme);
         builder.Services.AddKeyedScoped<ITransport, SqsTransport>(SqsTransport.QueueScheme);

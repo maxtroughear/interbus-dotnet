@@ -24,7 +24,7 @@ internal sealed class SagaBuilder<TSaga, TState>(
     public IServiceCollection Services => services;
 
     /// <inheritdoc/>
-    public ConsumerDescriptor Descriptor => _inner.Descriptor;
+    public Type ConsumerType => _inner.ConsumerType;
 
     /// <inheritdoc/>
     public IConsumerBuilder WithConcurrency(int concurrencyCount)

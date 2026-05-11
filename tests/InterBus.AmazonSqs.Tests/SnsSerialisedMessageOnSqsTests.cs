@@ -66,6 +66,7 @@ public class SnsSerialisedMessageOnSqsTests
     {
         await SetupAsync(
             configureTransport: _ => { },
+            configureBus: null,
             configureConsumer: c => c.UseSnsSerialisedMessageOnSqs());
 
         var sns = _provider.GetRequiredService<IAmazonSimpleNotificationService>();
@@ -106,7 +107,8 @@ public class SnsSerialisedMessageOnSqsTests
     public async Task Publish_DefaultSnsSerialisedMessageOnSqs_DeliversWithoutEnvelopeBase64()
     {
         await SetupAsync(
-            configureTransport: o => o.UseSnsSerialisedMessageOnSqsByDefault = true,
+            configureTransport: _ => { },
+            configureBus: b => b.UseSnsSerialisedMessageOnSqsByDefault(),
             configureConsumer: null);
 
         using var scope = _provider.CreateScope();
@@ -121,6 +123,7 @@ public class SnsSerialisedMessageOnSqsTests
 
     private async Task SetupAsync(
         Action<SnsSqsTransportOptions> configureTransport,
+        Action<IInterBusBuilder>? configureBus,
         Action<IConsumerBuilder>? configureConsumer)
     {
         _runId = Guid.NewGuid().ToString("N")[..8];
@@ -148,6 +151,7 @@ public class SnsSerialisedMessageOnSqsTests
                 o.TopicPrefix = _topicPrefix;
                 configureTransport(o);
             });
+            configureBus?.Invoke(bus);
             bus.AddConsumer<SnsSerialisedOrderPlacedConsumer>(configureConsumer);
         });
 

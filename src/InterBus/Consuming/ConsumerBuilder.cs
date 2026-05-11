@@ -10,7 +10,7 @@ namespace InterBus.Consuming;
 internal sealed class ConsumerBuilder(ConsumerDescriptor descriptor, IServiceCollection services) : IConsumerBuilder
 {
     public IServiceCollection Services => services;
-    public ConsumerDescriptor Descriptor => descriptor;
+    public Type ConsumerType => descriptor.ConsumerType;
 
     /// <inheritdoc/>
     public IConsumerBuilder WithConcurrency(int concurrencyCount)

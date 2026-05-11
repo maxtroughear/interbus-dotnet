@@ -18,8 +18,8 @@ public interface IConsumerBuilder
     /// <summary>The underlying service collection, available for transport extension methods to register additional services.</summary>
     IServiceCollection Services { get; }
 
-    /// <summary>The consumer descriptor being configured.</summary>
-    ConsumerDescriptor Descriptor { get; }
+    /// <summary>The concrete consumer type being configured.</summary>
+    Type ConsumerType { get; }
 
     /// <summary>
     /// Configures the number of concurrent message handlers for this consumer's queue.

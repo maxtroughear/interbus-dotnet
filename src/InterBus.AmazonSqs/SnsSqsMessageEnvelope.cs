@@ -45,15 +45,15 @@ public sealed class SnsSqsMessageEnvelope : ISnsSqsMessageEnvelope
             CoreAttributeHeaders.Count,
             StringComparer.Ordinal);
 
-        foreach (var (key, value) in headers)
+        foreach (var (headerName, headerValue) in headers)
         {
-            if (!CoreAttributeHeaders.Contains(key))
+            if (!CoreAttributeHeaders.Contains(headerName))
                 continue;
 
-            result[key] = new MessageAttributeValue
+            result[headerName] = new MessageAttributeValue
             {
                 DataType = "String",
-                StringValue = value,
+                StringValue = headerValue,
             };
         }
 
@@ -90,12 +90,12 @@ public sealed class SnsSerialisedMessageEnvelope : ISnsSqsMessageEnvelope
     {
         var result = new Dictionary<string, MessageAttributeValue>(headers.Count, StringComparer.Ordinal);
 
-        foreach (var (key, value) in headers)
+        foreach (var (headerName, headerValue) in headers)
         {
-            result[key] = new MessageAttributeValue
+            result[headerName] = new MessageAttributeValue
             {
                 DataType = "String",
-                StringValue = value,
+                StringValue = headerValue,
             };
         }
 

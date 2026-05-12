@@ -99,8 +99,10 @@ public class SnsSerialisedMessageOnSqsTests
     public async Task Consume_SnsSerialisedMessageOnSqs_PullsHeadersFromSnsMessageAttributes()
     {
         var sns = _provider.GetRequiredService<IAmazonSimpleNotificationService>();
-        var topicName = $"{_topicPrefix}{RoutingConventions.TopicName(typeof(OrderPlaced))}";
-        var topicArn = (await sns.CreateTopicAsync(topicName)).TopicArn;
+        var topologyBuilder = _provider.GetRequiredService<ITopologyBuilder>();
+        var topicArn = await topologyBuilder.EnsureTopicAsync(
+            RoutingConventions.TopicName(typeof(OrderPlaced)),
+            TestContext.CurrentContext.CancellationToken);
 
         var order = new OrderPlaced(Guid.NewGuid(), "interop@example.com", 5.20m);
         var payload = JsonSerializer.Serialize(order);

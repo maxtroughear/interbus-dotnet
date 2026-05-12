@@ -100,6 +100,7 @@ public class SnsSerialisedMessageOnSqsTests
     {
         var sns = _provider.GetRequiredService<IAmazonSimpleNotificationService>();
         var topologyBuilder = _provider.GetRequiredService<ITopologyBuilder>();
+        await topologyBuilder.BuildTopologyAsync(TestContext.CurrentContext.CancellationToken);
         var topicArn = await topologyBuilder.EnsureTopicAsync(
             RoutingConventions.TopicName(typeof(OrderPlaced)),
             TestContext.CurrentContext.CancellationToken);

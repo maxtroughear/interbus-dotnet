@@ -78,13 +78,15 @@ public sealed class TelemetryTests
     public async Task DispatchMiddleware_StartsConsumerActivity_WhenListenerRegistered()
     {
         var started = new List<Activity>();
-        using var listener = BuildListener(onStarted: started.Add);
 
-        var context = BuildDispatchContext();
-        var middleware = BuildDispatchMiddleware();
+        using (BuildListener(onStarted: started.Add))
+        {
+            var context = BuildDispatchContext();
+            var middleware = BuildDispatchMiddleware();
 
-        await middleware.InvokeAsync(context, (_, _) => Task.CompletedTask,
-            TestContext.Current.CancellationToken);
+            await middleware.InvokeAsync(context, (_, _) => Task.CompletedTask,
+                TestContext.Current.CancellationToken);
+        }
 
         Assert.Single(started, a => a.OperationName == "NoOpConsumer process" && a.Kind == ActivityKind.Consumer);
     }
@@ -93,15 +95,17 @@ public sealed class TelemetryTests
     public async Task DispatchMiddleware_SetsOkStatus_WhenSuccessful()
     {
         var stopped = new List<Activity>();
-        using var listener = BuildListener(onStopped: stopped.Add);
 
-        var context = BuildDispatchContext();
-        var middleware = BuildDispatchMiddleware();
+        using (BuildListener(onStopped: stopped.Add))
+        {
+            var context = BuildDispatchContext();
+            var middleware = BuildDispatchMiddleware();
 
-        await middleware.InvokeAsync(context, (_, _) => Task.CompletedTask,
-            TestContext.Current.CancellationToken);
+            await middleware.InvokeAsync(context, (_, _) => Task.CompletedTask,
+                TestContext.Current.CancellationToken);
+        }
 
-        var act = Assert.Single(stopped);
+        var act = Assert.Single(stopped, a => a.OperationName == "NoOpConsumer process");
         Assert.Equal(ActivityStatusCode.Ok, act.Status);
     }
 
@@ -109,16 +113,18 @@ public sealed class TelemetryTests
     public async Task DispatchMiddleware_SetsErrorStatus_WhenConsumerThrows()
     {
         var stopped = new List<Activity>();
-        using var listener = BuildListener(onStopped: stopped.Add);
 
-        var context = BuildDispatchContext();
-        var middleware = BuildDispatchMiddleware();
+        using (BuildListener(onStopped: stopped.Add))
+        {
+            var context = BuildDispatchContext();
+            var middleware = BuildDispatchMiddleware();
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            middleware.InvokeAsync(context, (_, _) => throw new InvalidOperationException("boom"),
-                TestContext.Current.CancellationToken));
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                middleware.InvokeAsync(context, (_, _) => throw new InvalidOperationException("boom"),
+                    TestContext.Current.CancellationToken));
+        }
 
-        var act = Assert.Single(stopped);
+        var act = Assert.Single(stopped, a => a.OperationName == "NoOpConsumer process");
         Assert.Equal(ActivityStatusCode.Error, act.Status);
         Assert.Equal("boom", act.StatusDescription);
     }
@@ -127,16 +133,18 @@ public sealed class TelemetryTests
     public async Task DispatchMiddleware_DoesNotSetErrorStatus_WhenOperationCancelled()
     {
         var stopped = new List<Activity>();
-        using var listener = BuildListener(onStopped: stopped.Add);
 
-        var context = BuildDispatchContext();
-        var middleware = BuildDispatchMiddleware();
+        using (BuildListener(onStopped: stopped.Add))
+        {
+            var context = BuildDispatchContext();
+            var middleware = BuildDispatchMiddleware();
 
-        await Assert.ThrowsAsync<OperationCanceledException>(() =>
-            middleware.InvokeAsync(context, (_, _) => throw new OperationCanceledException(),
-                TestContext.Current.CancellationToken));
+            await Assert.ThrowsAsync<OperationCanceledException>(() =>
+                middleware.InvokeAsync(context, (_, _) => throw new OperationCanceledException(),
+                    TestContext.Current.CancellationToken));
+        }
 
-        var act = Assert.Single(stopped);
+        var act = Assert.Single(stopped, a => a.OperationName == "NoOpConsumer process");
         Assert.Equal(ActivityStatusCode.Unset, act.Status);
     }
 
@@ -144,17 +152,20 @@ public sealed class TelemetryTests
     public async Task DispatchMiddleware_SetsErrorStatus_WhenDeadLetterException()
     {
         var stopped = new List<Activity>();
-        using var listener = BuildListener(onStopped: stopped.Add);
 
-        var context = BuildDispatchContext();
-        var middleware = BuildDispatchMiddleware();
+        using (BuildListener(onStopped: stopped.Add))
+        {
+            var context = BuildDispatchContext();
+            var middleware = BuildDispatchMiddleware();
 
-        await Assert.ThrowsAsync<DeadLetterException>(() =>
-            middleware.InvokeAsync(context,
-                (_, _) => throw new DeadLetterException("dead-reason", "err", DateTimeOffset.UtcNow, new Exception()),
-                TestContext.Current.CancellationToken));
+            await Assert.ThrowsAsync<DeadLetterException>(() =>
+                middleware.InvokeAsync(context,
+                    (_, _) => throw new DeadLetterException("dead-reason", "err", DateTimeOffset.UtcNow,
+                        new Exception()),
+                    TestContext.Current.CancellationToken));
+        }
 
-        var act = Assert.Single(stopped);
+        var act = Assert.Single(stopped, a => a.OperationName == "NoOpConsumer process");
         Assert.Equal(ActivityStatusCode.Error, act.Status);
         Assert.Equal("dead-reason", act.StatusDescription);
     }
@@ -165,40 +176,44 @@ public sealed class TelemetryTests
     public void StartConsumerActivity_StartsConsumerActivity_WhenListenerRegistered()
     {
         var started = new List<Activity>();
-        using var listener = BuildListener(started.Add);
 
-        var diagnostics = new StubDiagnostics();
-        var headers = new MessageHeaders
+        using (BuildListener(started.Add))
         {
-            [InterBusHeaders.MessageType] = "TestMessage",
-        };
+            var diagnostics = new StubDiagnostics();
+            var headers = new MessageHeaders
+            {
+                [InterBusHeaders.MessageType] = "TestMessage",
+            };
 
-        using var activity = InterBusTelemetry.StartConsumerActivity(
-            diagnostics, headers, "NoOpConsumer", "test-queue");
+            using var activity = InterBusTelemetry.StartConsumerActivity(
+                diagnostics, headers, "NoOpConsumer", "test-queue");
+        }
 
         Assert.Single(started, a =>
-            a.OperationName == "NoOpConsumer process" && a.Kind == ActivityKind.Consumer);
+            a is { OperationName: "NoOpConsumer process", Kind: ActivityKind.Consumer });
     }
 
     [Fact]
     public void StartConsumerActivity_SetsConsumerActivityTags()
     {
         var stopped = new List<Activity>();
-        using var listener = BuildListener(onStopped: stopped.Add);
 
-        var diagnostics = new StubDiagnostics();
-        var headers = new MessageHeaders
+        using (BuildListener(onStopped: stopped.Add))
         {
-            [InterBusHeaders.MessageType] = "TestMessage",
-            [InterBusHeaders.MessageId] = "msg-123",
-        };
+            var diagnostics = new StubDiagnostics();
+            var headers = new MessageHeaders
+            {
+                [InterBusHeaders.MessageType] = "TestMessage",
+                [InterBusHeaders.MessageId] = "msg-123",
+            };
 
-        {
-            using var activity = InterBusTelemetry.StartConsumerActivity(
-                diagnostics, headers, "NoOpConsumer", "test-queue");
+            {
+                using var activity = InterBusTelemetry.StartConsumerActivity(
+                    diagnostics, headers, "NoOpConsumer", "test-queue");
+            }
         }
 
-        var act = Assert.Single(stopped);
+        var act = Assert.Single(stopped, a => a.OperationName == "NoOpConsumer process");
         Assert.Equal("interbus", GetTag(act, "messaging.system"));
         Assert.Equal("process", GetTag(act, "messaging.operation.type"));
         Assert.Equal("test-queue", GetTag(act, "messaging.destination.name"));
@@ -211,20 +226,22 @@ public sealed class TelemetryTests
     public void StartConsumerActivity_RestoresParentContext_FromHeaders()
     {
         var started = new List<Activity>();
-        using var listener = BuildListener(started.Add);
-
         var traceId = ActivityTraceId.CreateRandom();
         var parentSpanId = ActivitySpanId.CreateRandom();
-        var traceparent = $"00-{traceId}-{parentSpanId}-01";
 
-        var diagnostics = new StubDiagnostics();
-        var headers = new MessageHeaders
+        using (BuildListener(started.Add))
         {
-            [InterBusHeaders.Traceparent] = traceparent,
-        };
+            var traceparent = $"00-{traceId}-{parentSpanId}-01";
 
-        using var activity = InterBusTelemetry.StartConsumerActivity(
-            diagnostics, headers, "NoOpConsumer", "test-queue");
+            var diagnostics = new StubDiagnostics();
+            var headers = new MessageHeaders
+            {
+                [InterBusHeaders.Traceparent] = traceparent,
+            };
+
+            using var activity = InterBusTelemetry.StartConsumerActivity(
+                diagnostics, headers, "NoOpConsumer", "test-queue");
+        }
 
         var act = Assert.Single(started, a => a.OperationName == "NoOpConsumer process");
         Assert.Equal(traceId, act.TraceId);
@@ -237,22 +254,24 @@ public sealed class TelemetryTests
     public async Task PublishMiddleware_StartsProducerActivity_WhenListenerRegistered()
     {
         var started = new List<Activity>();
-        using var listener = BuildListener(started.Add);
 
-        var transport = new CapturingTransport();
-        var services = new ServiceCollection();
-        services.AddLogging();
-        services.AddInterBus(bus =>
+        using (BuildListener(started.Add))
         {
-            bus.Services.AddKeyedSingleton<ITransport>("topic", transport);
-            bus.Services.AddKeyedSingleton<ITransport>("queue", transport);
-        });
+            var transport = new CapturingTransport();
+            var services = new ServiceCollection();
+            services.AddLogging();
+            services.AddInterBus(bus =>
+            {
+                bus.Services.AddKeyedSingleton<ITransport>("topic", transport);
+                bus.Services.AddKeyedSingleton<ITransport>("queue", transport);
+            });
 
-        await using var provider = services.BuildServiceProvider();
-        await using var scope = provider.CreateAsyncScope();
-        var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
+            await using var provider = services.BuildServiceProvider();
+            await using var scope = provider.CreateAsyncScope();
+            var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
 
-        await publisher.PublishAsync(new TestMessage(), TestContext.Current.CancellationToken);
+            await publisher.PublishAsync(new TestMessage(), TestContext.Current.CancellationToken);
+        }
 
         Assert.Contains(started, a => a.Kind == ActivityKind.Producer);
     }
@@ -260,8 +279,6 @@ public sealed class TelemetryTests
     [Fact]
     public async Task PublishMiddleware_InjectsTraceparentHeader_IntoOutgoingMessage()
     {
-        using var listener = BuildListener();
-
         var transport = new CapturingTransport();
         var services = new ServiceCollection();
         services.AddLogging();
@@ -275,7 +292,10 @@ public sealed class TelemetryTests
         await using var scope = provider.CreateAsyncScope();
         var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
 
-        await publisher.PublishAsync(new TestMessage(), TestContext.Current.CancellationToken);
+        using (BuildListener())
+        {
+            await publisher.PublishAsync(new TestMessage(), TestContext.Current.CancellationToken);
+        }
 
         Assert.Single(transport.Sends);
         var (_, _, headers) = transport.Sends[0];
@@ -289,13 +309,15 @@ public sealed class TelemetryTests
     public async Task ConsumerExecutor_StartsChildActivity_WhenListenerRegistered()
     {
         var started = new List<Activity>();
-        using var listener = BuildListener(onStarted: started.Add);
 
-        var consumer = new NoOpConsumer();
-        var executor = new ConsumerExecutor<NoOpConsumer, TestMessage>(new StubDiagnostics(), consumer);
-        var context = BuildConsumeContext();
+        using (BuildListener(onStarted: started.Add))
+        {
+            var consumer = new NoOpConsumer();
+            var executor = new ConsumerExecutor<NoOpConsumer, TestMessage>(new StubDiagnostics(), consumer);
+            var context = BuildConsumeContext();
 
-        await executor.ExecuteAsync(context, TestContext.Current.CancellationToken);
+            await executor.ExecuteAsync(context, TestContext.Current.CancellationToken);
+        }
 
         Assert.Single(started,
             a => a.OperationName == "NoOpConsumer consume" && a.Kind == ActivityKind.Internal);
@@ -305,14 +327,16 @@ public sealed class TelemetryTests
     public async Task ConsumerExecutor_SetsOkStatus_WhenSuccessful()
     {
         var stopped = new List<Activity>();
-        using var listener = BuildListener(onStopped: stopped.Add);
 
-        var executor = new ConsumerExecutor<NoOpConsumer, TestMessage>(new StubDiagnostics(), new NoOpConsumer());
-        var context = BuildConsumeContext();
+        using (BuildListener(onStopped: stopped.Add))
+        {
+            var executor = new ConsumerExecutor<NoOpConsumer, TestMessage>(new StubDiagnostics(), new NoOpConsumer());
+            var context = BuildConsumeContext();
 
-        await executor.ExecuteAsync(context, TestContext.Current.CancellationToken);
+            await executor.ExecuteAsync(context, TestContext.Current.CancellationToken);
+        }
 
-        var act = Assert.Single(stopped);
+        var act = Assert.Single(stopped, a => a.OperationName == "NoOpConsumer consume");
         Assert.Equal(ActivityStatusCode.Ok, act.Status);
     }
 
@@ -320,15 +344,18 @@ public sealed class TelemetryTests
     public async Task ConsumerExecutor_SetsErrorStatus_WhenConsumerThrows()
     {
         var stopped = new List<Activity>();
-        using var listener = BuildListener(onStopped: stopped.Add);
 
-        var executor = new ConsumerExecutor<ThrowingConsumer, TestMessage>(new StubDiagnostics(), new ThrowingConsumer());
-        var context = BuildConsumeContext();
+        using (BuildListener(onStopped: stopped.Add))
+        {
+            var executor =
+                new ConsumerExecutor<ThrowingConsumer, TestMessage>(new StubDiagnostics(), new ThrowingConsumer());
+            var context = BuildConsumeContext();
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            executor.ExecuteAsync(context, TestContext.Current.CancellationToken));
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                executor.ExecuteAsync(context, TestContext.Current.CancellationToken));
+        }
 
-        var act = Assert.Single(stopped);
+        var act = Assert.Single(stopped, a => a.OperationName == "ThrowingConsumer consume");
         Assert.Equal(ActivityStatusCode.Error, act.Status);
         Assert.Equal("boom", act.StatusDescription);
     }
@@ -337,16 +364,18 @@ public sealed class TelemetryTests
     public async Task ConsumerExecutor_DoesNotSetErrorStatus_WhenOperationCancelled()
     {
         var stopped = new List<Activity>();
-        using var listener = BuildListener(onStopped: stopped.Add);
 
-        var consumer = new CancellingConsumer();
-        var executor = new ConsumerExecutor<CancellingConsumer, TestMessage>(new StubDiagnostics(), consumer);
-        var context = BuildConsumeContext();
+        using (BuildListener(onStopped: stopped.Add))
+        {
+            var consumer = new CancellingConsumer();
+            var executor = new ConsumerExecutor<CancellingConsumer, TestMessage>(new StubDiagnostics(), consumer);
+            var context = BuildConsumeContext();
 
-        await Assert.ThrowsAsync<OperationCanceledException>(() =>
-            executor.ExecuteAsync(context, TestContext.Current.CancellationToken));
+            await Assert.ThrowsAsync<OperationCanceledException>(() =>
+                executor.ExecuteAsync(context, TestContext.Current.CancellationToken));
+        }
 
-        var act = Assert.Single(stopped);
+        var act = Assert.Single(stopped, a => a.OperationName == "CancellingConsumer consume");
         Assert.Equal(ActivityStatusCode.Unset, act.Status);
     }
 
@@ -356,11 +385,13 @@ public sealed class TelemetryTests
     public async Task SagaExecutor_StartsChildActivity_WhenListenerRegistered()
     {
         var started = new List<Activity>();
-        using var listener = BuildListener(onStarted: started.Add);
 
-        var executor = BuildSagaExecutor<NoOpSaga, NoOpSagaState>();
+        using (BuildListener(onStarted: started.Add))
+        {
+            var executor = BuildSagaExecutor<NoOpSaga, NoOpSagaState>();
 
-        await executor.ExecuteAsync(BuildConsumeContext(), TestContext.Current.CancellationToken);
+            await executor.ExecuteAsync(BuildConsumeContext(), TestContext.Current.CancellationToken);
+        }
 
         Assert.Single(started,
             a => a.OperationName == "NoOpSaga consume" && a.Kind == ActivityKind.Internal);
@@ -370,13 +401,15 @@ public sealed class TelemetryTests
     public async Task SagaExecutor_SetsOkStatus_WhenSuccessful()
     {
         var stopped = new List<Activity>();
-        using var listener = BuildListener(onStopped: stopped.Add);
 
-        var executor = BuildSagaExecutor<NoOpSaga, NoOpSagaState>();
+        using (BuildListener(onStopped: stopped.Add))
+        {
+            var executor = BuildSagaExecutor<NoOpSaga, NoOpSagaState>();
 
-        await executor.ExecuteAsync(BuildConsumeContext(), TestContext.Current.CancellationToken);
+            await executor.ExecuteAsync(BuildConsumeContext(), TestContext.Current.CancellationToken);
+        }
 
-        var act = Assert.Single(stopped);
+        var act = Assert.Single(stopped, a => a.OperationName == "NoOpSaga consume");
         Assert.Equal(ActivityStatusCode.Ok, act.Status);
     }
 
@@ -384,14 +417,16 @@ public sealed class TelemetryTests
     public async Task SagaExecutor_SetsErrorStatus_WhenConsumeThrows()
     {
         var stopped = new List<Activity>();
-        using var listener = BuildListener(onStopped: stopped.Add);
 
-        var executor = BuildSagaExecutor<ThrowingSaga, NoOpSagaState>();
+        using (BuildListener(onStopped: stopped.Add))
+        {
+            var executor = BuildSagaExecutor<ThrowingSaga, NoOpSagaState>();
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            executor.ExecuteAsync(BuildConsumeContext(), TestContext.Current.CancellationToken));
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                executor.ExecuteAsync(BuildConsumeContext(), TestContext.Current.CancellationToken));
+        }
 
-        var act = Assert.Single(stopped);
+        var act = Assert.Single(stopped, a => a.OperationName == "ThrowingSaga consume");
         Assert.Equal(ActivityStatusCode.Error, act.Status);
         Assert.Equal("saga boom", act.StatusDescription);
     }
@@ -400,14 +435,16 @@ public sealed class TelemetryTests
     public async Task SagaExecutor_DoesNotSetErrorStatus_WhenOperationCancelled()
     {
         var stopped = new List<Activity>();
-        using var listener = BuildListener(onStopped: stopped.Add);
 
-        var executor = BuildSagaExecutor<CancellingSaga, NoOpSagaState>();
+        using (BuildListener(onStopped: stopped.Add))
+        {
+            var executor = BuildSagaExecutor<CancellingSaga, NoOpSagaState>();
 
-        await Assert.ThrowsAsync<OperationCanceledException>(() =>
-            executor.ExecuteAsync(BuildConsumeContext(), TestContext.Current.CancellationToken));
+            await Assert.ThrowsAsync<OperationCanceledException>(() =>
+                executor.ExecuteAsync(BuildConsumeContext(), TestContext.Current.CancellationToken));
+        }
 
-        var act = Assert.Single(stopped);
+        var act = Assert.Single(stopped, a => a.OperationName == "CancellingSaga consume");
         Assert.Equal(ActivityStatusCode.Unset, act.Status);
     }
 

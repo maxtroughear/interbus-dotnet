@@ -18,10 +18,4 @@ public interface IMessageSerializer
 
     /// <summary>Deserialises <paramref name="payload"/> to an instance of <typeparamref name="T"/></summary>
     T? Deserialize<T>(byte[] payload) where T : class;
-
-    /// <summary>Serialises <paramref name="message"/> to a string payload</summary>   
-    // string SerializeToString<T>(T message) where T : class;
-    
-    /// <summary>Deserialises <paramref name="payload"/> to an instance of <typeparamref name="T"/></summary>  
-    // T? DeserializeFromString<T>(string payload) where T : class;
 }

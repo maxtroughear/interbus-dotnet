@@ -3,6 +3,7 @@ using System.Text.Json;
 using Amazon.SimpleNotificationService;
 using Amazon.SimpleNotificationService.Model;
 using Amazon.SQS;
+using Amazon.SQS.Model;
 using InterBus.AmazonSqs.Extensions;
 using InterBus.Extensions;
 using InterBus.Generated;
@@ -99,11 +100,80 @@ public class SnsSerialisedMessageOnSqsTests
     public async Task Consume_SnsSerialisedMessageOnSqs_PullsHeadersFromSnsMessageAttributes()
     {
         var sns = _provider.GetRequiredService<IAmazonSimpleNotificationService>();
+        var sqs = _provider.GetRequiredService<IAmazonSQS>();
         var topologyBuilder = _provider.GetRequiredService<ITopologyBuilder>();
-        await topologyBuilder.BuildTopologyAsync(TestContext.CurrentContext.CancellationToken);
+        var cancellationToken = TestContext.CurrentContext.CancellationToken;
+
+        var queueUrl = await topologyBuilder.EnsureQueueAsync(
+            RoutingConventions.QueueName(typeof(SnsSerialisedOrderPlacedConsumer)),
+            cancellationToken);
+
+        var queueArn = (await sqs.GetQueueAttributesAsync(
+            new GetQueueAttributesRequest { QueueUrl = queueUrl, AttributeNames = ["QueueArn"] },
+            cancellationToken)).QueueARN;
+
         var topicArn = await topologyBuilder.EnsureTopicAsync(
             RoutingConventions.TopicName(typeof(OrderPlaced)),
-            TestContext.CurrentContext.CancellationToken);
+            cancellationToken);
+
+        var policy = JsonSerializer.Serialize(new
+        {
+            Version = "2012-10-17",
+            Statement = new[]
+            {
+                new
+                {
+                    Effect = "Allow",
+                    Principal = new { Service = "sns.amazonaws.com" },
+                    Action = "sqs:SendMessage",
+                    Resource = queueArn,
+                    Condition = new
+                    {
+                        StringEquals = new Dictionary<string, string>
+                        {
+                            ["aws:SourceArn"] = topicArn
+                        }
+                    }
+                }
+            }
+        });
+
+        await sqs.SetQueueAttributesAsync(
+            new SetQueueAttributesRequest
+            {
+                QueueUrl = queueUrl,
+                Attributes = new Dictionary<string, string> { ["Policy"] = policy },
+            },
+            cancellationToken);
+
+        var subscriptions = await sns.ListSubscriptionsByTopicAsync(
+            new ListSubscriptionsByTopicRequest { TopicArn = topicArn },
+            cancellationToken);
+
+        var subscriptionArn = subscriptions.Subscriptions
+            .FirstOrDefault(s => string.Equals(s.Endpoint, queueArn, StringComparison.Ordinal))
+            ?.SubscriptionArn;
+
+        if (string.IsNullOrWhiteSpace(subscriptionArn))
+        {
+            subscriptionArn = (await sns.SubscribeAsync(
+                new SubscribeRequest
+                {
+                    TopicArn = topicArn,
+                    Protocol = "sqs",
+                    Endpoint = queueArn,
+                },
+                cancellationToken)).SubscriptionArn;
+        }
+
+        await sns.SetSubscriptionAttributesAsync(
+            new SetSubscriptionAttributesRequest
+            {
+                SubscriptionArn = subscriptionArn,
+                AttributeName = "RawMessageDelivery",
+                AttributeValue = "false",
+            },
+            cancellationToken);
 
         var order = new OrderPlaced(Guid.NewGuid(), "interop@example.com", 5.20m);
         var payload = JsonSerializer.Serialize(order);
@@ -115,7 +185,7 @@ public class SnsSerialisedMessageOnSqsTests
             {
                 TopicArn = topicArn,
                 Message = payload,
-                MessageAttributes = new Dictionary<string, MessageAttributeValue>
+                MessageAttributes = new Dictionary<string, Amazon.SimpleNotificationService.Model.MessageAttributeValue>
                 {
                     [InterBusHeaders.MessageType] = new() { DataType = "String", StringValue = messageType },
                     [InterBusHeaders.MessageId] = new()

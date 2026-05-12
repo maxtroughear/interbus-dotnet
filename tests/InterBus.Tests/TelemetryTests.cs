@@ -291,12 +291,11 @@ public sealed class TelemetryTests
         var started = new List<Activity>();
         using var listener = BuildListener(onStarted: started.Add);
 
-        var executor = new ConsumerExecutor<NoOpConsumer>(new StubDiagnostics());
         var consumer = new NoOpConsumer();
+        var executor = new ConsumerExecutor<NoOpConsumer, TestMessage>(new StubDiagnostics(), consumer);
         var context = BuildConsumeContext();
 
-        await executor.ExecuteAsync(consumer, new TestMessage(), context,
-            TestContext.Current.CancellationToken);
+        await executor.ExecuteAsync(context, TestContext.Current.CancellationToken);
 
         Assert.Single(started,
             a => a.OperationName == "NoOpConsumer consume" && a.Kind == ActivityKind.Internal);
@@ -308,12 +307,10 @@ public sealed class TelemetryTests
         var stopped = new List<Activity>();
         using var listener = BuildListener(onStopped: stopped.Add);
 
-        var executor = new ConsumerExecutor<NoOpConsumer>(new StubDiagnostics());
-        var consumer = new NoOpConsumer();
+        var executor = new ConsumerExecutor<NoOpConsumer, TestMessage>(new StubDiagnostics(), new NoOpConsumer());
         var context = BuildConsumeContext();
 
-        await executor.ExecuteAsync(consumer, new TestMessage(), context,
-            TestContext.Current.CancellationToken);
+        await executor.ExecuteAsync(context, TestContext.Current.CancellationToken);
 
         var act = Assert.Single(stopped);
         Assert.Equal(ActivityStatusCode.Ok, act.Status);
@@ -325,13 +322,11 @@ public sealed class TelemetryTests
         var stopped = new List<Activity>();
         using var listener = BuildListener(onStopped: stopped.Add);
 
-        var executor = new ConsumerExecutor<ThrowingConsumer>(new StubDiagnostics());
-        var consumer = new ThrowingConsumer();
+        var executor = new ConsumerExecutor<ThrowingConsumer, TestMessage>(new StubDiagnostics(), new ThrowingConsumer());
         var context = BuildConsumeContext();
 
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            executor.ExecuteAsync(consumer, new TestMessage(), context,
-                TestContext.Current.CancellationToken));
+            executor.ExecuteAsync(context, TestContext.Current.CancellationToken));
 
         var act = Assert.Single(stopped);
         Assert.Equal(ActivityStatusCode.Error, act.Status);
@@ -344,13 +339,12 @@ public sealed class TelemetryTests
         var stopped = new List<Activity>();
         using var listener = BuildListener(onStopped: stopped.Add);
 
-        var executor = new ConsumerExecutor<CancellingConsumer>(new StubDiagnostics());
         var consumer = new CancellingConsumer();
+        var executor = new ConsumerExecutor<CancellingConsumer, TestMessage>(new StubDiagnostics(), consumer);
         var context = BuildConsumeContext();
 
         await Assert.ThrowsAsync<OperationCanceledException>(() =>
-            executor.ExecuteAsync(consumer, new TestMessage(), context,
-                TestContext.Current.CancellationToken));
+            executor.ExecuteAsync(context, TestContext.Current.CancellationToken));
 
         var act = Assert.Single(stopped);
         Assert.Equal(ActivityStatusCode.Unset, act.Status);
@@ -366,9 +360,7 @@ public sealed class TelemetryTests
 
         var executor = BuildSagaExecutor<NoOpSaga, NoOpSagaState>();
 
-        await executor.ExecuteAsync<NoOpSaga, TestMessage>(
-            new NoOpSaga(), new TestMessage(), BuildConsumeContext(),
-            TestContext.Current.CancellationToken);
+        await executor.ExecuteAsync(BuildConsumeContext(), TestContext.Current.CancellationToken);
 
         Assert.Single(started,
             a => a.OperationName == "NoOpSaga consume" && a.Kind == ActivityKind.Internal);
@@ -382,9 +374,7 @@ public sealed class TelemetryTests
 
         var executor = BuildSagaExecutor<NoOpSaga, NoOpSagaState>();
 
-        await executor.ExecuteAsync<NoOpSaga, TestMessage>(
-            new NoOpSaga(), new TestMessage(), BuildConsumeContext(),
-            TestContext.Current.CancellationToken);
+        await executor.ExecuteAsync(BuildConsumeContext(), TestContext.Current.CancellationToken);
 
         var act = Assert.Single(stopped);
         Assert.Equal(ActivityStatusCode.Ok, act.Status);
@@ -399,9 +389,7 @@ public sealed class TelemetryTests
         var executor = BuildSagaExecutor<ThrowingSaga, NoOpSagaState>();
 
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            executor.ExecuteAsync<ThrowingSaga, TestMessage>(
-                new ThrowingSaga(), new TestMessage(), BuildConsumeContext(),
-                TestContext.Current.CancellationToken));
+            executor.ExecuteAsync(BuildConsumeContext(), TestContext.Current.CancellationToken));
 
         var act = Assert.Single(stopped);
         Assert.Equal(ActivityStatusCode.Error, act.Status);
@@ -417,9 +405,7 @@ public sealed class TelemetryTests
         var executor = BuildSagaExecutor<CancellingSaga, NoOpSagaState>();
 
         await Assert.ThrowsAsync<OperationCanceledException>(() =>
-            executor.ExecuteAsync<CancellingSaga, TestMessage>(
-                new CancellingSaga(), new TestMessage(), BuildConsumeContext(),
-                TestContext.Current.CancellationToken));
+            executor.ExecuteAsync(BuildConsumeContext(), TestContext.Current.CancellationToken));
 
         var act = Assert.Single(stopped);
         Assert.Equal(ActivityStatusCode.Unset, act.Status);
@@ -449,9 +435,7 @@ public sealed class TelemetryTests
     {
         var descriptor = new ConsumerDescriptor(
             typeof(NoOpConsumer),
-            RoutingConventions.QueueUri("queue", "test-queue"),
-            [typeof(TestMessage)],
-            (_, _, _) => Task.CompletedTask);
+            RoutingConventions.QueueUri("queue", "test-queue"));
 
         return new DispatchContext(descriptor, [], headers ?? new MessageHeaders());
     }
@@ -459,24 +443,23 @@ public sealed class TelemetryTests
     private static string? GetTag(Activity activity, string key) =>
         activity.Tags.FirstOrDefault(t => t.Key == key).Value;
 
-    private static IConsumeContext BuildConsumeContext()
+    private static ConsumeContext<TestMessage> BuildConsumeContext()
     {
         var descriptor = new ConsumerDescriptor(
             typeof(NoOpConsumer),
-            RoutingConventions.QueueUri("queue", "test-queue"),
-            [typeof(TestMessage)],
-            (_, _, _) => Task.CompletedTask);
+            RoutingConventions.QueueUri("queue", "test-queue"));
         return new ConsumeContext<TestMessage>(descriptor, new TestMessage(), new MessageHeaders());
     }
 
-    private static SagaExecutor<TSaga, TState> BuildSagaExecutor<TSaga, TState>()
-        where TSaga : class, ISaga<TState>
+    private static SagaExecutor<TSaga, TState, TestMessage> BuildSagaExecutor<TSaga, TState>()
+        where TSaga : class, ISaga<TState>, ISagaConsumer<TState, TestMessage>, new()
         where TState : class, new()
         => new(
+            new TSaga(),
             new StubSagaRepository<TSaga, TState>(),
             new SagaOptions<TSaga>(),
             new StubDiagnostics(),
-            NullLogger<SagaExecutor<TSaga, TState>>.Instance);
+            NullLogger<SagaExecutor<TSaga, TState, TestMessage>>.Instance);
 
     private sealed record TestMessage;
 

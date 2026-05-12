@@ -12,17 +12,30 @@ public class ConsumerBuilder<TConsumer>(ConsumerDescriptor descriptor, IServiceC
     where TConsumer : class, IConsumer
 {
     public ConsumerBuilder<TConsumer> Consumes<TMessageConsumer, TMessage>()
-        where TMessageConsumer : TConsumer, IConsumer<TMessage>
+        where TMessageConsumer : class, TConsumer, IConsumer<TMessage>
+        where TMessage : class => Consumes<TMessageConsumer, TMessage>
+        (RoutingConventions.MessageTypeString(typeof(TMessage)));
+    
+    public ConsumerBuilder<TConsumer> Consumes<TMessageConsumer, TMessage>(string messageTypeName)
+        where TMessageConsumer : class, TConsumer, IConsumer<TMessage>
         where TMessage : class
     {
         Descriptor.MessageTypes.Add(typeof(TMessage));
+        Descriptor.SetRoute(messageTypeName,
+            static (context, pipeline, ct) => pipeline.ExecuteAsync<TMessageConsumer, TMessage>(context, ct));
 
         Services.TryAddScoped<IConsumerExecutor<TMessageConsumer, TMessage>,
-                ConsumerExecutor<TMessageConsumer, TMessage>>();
+            ConsumerExecutor<TMessageConsumer, TMessage>>();
         
         return this;
     }
 
+    public ConsumerBuilder<TConsumer> MessageTypeFromHeader(string headerName)
+    {
+        Descriptor.MessageTypeHeader = headerName;
+        return this;
+    }
+    
     public ConsumerBuilder<TConsumer> Dispatch(Func<DispatchContext, ConsumePipelineExecutor, IServiceProvider, CancellationToken, Task> dispatch)
     {
         Descriptor.Dispatch = dispatch;

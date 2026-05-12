@@ -47,9 +47,6 @@ public sealed class ConsumerRegistrationGenerator : IIncrementalGenerator
     private const string DispatchModulePrefix = "InterBusConsumerRegistrations_";
     private const string AggregatingClassName = "InterBusConsumerRegistrations";
 
-    private const string DispatchFuncType =
-        "global::System.Func<global::InterBus.Dispatching.DispatchContext, global::InterBus.Consuming.ConsumePipelineExecutor, global::System.IServiceProvider, global::System.Threading.CancellationToken, global::System.Threading.Tasks.Task>";
-
     private static readonly DiagnosticDescriptor MixedSagaStateTypesDiagnostic = new(
         id: "INTERBUS001",
         title: "Saga has mixed state types",
@@ -220,23 +217,19 @@ public sealed class ConsumerRegistrationGenerator : IIncrementalGenerator
         sb.AppendLine("        global::System.ComponentModel.EditorBrowsableState.Never)]");
         sb.AppendLine($"    public static class {moduleName}");
         sb.AppendLine("    {");
-
-        // ── Consumer dispatch table ─────────────────────────────────────────
-        sb.AppendLine("        private static readonly global::System.Collections.Generic.Dictionary<");
-        sb.AppendLine("            global::System.Type,");
-        sb.AppendLine($"            (global::System.Type[] MessageTypes, {DispatchFuncType} Dispatch)>");
-        sb.AppendLine("            _dispatches = new()");
-        sb.AppendLine("        {");
-
-        foreach (var (consumer, messages) in consumers)
+        for (var i = 0; i < consumers.Count; i++)
         {
-            AppendConsumerDispatchBody(sb, consumer, messages);
+            var (consumer, messages) = consumers[i];
+            AppendConsumerConfigureHelper(sb, i, consumer, messages);
         }
 
-        sb.AppendLine("        };");
-        sb.AppendLine();
+        for (var i = 0; i < sagas.Count; i++)
+        {
+            var (saga, stateType, messages) = sagas[i];
+            AppendSagaConfigureHelper(sb, i, saga, stateType, messages);
+        }
 
-        // ── AddConsumers(): statically typed AddConsumer<T> calls ───────────
+        // ── AddConsumers(): statically typed RegisterConsumer<T> calls ───────
         sb.AppendLine("        /// <summary>Adds all consumers defined in this assembly module.</summary>");
         sb.AppendLine("        public static global::InterBus.InterBusBuilder AddConsumers(");
         sb.AppendLine("            this global::InterBus.InterBusBuilder builder)");
@@ -246,36 +239,126 @@ public sealed class ConsumerRegistrationGenerator : IIncrementalGenerator
         {
             var (consumer, _) = consumers[i];
             var consumerFqn = consumer.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
-            sb.AppendLine($"            var e{i} = _dispatches[typeof({consumerFqn})];");
-            sb.AppendLine($"            builder.AddConsumer<{consumerFqn}>(e{i}.MessageTypes, e{i}.Dispatch);");
+            var helperName = GetConsumerConfigureHelperName(i);
+            sb.AppendLine($"            builder.RegisterConsumer<{consumerFqn}>({helperName});");
         }
 
         sb.AppendLine("            return builder;");
         sb.AppendLine("        }");
         sb.AppendLine();
 
-        // ── TryGetDispatch(): individual consumer lookup ────────────────────
+        // ── Consumer auto-configure lookup ───────────────────────────────────
         sb.AppendLine("        /// <summary>");
-        sb.AppendLine("        /// Tries to get the source-generated dispatch for a specific consumer type");
+        sb.AppendLine("        /// Tries to get source-generated Consumes registrations for a specific consumer type");
         sb.AppendLine("        /// </summary>");
-        sb.AppendLine("        public static bool TryGetDispatch(");
-        sb.AppendLine("            global::System.Type consumerType,");
-        sb.AppendLine("            out global::System.Type[] messageTypes,");
-        sb.AppendLine($"            out {DispatchFuncType} dispatch)");
+        sb.AppendLine("        public static bool TryGetConsumerAutoConfigure<");
+        sb.AppendLine("            [global::System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(");
+        sb.AppendLine("                global::System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicConstructors)] TConsumer>(");
+        sb.AppendLine("            out global::System.Action<global::InterBus.Consuming.ConsumerBuilder<TConsumer>>? autoConfigure)");
+        sb.AppendLine("            where TConsumer : class, global::InterBus.IConsumer");
         sb.AppendLine("        {");
-        sb.AppendLine("            if (_dispatches.TryGetValue(consumerType, out var entry))");
-        sb.AppendLine("            {");
-        sb.AppendLine("                messageTypes = entry.MessageTypes;");
-        sb.AppendLine("                dispatch = entry.Dispatch;");
-        sb.AppendLine("                return true;");
-        sb.AppendLine("            }");
-        sb.AppendLine("            messageTypes = global::System.Array.Empty<global::System.Type>();");
-        sb.AppendLine("            dispatch = null!;");
+
+        for (var i = 0; i < consumers.Count; i++)
+        {
+            var (consumer, _) = consumers[i];
+            var consumerFqn = consumer.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+            var helperName = GetConsumerConfigureHelperName(i);
+
+            sb.AppendLine($"            if (typeof(TConsumer) == typeof({consumerFqn}))");
+            sb.AppendLine("            {");
+            sb.AppendLine($"                autoConfigure = static c => {helperName}((global::InterBus.Consuming.ConsumerBuilder<{consumerFqn}>)(object)c);");
+            sb.AppendLine("                return true;");
+            sb.AppendLine("            }");
+        }
+
+        sb.AppendLine("            autoConfigure = null;");
         sb.AppendLine("            return false;");
         sb.AppendLine("        }");
         sb.AppendLine();
-        
+
+        // ── Saga auto-configure lookup ───────────────────────────────────────
+        sb.AppendLine("        /// <summary>");
+        sb.AppendLine("        /// Tries to get source-generated Consumes registrations for a specific saga type");
+        sb.AppendLine("        /// </summary>");
+        sb.AppendLine("        public static bool TryGetSagaAutoConfigure<");
+        sb.AppendLine("            [global::System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(");
+        sb.AppendLine("                global::System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicConstructors)] TSaga,");
+        sb.AppendLine("            TState>(");
+        sb.AppendLine("            out global::System.Action<global::InterBus.Sagas.SagaBuilder<TSaga, TState>>? autoConfigure)");
+        sb.AppendLine("            where TSaga : class, global::InterBus.Sagas.ISaga<TState>");
+        sb.AppendLine("            where TState : class, new()");
+        sb.AppendLine("        {");
+
+        for (var i = 0; i < sagas.Count; i++)
+        {
+            var (saga, stateType, _) = sagas[i];
+            var sagaFqn = saga.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+            var stateFqn = stateType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+            var helperName = GetSagaConfigureHelperName(i);
+
+            sb.AppendLine($"            if (typeof(TSaga) == typeof({sagaFqn}) && typeof(TState) == typeof({stateFqn}))");
+            sb.AppendLine("            {");
+            sb.AppendLine($"                autoConfigure = static c => {helperName}((global::InterBus.Sagas.SagaBuilder<{sagaFqn}, {stateFqn}>)(object)c);");
+            sb.AppendLine("                return true;");
+            sb.AppendLine("            }");
+        }
+
+        sb.AppendLine("            autoConfigure = null;");
+        sb.AppendLine("            return false;");
+        sb.AppendLine("        }");
+        sb.AppendLine();
+
         sb.AppendLine("    }");
+    }
+
+    private static string GetConsumerConfigureHelperName(int index) => $"ConfigureConsumer_{index}";
+
+    private static string GetSagaConfigureHelperName(int index) => $"ConfigureSaga_{index}";
+
+    private static void AppendConsumerConfigureHelper(
+        StringBuilder sb,
+        int index,
+        INamedTypeSymbol consumer,
+        List<INamedTypeSymbol> messages)
+    {
+        var consumerFqn = consumer.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+        var helperName = GetConsumerConfigureHelperName(index);
+
+        sb.AppendLine($"        private static void {helperName}(global::InterBus.Consuming.ConsumerBuilder<{consumerFqn}> c)");
+        sb.AppendLine("        {");
+
+        foreach (var message in messages)
+        {
+            var messageFqn = message.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+            sb.AppendLine($"            c.Consumes<{consumerFqn}, {messageFqn}>();");
+        }
+
+        sb.AppendLine("        }");
+        sb.AppendLine();
+    }
+
+    private static void AppendSagaConfigureHelper(
+        StringBuilder sb,
+        int index,
+        INamedTypeSymbol saga,
+        INamedTypeSymbol stateType,
+        List<INamedTypeSymbol> messages)
+    {
+        var sagaFqn = saga.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+        var stateFqn = stateType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+        var helperName = GetSagaConfigureHelperName(index);
+
+        sb.AppendLine($"        private static void {helperName}(global::InterBus.Sagas.SagaBuilder<{sagaFqn}, {stateFqn}> c)");
+        sb.AppendLine("        {");
+
+        foreach (var message in messages)
+        {
+            var messageFqn = message.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+            sb.AppendLine($"            c.Consumes<{sagaFqn}, {messageFqn}>();");
+        }
+
+        sb.AppendLine("        }");
+        sb.AppendLine();
     }
 
     private static void AppendAggregatingClass(StringBuilder sb, List<string> allModuleNames)
@@ -288,14 +371,45 @@ public sealed class ConsumerRegistrationGenerator : IIncrementalGenerator
         sb.AppendLine($"    internal static class {AggregatingClassName}");
         sb.AppendLine("    {");
 
+        sb.AppendLine("        private static global::System.Action<global::InterBus.Consuming.ConsumerBuilder<TConsumer>>? ComposeConsumerConfigure<TConsumer>(");
+        sb.AppendLine("            global::System.Action<global::InterBus.Consuming.ConsumerBuilder<TConsumer>>? autoConfigure,");
+        sb.AppendLine("            global::System.Action<global::InterBus.Consuming.ConsumerBuilder<TConsumer>>? userConfigure)");
+        sb.AppendLine("            where TConsumer : class, global::InterBus.IConsumer");
+        sb.AppendLine("        {");
+        sb.AppendLine("            if (autoConfigure is null) return userConfigure;");
+        sb.AppendLine("            if (userConfigure is null) return autoConfigure;");
+        sb.AppendLine("            return c =>");
+        sb.AppendLine("            {");
+        sb.AppendLine("                autoConfigure(c);");
+        sb.AppendLine("                userConfigure(c);");
+        sb.AppendLine("            };");
+        sb.AppendLine("        }");
+        sb.AppendLine();
+
+        sb.AppendLine("        private static global::System.Action<global::InterBus.Sagas.SagaBuilder<TSaga, TState>>? ComposeSagaConfigure<TSaga, TState>(");
+        sb.AppendLine("            global::System.Action<global::InterBus.Sagas.SagaBuilder<TSaga, TState>>? autoConfigure,");
+        sb.AppendLine("            global::System.Action<global::InterBus.Sagas.SagaBuilder<TSaga, TState>>? userConfigure)");
+        sb.AppendLine("            where TSaga : class, global::InterBus.Sagas.ISaga<TState>");
+        sb.AppendLine("            where TState : class, new()");
+        sb.AppendLine("        {");
+        sb.AppendLine("            if (autoConfigure is null) return userConfigure;");
+        sb.AppendLine("            if (userConfigure is null) return autoConfigure;");
+        sb.AppendLine("            return c =>");
+        sb.AppendLine("            {");
+        sb.AppendLine("                autoConfigure(c);");
+        sb.AppendLine("                userConfigure(c);");
+        sb.AppendLine("            };");
+        sb.AppendLine("        }");
+        sb.AppendLine();
+
         // ── AddConsumer<TConsumer>(configure) ───────────────────────────────
         sb.AppendLine("        /// <summary>");
-        sb.AppendLine("        /// Register a specific consumer by its type using the source-generated dispatch delegate.");
+        sb.AppendLine("        /// Register a specific consumer by its type using source-generated Consumes registrations.");
         sb.AppendLine("        /// </summary>");
         sb.AppendLine("        /// <typeparam name=\"TConsumer\">The consumer type to register. Must be an <c>IConsumer&lt;T&gt;</c>");
         sb.AppendLine("        /// implementation discovered by the source generator in this assembly or a referenced one.</typeparam>");
         sb.AppendLine("        /// <param name=\"builder\">The <see cref=\"global::InterBus.InterBusBuilder\"/> to register the consumer with</param>");
-        sb.AppendLine("        /// <param name=\"configure\">The <paramref name=\"configure\"/> delegate is invoked immediately after registration, allowing per-consumer options such as concurrent dispatch to be set inline</param>");
+        sb.AppendLine("        /// <param name=\"configure\">Optional user configuration applied after generated Consumes registrations</param>");
         sb.AppendLine("        /// <returns>The same builder instance for fluent chaining</returns>");
         sb.AppendLine("        /// <exception cref=\"global::System.InvalidOperationException\">Thrown when <typeparamref name=\"TConsumer\"/> was not");
         sb.AppendLine("        /// found in any dispatch module. Ensure the consumer implements <c>IConsumer&lt;T&gt;</c> and");
@@ -308,18 +422,14 @@ public sealed class ConsumerRegistrationGenerator : IIncrementalGenerator
         sb.AppendLine("            where TConsumer : class, global::InterBus.IConsumer");
         sb.AppendLine("        {");
 
-        // TODO: Fix message type registration, currently requires .Consumes<Consumer, Message>()
-        //       to be called on the builder, may not be viable for all registration. m{i} is message array
-        
         for (var i = 0; i < allModuleNames.Count; i++)
         {
-            sb.AppendLine($"            if (global::{GeneratedNamespace}.{allModuleNames[i]}.TryGetDispatch(");
-            sb.AppendLine($"                    typeof(TConsumer), out var m{i}, out var d{i}))");
-            sb.AppendLine($"                return builder.AddConsumer<TConsumer>(d{i}, configure);");
+            sb.AppendLine($"            if (global::{GeneratedNamespace}.{allModuleNames[i]}.TryGetConsumerAutoConfigure<TConsumer>(out var a{i}))");
+            sb.AppendLine($"                return builder.RegisterConsumer<TConsumer>(ComposeConsumerConfigure(a{i}, configure));");
         }
 
         sb.AppendLine("            throw new global::System.InvalidOperationException(");
-        sb.AppendLine("                $\"No source-generated dispatch found for consumer type '{typeof(TConsumer).FullName}'. \"");
+        sb.AppendLine("                $\"No source-generated registration found for consumer type '{typeof(TConsumer).FullName}'. \"");
         sb.AppendLine("                + \"Ensure the consumer implements IConsumer<T> and InterBus.SourceGenerator is referenced \"");
         sb.AppendLine("                + \"in the assembly that defines it.\");");
         sb.AppendLine("        }");
@@ -327,7 +437,7 @@ public sealed class ConsumerRegistrationGenerator : IIncrementalGenerator
 
         // ── AddSaga<TSaga, TState>(configure) ───────────────────────────────
         sb.AppendLine("        /// <summary>");
-        sb.AppendLine("        /// Register a specific saga by its type using the source-generated dispatch delegate.");
+        sb.AppendLine("        /// Register a specific saga by its type using source-generated Consumes registrations.");
         sb.AppendLine("        /// </summary>");
         sb.AppendLine("        /// <remarks>");
         sb.AppendLine("        /// The <paramref name=\"configure\"/> delegate must configure the saga repository");
@@ -346,51 +456,16 @@ public sealed class ConsumerRegistrationGenerator : IIncrementalGenerator
 
         for (var i = 0; i < allModuleNames.Count; i++)
         {
-            sb.AppendLine($"            if (global::{GeneratedNamespace}.{allModuleNames[i]}.TryGetSagaDispatch(");
-            sb.AppendLine($"                    typeof(TSaga), out var ms{i}, out var ds{i}))");
-            sb.AppendLine($"                return builder.AddSaga<TSaga, TState>(ms{i}, ds{i}, configure);");
+            sb.AppendLine($"            if (global::{GeneratedNamespace}.{allModuleNames[i]}.TryGetSagaAutoConfigure<TSaga, TState>(out var a{i}))");
+            sb.AppendLine($"                return builder.RegisterSaga<TSaga, TState>(ComposeSagaConfigure(a{i}, configure));");
         }
 
         sb.AppendLine("            throw new global::System.InvalidOperationException(");
-        sb.AppendLine("                $\"No source-generated dispatch found for saga type '{typeof(TSaga).FullName}'. \"");
+        sb.AppendLine("                $\"No source-generated registration found for saga type '{typeof(TSaga).FullName}'. \"");
         sb.AppendLine("                + \"Ensure the saga implements ISagaConsumer<TState, TMessage> and InterBus.SourceGenerator is referenced \"");
         sb.AppendLine("                + \"in the assembly that defines it.\");");
         sb.AppendLine("        }");
         sb.AppendLine("    }");
-    }
-
-    private static void AppendConsumerDispatchBody(
-        StringBuilder sb,
-        INamedTypeSymbol consumer,
-        List<INamedTypeSymbol> messages)
-    {
-        var consumerFqn = consumer.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
-
-        var consumerTypes = string.Join(", ",
-            messages.Select(m => $"typeof({m.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)})"));
-
-        sb.AppendLine($"            [typeof({consumerFqn})] = (");
-        sb.AppendLine($"                new global::System.Type[] {{ {consumerTypes} }},");
-        sb.AppendLine("                static (context, pipeline, sp, ct) =>");
-        sb.AppendLine("                {");
-        sb.AppendLine("                    if (!context.Headers.TryGetValue(global::InterBus.InterBusHeaders.MessageType, out var msgType))");
-        sb.AppendLine("                        throw new global::System.InvalidOperationException(");
-        sb.AppendLine($"                            $\"InterBus: message received without {{(global::InterBus.InterBusHeaders.MessageType)}} header for consumer {consumer.Name}\");");
-
-        foreach (var message in messages)
-        {
-            var messageFqn = message.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
-            var messageFullName = message.ToDisplayString();
-
-            sb.AppendLine($"                    if (msgType == \"{messageFullName}\")");
-            sb.AppendLine("                    {");
-            sb.AppendLine($"                        return pipeline.ExecuteAsync<{consumerFqn}, {messageFqn}>(context, ct);");
-            sb.AppendLine("                    }");
-        }
-
-        sb.AppendLine("                    throw new global::System.InvalidOperationException(");
-        sb.AppendLine($"                        $\"InterBus: consumer {consumer.Name} does not handle message type {{msgType}}\");");
-        sb.AppendLine("                }),");
     }
 
     /// <summary>

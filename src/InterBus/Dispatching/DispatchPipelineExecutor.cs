@@ -1,6 +1,5 @@
 using InterBus.Consuming;
 using InterBus.Middleware;
-using Microsoft.Extensions.DependencyInjection;
 
 namespace InterBus.Dispatching;
 

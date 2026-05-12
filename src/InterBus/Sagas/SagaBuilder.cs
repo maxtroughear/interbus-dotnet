@@ -28,14 +28,22 @@ public sealed class SagaBuilder<TSaga, TState>(
         options.TimeToLive = ttl;
         return this;
     }
+    
+    public new SagaBuilder<TSaga, TState> Consumes<TSagaConsumer, TMessage>()
+        where TSagaConsumer : class, TSaga, ISagaConsumer<TState, TMessage>
+        where TMessage : class
+         => Consumes<TSagaConsumer, TMessage>
+        (RoutingConventions.MessageTypeString(typeof(TMessage)));
 
-    public new ConsumerBuilder Consumes<TSagaConsumer, TMessage>()
-        where TSagaConsumer : TSaga, ISagaConsumer<TState, TMessage>
+    public new SagaBuilder<TSaga, TState> Consumes<TSagaConsumer, TMessage>(string messageTypeName)
+        where TSagaConsumer : class, TSaga, ISagaConsumer<TState, TMessage>
         where TMessage : class
     {
         Descriptor.MessageTypes.Add(typeof(TMessage));
+        Descriptor.SetRoute(messageTypeName,
+            static (context, pipeline, ct) => pipeline.ExecuteAsync<TSagaConsumer, TMessage>(context, ct));
 
-        Services.TryAddScoped<IConsumerExecutor<TSagaConsumer, TMessage>, 
+        Services.TryAddScoped<IConsumerExecutor<TSagaConsumer, TMessage>,
             SagaExecutor<TSagaConsumer, TState, TMessage>>();
 
         return this;

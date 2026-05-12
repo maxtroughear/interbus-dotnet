@@ -2,7 +2,6 @@ using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using InterBus.Consuming;
 using InterBus.DeadLettering;
-using InterBus.Dispatching;
 using InterBus.Internal;
 using InterBus.Logging;
 using InterBus.Publishing;
@@ -45,21 +44,25 @@ public sealed class InterBusBuilder
     }
 
     /// <summary>
-    /// Register a consumer with a source-generated dispatch delegate and an optional
+    /// Register a consumer and build dispatch from configured routes.
+    /// This is the low-level registration API used by source-generated extensions.
+    ///
+    /// Use generated <c>AddConsumer&lt;TConsumer&gt;(...)</c> for automatic <c>Consumes</c>
+    /// registrations when available.
+    ///
+    /// Register a consumer with an optional
     /// consumer-level configuration delegate.
     /// The <paramref name="configure"/> delegate is invoked immediately after registration,
     /// allowing per-consumer options such as concurrent dispatch to be set inline.
     /// </summary>
-    public InterBusBuilder AddConsumer<
+    public InterBusBuilder RegisterConsumer<
         [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
-        TConsumer>(
-        Func<DispatchContext, ConsumePipelineExecutor, IServiceProvider, CancellationToken, Task> dispatch,
-        Action<ConsumerBuilder<TConsumer>>? configure = null)
+        TConsumer>(Action<ConsumerBuilder<TConsumer>>? configure = null)
         where TConsumer : class, IConsumer
     {
         var queue = RoutingConventions.QueueUri(Options.QueueUriScheme, typeof(TConsumer));
         
-        var descriptor = new ConsumerDescriptor(typeof(TConsumer), queue, dispatch);
+        var descriptor = new ConsumerDescriptor(typeof(TConsumer), queue);
         var consumerBuilder = new ConsumerBuilder<TConsumer>(descriptor, Services);
 
         // Telemetry must be the outermost dispatch and publish middleware.
@@ -70,6 +73,8 @@ public sealed class InterBusBuilder
         consumerBuilder.UseConsumeMiddleware<ExceptionLoggingConsumeMiddleware>();
 
         configure?.Invoke(consumerBuilder);
+
+        descriptor.BuildDispatchFromRoutesIfMissing();
 
         Options.AddConsumer(descriptor);
         Services.TryAddScoped<TConsumer>();
@@ -99,26 +104,26 @@ public sealed class InterBusBuilder
     }
 
     /// <summary>
-    /// Register a saga with a source-generated dispatch delegate.
-    /// Called by the source-generated <c>AddSaga&lt;TSaga, TState&gt;(configure)</c> extension
-    /// method after it looks up the dispatch delegate from the per-assembly dispatch module.
+    /// Register a saga and build dispatch from configured routes.
+    /// This is the low-level registration API used by source-generated extensions.
+    ///
+    /// Use generated <c>AddSaga&lt;TSaga, TState&gt;(...)</c> for automatic <c>Consumes</c>
+    /// registrations when available.
     /// </summary>
     /// <remarks>
     /// The <paramref name="configure"/> delegate is invoked immediately after registration.
     /// Use it to configure the saga repository (e.g. <c>saga.UseInMemoryRepository()</c>),
     /// time-to-live, concurrency, or additional middleware.
     /// </remarks>
-    public InterBusBuilder AddSaga<
+    public InterBusBuilder RegisterSaga<
         [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
         TSaga,
-        TState>(
-        Func<DispatchContext, ConsumePipelineExecutor, IServiceProvider, CancellationToken, Task> dispatch,
-        Action<SagaBuilder<TSaga, TState>>? configure = null)
+        TState>(Action<SagaBuilder<TSaga, TState>>? configure = null)
         where TSaga : class, ISaga<TState>
         where TState : class, new()
     {
         var queue = RoutingConventions.QueueUri(Options.QueueUriScheme, typeof(TSaga));
-        var descriptor = new ConsumerDescriptor(typeof(TSaga), queue, dispatch);
+        var descriptor = new ConsumerDescriptor(typeof(TSaga), queue);
         var sagaOptions = new SagaOptions<TSaga>();
         var sagaBuilder = new SagaBuilder<TSaga, TState>(descriptor, Services, sagaOptions);
 
@@ -131,6 +136,8 @@ public sealed class InterBusBuilder
         sagaBuilder.UseConsumeMiddleware<ExceptionLoggingConsumeMiddleware>();
 
         configure?.Invoke(sagaBuilder);
+
+        descriptor.BuildDispatchFromRoutesIfMissing();
 
         Services.AddSingleton(sagaOptions);
         Options.AddConsumer(descriptor);

@@ -6,8 +6,6 @@ namespace InterBus.Consuming;
 /// <summary>
 /// DI-registered consumer executor responsible for invoking the app's
 /// <see cref="IConsumer{TMessage}.Consume"/> method within a traced child activity.
-/// Registered as a scoped service by <see cref="InterBusBuilder.AddConsumer{TConsumer}"/>;
-/// dependencies are resolved from the container without any runtime reflection in the hot path.
 /// </summary>
 /// <typeparam name="TConsumer">The consumer type</typeparam>
 /// <typeparam name="TMessage">The message type</typeparam>

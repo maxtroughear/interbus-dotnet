@@ -9,9 +9,7 @@ public class DeadLetterConsumeMiddlewareTests
 {
     private static ConsumerDescriptor CreateDescriptor() =>
         new(typeof(TestConsumer),
-            new Uri("testqueue://dead-letter-consumer"),
-            [typeof(TestMessage)],
-            (_, _, _) => Task.CompletedTask);
+            new Uri("testqueue://dead-letter-consumer"));
 
     [Fact]
     public async Task InvokeAsync_WhenUnhandledException_ThrowsDeadLetterExceptionAndSetsHeaders()
@@ -59,9 +57,7 @@ public class DeadLetterConsumeMiddlewareTests
         var middleware = new DeadLetterConsumeMiddleware(publisher);
         var descriptor = new ConsumerDescriptor(
             typeof(TestConsumer),
-            new Uri("testqueue://dead-letter-consumer"),
-            [typeof(DeadLetter<TestMessage>)],
-            (_, _, _) => Task.CompletedTask);
+            new Uri("testqueue://dead-letter-consumer"));
         var deadLetterMessage = new DeadLetter<TestMessage>
         {
             OriginalMessage = new TestMessage(),

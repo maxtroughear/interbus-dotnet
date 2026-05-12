@@ -499,10 +499,10 @@ public class OutboxTests
                 var context = new ConsumeContext<OrderPlaced>(
                     descriptor, new OrderPlaced(orderId, "consumer@example.com", 10m), headers);
 
-                await executor.ExecuteAsync(context, (msg, ctx, ct) =>
+                await executor.ExecuteAsync(context, (ctx, ct) =>
                 {
                     var consumer = scope.ServiceProvider.GetRequiredService<OrderPlacedPublishingConsumer>();
-                    return consumer.Consume(msg, ctx, ct);
+                    return consumer.Consume(ctx.Message, ctx, ct);
                 }, TestContext.Current.CancellationToken);
 
                 // Outbox entry was written then immediately delivered and deleted — DB should be empty.
@@ -561,10 +561,10 @@ public class OutboxTests
                 var context = new ConsumeContext<OrderPlaced>(
                     descriptor, new OrderPlaced(orderId, "consumer@example.com", 10m), headers);
 
-                await executor.ExecuteAsync(context, (msg, ctx, ct) =>
+                await executor.ExecuteAsync(context, (ctx, ct) =>
                 {
                     var consumer = scope.ServiceProvider.GetRequiredService<OrderPlacedPublishingConsumer>();
-                    return consumer.Consume(msg, ctx, ct);
+                    return consumer.Consume(ctx.Message, ctx, ct);
                 }, TestContext.Current.CancellationToken);
             }
 
@@ -610,10 +610,10 @@ public class OutboxTests
             var context = new ConsumeContext<OrderPlaced>(
                 descriptor, new OrderPlaced(orderId, "fallback@example.com", 10m), headers);
 
-            await executor.ExecuteAsync(context, (msg, ctx, ct) =>
+            await executor.ExecuteAsync(context, (ctx, ct) =>
             {
                 var consumer = scope.ServiceProvider.GetRequiredService<OrderPlacedPublishingConsumer>();
-                return consumer.Consume(msg, ctx, ct);
+                return consumer.Consume(ctx.Message, ctx, ct);
             }, TestContext.Current.CancellationToken);
 
             // Inline delivery failed — outbox entry should remain with VisibleAt in the future.
@@ -711,11 +711,11 @@ public class OutboxTests
                 // to the transport instead of buffering it in the outbox.
                 try
                 {
-                    await executor.ExecuteAsync(context, (msg, ctx, ct) =>
+                    await executor.ExecuteAsync(context, (ctx, ct) =>
                     {
                         var consumer = scope.ServiceProvider
                             .GetRequiredService<FaultingOrderPlacedConsumerWithOutbox>();
-                        return consumer.Consume(msg, ctx, ct);
+                        return consumer.Consume(ctx.Message, ctx, ct);
                     }, TestContext.Current.CancellationToken);
                 }
                 catch (DeadLetterException)

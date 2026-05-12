@@ -17,9 +17,7 @@ public sealed class RedeliverySchedulingMiddlewareTests
         BuildContext<TestMessage>(
             new ConsumerDescriptor(
                 typeof(NoOpConsumer),
-                RoutingConventions.QueueUri("queue", "test-queue"),
-                [typeof(TestMessage)],
-                (_, _, _) => Task.CompletedTask),
+                RoutingConventions.QueueUri("queue", "test-queue")),
             headers ?? []);
 
     private static ConsumeContext<T> BuildContext<T>(ConsumerDescriptor descriptor, MessageHeaders headers)

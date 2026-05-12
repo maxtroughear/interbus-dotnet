@@ -18,9 +18,7 @@ public sealed class TopologyBuilderTests
         {
             bus.Services.AddSingleton<ITransport, NoOpTransport>();
             bus.Services.AddSingleton<ITopologyBuilder>(topologyBuilder);
-            bus.AddConsumer<TestConsumer>(
-                [typeof(TestMessage)],
-                static (_, _, _) => Task.CompletedTask);
+            bus.RegisterConsumer<TestConsumer>(c => c.Consumes<TestConsumer, TestMessage>());
         });
 
         await using var provider = services.BuildServiceProvider();

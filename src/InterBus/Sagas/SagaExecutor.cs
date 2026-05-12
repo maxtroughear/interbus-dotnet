@@ -9,9 +9,6 @@ namespace InterBus.Sagas;
 /// DI-registered saga executor responsible for the correlation-based locking, state
 /// loading/creation, execution, and persistence lifecycle for a specific
 /// <typeparamref name="TSaga"/> / <typeparamref name="TState"/> pair.
-/// Registered as a scoped service by <see cref="InterBusBuilder.AddSaga{TSaga,TState}"/>;
-/// dependencies are resolved from the container without any runtime reflection in the
-/// hot path.
 /// </summary>
 /// <typeparam name="TSaga">The saga type</typeparam>
 /// <typeparam name="TState">The saga state type</typeparam>
@@ -65,8 +62,7 @@ public sealed partial class SagaExecutor<TSaga, TState, TMessage>(
         var sagaCtx = new SagaContext<TState>(entry, context);
 
         using var activity = diagnostics.ActivitySource.StartActivity(
-            $"{typeof(TSaga).Name} consume",
-            ActivityKind.Internal);
+            $"{typeof(TSaga).Name} consume");
         try
         {
             await saga.Consume(context.Message, sagaCtx, cancellationToken);

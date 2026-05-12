@@ -56,7 +56,7 @@ public sealed class SnsSerialisedMessageEnvelope : ISnsSqsMessageEnvelope
 
 internal sealed record SnsNotificationEnvelopeBody(
     [property: JsonPropertyName("Message")] string? Message,
-    [property: JsonPropertyName("MessageAttributes")] Dictionary<string, SnsNotificationAttributeBody>? MessageAttributes);
+    [property: JsonPropertyName("MessageAttributes")] Dictionary<string, SnsNotificationAttributeBody?>? MessageAttributes);
 
 internal sealed record SnsNotificationAttributeBody(
     [property: JsonPropertyName("Type")] string? Type,

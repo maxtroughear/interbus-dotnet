@@ -1,5 +1,6 @@
 namespace InterBus.Consuming;
 
+// ReSharper disable once UnusedTypeParameter
 public interface IConsumerExecutor<TConsumer, TMessage>
     where TConsumer : IConsume<TMessage>
     where TMessage : class

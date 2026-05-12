@@ -75,7 +75,6 @@ public sealed class EventBridgeSchedulerTests
         _topologyBuilder = new SnsSqsTopologyBuilder(
             SnsClient, SqsClient,
             _serviceProvider.GetRequiredService<IAmazonSecurityTokenService>(),
-            _serviceProvider,
             _topology,
             transportOptions,
             new InterBusOptions(),

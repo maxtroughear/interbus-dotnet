@@ -379,9 +379,9 @@ public class DynamoDbOutboxTests
                 var outboxContext = scope.ServiceProvider.GetRequiredService<IDynamoDbOutboxContext>();
 
                 // Register a business DynamoDB write.
-                outboxContext.AddTransactItem(new Amazon.DynamoDBv2.Model.TransactWriteItem
+                outboxContext.AddTransactItem(new TransactWriteItem
                 {
-                    Put = new Amazon.DynamoDBv2.Model.Put
+                    Put = new Put
                     {
                         TableName = businessTable,
                         Item = new Dictionary<string, AttributeValue>

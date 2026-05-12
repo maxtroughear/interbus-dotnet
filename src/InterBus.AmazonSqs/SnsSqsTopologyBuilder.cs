@@ -8,7 +8,6 @@ using Amazon.SimpleNotificationService.Model;
 using Amazon.SQS;
 using Amazon.SQS.Model;
 using InterBus.Consuming;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 namespace InterBus.AmazonSqs;
@@ -22,7 +21,6 @@ public sealed partial class SnsSqsTopologyBuilder(
     IAmazonSimpleNotificationService snsClient,
     IAmazonSQS sqsClient,
     IAmazonSecurityTokenService stsClient,
-    IServiceProvider serviceProvider,
     SnsSqsTopology topology,
     SnsSqsTransportOptions transportOptions,
     InterBusOptions busOptions,
@@ -129,9 +127,6 @@ public sealed partial class SnsSqsTopologyBuilder(
                     "InterBus AmazonSqs: declared SNS topic {TopicName}, ARN {TopicArn}",
                     topicName,
                     topicArn);
-
-                var envelope = serviceProvider.GetKeyedService<ISnsSqsMessageEnvelope>(descriptor.ConsumerType)
-                               ?? serviceProvider.GetRequiredService<ISnsSqsMessageEnvelope>();
 
                 var subscribeResponse = await snsClient.SubscribeAsync(
                     new SubscribeRequest

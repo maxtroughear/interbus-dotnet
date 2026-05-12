@@ -1,7 +1,5 @@
 namespace InterBus;
 
-public interface IConsume<in T>;
-
 /// <summary>
 /// Marker interface for consumer discovery and registration. Do not implement directly; implement <see cref="IConsumer{T}"/>.
 /// </summary>

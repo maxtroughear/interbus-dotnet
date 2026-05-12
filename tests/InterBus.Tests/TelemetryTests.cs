@@ -88,7 +88,7 @@ public sealed class TelemetryTests
                 TestContext.Current.CancellationToken);
         }
 
-        Assert.Single(started, a => a.OperationName == "NoOpConsumer process" && a.Kind == ActivityKind.Consumer);
+        Assert.Single(started, a => a is { OperationName: "NoOpConsumer process", Kind: ActivityKind.Consumer });
     }
 
     [Fact]
@@ -320,7 +320,7 @@ public sealed class TelemetryTests
         }
 
         Assert.Single(started,
-            a => a.OperationName == "NoOpConsumer consume" && a.Kind == ActivityKind.Internal);
+            a => a is { OperationName: "NoOpConsumer consume", Kind: ActivityKind.Internal });
     }
 
     [Fact]
@@ -394,7 +394,7 @@ public sealed class TelemetryTests
         }
 
         Assert.Single(started,
-            a => a.OperationName == "NoOpSaga consume" && a.Kind == ActivityKind.Internal);
+            a => a is { OperationName: "NoOpSaga consume", Kind: ActivityKind.Internal });
     }
 
     [Fact]
@@ -457,7 +457,7 @@ public sealed class TelemetryTests
         var listener = new ActivityListener
         {
             ShouldListenTo = src => src.Name == InterBusTelemetry.ActivitySourceName,
-            Sample = (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllDataAndRecorded,
+            Sample = (ref _) => ActivitySamplingResult.AllDataAndRecorded,
         };
         if (onStarted is not null) listener.ActivityStarted = onStarted;
         if (onStopped is not null) listener.ActivityStopped = onStopped;

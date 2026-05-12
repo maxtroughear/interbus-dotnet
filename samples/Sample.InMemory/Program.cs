@@ -17,21 +17,9 @@ builder.Services.AddInterBus(bus =>
     bus.AddConsumer<GreetingConsumer>();
     bus.AddConsumer<FarewellConsumer>();
     bus.AddConsumer<EavesDroppingConsumer>();
-    bus.AddConsumer<GreetingConsumer>(c =>
-    {
-        c.MessageTypeFromHeader("x-type");
-        c.Consumes<GreetingConsumer, GreetingMessage>();
-    });
     bus.AddSaga<GreetingSaga, GreetingSagaState>(c =>
     {
         c.UseInMemoryRepository();
-        // c.MessageTypeFromHeader("x-type");
-        // c.Consumes<GreetingSaga, GreetingMessage>();
-    });
-    bus.AddConsumer<GreetingConsumer>(c =>
-    {
-        c.Dispatch((context, executor, _, ct) =>
-            executor.ExecuteAsync<GreetingConsumer, GreetingMessage>(context, ct));
     });
 });
 

@@ -151,7 +151,9 @@ public class SnsSerialisedMessageOnSqsTests
             cancellationToken);
 
         var subscriptionArn = subscriptions.Subscriptions
-            .FirstOrDefault(s => string.Equals(s.Endpoint, queueArn, StringComparison.Ordinal))
+            .FirstOrDefault(s =>
+                string.Equals(s.Endpoint, queueArn, StringComparison.Ordinal)
+                && !string.Equals(s.SubscriptionArn, "PendingConfirmation", StringComparison.Ordinal))
             ?.SubscriptionArn;
 
         if (string.IsNullOrWhiteSpace(subscriptionArn))
@@ -162,14 +164,30 @@ public class SnsSerialisedMessageOnSqsTests
                     TopicArn = topicArn,
                     Protocol = "sqs",
                     Endpoint = queueArn,
+                    Attributes = new Dictionary<string, string> { ["RawMessageDelivery"] = "false" },
                 },
                 cancellationToken)).SubscriptionArn;
         }
 
+        if (string.Equals(subscriptionArn, "PendingConfirmation", StringComparison.Ordinal))
+        {
+            var refreshed = await sns.ListSubscriptionsByTopicAsync(
+                new ListSubscriptionsByTopicRequest { TopicArn = topicArn },
+                cancellationToken);
+
+            subscriptionArn = refreshed.Subscriptions
+                .FirstOrDefault(s =>
+                    string.Equals(s.Endpoint, queueArn, StringComparison.Ordinal)
+                    && !string.Equals(s.SubscriptionArn, "PendingConfirmation", StringComparison.Ordinal))
+                ?.SubscriptionArn;
+        }
+
+        Assert.That(subscriptionArn, Is.Not.Null.And.Not.EqualTo("PendingConfirmation"));
+
         await sns.SetSubscriptionAttributesAsync(
             new SetSubscriptionAttributesRequest
             {
-                SubscriptionArn = subscriptionArn,
+                SubscriptionArn = subscriptionArn!,
                 AttributeName = "RawMessageDelivery",
                 AttributeValue = "false",
             },

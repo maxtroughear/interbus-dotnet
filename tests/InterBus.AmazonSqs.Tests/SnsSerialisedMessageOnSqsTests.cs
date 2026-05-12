@@ -11,6 +11,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Testcontainers.LocalStack;
+using SnsMessageAttributeValue = Amazon.SimpleNotificationService.Model.MessageAttributeValue;
 
 namespace InterBus.AmazonSqs.Tests;
 
@@ -146,15 +147,20 @@ public class SnsSerialisedMessageOnSqsTests
             },
             cancellationToken);
 
+        static string? FindConfirmedSubscriptionArn(
+            List<Subscription> subscriptions,
+            string queueArnValue) =>
+            subscriptions
+                .FirstOrDefault(s =>
+                    string.Equals(s.Endpoint, queueArnValue, StringComparison.Ordinal)
+                    && !string.Equals(s.SubscriptionArn, "PendingConfirmation", StringComparison.Ordinal))
+                ?.SubscriptionArn;
+
         var subscriptions = await sns.ListSubscriptionsByTopicAsync(
             new ListSubscriptionsByTopicRequest { TopicArn = topicArn },
             cancellationToken);
 
-        var subscriptionArn = subscriptions.Subscriptions
-            .FirstOrDefault(s =>
-                string.Equals(s.Endpoint, queueArn, StringComparison.Ordinal)
-                && !string.Equals(s.SubscriptionArn, "PendingConfirmation", StringComparison.Ordinal))
-            ?.SubscriptionArn;
+        var subscriptionArn = FindConfirmedSubscriptionArn(subscriptions.Subscriptions, queueArn);
 
         if (string.IsNullOrWhiteSpace(subscriptionArn))
         {
@@ -175,11 +181,7 @@ public class SnsSerialisedMessageOnSqsTests
                 new ListSubscriptionsByTopicRequest { TopicArn = topicArn },
                 cancellationToken);
 
-            subscriptionArn = refreshed.Subscriptions
-                .FirstOrDefault(s =>
-                    string.Equals(s.Endpoint, queueArn, StringComparison.Ordinal)
-                    && !string.Equals(s.SubscriptionArn, "PendingConfirmation", StringComparison.Ordinal))
-                ?.SubscriptionArn;
+            subscriptionArn = FindConfirmedSubscriptionArn(refreshed.Subscriptions, queueArn);
         }
 
         Assert.That(subscriptionArn, Is.Not.Null.And.Not.EqualTo("PendingConfirmation"));
@@ -203,7 +205,7 @@ public class SnsSerialisedMessageOnSqsTests
             {
                 TopicArn = topicArn,
                 Message = payload,
-                MessageAttributes = new Dictionary<string, Amazon.SimpleNotificationService.Model.MessageAttributeValue>
+                MessageAttributes = new Dictionary<string, SnsMessageAttributeValue>
                 {
                     [InterBusHeaders.MessageType] = new() { DataType = "String", StringValue = messageType },
                     [InterBusHeaders.MessageId] = new()

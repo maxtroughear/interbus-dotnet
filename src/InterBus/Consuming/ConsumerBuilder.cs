@@ -145,18 +145,4 @@ public class ConsumerBuilder(ConsumerDescriptor descriptor, IServiceCollection s
         services.AddKeyedScoped<IDispatchMiddleware, TMiddleware>(descriptor.ConsumerType);
         return this;
     }
-
-    /// <summary>
-    /// Registers a consumer-specific serializer resolved by keyed DI using this consumer
-    /// type as the key.
-    /// </summary>
-    public ConsumerBuilder UseMessageSerializer<
-        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
-        TSerializer>()
-        where TSerializer : class, IMessageSerializer
-    {
-        services.AddKeyedSingleton<IMessageSerializer, TSerializer>(descriptor.ConsumerType);
-
-        return this;
-    }
 }

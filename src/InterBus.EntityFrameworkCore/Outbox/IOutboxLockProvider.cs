@@ -1,6 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 
-namespace InterBus.EntityFrameworkCore;
+namespace InterBus.EntityFrameworkCore.Outbox;
 
 /// <summary>
 /// Provides the database-specific strategy for fetching and locking a group of pending outbox

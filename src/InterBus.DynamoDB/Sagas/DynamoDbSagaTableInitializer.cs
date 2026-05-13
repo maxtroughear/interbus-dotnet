@@ -9,10 +9,10 @@ namespace InterBus.DynamoDB.Sagas;
 /// <see cref="DynamoDbSagaOptions.CreateTableOnStartup"/> is <c>true</c>.
 /// The operation is idempotent: if the table already exists it is left unchanged.
 /// </summary>
-internal sealed class DynamoDbSagaTableInitializer(
+internal sealed class DynamoDbSagaTableInitializer<TSaga>(
     IAmazonDynamoDB dynamoDb,
-    DynamoDbSagaOptions options,
-    ILogger<DynamoDbSagaTableInitializer> logger)
+    DynamoDbSagaOptions<TSaga> options,
+    ILogger<DynamoDbSagaTableInitializer<TSaga>> logger)
     : IHostedService
 {
     public async Task StartAsync(CancellationToken cancellationToken)

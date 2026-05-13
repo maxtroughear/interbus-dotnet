@@ -1,4 +1,4 @@
-using System.Security.Cryptography;
+using System.IO.Hashing;
 using System.Text;
 using Microsoft.EntityFrameworkCore;
 
@@ -15,12 +15,11 @@ public sealed class SqlServerSagaLockProvider<TDbContext> : ISagaLockProvider<TD
 {
     /// <summary>
     /// Returns a fixed-length 64-character hex string that uniquely represents <paramref name="lockKey"/>
-    /// for use as a <c>sp_getapplock</c> resource name (limit: 255 characters).
-    /// SHA-256 is used so that arbitrarily long or structurally similar keys produce distinct, compact identifiers.
+    /// for use as a <c>sp_getapplock</c> resource name (limit: 255 characters)
     /// </summary>
     private static string HashLockKey(string lockKey)
     {
-        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(lockKey));
+        var hash = XxHash3.Hash(Encoding.UTF8.GetBytes(lockKey));
         return Convert.ToHexString(hash);
     }
 
@@ -59,7 +58,7 @@ public sealed class SqlServerSagaLockProvider<TDbContext> : ISagaLockProvider<TD
         }
         catch
         {
-            context.Database.CloseConnection();
+            await context.Database.CloseConnectionAsync();
             throw;
         }
     }
@@ -84,7 +83,7 @@ public sealed class SqlServerSagaLockProvider<TDbContext> : ISagaLockProvider<TD
             }
             finally
             {
-                context.Database.CloseConnection();
+                await context.Database.CloseConnectionAsync();
             }
         }
     }

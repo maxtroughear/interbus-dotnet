@@ -1,7 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace InterBus.EntityFrameworkCore;
+namespace InterBus.EntityFrameworkCore.Outbox;
 
 /// <summary>
 /// Fluent builder for configuring the InterBus transactional outbox.
@@ -23,7 +23,7 @@ public sealed class OutboxBuilder<TDbContext>
     where TDbContext : DbContext
 {
     /// <summary>The underlying service collection, used by lock-provider extension methods.</summary>
-    public IServiceCollection Services { get; }
+    internal IServiceCollection Services { get; }
 
     internal OutboxOptions Options { get; } = new();
 

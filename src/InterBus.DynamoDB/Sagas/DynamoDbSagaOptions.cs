@@ -3,12 +3,13 @@ namespace InterBus.DynamoDB.Sagas;
 /// <summary>
 /// Configuration options for <see cref="DynamoDbSagaRepository{TSaga,TState}"/>.
 /// </summary>
-public sealed class DynamoDbSagaOptions
+public sealed class DynamoDbSagaOptions<TSaga>
 {
     /// <summary>
     /// The name of the DynamoDB table used to store saga state.
     /// The table must have a partition key named <c>CorrelationId</c> (string).
     /// </summary>
+    /// <remarks>Multiple saga types may share the same table</remarks>
     public string TableName { get; set; } = "InterBusSagas";
 
     /// <summary>

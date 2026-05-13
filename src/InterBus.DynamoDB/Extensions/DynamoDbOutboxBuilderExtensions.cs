@@ -1,7 +1,7 @@
 using InterBus.DynamoDB.Outbox;
-using InterBus.DynamoDB.Outbox.Internal;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using DynamoDbOutboxProcessor = InterBus.DynamoDB.Outbox.DynamoDbOutboxProcessor;
 
 namespace InterBus.DynamoDB.Extensions;
 

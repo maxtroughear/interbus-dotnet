@@ -4,7 +4,7 @@ using InterBus.Sending;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
-namespace InterBus.EntityFrameworkCore.Internal;
+namespace InterBus.EntityFrameworkCore.Outbox;
 
 /// <summary>
 /// Consume middleware that attempts immediate ("inline") delivery of outbox messages written by

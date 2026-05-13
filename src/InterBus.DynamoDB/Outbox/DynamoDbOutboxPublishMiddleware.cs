@@ -1,7 +1,7 @@
 using InterBus.DeadLettering;
 using InterBus.Publishing;
 
-namespace InterBus.DynamoDB.Outbox.Internal;
+namespace InterBus.DynamoDB.Outbox;
 
 /// <summary>
 /// Publish middleware that captures every outgoing message and registers it with the

@@ -18,7 +18,7 @@ public class DynamoDbSagaIntegrationTests : DynamoDbSagaTestFixtureBase
         {
             bus.AddInMemoryTransport();
             bus.AddSaga<OrderSaga, OrderSagaState>(saga =>
-                saga.UseDynamoDbRepository(o => o.TableName = TableName));
+                saga.UseDynamoDbRepository(o => o.TableName(TableName)));
         });
 
         try
@@ -55,7 +55,7 @@ public class DynamoDbSagaIntegrationTests : DynamoDbSagaTestFixtureBase
         {
             bus.AddInMemoryTransport();
             bus.AddSaga<OrderSaga, OrderSagaState>(saga =>
-                saga.UseDynamoDbRepository(o => o.TableName = TableName));
+                saga.UseDynamoDbRepository(o => o.TableName(TableName)));
         });
 
         try
@@ -94,7 +94,7 @@ public class DynamoDbSagaIntegrationTests : DynamoDbSagaTestFixtureBase
         {
             bus.AddInMemoryTransport();
             bus.AddSaga<OrderWithDeletionSaga, OrderSagaState>(saga =>
-                saga.UseDynamoDbRepository(o => o.TableName = TableName));
+                saga.UseDynamoDbRepository(o => o.TableName(TableName)));
         });
 
         try
@@ -132,7 +132,7 @@ public class DynamoDbSagaIntegrationTests : DynamoDbSagaTestFixtureBase
         {
             bus.AddInMemoryTransport();
             bus.AddSaga<CompletingOrderSaga, OrderSagaState>(saga =>
-                saga.UseDynamoDbRepository(o => o.TableName = TableName));
+                saga.UseDynamoDbRepository(o => o.TableName(TableName)));
         });
 
         try

@@ -78,8 +78,11 @@ public class DynamoDbSagaRepositoryTests : DynamoDbSagaTestFixtureBase
     {
         var correlationId = Guid.NewGuid().ToString();
 
-        var repoOrder = new DynamoDbSagaRepository<OrderSaga, OrderSagaState>(DynamoDb, Options);
-        var repoDeletion = new DynamoDbSagaRepository<OrderWithDeletionSaga, OrderSagaState>(DynamoDb, Options);
+        var repoOrder = new DynamoDbSagaRepository<OrderSaga, OrderSagaState>(DynamoDb, Options, StateWriter);
+        var repoDeletion =
+            new DynamoDbSagaRepository<OrderWithDeletionSaga, OrderSagaState>(DynamoDb,
+                new DynamoDbSagaOptions<OrderWithDeletionSaga> { TableName = TableName },
+                new DynamoDbStateWriter<OrderWithDeletionSaga>(DynamoDb));
 
         var orderState = new OrderSagaState { CustomerEmail = "order@example.com", MessageCount = 1 };
         var deletionSagaState = new OrderSagaState { CustomerEmail = "deletion@example.com", MessageCount = 99 };

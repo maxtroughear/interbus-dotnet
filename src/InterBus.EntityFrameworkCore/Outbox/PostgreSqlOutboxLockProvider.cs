@@ -1,14 +1,14 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
 
-namespace InterBus.EntityFrameworkCore;
+namespace InterBus.EntityFrameworkCore.Outbox;
 
 /// <summary>
-/// <see cref="IOutboxLockProvider{TDbContext}"/> for SQL Server databases. Uses
-/// <c>UPDLOCK, READPAST</c> to atomically select and lock one outbox group row,
+/// <see cref="IOutboxLockProvider{TDbContext}"/> for PostgreSQL databases. Uses
+/// <c>FOR UPDATE SKIP LOCKED</c> to atomically select and lock the next outbox group row,
 /// then reads all messages in that group.
 /// </summary>
-public sealed class SqlServerOutboxLockProvider<TDbContext> : IOutboxLockProvider<TDbContext>
+public sealed class PostgreSqlOutboxLockProvider<TDbContext> : IOutboxLockProvider<TDbContext>
     where TDbContext : DbContext
 {
     public async Task<OutboxGroup?> TryFetchGroupAsync(
@@ -20,16 +20,20 @@ public sealed class SqlServerOutboxLockProvider<TDbContext> : IOutboxLockProvide
 
         // Lock one oldest eligible group row; empty groups are still claimable and will be cleaned up.
         var groupSql = $"""
-                        SELECT TOP (1) g.*
-                        FROM {groupsFqn} g WITH (UPDLOCK, READPAST)
-                        WHERE g.{visibleAtCol} <= GETUTCDATE()
+                        SELECT g.*
+                        FROM {groupsFqn} g
+                        WHERE g.{visibleAtCol} <= NOW()
                         ORDER BY g.{visibleAtCol}, g.{idCol}
+                        LIMIT 1
+                        FOR UPDATE SKIP LOCKED
                         """;
 
-        return await context.Set<OutboxGroup>()
+        var group = await context.Set<OutboxGroup>()
             .FromSqlRaw(groupSql)
             .Include(g => g.Messages.OrderBy(m => m.Id))
             .FirstOrDefaultAsync(cancellationToken);
+
+        return group;
     }
 
     private static (string fqn, string col1, string col2) GetTableInfo(IEntityType entityType, string colProperty1,
@@ -55,5 +59,5 @@ public sealed class SqlServerOutboxLockProvider<TDbContext> : IOutboxLockProvide
     }
 
     private static string Quote(string name) =>
-        $"[{name.Replace("]", "]]")}]";
+        $"\"{name.Replace("\"", "\"\"")}\"";
 }

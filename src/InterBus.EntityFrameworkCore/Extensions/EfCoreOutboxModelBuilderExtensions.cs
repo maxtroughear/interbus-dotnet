@@ -1,3 +1,4 @@
+using InterBus.EntityFrameworkCore.Outbox;
 using Microsoft.EntityFrameworkCore;
 
 namespace InterBus.EntityFrameworkCore.Extensions;

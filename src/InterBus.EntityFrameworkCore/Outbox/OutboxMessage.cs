@@ -1,6 +1,6 @@
 // ReSharper disable EntityFramework.ModelValidation.UnlimitedStringLength - set in ModelBuilder
 
-namespace InterBus.EntityFrameworkCore;
+namespace InterBus.EntityFrameworkCore.Outbox;
 
 /// <summary>
 /// Represents a message stored in the transactional outbox. Messages are written here

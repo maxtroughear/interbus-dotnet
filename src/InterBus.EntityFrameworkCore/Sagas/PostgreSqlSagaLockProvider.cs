@@ -1,3 +1,5 @@
+using System.IO.Hashing;
+using System.Text;
 using Microsoft.EntityFrameworkCore;
 
 namespace InterBus.EntityFrameworkCore.Sagas;
@@ -15,6 +17,8 @@ public sealed class PostgreSqlSagaLockProvider<TDbContext> : ISagaLockProvider<T
     public async Task<IAsyncDisposable> AcquireLockAsync(TDbContext context, string lockKey,
         CancellationToken cancellationToken = default)
     {
+        var hashedLockKey = (long)XxHash3.HashToUInt64(Encoding.UTF8.GetBytes(lockKey));
+        
         // Keep the connection open for the duration of the advisory lock.
         // EF Core tracks a reference count; each OpenConnection call must be paired with
         // a CloseConnection call.
@@ -25,33 +29,33 @@ public sealed class PostgreSqlSagaLockProvider<TDbContext> : ISagaLockProvider<T
             var connection = context.Database.GetDbConnection();
 
             await using var cmd = connection.CreateCommand();
-            cmd.CommandText = "SELECT pg_advisory_lock(hashtextextended(@lockKey, 0))";
+            cmd.CommandText = "SELECT pg_advisory_lock(@lockKey)";
 
             var param = cmd.CreateParameter();
             param.ParameterName = "lockKey";
-            param.Value = lockKey;
+            param.Value = hashedLockKey;
             cmd.Parameters.Add(param);
 
             await cmd.ExecuteNonQueryAsync(cancellationToken);
 
-            return new AdvisoryLockReleaser(context, lockKey);
+            return new AdvisoryLockReleaser(context, hashedLockKey);
         }
         catch
         {
             // If the advisory lock acquisition fails, release our connection reference.
-            context.Database.CloseConnection();
+            await context.Database.CloseConnectionAsync();
             throw;
         }
     }
 
-    private sealed class AdvisoryLockReleaser(TDbContext context, string lockKey) : IAsyncDisposable
+    private sealed class AdvisoryLockReleaser(TDbContext context, long lockKey) : IAsyncDisposable
     {
         public async ValueTask DisposeAsync()
         {
             var connection = context.Database.GetDbConnection();
 
             await using var cmd = connection.CreateCommand();
-            cmd.CommandText = "SELECT pg_advisory_unlock(hashtextextended(@lockKey, 0))";
+            cmd.CommandText = "SELECT pg_advisory_unlock(@lockKey)";
 
             var param = cmd.CreateParameter();
             param.ParameterName = "lockKey";
@@ -64,7 +68,7 @@ public sealed class PostgreSqlSagaLockProvider<TDbContext> : ISagaLockProvider<T
             }
             finally
             {
-                context.Database.CloseConnection();
+                await context.Database.CloseConnectionAsync();
             }
         }
     }

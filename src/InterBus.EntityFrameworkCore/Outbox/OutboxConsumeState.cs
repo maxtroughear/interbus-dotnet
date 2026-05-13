@@ -1,4 +1,4 @@
-namespace InterBus.EntityFrameworkCore.Internal;
+namespace InterBus.EntityFrameworkCore.Outbox;
 
 /// <summary>
 /// Scoped state shared between <see cref="OutboxPublishMiddleware{TDbContext}"/> and

@@ -13,14 +13,14 @@ public class DynamoDbSagaRepositoryLockingTests : DynamoDbSagaTestFixtureBase
 
         await using (await repo.AcquireLockAsync(correlationId))
         {
-            var shortOpts = new DynamoDbSagaOptions
+            var shortOpts = new DynamoDbSagaOptions<OrderSaga>
             {
                 TableName = TableName,
                 LockLeaseDuration = TimeSpan.FromSeconds(30),
                 LockRetryInterval = TimeSpan.FromMilliseconds(100),
                 LockAcquireTimeout = TimeSpan.FromMilliseconds(300),
             };
-            var repo2 = new DynamoDbSagaRepository<OrderSaga, OrderSagaState>(DynamoDb, shortOpts);
+            var repo2 = new DynamoDbSagaRepository<OrderSaga, OrderSagaState>(DynamoDb, shortOpts, StateWriter);
             Assert.ThrowsAsync<TimeoutException>(async () =>
                 await repo2.AcquireLockAsync(correlationId));
         }
@@ -31,14 +31,14 @@ public class DynamoDbSagaRepositoryLockingTests : DynamoDbSagaTestFixtureBase
     [Test]
     public async Task AcquireLock_AfterLeaseExpiry_ClaimsAbandonedLock()
     {
-        var shortLease = new DynamoDbSagaOptions
+        var shortLease = new DynamoDbSagaOptions<OrderSaga>
         {
             TableName = TableName,
             LockLeaseDuration = TimeSpan.FromSeconds(1),
             LockRetryInterval = TimeSpan.FromMilliseconds(100),
             LockAcquireTimeout = TimeSpan.FromSeconds(10),
         };
-        var repo = new DynamoDbSagaRepository<OrderSaga, OrderSagaState>(DynamoDb, shortLease);
+        var repo = new DynamoDbSagaRepository<OrderSaga, OrderSagaState>(DynamoDb, shortLease, StateWriter);
         var correlationId = Guid.NewGuid().ToString();
 
         _ = await repo.AcquireLockAsync(correlationId);

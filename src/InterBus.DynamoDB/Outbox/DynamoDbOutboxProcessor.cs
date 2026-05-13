@@ -5,7 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
-namespace InterBus.DynamoDB.Outbox.Internal;
+namespace InterBus.DynamoDB.Outbox;
 
 /// <summary>
 /// Background service that continuously polls the DynamoDB outbox table for pending groups and

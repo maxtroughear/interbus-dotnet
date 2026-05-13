@@ -101,19 +101,8 @@ public sealed class EfCoreSagaRepository<TSaga, TState, TDbContext>(
     /// <inheritdoc/>
     public async Task DeleteAsync(string correlationId, CancellationToken cancellationToken = default)
     {
-        // SaveAsync is always called first (see ISagaRepository contract), so the entity
-        // will already be tracked after SaveChangesAsync; check the local cache first.
-        var existing = dbContext.Set<SagaStateEntry>().Local
-            .FirstOrDefault(e => e.CorrelationId == correlationId && e.SagaType == SagaTypeName)
-            ?? await dbContext.Set<SagaStateEntry>()
-                .FirstOrDefaultAsync(
-                    e => e.CorrelationId == correlationId && e.SagaType == SagaTypeName,
-                    cancellationToken);
-
-        if (existing is not null)
-        {
-            dbContext.Set<SagaStateEntry>().Remove(existing);
-            await dbContext.SaveChangesAsync(cancellationToken);
-        }
+        await dbContext.Set<SagaStateEntry>()
+            .Where(e => e.CorrelationId == correlationId && e.SagaType == SagaTypeName)
+            .ExecuteDeleteAsync(cancellationToken);
     }
 }

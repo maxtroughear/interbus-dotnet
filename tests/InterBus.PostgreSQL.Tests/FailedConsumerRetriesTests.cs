@@ -86,7 +86,8 @@ public class FailedConsumerRetriesTests(string imageTag)
         using (Assert.EnterMultipleScope())
         {
             Assert.That(deadLetterCount, Is.EqualTo(1), "Expected exactly one row in dead_letter_messages");
-            Assert.That(_receiveTracker.CallCount, Is.EqualTo(1), "Failed message should be dead-lettered, not retried");
+            Assert.That(_receiveTracker.CallCount, Is.EqualTo(1),
+                "Failed message should be dead-lettered, not retried");
         }
     }
 

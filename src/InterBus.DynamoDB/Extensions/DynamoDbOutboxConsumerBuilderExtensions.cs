@@ -37,8 +37,7 @@ public static class DynamoDbOutboxConsumerBuilderExtensions
 
             builder.Services.TryAddScoped<DynamoDbOutboxConsumeState>();
             builder.Services.TryAddScoped<DynamoDbOutboxContext>();
-            builder.Services.TryAddScoped<IDynamoDbOutboxContext>(
-                sp => sp.GetRequiredService<DynamoDbOutboxContext>());
+            builder.Services.TryAddScoped<IDynamoDbOutboxContext>(sp => sp.GetRequiredService<DynamoDbOutboxContext>());
 
             builder.UsePublishMiddleware<DynamoDbOutboxPublishMiddleware>();
 
@@ -70,8 +69,7 @@ public static class DynamoDbOutboxConsumerBuilderExtensions
 
             builder.Services.TryAddScoped<DynamoDbOutboxConsumeState>();
             builder.Services.TryAddScoped<DynamoDbOutboxContext>();
-            builder.Services.TryAddScoped<IDynamoDbOutboxContext>(
-                sp => sp.GetRequiredService<DynamoDbOutboxContext>());
+            builder.Services.TryAddScoped<IDynamoDbOutboxContext>(sp => sp.GetRequiredService<DynamoDbOutboxContext>());
 
             builder.UsePublishMiddleware<DynamoDbOutboxPublishMiddleware>();
             builder.UseConsumeMiddleware<DynamoDbOutboxInlineDeliveryConsumeMiddleware>();

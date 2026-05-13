@@ -81,4 +81,3 @@ public sealed class CompletingOrderSaga :
         return Task.CompletedTask;
     }
 }
-

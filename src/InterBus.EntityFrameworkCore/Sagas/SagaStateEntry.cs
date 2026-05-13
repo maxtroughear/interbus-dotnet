@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+
 // ReSharper disable EntityFramework.ModelValidation.UnlimitedStringLength - set in ModeBuilder
 
 namespace InterBus.EntityFrameworkCore.Sagas;

@@ -37,7 +37,6 @@ internal sealed class SqsMessagePump(
     ILogger<SqsMessagePump> logger)
     : BackgroundService
 {
-
     private sealed class PrefetchedMessage(
         Message message,
         CancellationTokenSource renewalCts,
@@ -250,7 +249,8 @@ internal sealed class SqsMessagePump(
 
         try
         {
-            var deadLetterMessageAttributes = message.MessageAttributes ?? new Dictionary<string, MessageAttributeValue>(StringComparer.Ordinal);
+            var deadLetterMessageAttributes = message.MessageAttributes ??
+                                              new Dictionary<string, MessageAttributeValue>(StringComparer.Ordinal);
             deadLetterMessageAttributes[InterBusHeaders.DeadLetterReason] = new MessageAttributeValue
             {
                 DataType = "String",

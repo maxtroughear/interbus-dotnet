@@ -110,9 +110,9 @@ public class SnsSerialisedMessageOnSqsTests
             cancellationToken);
 
         var queueArn = (await sqs.GetQueueAttributesAsync(
-            new GetQueueAttributesRequest { QueueUrl = queueUrl, AttributeNames = ["QueueArn"] },
-            cancellationToken)).QueueARN
-            ?? throw new InvalidOperationException($"Queue ARN not returned for queue URL '{queueUrl}'.");
+                           new GetQueueAttributesRequest { QueueUrl = queueUrl, AttributeNames = ["QueueArn"] },
+                           cancellationToken)).QueueARN
+                       ?? throw new InvalidOperationException($"Queue ARN not returned for queue URL '{queueUrl}'.");
 
         var topicArn = await topologyBuilder.EnsureTopicAsync(
             RoutingConventions.TopicName(typeof(OrderPlaced)),
@@ -152,10 +152,10 @@ public class SnsSerialisedMessageOnSqsTests
             List<Subscription>? subscriptions,
             string queueArnValue) =>
             (subscriptions ?? [])
-                .FirstOrDefault(s =>
-                    string.Equals(s.Endpoint, queueArnValue, StringComparison.Ordinal)
-                    && !string.Equals(s.SubscriptionArn, "PendingConfirmation", StringComparison.Ordinal))
-                ?.SubscriptionArn;
+            .FirstOrDefault(s =>
+                string.Equals(s.Endpoint, queueArnValue, StringComparison.Ordinal)
+                && !string.Equals(s.SubscriptionArn, "PendingConfirmation", StringComparison.Ordinal))
+            ?.SubscriptionArn;
 
         var subscriptions = await sns.ListSubscriptionsByTopicAsync(
             new ListSubscriptionsByTopicRequest { TopicArn = topicArn },

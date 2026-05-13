@@ -15,7 +15,7 @@ public sealed class SnsSqsMessageEnvelope : ISnsSqsMessageEnvelope
         InterBusHeaders.MessageId,
         InterBusHeaders.CorrelationId,
     };
-    
+
     public string SerializeForSnsPublish(byte[] payload, MessageHeaders headers)
     {
         var envelope = new InterBusEnvelopeBody(
@@ -38,7 +38,7 @@ public sealed class SnsSqsMessageEnvelope : ISnsSqsMessageEnvelope
 
         return (payload, headers);
     }
-    
+
     public Dictionary<string, MessageAttributeValue> BuildSnsMessageAttributes(MessageHeaders headers)
     {
         var result = new Dictionary<string, MessageAttributeValue>(

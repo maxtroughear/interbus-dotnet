@@ -16,6 +16,7 @@ namespace InterBus.EntityFrameworkCore.PostgreSQL.IntegrationTests;
 // ---------------------------------------------------------------------------
 
 public record PgSagaOrderStarted(Guid OrderId, string CustomerEmail);
+
 public record PgSagaOrderConfirmed(Guid OrderId);
 
 public sealed class PgSagaOrderState
@@ -85,8 +86,8 @@ public class SagaPostgreSqlIntegrationTests(string imageTag)
         {
             bus.AddInMemoryTransport();
             bus.AddSaga<PgSagaOrderSaga, PgSagaOrderState>(saga =>
-                saga.UseEfCoreRepository<PgSagaOrderSaga, PgSagaOrderState, SagaTestDbContext>(
-                    repo => repo.UsePostgreSql()));
+                saga.UseEfCoreRepository<PgSagaOrderSaga, PgSagaOrderState, SagaTestDbContext>(repo =>
+                    repo.UsePostgreSql()));
         });
 
         _provider = services.BuildServiceProvider();
@@ -107,8 +108,13 @@ public class SagaPostgreSqlIntegrationTests(string imageTag)
         await _cts.CancelAsync();
         foreach (var svc in _provider.GetServices<IHostedService>())
         {
-            try { await svc.StopAsync(CancellationToken.None); }
-            catch (OperationCanceledException) { }
+            try
+            {
+                await svc.StopAsync(CancellationToken.None);
+            }
+            catch (OperationCanceledException)
+            {
+            }
         }
 
         await _provider.DisposeAsync();

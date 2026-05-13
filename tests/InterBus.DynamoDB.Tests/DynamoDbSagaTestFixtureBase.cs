@@ -29,7 +29,7 @@ public abstract class DynamoDbSagaTestFixtureBase
     {
         if (_container is null)
             return;
-        
+
         await _container.StopAsync();
         await _container.DisposeAsync();
     }

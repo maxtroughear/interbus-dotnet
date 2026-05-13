@@ -248,7 +248,8 @@ public sealed class RedeliverySchedulingMiddlewareTests
             CancellationToken cancellationToken = default) where T : class =>
             Task.FromResult(Guid.CreateVersion7());
 
-        public Task<Guid> SchedulePublishAsync<T>(T message, DateTimeOffset scheduledAt, Action<PublishContext<T>> configure,
+        public Task<Guid> SchedulePublishAsync<T>(T message, DateTimeOffset scheduledAt,
+            Action<PublishContext<T>> configure,
             CancellationToken cancellationToken = default) where T : class =>
             Task.FromResult(Guid.CreateVersion7());
 

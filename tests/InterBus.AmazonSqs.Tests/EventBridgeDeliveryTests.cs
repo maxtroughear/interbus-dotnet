@@ -74,10 +74,7 @@ public sealed class EventBridgeDeliveryTests
             });
             bus.AddConsumer<OrderPlacedConsumer>();
             bus.AddScheduling(sched =>
-                sched.Directly().AddEventBridgeScheduler(opts =>
-                {
-                    opts.TargetRoleArn = SchedulerRoleArn;
-                }));
+                sched.Directly().AddEventBridgeScheduler(opts => { opts.TargetRoleArn = SchedulerRoleArn; }));
         });
 
         await using var provider = services.BuildServiceProvider();

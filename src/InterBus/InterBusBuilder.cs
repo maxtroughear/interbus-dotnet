@@ -61,7 +61,7 @@ public sealed class InterBusBuilder
         where TConsumer : class, IConsumer
     {
         var queue = RoutingConventions.QueueUri(Options.QueueUriScheme, typeof(TConsumer));
-        
+
         var descriptor = new ConsumerDescriptor(typeof(TConsumer), queue);
         var consumerBuilder = new ConsumerBuilder<TConsumer>(descriptor, Services);
 

@@ -84,7 +84,7 @@ internal sealed class RabbitMqTopologyBuilder(
                 DeclaredBindings.TryRemove(bindingKey, out _);
         }
     }
-    
+
     private string BuildDeadLetterQueueName(string queueName) => queueName + options.DeadLetterQueueSuffix;
 
     private string BuildDeadLetterExchangeName(string queueName) => queueName + options.DeadLetterExchangeSuffix;

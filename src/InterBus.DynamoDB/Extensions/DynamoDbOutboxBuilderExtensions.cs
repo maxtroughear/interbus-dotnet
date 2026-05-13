@@ -35,8 +35,7 @@ public static class DynamoDbOutboxBuilderExtensions
 
             // Register the concrete context as scoped and expose it via the public interface.
             builder.Services.TryAddScoped<DynamoDbOutboxContext>();
-            builder.Services.TryAddScoped<IDynamoDbOutboxContext>(
-                sp => sp.GetRequiredService<DynamoDbOutboxContext>());
+            builder.Services.TryAddScoped<IDynamoDbOutboxContext>(sp => sp.GetRequiredService<DynamoDbOutboxContext>());
 
             // OutboxConsumeState bridges the publish middleware and the inline-delivery consume
             // middleware within a single dispatch scope.

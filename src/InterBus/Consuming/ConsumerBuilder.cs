@@ -15,7 +15,7 @@ public class ConsumerBuilder<TConsumer>(ConsumerDescriptor descriptor, IServiceC
         where TMessageConsumer : class, TConsumer, IConsumer<TMessage>
         where TMessage : class => Consumes<TMessageConsumer, TMessage>
         (RoutingConventions.MessageTypeString(typeof(TMessage)));
-    
+
     public ConsumerBuilder<TConsumer> Consumes<TMessageConsumer, TMessage>(string messageTypeName)
         where TMessageConsumer : class, TConsumer, IConsumer<TMessage>
         where TMessage : class
@@ -26,7 +26,7 @@ public class ConsumerBuilder<TConsumer>(ConsumerDescriptor descriptor, IServiceC
 
         Services.TryAddScoped<IConsumerExecutor<TMessageConsumer, TMessage>,
             ConsumerExecutor<TMessageConsumer, TMessage>>();
-        
+
         return this;
     }
 
@@ -35,8 +35,9 @@ public class ConsumerBuilder<TConsumer>(ConsumerDescriptor descriptor, IServiceC
         Descriptor.MessageTypeHeader = headerName;
         return this;
     }
-    
-    public ConsumerBuilder<TConsumer> Dispatch(Func<DispatchContext, ConsumePipelineExecutor, IServiceProvider, CancellationToken, Task> dispatch)
+
+    public ConsumerBuilder<TConsumer> Dispatch(
+        Func<DispatchContext, ConsumePipelineExecutor, IServiceProvider, CancellationToken, Task> dispatch)
     {
         Descriptor.Dispatch = dispatch;
         return this;
@@ -60,7 +61,7 @@ public class ConsumerBuilder(ConsumerDescriptor descriptor, IServiceCollection s
     /// The descriptor for the consumer being configured
     /// </summary>
     public ConsumerDescriptor Descriptor => descriptor;
-    
+
     /// <summary>
     /// Configures the number of concurrent message handlers for this consumer's queue.
     /// Transports that support concurrent dispatch per queue (e.g. RabbitMQ) use this value
@@ -144,7 +145,7 @@ public class ConsumerBuilder(ConsumerDescriptor descriptor, IServiceCollection s
         services.AddKeyedScoped<IDispatchMiddleware, TMiddleware>(descriptor.ConsumerType);
         return this;
     }
-    
+
     /// <summary>
     /// Registers a consumer-specific serializer resolved by keyed DI using this consumer
     /// type as the key.

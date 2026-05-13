@@ -43,7 +43,7 @@ internal sealed partial class OutboxInlineDeliveryConsumeMiddleware<TDbContext>(
         CancellationToken cancellationToken = default) where T : class
     {
         consumeState.IsDeliveryInline = true;
-        
+
         // Run the consumer handler. The consumer is expected to call SaveChangesAsync inside
         // Consume, which commits any outbox entries written by OutboxPublishMiddleware to the DB.
         await next(context, cancellationToken);

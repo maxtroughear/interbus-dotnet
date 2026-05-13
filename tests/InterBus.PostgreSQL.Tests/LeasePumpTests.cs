@@ -89,7 +89,8 @@ public class LeasePumpTests(string imageTag)
         using (Assert.EnterMultipleScope())
         {
             Assert.That(deadLetterCount, Is.EqualTo(1), "Expected exactly one row in dead_letter_messages");
-            Assert.That(counter.Value, Is.EqualTo(1), "Failed message should be dead-lettered immediately without retry");
+            Assert.That(counter.Value, Is.EqualTo(1),
+                "Failed message should be dead-lettered immediately without retry");
         }
     }
 

@@ -48,4 +48,3 @@ public class DynamoDbSagaRepositoryLockingTests : DynamoDbSagaTestFixtureBase
         Assert.That(lock2, Is.Not.Null);
     }
 }
-

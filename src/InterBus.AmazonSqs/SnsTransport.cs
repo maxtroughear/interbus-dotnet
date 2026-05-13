@@ -70,5 +70,4 @@ public sealed class SnsTransport(
             },
             ct);
     }
-
 }

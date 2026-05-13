@@ -35,7 +35,7 @@ public sealed class ConsumerDescriptor(Type consumerType, Uri queue)
     /// The message types this consumer handles
     /// </summary>
     public HashSet<Type> MessageTypes { get; } = [];
-    
+
     public string MessageTypeHeader { get; internal set; } = InterBusHeaders.MessageType;
 
     internal Func<DispatchContext, ConsumePipelineExecutor, IServiceProvider, CancellationToken, Task> Dispatch

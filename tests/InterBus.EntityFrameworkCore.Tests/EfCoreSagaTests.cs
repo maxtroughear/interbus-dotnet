@@ -262,7 +262,8 @@ public class EfCoreSagaTests
             await using var scope = provider.CreateAsyncScope();
             var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
 
-            await publisher.PublishAsync(new EfSagaOrderStarted(orderId, "order@test.com"), TestContext.Current.CancellationToken);
+            await publisher.PublishAsync(new EfSagaOrderStarted(orderId, "order@test.com"),
+                TestContext.Current.CancellationToken);
             await publisher.PublishAsync(new EfSagaOrderConfirmed(orderId), TestContext.Current.CancellationToken);
 
             await WaitUntilAsync(async () =>
@@ -300,8 +301,10 @@ public class EfCoreSagaTests
             await using var scope = provider.CreateAsyncScope();
             var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
 
-            await publisher.PublishAsync(new EfSagaOrderStarted(orderId1, "first@test.com"), TestContext.Current.CancellationToken);
-            await publisher.PublishAsync(new EfSagaOrderStarted(orderId2, "second@test.com"), TestContext.Current.CancellationToken);
+            await publisher.PublishAsync(new EfSagaOrderStarted(orderId1, "first@test.com"),
+                TestContext.Current.CancellationToken);
+            await publisher.PublishAsync(new EfSagaOrderStarted(orderId2, "second@test.com"),
+                TestContext.Current.CancellationToken);
 
             await WaitUntilAsync(async () =>
             {
@@ -341,7 +344,8 @@ public class EfCoreSagaTests
             await using var scope = provider.CreateAsyncScope();
             var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
 
-            await publisher.PublishAsync(new EfSagaOrderStarted(orderId, "cancel@test.com"), TestContext.Current.CancellationToken);
+            await publisher.PublishAsync(new EfSagaOrderStarted(orderId, "cancel@test.com"),
+                TestContext.Current.CancellationToken);
 
             await WaitUntilAsync(async () =>
                 (await GetSagaEntryAsync<EfSagaOrderWithDeletionSaga>(provider, orderId.ToString()))
@@ -379,7 +383,8 @@ public class EfCoreSagaTests
             await using var scope = provider.CreateAsyncScope();
             var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
 
-            await publisher.PublishAsync(new EfSagaOrderStarted(orderId, "complete@test.com"), TestContext.Current.CancellationToken);
+            await publisher.PublishAsync(new EfSagaOrderStarted(orderId, "complete@test.com"),
+                TestContext.Current.CancellationToken);
             await WaitUntilAsync(async () =>
                 (await GetSagaEntryAsync<EfSagaCompletingOrderSaga>(provider, orderId.ToString()))
                 ?.State.MessageCount == 1);
@@ -396,7 +401,8 @@ public class EfCoreSagaTests
             Assert.Equal(2, completedEntry.State.MessageCount);
 
             // A further message must be silently dropped (saga is completed).
-            await publisher.PublishAsync(new EfSagaOrderStarted(orderId, "new@test.com"), TestContext.Current.CancellationToken);
+            await publisher.PublishAsync(new EfSagaOrderStarted(orderId, "new@test.com"),
+                TestContext.Current.CancellationToken);
             await WaitUntilAsync(async () =>
                     (await GetSagaEntryAsync<EfSagaCompletingOrderSaga>(provider, orderId.ToString()))
                     ?.State.CustomerEmail == "new@test.com",
@@ -432,7 +438,8 @@ public class EfCoreSagaTests
             await using var scope = provider.CreateAsyncScope();
             var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
 
-            await publisher.PublishAsync(new EfSagaOrderStarted(orderId, "ttl@test.com"), TestContext.Current.CancellationToken);
+            await publisher.PublishAsync(new EfSagaOrderStarted(orderId, "ttl@test.com"),
+                TestContext.Current.CancellationToken);
 
             await WaitUntilAsync(async () =>
                 await GetSagaEntryAsync<EfSagaOrderSaga>(provider, orderId.ToString()) != null);

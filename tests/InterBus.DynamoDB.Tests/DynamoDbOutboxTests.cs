@@ -125,7 +125,8 @@ public class DynamoDbOutboxTests
         var provider = services.BuildServiceProvider();
         _dynamoDb = provider.GetRequiredService<IAmazonDynamoDB>();
 
-        await DynamoDbOutboxTable.EnsureTableCreatedAsync(_dynamoDb, _tableName, new DynamoDbOutboxOptions().GsiIndexName);
+        await DynamoDbOutboxTable.EnsureTableCreatedAsync(_dynamoDb, _tableName,
+            new DynamoDbOutboxOptions().GsiIndexName);
     }
 
     [TearDown]
@@ -443,8 +444,7 @@ public class DynamoDbOutboxTests
         var (provider, cts) = await StartBusAsync(bus =>
         {
             bus.AddInMemoryTransport();
-            bus.AddConsumer<OutboxOrderPlacedPublishingConsumer>(
-                c => c.UseDynamoDbOutboxWithInlineDelivery());
+            bus.AddConsumer<OutboxOrderPlacedPublishingConsumer>(c => c.UseDynamoDbOutboxWithInlineDelivery());
             bus.AddConsumer<OutboxOrderShippedConsumer>();
             bus.AddDynamoDbOutbox(o =>
             {

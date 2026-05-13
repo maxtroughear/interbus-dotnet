@@ -82,7 +82,8 @@ public sealed class ConsumerRegistrationGeneratorTests
         // The method uses per-module TryGetConsumerAutoConfigure lookups.
         Assert.Contains("TryGetConsumerAutoConfigure<TConsumer>", generated);
         // The method returns the builder for fluent chaining.
-        Assert.Contains("return builder.RegisterConsumer<TConsumer>(ComposeConsumerConfigure(a0, configure));", generated);
+        Assert.Contains("return builder.RegisterConsumer<TConsumer>(ComposeConsumerConfigure(a0, configure));",
+            generated);
     }
 
     [Fact]
@@ -158,7 +159,8 @@ public sealed class ConsumerRegistrationGeneratorTests
         Assert.Contains("builder.RegisterConsumer<global::MyApp.OrderPlacedConsumer>(ConfigureConsumer_0);", generated);
         Assert.Contains("builder.RegisterConsumer<global::MyApp.AuditConsumer>(ConfigureConsumer_1);", generated);
         // One generic AddConsumer<TConsumer>() extension method is generated with an Action<ConsumerBuilder> delegate
-        var addConsumerMethodCount = Regex.Count(generated, @"public static global::InterBus\.InterBusBuilder AddConsumer<");
+        var addConsumerMethodCount =
+            Regex.Count(generated, @"public static global::InterBus\.InterBusBuilder AddConsumer<");
         Assert.Equal(1, addConsumerMethodCount);
     }
 

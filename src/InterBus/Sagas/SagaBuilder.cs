@@ -28,12 +28,12 @@ public sealed class SagaBuilder<TSaga, TState>(
         options.TimeToLive = ttl;
         return this;
     }
-    
+
     public new SagaBuilder<TSaga, TState> Consumes<TSagaConsumer, TMessage>()
         where TSagaConsumer : class, TSaga, ISagaConsumer<TState, TMessage>
         where TMessage : class
-         => Consumes<TSagaConsumer, TMessage>
-        (RoutingConventions.MessageTypeString(typeof(TMessage)));
+        => Consumes<TSagaConsumer, TMessage>
+            (RoutingConventions.MessageTypeString(typeof(TMessage)));
 
     public new SagaBuilder<TSaga, TState> Consumes<TSagaConsumer, TMessage>(string messageTypeName)
         where TSagaConsumer : class, TSaga, ISagaConsumer<TState, TMessage>

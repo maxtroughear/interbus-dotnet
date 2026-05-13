@@ -79,6 +79,7 @@ public static class DynamoDbSagaTable
                 return;
             await Task.Delay(TimeSpan.FromMilliseconds(500), cancellationToken);
         }
+
         cancellationToken.ThrowIfCancellationRequested();
         throw new TimeoutException(
             $"DynamoDB table '{tableName}' did not become ACTIVE within the expected time.");

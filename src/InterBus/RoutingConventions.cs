@@ -7,7 +7,7 @@ public static class RoutingConventions
     public const string BusHost = "interbus";
 
     public static string MessageTypeString(Type messageType) => TopicName(messageType);
-    
+
     /// <summary>
     /// Derives the topic name from a message type using its fully qualified name.
     /// Generic types produce a clean name using angle-bracket notation, e.g.

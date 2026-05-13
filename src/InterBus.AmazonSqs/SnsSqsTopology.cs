@@ -46,8 +46,9 @@ public sealed class SnsSqsTopology(SnsSqsTransportOptions options)
     /// </summary>
     internal string BuildSnsTopicName(string rawName)
     {
-        var sanitized = SanitizeName(rawName, MaxSnsTopicNameLength - options.TopicPrefix.Length);
-        return options.TopicPrefix + sanitized;
+        var sanitized = SanitizeName(rawName,
+            MaxSnsTopicNameLength - options.TopicPrefix.Length - options.TopicSuffix.Length);
+        return options.TopicPrefix + sanitized + options.TopicSuffix;
     }
 
     /// <summary>
@@ -58,9 +59,9 @@ public sealed class SnsSqsTopology(SnsSqsTransportOptions options)
     /// </summary>
     internal string BuildSqsQueueName(string rawName)
     {
-        var maxSanitizedLength = MaxSqsQueueNameLength - options.QueuePrefix.Length;
+        var maxSanitizedLength = MaxSqsQueueNameLength - options.QueuePrefix.Length - options.QueueSuffix.Length;
         var sanitized = SanitizeName(rawName, maxSanitizedLength);
-        return options.QueuePrefix + sanitized;
+        return options.QueuePrefix + sanitized + options.QueueSuffix;
     }
 
     internal string BuildDeadLetterQueueName(string rawQueueName) =>

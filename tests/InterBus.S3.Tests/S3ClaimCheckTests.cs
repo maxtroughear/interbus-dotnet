@@ -88,9 +88,6 @@ public sealed class S3ClaimCheckTests
     [TearDown]
     public async Task TearDown()
     {
-        if (_s3Client is null || string.IsNullOrEmpty(_bucketName))
-            return;
-
         // Delete all objects in the bucket then delete the bucket.
         var objects = await _s3Client.ListObjectsV2Async(new ListObjectsV2Request { BucketName = _bucketName });
         if (objects.S3Objects?.Count > 0)
@@ -268,8 +265,13 @@ public sealed class S3ClaimCheckTests
         await cts.CancelAsync();
         foreach (var svc in provider.GetServices<IHostedService>())
         {
-            try { await svc.StopAsync(CancellationToken.None); }
-            catch (OperationCanceledException) { }
+            try
+            {
+                await svc.StopAsync(CancellationToken.None);
+            }
+            catch (OperationCanceledException)
+            {
+            }
         }
 
         await provider.DisposeAsync();

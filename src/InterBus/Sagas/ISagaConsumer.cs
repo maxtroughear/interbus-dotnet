@@ -6,7 +6,7 @@ namespace InterBus.Sagas;
 /// </summary>
 /// <typeparam name="TState">The shared saga state type.</typeparam>
 /// <typeparam name="TMessage">The message type handled by this handler.</typeparam>
-public interface ISagaConsumer<TState, TMessage> : ISaga<TState>
+public interface ISagaConsumer<TState, in TMessage> : ISaga<TState>, IConsume<TMessage>
     where TState : class, new()
     where TMessage : class
 {

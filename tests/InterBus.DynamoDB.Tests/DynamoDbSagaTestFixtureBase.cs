@@ -29,7 +29,7 @@ public abstract class DynamoDbSagaTestFixtureBase
     {
         if (_container is null)
             return;
-        
+
         await _container.StopAsync();
         await _container.DisposeAsync();
     }
@@ -66,7 +66,7 @@ public abstract class DynamoDbSagaTestFixtureBase
         new(DynamoDb, Options);
 
     protected async Task<(ServiceProvider Provider, CancellationTokenSource Cts)> StartBusAsync(
-        Action<IInterBusBuilder> configureBus)
+        Action<InterBusBuilder> configureBus)
     {
         var services = new ServiceCollection();
         services.AddLogging();

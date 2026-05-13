@@ -5,7 +5,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace InterBus.EntityFrameworkCore.Extensions;
 
-/// <summary>Extension methods for configuring the EF Core saga repository on an <see cref="ISagaBuilder{TSaga, TState}"/>.</summary>
+/// <summary>Extension methods for configuring the EF Core saga repository on an <see cref="SagaBuilder{TSaga, TState}"/>.</summary>
 public static class EfCoreSagaBuilderExtensions
 {
     /// <summary>
@@ -33,8 +33,8 @@ public static class EfCoreSagaBuilderExtensions
     /// Optional delegate to configure the <see cref="EfCoreSagaBuilder{TSaga, TState, TDbContext}"/>,
     /// e.g. to select a database-specific lock provider.
     /// </param>
-    public static ISagaBuilder<TSaga, TState> UseEfCoreRepository<TSaga, TState, TDbContext>(
-        this ISagaBuilder<TSaga, TState> builder,
+    public static SagaBuilder<TSaga, TState> UseEfCoreRepository<TSaga, TState, TDbContext>(
+        this SagaBuilder<TSaga, TState> builder,
         Action<EfCoreSagaBuilder<TSaga, TState, TDbContext>>? configure = null)
         where TSaga : class, ISaga<TState>
         where TState : class, new()

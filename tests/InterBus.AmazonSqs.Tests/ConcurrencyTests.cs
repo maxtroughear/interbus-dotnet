@@ -59,10 +59,10 @@ public class ConcurrencyTests
         services.AddSingleton(_orderTracker);
 
         var awsOptions = TestHelpers.CreateAwsOptions(_container);
-        
+
         if (awsOptions is not null)
             services.AddDefaultAWSOptions(awsOptions);
-        
+
         services.AddAWSService<IAmazonSimpleNotificationService>();
         services.AddAWSService<IAmazonSQS>();
         services.AddAWSService<Amazon.SecurityToken.IAmazonSecurityTokenService>();

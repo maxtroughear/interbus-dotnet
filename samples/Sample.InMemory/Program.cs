@@ -17,6 +17,7 @@ builder.Services.AddInterBus(bus =>
     bus.AddConsumer<GreetingConsumer>();
     bus.AddConsumer<FarewellConsumer>();
     bus.AddConsumer<EavesDroppingConsumer>();
+    bus.AddSaga<GreetingSaga, GreetingSagaState>(c => { c.UseInMemoryRepository(); });
 });
 
 var host = builder.Build();

@@ -26,7 +26,7 @@ namespace InterBus.EntityFrameworkCore.Internal;
 /// <para>
 /// This middleware must be registered <b>together</b> with
 /// <see cref="OutboxPublishMiddleware{TDbContext}"/> on the same consumer (via
-/// <c>IConsumerBuilder.UseOutboxWithInlineDelivery&lt;TDbContext&gt;()</c>) because it relies on
+/// <c>ConsumerBuilder.UseOutboxWithInlineDelivery&lt;TDbContext&gt;()</c>) because it relies on
 /// <see cref="OutboxConsumeState"/> being populated by the publish middleware.
 /// </para>
 /// </summary>
@@ -43,7 +43,7 @@ internal sealed partial class OutboxInlineDeliveryConsumeMiddleware<TDbContext>(
         CancellationToken cancellationToken = default) where T : class
     {
         consumeState.IsDeliveryInline = true;
-        
+
         // Run the consumer handler. The consumer is expected to call SaveChangesAsync inside
         // Consume, which commits any outbox entries written by OutboxPublishMiddleware to the DB.
         await next(context, cancellationToken);

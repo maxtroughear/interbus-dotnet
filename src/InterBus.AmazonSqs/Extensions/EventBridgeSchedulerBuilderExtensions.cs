@@ -1,16 +1,17 @@
 using Amazon.Scheduler;
+using InterBus.Scheduling;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace InterBus.AmazonSqs.Extensions;
 
 /// <summary>
 /// Extension methods for configuring the EventBridge Scheduler integration on an
-/// <see cref="ISchedulerBuilder"/>.
+/// <see cref="SchedulerBuilder"/>.
 /// </summary>
 public static class EventBridgeSchedulerBuilderExtensions
 {
     /// <param name="builder">The InterBus scheduler builder.</param>
-    extension(ISchedulerBuilder builder)
+    extension(SchedulerBuilder builder)
     {
         /// <summary>
         /// Register the Amazon EventBridge Scheduler integration for InterBus.
@@ -47,7 +48,7 @@ public static class EventBridgeSchedulerBuilderExtensions
         /// <param name="configure">
         /// Optional delegate to configure <see cref="EventBridgeSchedulerOptions"/>.
         /// </param>
-        public ISchedulerBuilder AddEventBridgeScheduler(Action<EventBridgeSchedulerOptions>? configure = null)
+        public SchedulerBuilder AddEventBridgeScheduler(Action<EventBridgeSchedulerOptions>? configure = null)
         {
             ArgumentNullException.ThrowIfNull(builder);
 

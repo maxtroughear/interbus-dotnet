@@ -16,6 +16,7 @@ namespace InterBus.EntityFrameworkCore.SqlServer.IntegrationTests;
 // ---------------------------------------------------------------------------
 
 public record SqlSagaOrderStarted(Guid OrderId, string CustomerEmail);
+
 public record SqlSagaOrderConfirmed(Guid OrderId);
 
 public sealed class SqlSagaOrderState
@@ -85,8 +86,8 @@ public class SagaSqlServerIntegrationTests(string imageTag)
         {
             bus.AddInMemoryTransport();
             bus.AddSaga<SqlSagaOrderSaga, SqlSagaOrderState>(saga =>
-                saga.UseEfCoreRepository<SqlSagaOrderSaga, SqlSagaOrderState, SagaTestDbContext>(
-                    repo => repo.UseSqlServer()));
+                saga.UseEfCoreRepository<SqlSagaOrderSaga, SqlSagaOrderState, SagaTestDbContext>(repo =>
+                    repo.UseSqlServer()));
         });
 
         _provider = services.BuildServiceProvider();
@@ -107,8 +108,13 @@ public class SagaSqlServerIntegrationTests(string imageTag)
         await _cts.CancelAsync();
         foreach (var svc in _provider.GetServices<IHostedService>())
         {
-            try { await svc.StopAsync(CancellationToken.None); }
-            catch (OperationCanceledException) { }
+            try
+            {
+                await svc.StopAsync(CancellationToken.None);
+            }
+            catch (OperationCanceledException)
+            {
+            }
         }
 
         await _provider.DisposeAsync();

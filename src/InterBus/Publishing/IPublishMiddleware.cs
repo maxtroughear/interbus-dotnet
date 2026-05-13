@@ -9,7 +9,7 @@ namespace InterBus.Publishing;
 /// (first registered = outermost).
 /// </summary>
 /// <remarks>
-/// Register via <see cref="IInterBusBuilder.UsePublishMiddleware{TMiddleware}"/>.
+/// Register via <see cref="InterBusBuilder.UsePublishMiddleware{TMiddleware}"/>.
 /// </remarks>
 public interface IPublishMiddleware : IMiddleware
 {

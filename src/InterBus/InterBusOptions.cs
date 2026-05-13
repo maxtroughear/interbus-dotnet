@@ -4,7 +4,7 @@ using InterBus.Consuming;
 namespace InterBus;
 
 /// <summary>
-/// Runtime options populated by <see cref="IInterBusBuilder"/> during startup.
+/// Runtime options populated by <see cref="InterBusBuilder"/> during startup.
 /// Consumed by transport implementations to initialise their topics and queues.
 /// </summary>
 public sealed class InterBusOptions

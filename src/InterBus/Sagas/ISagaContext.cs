@@ -5,7 +5,7 @@ namespace InterBus.Sagas;
 /// An instance is passed directly to <see cref="ISagaConsumer{TState,TMessage}.Consume"/> for each message dispatch.
 /// </summary>
 /// <typeparam name="TState">The saga state type.</typeparam>
-public interface ISagaContext<TState> : IConsumeContext
+public interface ISagaContext<out TState> : IConsumeContext
     where TState : class, new()
 {
     /// <summary>

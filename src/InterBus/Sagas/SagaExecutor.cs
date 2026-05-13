@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using InterBus.Consuming;
 using InterBus.Telemetry;
 using Microsoft.Extensions.Logging;
 
@@ -8,19 +9,20 @@ namespace InterBus.Sagas;
 /// DI-registered saga executor responsible for the correlation-based locking, state
 /// loading/creation, execution, and persistence lifecycle for a specific
 /// <typeparamref name="TSaga"/> / <typeparamref name="TState"/> pair.
-/// Registered as a scoped service by <see cref="IInterBusBuilder.AddSaga{TSaga,TState}"/>;
-/// dependencies are resolved from the container without any runtime reflection in the
-/// hot path.
 /// </summary>
-/// <typeparam name="TSaga">The saga type.</typeparam>
-/// <typeparam name="TState">The saga state type.</typeparam>
-public sealed partial class SagaExecutor<TSaga, TState>(
+/// <typeparam name="TSaga">The saga type</typeparam>
+/// <typeparam name="TState">The saga state type</typeparam>
+/// <typeparam name="TMessage">The message type</typeparam>
+public sealed partial class SagaExecutor<TSaga, TState, TMessage>(
+    TSaga saga,
     ISagaRepository<TSaga, TState> repository,
     SagaOptions<TSaga> options,
     IInterBusDiagnostics diagnostics,
-    ILogger<SagaExecutor<TSaga, TState>> logger)
-    where TSaga : class, ISaga<TState>
+    ILogger<SagaExecutor<TSaga, TState, TMessage>> logger)
+    : IConsumerExecutor<TSaga, TMessage>
+    where TSaga : ISagaConsumer<TState, TMessage>
     where TState : class, new()
+    where TMessage : class
 {
     /// <summary>
     /// Executes a single saga message handler:
@@ -35,15 +37,11 @@ public sealed partial class SagaExecutor<TSaga, TState>(
     ///   <item>Releases the lock</item>
     /// </list>
     /// </summary>
-    public async Task ExecuteAsync<TSagaConsumer, TMessage>(
-        TSagaConsumer saga,
-        TMessage message,
-        IConsumeContext context,
+    public async Task ExecuteAsync(
+        ConsumeContext<TMessage> context,
         CancellationToken cancellationToken)
-        where TSagaConsumer : TSaga, ISagaConsumer<TState, TMessage>
-        where TMessage : class
     {
-        var correlationId = saga.GetCorrelationId(message);
+        var correlationId = saga.GetCorrelationId(context.Message);
 
         await using var sagaLock = await repository.AcquireLockAsync(correlationId, cancellationToken);
 
@@ -51,7 +49,7 @@ public sealed partial class SagaExecutor<TSaga, TState>(
 
         if (entry?.IsCompleted is true)
         {
-            LogSagaCompleted(typeof(TMessage).Name, typeof(TSagaConsumer).Name, correlationId);
+            LogSagaCompleted(typeof(TMessage).Name, typeof(TSaga).Name, correlationId);
             return;
         }
 
@@ -64,11 +62,10 @@ public sealed partial class SagaExecutor<TSaga, TState>(
         var sagaCtx = new SagaContext<TState>(entry, context);
 
         using var activity = diagnostics.ActivitySource.StartActivity(
-            $"{typeof(TSaga).Name} consume",
-            ActivityKind.Internal);
+            $"{typeof(TSaga).Name} consume");
         try
         {
-            await saga.Consume(message, sagaCtx, cancellationToken);
+            await saga.Consume(context.Message, sagaCtx, cancellationToken);
             activity?.SetStatus(ActivityStatusCode.Ok);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)

@@ -15,7 +15,8 @@ public interface IScheduler
     /// absolute UTC time <paramref name="scheduledAt"/>. Fan-out to all registered consumers.
     /// </summary>
     /// <returns>An opaque schedule identifier that can be passed to <see cref="CancelAsync"/>.</returns>
-    Task<Guid> SchedulePublishAsync<T>(T message, DateTimeOffset scheduledAt, CancellationToken cancellationToken = default)
+    Task<Guid> SchedulePublishAsync<T>(T message, DateTimeOffset scheduledAt,
+        CancellationToken cancellationToken = default)
         where T : class;
 
     /// <summary>
@@ -65,7 +66,8 @@ public interface IScheduler
     /// Use the delegate to set headers (via <see cref="PublishContext{T}.Headers"/>).
     /// </summary>
     /// <returns>An opaque schedule identifier that can be passed to <see cref="CancelAsync"/>.</returns>
-    Task<Guid> ScheduleSendAsync<TConsumer, T>(T message, DateTimeOffset scheduledAt, Action<PublishContext<T>> configure,
+    Task<Guid> ScheduleSendAsync<TConsumer, T>(T message, DateTimeOffset scheduledAt,
+        Action<PublishContext<T>> configure,
         CancellationToken cancellationToken = default)
         where TConsumer : IConsumer<T>
         where T : class;
@@ -117,7 +119,8 @@ public interface IScheduler
     /// absolute UTC time <paramref name="scheduledAt"/>
     /// </summary>
     /// <returns>An opaque schedule identifier that can be passed to <see cref="CancelAsync"/>.</returns>
-    Task<Guid> ScheduleSendAsync<T>(Uri queue, T message, DateTimeOffset scheduledAt, Action<PublishContext<T>> configure,
+    Task<Guid> ScheduleSendAsync<T>(Uri queue, T message, DateTimeOffset scheduledAt,
+        Action<PublishContext<T>> configure,
         CancellationToken cancellationToken = default) where T : class;
 
     /// <summary>

@@ -1,45 +1,36 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Amazon.SimpleNotificationService.Model;
 
 namespace InterBus.AmazonSqs;
 
 /// <summary>
-/// Wire-format envelope for SNS/SQS messages. The envelope is serialised as JSON and used
-/// as the SQS/SNS message body, carrying both the raw (base-64 encoded) payload and the
-/// complete set of InterBus headers.
-/// <para>
-/// Placing all headers inside the envelope — rather than as SQS/SNS message attributes —
-/// removes the 10-attribute limit on SNS and SQS. A small subset of core headers
-/// (<see cref="InterBusHeaders.MessageType"/>, <see cref="InterBusHeaders.MessageId"/>,
-/// <see cref="InterBusHeaders.CorrelationId"/>) are still copied to message attributes so
-/// that SNS subscription filter policies can route messages by type.
-/// </para>
+/// Default InterBus envelope format: payload is base64 in JSON body, headers are in JSON body.
 /// </summary>
-internal sealed record SnsSqsMessageEnvelope(
-    [property: JsonPropertyName("p")] string Payload,
-    [property: JsonPropertyName("h")] Dictionary<string, string> Headers)
+public sealed class SnsSqsMessageEnvelope : ISnsSqsMessageEnvelope
 {
-    /// <summary>
-    /// Serialises <paramref name="payload"/> and <paramref name="headers"/> into a JSON
-    /// envelope string suitable for use as an SQS or SNS message body.
-    /// </summary>
-    internal static string Serialize(byte[] payload, MessageHeaders headers)
+    private static readonly HashSet<string> CoreAttributeHeaders = new(StringComparer.Ordinal)
     {
-        var envelope = new SnsSqsMessageEnvelope(
+        InterBusHeaders.MessageType,
+        InterBusHeaders.MessageId,
+        InterBusHeaders.CorrelationId,
+    };
+
+    public string SerializeForSnsPublish(byte[] payload, MessageHeaders headers)
+    {
+        var envelope = new InterBusEnvelopeBody(
             Convert.ToBase64String(payload),
             new Dictionary<string, string>(headers, StringComparer.Ordinal));
 
-        return JsonSerializer.Serialize(envelope, SnsSqsJsonContext.Default.SnsSqsMessageEnvelope);
+        return JsonSerializer.Serialize(envelope, SnsSqsJsonContext.Default.InterBusEnvelopeBody);
     }
 
-    /// <summary>
-    /// Deserialises a JSON envelope string produced by <see cref="Serialize"/> and returns
-    /// the original payload bytes and headers.
-    /// </summary>
-    internal static (byte[] Payload, MessageHeaders Headers) Deserialize(string json)
+    public (byte[] Payload, MessageHeaders Headers) DeserializeFromSqs(string messageBody)
     {
-        var envelope = JsonSerializer.Deserialize(json, SnsSqsJsonContext.Default.SnsSqsMessageEnvelope)
-                       ?? throw new InvalidOperationException("Failed to deserialise SNS/SQS message envelope");
+        var envelope = JsonSerializer.Deserialize(
+                           messageBody,
+                           SnsSqsJsonContext.Default.InterBusEnvelopeBody)
+                       ?? throw new InvalidOperationException("Failed to deserialize SNS/SQS message envelope");
 
         var payload = Convert.FromBase64String(envelope.Payload);
         var headers = new MessageHeaders(
@@ -47,4 +38,29 @@ internal sealed record SnsSqsMessageEnvelope(
 
         return (payload, headers);
     }
+
+    public Dictionary<string, MessageAttributeValue> BuildSnsMessageAttributes(MessageHeaders headers)
+    {
+        var result = new Dictionary<string, MessageAttributeValue>(
+            CoreAttributeHeaders.Count,
+            StringComparer.Ordinal);
+
+        foreach (var (headerName, headerValue) in headers)
+        {
+            if (!CoreAttributeHeaders.Contains(headerName))
+                continue;
+
+            result[headerName] = new MessageAttributeValue
+            {
+                DataType = "String",
+                StringValue = headerValue,
+            };
+        }
+
+        return result;
+    }
 }
+
+internal sealed record InterBusEnvelopeBody(
+    [property: JsonPropertyName("p")] string Payload,
+    [property: JsonPropertyName("h")] Dictionary<string, string> Headers);

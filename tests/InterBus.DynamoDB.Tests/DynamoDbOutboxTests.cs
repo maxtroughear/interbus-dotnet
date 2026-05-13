@@ -125,7 +125,8 @@ public class DynamoDbOutboxTests
         var provider = services.BuildServiceProvider();
         _dynamoDb = provider.GetRequiredService<IAmazonDynamoDB>();
 
-        await DynamoDbOutboxTable.EnsureTableCreatedAsync(_dynamoDb, _tableName, new DynamoDbOutboxOptions().GsiIndexName);
+        await DynamoDbOutboxTable.EnsureTableCreatedAsync(_dynamoDb, _tableName,
+            new DynamoDbOutboxOptions().GsiIndexName);
     }
 
     [TearDown]
@@ -379,9 +380,9 @@ public class DynamoDbOutboxTests
                 var outboxContext = scope.ServiceProvider.GetRequiredService<IDynamoDbOutboxContext>();
 
                 // Register a business DynamoDB write.
-                outboxContext.AddTransactItem(new Amazon.DynamoDBv2.Model.TransactWriteItem
+                outboxContext.AddTransactItem(new TransactWriteItem
                 {
-                    Put = new Amazon.DynamoDBv2.Model.Put
+                    Put = new Put
                     {
                         TableName = businessTable,
                         Item = new Dictionary<string, AttributeValue>
@@ -443,8 +444,7 @@ public class DynamoDbOutboxTests
         var (provider, cts) = await StartBusAsync(bus =>
         {
             bus.AddInMemoryTransport();
-            bus.AddConsumer<OutboxOrderPlacedPublishingConsumer>(
-                c => c.UseDynamoDbOutboxWithInlineDelivery());
+            bus.AddConsumer<OutboxOrderPlacedPublishingConsumer>(c => c.UseDynamoDbOutboxWithInlineDelivery());
             bus.AddConsumer<OutboxOrderShippedConsumer>();
             bus.AddDynamoDbOutbox(o =>
             {
@@ -493,7 +493,7 @@ public class DynamoDbOutboxTests
     // -----------------------------------------------------------------------
 
     private async Task<(ServiceProvider Provider, CancellationTokenSource Cts)> StartBusAsync(
-        Action<IInterBusBuilder> configureBus,
+        Action<InterBusBuilder> configureBus,
         Action<IServiceCollection>? extraServices = null)
     {
         var services = new ServiceCollection();

@@ -40,7 +40,7 @@ public static class ServiceCollectionExtensions
             "Override with bus.UseSerializer<TSerializer>() or bus.Services.AddSingleton<IMessageSerializer>(instance) for AOT applications")]
     public static IServiceCollection AddInterBus(
         this IServiceCollection services,
-        Action<IInterBusBuilder> configure)
+        Action<InterBusBuilder> configure)
     {
         var options = new InterBusOptions();
         var builder = new InterBusBuilder(services, options);

@@ -57,7 +57,10 @@ public class DeadLetteringTests(string imageTag)
             Assert.That(row.Reason, Is.EqualTo("Unhandled exception in consume pipeline"));
             Assert.That(row.Error, Does.Contain("Simulated dead-letter failure"));
             Assert.That(row.DeliveryCount, Is.EqualTo(1));
-            Assert.That(counter.Count, Is.EqualTo(1), "Message should be dead-lettered on the first attempt, not retried");
+            Assert.That(row.DeadLetteredAt,
+                Is.LessThanOrEqualTo(DateTimeOffset.UtcNow).And.GreaterThan(DateTimeOffset.MinValue));
+            Assert.That(counter.Count, Is.EqualTo(1),
+                "Message should be dead-lettered on the first attempt, not retried");
         }
     }
 
@@ -94,7 +97,8 @@ public class DeadLetteringTests(string imageTag)
             Assert.That(row!.QueueName, Does.Contain(nameof(DeadLetterOrderPlacedConsumer)));
             Assert.That(row.Reason, Is.EqualTo("Unhandled exception in consume pipeline"));
             Assert.That(row.Error, Does.Contain("Simulated dead-letter failure"));
-            Assert.That(counter.Count, Is.EqualTo(1), "Message should be dead-lettered on the first attempt, not retried");
+            Assert.That(counter.Count, Is.EqualTo(1),
+                "Message should be dead-lettered on the first attempt, not retried");
         }
     }
 
@@ -105,7 +109,7 @@ public class DeadLetteringTests(string imageTag)
     private async Task<TestHost> BuildAndStartAsync(
         Action<PostgreSqlTransportOptions> configure,
         Action<IServiceCollection> configureServices,
-        Action<IInterBusBuilder> configureConsumers)
+        Action<InterBusBuilder> configureConsumers)
     {
         var cts = new CancellationTokenSource();
         var services = new ServiceCollection();

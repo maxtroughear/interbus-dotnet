@@ -25,5 +25,4 @@ public interface ITopologyBuilder
     Task<string> EnsureQueueAsync(string rawQueueName, CancellationToken cancellationToken) =>
         throw new NotSupportedException(
             "Queue topology must be implemented by the transport-specific topology builder");
-
 }

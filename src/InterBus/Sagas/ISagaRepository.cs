@@ -11,8 +11,8 @@ namespace InterBus.Sagas;
 /// </remarks>
 /// <typeparam name="TSaga">The saga type</typeparam>
 /// <typeparam name="TState">The saga state type</typeparam>
-public interface ISagaRepository<TSaga, TState> 
-    where TSaga : class, ISaga<TState>
+public interface ISagaRepository<TSaga, TState>
+    where TSaga : ISaga<TState>
     where TState : class, new()
 {
     /// <summary>

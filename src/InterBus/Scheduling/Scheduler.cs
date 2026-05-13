@@ -19,7 +19,8 @@ internal class Scheduler(
         CancellationToken cancellationToken = default) where T : class =>
         SchedulePublishAsync(message, scheduledAt, _ => { }, cancellationToken);
 
-    public Task<Guid> SchedulePublishAsync<T>(T message, DateTimeOffset scheduledAt, Action<PublishContext<T>> configure,
+    public Task<Guid> SchedulePublishAsync<T>(T message, DateTimeOffset scheduledAt,
+        Action<PublishContext<T>> configure,
         CancellationToken cancellationToken = default) where T : class
     {
         var topicName = options.TryGetTopicName(typeof(T), out var customName)

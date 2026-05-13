@@ -19,9 +19,7 @@ public sealed class RetryMiddlewareTests
     private static ConsumeContext<TestMessage> BuildContext() =>
         BuildContext<TestMessage>(new ConsumerDescriptor(
             typeof(NoOpConsumer),
-            RoutingConventions.QueueUri("queue", "test-queue"),
-            [typeof(TestMessage)],
-            (_, _, _) => Task.CompletedTask));
+            RoutingConventions.QueueUri("queue", "test-queue")));
 
     private static ConsumeContext<T> BuildContext<T>(ConsumerDescriptor descriptor) where T : new() =>
         TestConsumeContextFactory.Create<T>(descriptor);

@@ -28,7 +28,7 @@ public static class TestHelpers
             DefaultClientConfig = { ServiceURL = container.GetConnectionString() }
         };
     }
-    
+
     internal static async Task WaitUntilAsync(
         Func<bool> condition,
         int timeoutMs = 30_000,

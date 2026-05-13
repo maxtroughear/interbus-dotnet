@@ -40,8 +40,8 @@ public static class InterBusTelemetry
         string queueName)
     {
         var hasParent = headers.TryGetValue(InterBusHeaders.Traceparent, out var traceparent)
-            && ActivityContext.TryParse(traceparent, headers.GetValueOrDefault(InterBusHeaders.Tracestate),
-                isRemote: true, out var parentContext);
+                        && ActivityContext.TryParse(traceparent, headers.GetValueOrDefault(InterBusHeaders.Tracestate),
+                            isRemote: true, out var parentContext);
 
         var activityName = $"{consumerName} process";
         var activity = hasParent

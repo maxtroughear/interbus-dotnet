@@ -24,6 +24,10 @@ public sealed class SnsSqsTransportOptions
     /// Prefix applied to SQS queue names. Defaults to <c>interbus-</c>.
     /// </summary>
     public string QueuePrefix { get; set; } = "interbus-";
+    
+    public string TopicSuffix { get; set; } = string.Empty;
+    
+    public string QueueSuffix { get; set; } = string.Empty;
 
     /// <summary>
     /// SQS message visibility timeout. When a message is received its visibility is set to

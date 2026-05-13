@@ -55,10 +55,10 @@ public class PublishSubscribeMultipleConsumersTests
         services.AddSingleton(_auditTracker);
 
         var awsOptions = TestHelpers.CreateAwsOptions(Container);
-        
+
         if (awsOptions is not null)
             services.AddDefaultAWSOptions(awsOptions);
-        
+
         services.AddAWSService<IAmazonSimpleNotificationService>();
         services.AddAWSService<IAmazonSQS>();
         services.AddAWSService<Amazon.SecurityToken.IAmazonSecurityTokenService>();

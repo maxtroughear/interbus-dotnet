@@ -12,12 +12,14 @@ namespace InterBus.Consuming;
 /// is performed during message dispatch.
 /// </para>
 /// </summary>
-public sealed class ConsumerDescriptor(
-    Type consumerType,
-    Uri queue,
-    IReadOnlyList<Type> messageTypes,
-    Func<DispatchContext, IServiceProvider, CancellationToken, Task> dispatch)
+public sealed class ConsumerDescriptor(Type consumerType, Uri queue)
 {
+    private static readonly Func<DispatchContext, ConsumePipelineExecutor, IServiceProvider, CancellationToken, Task>
+        MissingDispatchDelegate = MissingDispatch;
+
+    private Dictionary<string, Func<DispatchContext, ConsumePipelineExecutor, CancellationToken, Task>> _routes =
+        new(StringComparer.Ordinal);
+
     /// <summary>The concrete consumer type.</summary>
     public Type ConsumerType { get; } = consumerType;
 
@@ -32,15 +34,15 @@ public sealed class ConsumerDescriptor(
     /// <summary>
     /// The message types this consumer handles
     /// </summary>
-    public IReadOnlyList<Type> MessageTypes { get; } = messageTypes;
+    public HashSet<Type> MessageTypes { get; } = [];
 
-    /// <summary>
-    /// Dispatch delegate. Reads the <see cref="InterBusHeaders.MessageType"/> header from the
-    /// incoming <see cref="IConsumeContext"/>, deserializes the payload to the matching type,
-    /// and invokes the correct <c>Consume</c> overload on the consumer. If the message type is
-    /// not handled by this consumer it logs an error and returns without throwing.
-    /// </summary>
-    internal Func<DispatchContext, IServiceProvider, CancellationToken, Task> Dispatch { get; } = dispatch;
+    public string MessageTypeHeader { get; internal set; } = InterBusHeaders.MessageType;
+
+    internal Func<DispatchContext, ConsumePipelineExecutor, IServiceProvider, CancellationToken, Task> Dispatch
+    {
+        get;
+        set;
+    } = MissingDispatchDelegate;
 
     /// <summary>
     /// The number of concurrent message handlers for this consumer's queue.
@@ -54,4 +56,47 @@ public sealed class ConsumerDescriptor(
     /// 
     /// </summary>
     public TimeSpan? Timeout { get; internal set; }
+
+    internal void SetRoute(
+        string messageType,
+        Func<DispatchContext, ConsumePipelineExecutor, CancellationToken, Task> route)
+    {
+        _routes[messageType] = route;
+    }
+
+    internal void BuildDispatchFromRoutesIfMissing()
+    {
+        if (!ReferenceEquals(Dispatch, MissingDispatchDelegate))
+            return;
+
+        if (_routes.Count == 0)
+        {
+            throw new InvalidOperationException(
+                $"No dispatch routes configured for consumer {ConsumerType.FullName}. " +
+                "Call Consumes<TConsumer, TMessage>() or provide Dispatch(...)");
+        }
+
+        Dispatch = (context, pipeline, _, cancellationToken) =>
+        {
+            if (!context.Headers.TryGetValue(MessageTypeHeader, out var msgType))
+            {
+                throw new InvalidOperationException(
+                    $"InterBus: message received without {MessageTypeHeader} header for consumer {ConsumerType.FullName}");
+            }
+
+            if (_routes.TryGetValue(msgType, out var route))
+                return route(context, pipeline, cancellationToken);
+
+            throw new InvalidOperationException(
+                $"InterBus: consumer {ConsumerType.FullName} does not handle message type {msgType}");
+        };
+    }
+
+    private static Task MissingDispatch(
+        DispatchContext context,
+        ConsumePipelineExecutor pipeline,
+        IServiceProvider serviceProvider,
+        CancellationToken cancellationToken) =>
+        throw new InvalidOperationException(
+            $"No dispatch configured for consumer {context.Descriptor.ConsumerType.FullName}");
 }

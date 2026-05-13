@@ -31,7 +31,7 @@ public class PipelineTests
 
     private static async Task<(ServiceProvider Provider, CancellationTokenSource Cts)> StartAsync(
         Action<IServiceCollection> registerSingletons,
-        Action<IInterBusBuilder> configureBus)
+        Action<InterBusBuilder> configureBus)
     {
         var services = new ServiceCollection();
         services.AddLogging();
@@ -291,7 +291,8 @@ public class PipelineTests
             // Using SendAsync (not PublishAsync) avoids FaultingConsumer receiving the same message
             // and endlessly re-enqueueing it, which would starve the OrderPlacedConsumer pump.
             var normalMsg = new OrderPlaced(Guid.NewGuid(), "ok@test.com", 5m);
-            await publisher.SendAsync<OrderPlacedConsumer, OrderPlaced>(normalMsg, TestContext.Current.CancellationToken);
+            await publisher.SendAsync<OrderPlacedConsumer, OrderPlaced>(normalMsg,
+                TestContext.Current.CancellationToken);
 
             await WaitUntilAsync(() => orderTracker.Messages.Count >= 1 && faultingCount.Count >= 1);
 

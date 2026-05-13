@@ -24,7 +24,7 @@ public static class TestHelpers
 
     internal static LocalStackContainer? CreateLocalStackContainer() =>
         UseRealAws ? null : new LocalStackBuilder("localstack/localstack:4").Build();
-    
+
     internal static AWSOptions? CreateAwsOptions(LocalStackContainer? container)
     {
         if (container is null)
@@ -136,7 +136,7 @@ public static class TestHelpers
             do
             {
                 var response = await snsClient.ListTopicsAsync(nextToken);
-                
+
                 if (response.Topics == null || response.Topics.Count == 0)
                     break;
 
@@ -202,7 +202,7 @@ public static class TestHelpers
                 logger?.LogWarning(ex, "Error listing subscriptions for SNS topic {TopicArn}", topicArn);
                 return;
             }
-            
+
             if (response.Subscriptions == null || response.Subscriptions.Count == 0)
                 return;
 

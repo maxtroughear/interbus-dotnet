@@ -2,7 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace InterBus.RabbitMQ.Extensions;
 
-/// <summary>Extension methods for configuring the RabbitMQ (AMQP) transport on an <see cref="IInterBusBuilder"/>.</summary>
+/// <summary>Extension methods for configuring the RabbitMQ (AMQP) transport on an <see cref="InterBusBuilder"/>.</summary>
 public static class RabbitMqTransportBuilderExtensions
 {
     /// <summary>
@@ -34,8 +34,8 @@ public static class RabbitMqTransportBuilderExtensions
     /// Delegate to configure <see cref="RabbitMqTransportOptions"/>. At minimum set
     /// <see cref="RabbitMqTransportOptions.HostName"/> (or <see cref="RabbitMqTransportOptions.Uri"/>).
     /// </param>
-    public static IInterBusBuilder AddRabbitMqTransport(
-        this IInterBusBuilder builder,
+    public static InterBusBuilder AddRabbitMqTransport(
+        this InterBusBuilder builder,
         Action<RabbitMqTransportOptions>? configure = null)
     {
         ArgumentNullException.ThrowIfNull(builder);

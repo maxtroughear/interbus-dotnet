@@ -14,8 +14,8 @@ namespace InterBus.AmazonSqs;
 
 /// <summary>
 /// Responsible for declaring the SNS/SQS topology required by registered InterBus consumers:
-/// one SQS queue per consumer, one SNS topic per handled message type, and raw-delivery
-/// subscriptions binding each queue to its topics
+/// one SQS queue per consumer, one SNS topic per handled message type, and subscriptions
+/// binding each queue to its topics
 /// </summary>
 public sealed partial class SnsSqsTopologyBuilder(
     IAmazonSimpleNotificationService snsClient,
@@ -35,8 +35,8 @@ public sealed partial class SnsSqsTopologyBuilder(
     /// Declares (or verifies) the consumer topology for every registered consumer, populating the
     /// <see cref="SnsSqsTopology"/> caches.
     /// <para>
-    /// In <see cref="TopologyMode.CreateOrVerify"/> mode this creates SQS queues, SNS topics, raw-delivery
-    /// subscriptions, and queue resource policies (idempotent).
+    /// In <see cref="TopologyMode.CreateOrVerify"/> mode this creates SQS queues, SNS topics,
+    /// subscriptions (raw or SNS-serialised), and queue resource policies (idempotent).
     /// </para>
     /// <para>
     /// In <see cref="TopologyMode.VerifyOnly"/> mode only the queue URL is resolved. Topic verification is deferred
@@ -136,7 +136,7 @@ public sealed partial class SnsSqsTopologyBuilder(
                         Endpoint = queueArn,
                         Attributes = new Dictionary<string, string>
                         {
-                            ["RawMessageDelivery"] = "true",
+                            ["RawMessageDelivery"] = "true"
                         }
                     },
                     cancellationToken);

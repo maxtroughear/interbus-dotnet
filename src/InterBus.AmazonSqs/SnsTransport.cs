@@ -14,12 +14,8 @@ namespace InterBus.AmazonSqs;
 /// publish/subscribe pattern.
 /// </para>
 /// <para>
-/// The message body is a JSON <see cref="SnsSqsMessageEnvelope"/> containing the full
-/// set of InterBus headers and the base-64 encoded payload. A small subset of core
-/// headers (<c>interbus-message-type</c>, <c>interbus-message-id</c>,
-/// <c>interbus-correlation-id</c>) are additionally promoted to SNS message attributes so
-/// that SNS subscription filter policies can route messages by type without needing to
-/// deserialise the body.
+/// Message body and attributes are produced by the configured <see cref="ISnsSqsMessageEnvelope"/>
+/// implementation.
 /// </para>
 /// <para>
 /// Topic ARNs are resolved once and cached for the application lifetime so that create calls
@@ -33,19 +29,12 @@ namespace InterBus.AmazonSqs;
 /// </summary>
 public sealed class SnsTransport(
     IAmazonSimpleNotificationService snsClient,
-    ITopologyBuilder topologySetup)
+    ITopologyBuilder topologySetup,
+    ISnsSqsMessageEnvelope envelope)
     : ITransport
 {
     /// <summary>URI scheme for SNS topic (fan-out) destinations.</summary>
     public const string TopicScheme = "snstopic";
-
-    // Core headers promoted to SNS message attributes for subscription filter policy support.
-    private static readonly HashSet<string> CoreAttributeHeaders = new(StringComparer.Ordinal)
-    {
-        InterBusHeaders.MessageType,
-        InterBusHeaders.MessageId,
-        InterBusHeaders.CorrelationId,
-    };
 
     /// <inheritdoc/>
     public async Task SendAsync(TransportSendContext context, CancellationToken cancellationToken)
@@ -69,15 +58,8 @@ public sealed class SnsTransport(
         // SnsSqsTransportOptions.TopologyMode.
         var topicArn = await topologySetup.EnsureTopicAsync(rawTopicName, ct);
 
-        // Serialise the full payload + headers into the envelope body so that any
-        // serialisation format (JSON, MessagePack, gzip, etc.) round-trips without
-        // data loss, and header count is never limited by SNS's 10-attribute cap.
-        var body = SnsSqsMessageEnvelope.Serialize(context.Payload, context.Headers);
-
-        // Promote a small subset of core headers to SNS message attributes so that
-        // SNS subscription filter policies can route by message type without parsing
-        // the envelope body.
-        var messageAttributes = BuildSnsMessageAttributes(context.Headers);
+        var body = envelope.SerializeForSnsPublish(context.Payload, context.Headers);
+        var messageAttributes = envelope.BuildSnsMessageAttributes(context.Headers);
 
         await snsClient.PublishAsync(
             new PublishRequest
@@ -87,29 +69,5 @@ public sealed class SnsTransport(
                 MessageAttributes = messageAttributes,
             },
             ct);
-    }
-
-    private static Dictionary<string, MessageAttributeValue>
-        BuildSnsMessageAttributes(MessageHeaders headers)
-    {
-        var result =
-            new Dictionary<string, MessageAttributeValue>(
-                CoreAttributeHeaders.Count,
-                StringComparer.Ordinal);
-
-        foreach (var kv in headers)
-        {
-            if (!CoreAttributeHeaders.Contains(kv.Key))
-                continue;
-
-            result[kv.Key] =
-                new MessageAttributeValue
-                {
-                    DataType = "String",
-                    StringValue = kv.Value,
-                };
-        }
-
-        return result;
     }
 }

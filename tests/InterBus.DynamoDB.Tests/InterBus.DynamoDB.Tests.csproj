@@ -8,7 +8,7 @@
         <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
     </PropertyGroup>
     <ItemGroup>
-        <PackageReference Include="AWSSDK.Extensions.NETCore.Setup" Version="4.0.3.36" />
+        <PackageReference Include="AWSSDK.Extensions.NETCore.Setup" Version="4.0.3.37" />
         <PackageReference Include="AWSSDK.Signin" Version="4.0.0.23" />
         <PackageReference Include="coverlet.collector" Version="10.0.0">
             <PrivateAssets>all</PrivateAssets>

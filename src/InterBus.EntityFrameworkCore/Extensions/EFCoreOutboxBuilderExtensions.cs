@@ -9,7 +9,7 @@ namespace InterBus.EntityFrameworkCore.Extensions;
 public static class EfCoreOutboxBuilderExtensions
 {
     /// <param name="builder">The InterBus builder.</param>
-    extension(IInterBusBuilder builder)
+    extension(InterBusBuilder builder)
     {
         /// <summary>
         /// Registers the transactional outbox infrastructure for InterBus: the lock provider,
@@ -31,7 +31,7 @@ public static class EfCoreOutboxBuilderExtensions
         /// The application's <see cref="DbContext"/>
         /// </typeparam>
         /// <param name="configure">Optional delegate to configure the <see cref="OutboxBuilder{TDbContext}"/>.</param>
-        public IInterBusBuilder AddOutbox<TDbContext>(Action<OutboxBuilder<TDbContext>>? configure = null)
+        public InterBusBuilder AddOutbox<TDbContext>(Action<OutboxBuilder<TDbContext>>? configure = null)
             where TDbContext : DbContext
         {
             ArgumentNullException.ThrowIfNull(builder);
@@ -86,7 +86,7 @@ public static class EfCoreOutboxBuilderExtensions
         /// </para>
         /// <para>
         /// To route only consumer-published messages through the outbox (not the global bus
-        /// publisher), use <see cref="AddOutbox{TDbContext}(IInterBusBuilder, Action{OutboxBuilder{TDbContext}})"/>
+        /// publisher), use <see cref="AddOutbox{TDbContext}(InterBusBuilder, Action{OutboxBuilder{TDbContext}})"/>
         /// instead and opt consumers in individually.
         /// </para>
         /// </summary>
@@ -94,7 +94,7 @@ public static class EfCoreOutboxBuilderExtensions
         /// The application's <see cref="DbContext"/>.
         /// </typeparam>
         /// <param name="configure">Optional delegate to configure the <see cref="OutboxBuilder{TDbContext}"/>.</param>
-        public IInterBusBuilder UseOutbox<TDbContext>(Action<OutboxBuilder<TDbContext>>? configure = null)
+        public InterBusBuilder UseOutbox<TDbContext>(Action<OutboxBuilder<TDbContext>>? configure = null)
             where TDbContext : DbContext
         {
             ArgumentNullException.ThrowIfNull(builder);

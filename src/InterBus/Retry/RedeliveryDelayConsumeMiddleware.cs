@@ -11,7 +11,7 @@ namespace InterBus.Retry;
 /// configurable retry intervals, without requiring a separate scheduling infrastructure.
 /// </summary>
 /// <remarks>
-/// Configure via <see cref="IInterBusBuilder"/> using <c>UseRedeliveryTransportDelayMiddleware</c>
+/// Configure via <see cref="InterBusBuilder"/> using <c>UseRedeliveryTransportDelayMiddleware</c>
 /// and supply <see cref="RedeliveryOptions"/> to control retry count, delay strategy,
 /// and exception filtering.
 /// Transports that do not support deferred visibility will ignore the delay and deliver immediately.

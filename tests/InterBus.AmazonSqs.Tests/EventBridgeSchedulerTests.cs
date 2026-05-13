@@ -26,8 +26,10 @@ public sealed class EventBridgeSchedulerTests
     private readonly List<string> _createdGroups = [];
 
     private IAmazonSQS SqsClient => _serviceProvider.GetRequiredService<IAmazonSQS>();
+
     private IAmazonSimpleNotificationService SnsClient =>
         _serviceProvider.GetRequiredService<IAmazonSimpleNotificationService>();
+
     private IAmazonScheduler SchedulerClient => _serviceProvider.GetRequiredService<IAmazonScheduler>();
 
     private static string TargetRoleArn =>
@@ -75,7 +77,10 @@ public sealed class EventBridgeSchedulerTests
         _topologyBuilder = new SnsSqsTopologyBuilder(
             SnsClient, SqsClient,
             _serviceProvider.GetRequiredService<IAmazonSecurityTokenService>(),
-            _topology, transportOptions, new InterBusOptions(), logger);
+            _topology,
+            transportOptions,
+            new InterBusOptions(),
+            logger);
     }
 
     [TearDown]
@@ -91,7 +96,10 @@ public sealed class EventBridgeSchedulerTests
                     GroupName = groupName,
                 });
             }
-            catch { /* best-effort cleanup */ }
+            catch
+            {
+                /* best-effort cleanup */
+            }
         }
 
         foreach (var groupName in _createdGroups)
@@ -101,7 +109,10 @@ public sealed class EventBridgeSchedulerTests
                 await SchedulerClient.DeleteScheduleGroupAsync(
                     new DeleteScheduleGroupRequest { Name = groupName });
             }
-            catch { /* best-effort cleanup */ }
+            catch
+            {
+                /* best-effort cleanup */
+            }
         }
 
         await TestHelpers.CleanupResourcesByPrefixAsync(
@@ -239,9 +250,8 @@ public sealed class EventBridgeSchedulerTests
 
         await provider.CancelAsync(scheduleId, ct);
 
-        Assert.ThrowsAsync<ResourceNotFoundException>(
-            () => SchedulerClient.GetScheduleAsync(
-                new GetScheduleRequest { Name = scheduleId.ToString(), GroupName = "default" }, ct));
+        Assert.ThrowsAsync<ResourceNotFoundException>(() => SchedulerClient.GetScheduleAsync(
+            new GetScheduleRequest { Name = scheduleId.ToString(), GroupName = "default" }, ct));
     }
 
     [Test]
@@ -262,9 +272,8 @@ public sealed class EventBridgeSchedulerTests
 
         await provider.CancelAsync(scheduleId, ct);
 
-        Assert.ThrowsAsync<ResourceNotFoundException>(
-            () => SchedulerClient.GetScheduleAsync(
-                new GetScheduleRequest { Name = scheduleId.ToString(), GroupName = groupName }, ct));
+        Assert.ThrowsAsync<ResourceNotFoundException>(() => SchedulerClient.GetScheduleAsync(
+            new GetScheduleRequest { Name = scheduleId.ToString(), GroupName = groupName }, ct));
     }
 
     #endregion
@@ -274,7 +283,7 @@ public sealed class EventBridgeSchedulerTests
     private EventBridgeSchedulingProvider BuildProvider(
         string? roleArn = null,
         string groupName = "default") =>
-        new(SchedulerClient, _topology, _topologyBuilder,
+        new(SchedulerClient, _topology, _topologyBuilder, new SnsSqsMessageEnvelope(),
             new EventBridgeSchedulerOptions
             {
                 TargetRoleArn = roleArn ?? TargetRoleArn,

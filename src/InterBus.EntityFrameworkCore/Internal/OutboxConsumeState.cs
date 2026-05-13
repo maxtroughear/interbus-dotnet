@@ -16,6 +16,6 @@ internal sealed class OutboxConsumeState
     /// <c>null</c> if no outbox group was written in this scope
     /// </summary>
     public Guid? GroupId { get; internal set; }
-    
+
     public bool IsDeliveryInline { get; internal set; }
 }

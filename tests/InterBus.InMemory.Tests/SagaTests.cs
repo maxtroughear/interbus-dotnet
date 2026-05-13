@@ -14,8 +14,11 @@ namespace InterBus.InMemory.Tests;
 // ---------------------------------------------------------------------------
 
 public record OrderStarted(Guid OrderId, string CustomerEmail);
+
 public record OrderConfirmed(Guid OrderId);
+
 public record OrderCancelled(Guid OrderId);
+
 public record OrderAcknowledged(Guid OrderId);
 
 // ---------------------------------------------------------------------------
@@ -171,7 +174,7 @@ public class SagaTests
 
     private static async Task<(ServiceProvider Provider, CancellationTokenSource Cts)> StartAsync(
         Action<IServiceCollection>? registerSingletons,
-        Action<IInterBusBuilder> configureBus)
+        Action<InterBusBuilder> configureBus)
     {
         var services = new ServiceCollection();
         services.AddLogging();
@@ -226,7 +229,8 @@ public class SagaTests
         {
             using var scope = provider.CreateScope();
             var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
-            await publisher.PublishAsync(new OrderStarted(orderId, "test@example.com"), TestContext.Current.CancellationToken);
+            await publisher.PublishAsync(new OrderStarted(orderId, "test@example.com"),
+                TestContext.Current.CancellationToken);
 
             // Allow the saga to process
             await WaitUntilAsync(() =>
@@ -267,7 +271,8 @@ public class SagaTests
             using var scope = provider.CreateScope();
             var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
 
-            await publisher.PublishAsync(new OrderStarted(orderId, "order@test.com"), TestContext.Current.CancellationToken);
+            await publisher.PublishAsync(new OrderStarted(orderId, "order@test.com"),
+                TestContext.Current.CancellationToken);
             await publisher.PublishAsync(new OrderConfirmed(orderId), TestContext.Current.CancellationToken);
 
             // Wait for both messages to be processed
@@ -311,8 +316,10 @@ public class SagaTests
             using var scope = provider.CreateScope();
             var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
 
-            await publisher.PublishAsync(new OrderStarted(orderId1, "first@test.com"), TestContext.Current.CancellationToken);
-            await publisher.PublishAsync(new OrderStarted(orderId2, "second@test.com"), TestContext.Current.CancellationToken);
+            await publisher.PublishAsync(new OrderStarted(orderId1, "first@test.com"),
+                TestContext.Current.CancellationToken);
+            await publisher.PublishAsync(new OrderStarted(orderId2, "second@test.com"),
+                TestContext.Current.CancellationToken);
 
             var repository = provider.GetRequiredService<ISagaRepository<OrderSaga, OrderSagaState>>();
 
@@ -355,7 +362,8 @@ public class SagaTests
             using var scope = provider.CreateScope();
             var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
 
-            await publisher.PublishAsync(new OrderStarted(orderId, "cancel@test.com"), TestContext.Current.CancellationToken);
+            await publisher.PublishAsync(new OrderStarted(orderId, "cancel@test.com"),
+                TestContext.Current.CancellationToken);
 
             var repository = provider.GetRequiredService<ISagaRepository<OrderWithDeletionSaga, OrderSagaState>>();
 
@@ -367,7 +375,7 @@ public class SagaTests
 
             // Wait for the saga to process the cancellation and delete its state
             await WaitUntilAsync(() =>
-                repository.GetAsync(orderId.ToString()).GetAwaiter().GetResult() == null,
+                    repository.GetAsync(orderId.ToString()).GetAwaiter().GetResult() == null,
                 timeoutMs: 3000);
 
             var entry = await repository.GetAsync(orderId.ToString(), TestContext.Current.CancellationToken);
@@ -398,7 +406,8 @@ public class SagaTests
             var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
             var repository = provider.GetRequiredService<ISagaRepository<CompletingOrderSaga, OrderSagaState>>();
 
-            await publisher.PublishAsync(new OrderStarted(orderId, "complete@test.com"), TestContext.Current.CancellationToken);
+            await publisher.PublishAsync(new OrderStarted(orderId, "complete@test.com"),
+                TestContext.Current.CancellationToken);
             await WaitUntilAsync(() =>
                 repository.GetAsync(orderId.ToString()).GetAwaiter().GetResult()?.State.MessageCount == 1);
 
@@ -419,10 +428,11 @@ public class SagaTests
 
             // Send another message - should be dropped because the saga is completed.
             // Wait briefly to give the message pump an opportunity to (incorrectly) process it.
-            await publisher.PublishAsync(new OrderStarted(orderId, "new@test.com"), TestContext.Current.CancellationToken);
+            await publisher.PublishAsync(new OrderStarted(orderId, "new@test.com"),
+                TestContext.Current.CancellationToken);
             await WaitUntilAsync(
                 () => repository.GetAsync(orderId.ToString()).GetAwaiter().GetResult()
-                          ?.State.CustomerEmail == "new@test.com",
+                    ?.State.CustomerEmail == "new@test.com",
                 timeoutMs: 500, intervalMs: 10);
 
             // State must be unchanged — the message was silently dropped
@@ -457,7 +467,8 @@ public class SagaTests
             using var scope = provider.CreateScope();
             var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
 
-            await publisher.PublishAsync(new OrderStarted(orderId, "ttl@test.com"), TestContext.Current.CancellationToken);
+            await publisher.PublishAsync(new OrderStarted(orderId, "ttl@test.com"),
+                TestContext.Current.CancellationToken);
 
             var repository = provider.GetRequiredService<ISagaRepository<OrderSaga, OrderSagaState>>();
 
@@ -465,7 +476,8 @@ public class SagaTests
                 repository.GetAsync(orderId.ToString()).GetAwaiter().GetResult()?.State.MessageCount == 1);
 
             // State should be present immediately after processing
-            var entryBeforeExpiry = await repository.GetAsync(orderId.ToString(), TestContext.Current.CancellationToken);
+            var entryBeforeExpiry =
+                await repository.GetAsync(orderId.ToString(), TestContext.Current.CancellationToken);
             Assert.NotNull(entryBeforeExpiry);
 
             // Wait for TTL to expire
@@ -501,7 +513,8 @@ public class SagaTests
             using var scope = provider.CreateScope();
             var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
 
-            await publisher.PublishAsync(new OrderStarted(orderId, "publish@test.com"), TestContext.Current.CancellationToken);
+            await publisher.PublishAsync(new OrderStarted(orderId, "publish@test.com"),
+                TestContext.Current.CancellationToken);
 
             await WaitUntilAsync(() => tracker.Messages.Count == 1);
 

@@ -1,7 +1,6 @@
 using System.Runtime.CompilerServices;
 using InterBus.Extensions;
 using InterBus.InMemory.Extensions;
-using InterBus.Scheduling.Extensions;
 using InterBus.TickerQ.Extensions;
 using Microsoft.Extensions.DependencyInjection;
 using TickerQ.DependencyInjection;
@@ -219,40 +218,6 @@ public sealed class TickerQSchedulerTests
         public Task<TickerResult<TimeTickerEntity>> AddAsync<TFunction, TRequest>(DateTime? executionTime,
             TRequest request, CancellationToken cancellationToken = new())
             where TFunction : class, ITickerFunction<TRequest> => Task.FromResult(EmptyResult<TimeTickerEntity>());
-    }
-
-    private sealed class NoOpHostScheduler : ITickerQHostScheduler
-    {
-        public bool IsRunning => false;
-
-        public Task StartAsync(CancellationToken cancellationToken) => Task.CompletedTask;
-
-        public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
-
-        public void RestartIfNeeded(DateTime? dateTime)
-        {
-        }
-
-        public void Restart()
-        {
-        }
-    }
-
-    private sealed class TrackingHostScheduler : ITickerQHostScheduler
-    {
-        public int RestartIfNeededCallCount { get; private set; }
-
-        public bool IsRunning => false;
-
-        public Task StartAsync(CancellationToken cancellationToken) => Task.CompletedTask;
-
-        public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
-
-        public void RestartIfNeeded(DateTime? dateTime) => RestartIfNeededCallCount++;
-
-        public void Restart()
-        {
-        }
     }
 
     #endregion

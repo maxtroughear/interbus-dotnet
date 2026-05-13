@@ -1,3 +1,4 @@
+using InterBus.Consuming;
 using InterBus.EntityFrameworkCore.Internal;
 using InterBus.Sending;
 using Microsoft.EntityFrameworkCore;
@@ -10,7 +11,7 @@ namespace InterBus.EntityFrameworkCore.Extensions;
 /// </summary>
 public static class EfCoreOutboxConsumerBuilderExtensions
 {
-    extension(IConsumerBuilder builder)
+    extension(ConsumerBuilder builder)
     {
         /// <summary>
         /// Routes messages published by this consumer (from within its <c>Consume</c> handler)
@@ -35,7 +36,7 @@ public static class EfCoreOutboxConsumerBuilderExtensions
         /// <typeparam name="TDbContext">
         /// The application's <see cref="DbContext"/>
         /// </typeparam>
-        public IConsumerBuilder UseOutbox<TDbContext>()
+        public ConsumerBuilder UseOutbox<TDbContext>()
             where TDbContext : DbContext
         {
             ArgumentNullException.ThrowIfNull(builder);
@@ -70,7 +71,7 @@ public static class EfCoreOutboxConsumerBuilderExtensions
         /// <typeparam name="TDbContext">
         /// The application's <see cref="DbContext"/>
         /// </typeparam>
-        public IConsumerBuilder UseOutboxWithInlineDelivery<TDbContext>()
+        public ConsumerBuilder UseOutboxWithInlineDelivery<TDbContext>()
             where TDbContext : DbContext
         {
             ArgumentNullException.ThrowIfNull(builder);

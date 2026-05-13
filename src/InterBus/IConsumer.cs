@@ -6,11 +6,12 @@ namespace InterBus;
 public interface IConsumer;
 
 /// <summary>
-/// Message Endpoint (consumer side). Implement to handle messages of type <typeparamref name="T"/>.
+/// Message Endpoint (consumer side). Implement to handle messages of type <typeparamref name="TMessage"/>.
 /// Each implementation is activated by the Message Pump when a message is available on the consumer's queue.
 /// </summary>
-/// <typeparam name="T">The message type to consume.</typeparam>
-public interface IConsumer<T> : IConsumer where T : class
+/// <typeparam name="TMessage">The message type to consume.</typeparam>
+public interface IConsumer<in TMessage> : IConsumer, IConsume<TMessage>
+    where TMessage : class
 {
-    Task Consume(T message, IConsumeContext context, CancellationToken cancellationToken = default);
+    Task Consume(TMessage message, IConsumeContext context, CancellationToken cancellationToken = default);
 }

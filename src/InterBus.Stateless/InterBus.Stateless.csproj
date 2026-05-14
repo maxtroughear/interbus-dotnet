@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <LangVersion>latest</LangVersion>
+        <IsTrimmable>true</IsTrimmable>
+    </PropertyGroup>
+    <ItemGroup>
+        <PackageReference Include="Stateless" Version="5.16.0"/>
+    </ItemGroup>
+    <ItemGroup>
+        <ProjectReference Include="..\InterBus\InterBus.csproj"/>
+    </ItemGroup>
+</Project>

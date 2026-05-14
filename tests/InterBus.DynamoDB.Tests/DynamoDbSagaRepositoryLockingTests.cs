@@ -34,16 +34,18 @@ public class DynamoDbSagaRepositoryLockingTests : DynamoDbSagaTestFixtureBase
         var shortLease = new DynamoDbSagaOptions<OrderSaga>
         {
             TableName = TableName,
-            LockLeaseDuration = TimeSpan.FromSeconds(1),
+            LockLeaseDuration = TimeSpan.FromSeconds(2),
             LockRetryInterval = TimeSpan.FromMilliseconds(100),
             LockAcquireTimeout = TimeSpan.FromSeconds(10),
         };
         var repo = new DynamoDbSagaRepository<OrderSaga, OrderSagaState>(DynamoDb, shortLease, StateWriter);
         var correlationId = Guid.NewGuid().ToString();
 
-        _ = await repo.AcquireLockAsync(correlationId);
+        var lock1 = await repo.AcquireLockAsync(correlationId);
         await Task.Delay(TimeSpan.FromSeconds(2));
 
+        await lock1.DisposeAsync(); // Abandon the lock
+        
         await using var lock2 = await repo.AcquireLockAsync(correlationId);
         Assert.That(lock2, Is.Not.Null);
     }

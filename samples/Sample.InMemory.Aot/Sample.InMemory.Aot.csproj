@@ -12,6 +12,6 @@
         <ProjectReference Include="..\..\src\InterBus.InMemory\InterBus.InMemory.csproj"/>
     </ItemGroup>
     <ItemGroup>
-        <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.7"/>
+        <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.8"/>
     </ItemGroup>
 </Project>

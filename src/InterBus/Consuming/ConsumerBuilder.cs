@@ -1,5 +1,6 @@
 using System.Diagnostics.CodeAnalysis;
 using InterBus.Dispatching;
+using InterBus.Outbox;
 using InterBus.Publishing;
 using InterBus.Sending;
 using Microsoft.Extensions.DependencyInjection;
@@ -143,6 +144,14 @@ public class ConsumerBuilder(ConsumerDescriptor descriptor, IServiceCollection s
         where TMiddleware : class, IDispatchMiddleware
     {
         services.AddKeyedScoped<IDispatchMiddleware, TMiddleware>(descriptor.ConsumerType);
+        return this;
+    }
+
+    public ConsumerBuilder UseInMemoryOutbox()
+    {
+        services.TryAddScoped<InMemoryOutboxConsumeState>();
+        UseConsumeMiddleware<InMemoryOutboxConsumeMiddleware>();
+        UseSendMiddleware<InMemoryOutboxSendMiddleware>();
         return this;
     }
 }

@@ -51,6 +51,15 @@ public sealed class AuditConsumer(AuditTracker tracker) : IConsumer<OrderPlaced>
     }
 }
 
+public sealed class OrderShippedConsumer(OrderShippedTracker tracker) : IConsumer<OrderShipped>
+{
+    public Task Consume(OrderShipped message, IConsumeContext context, CancellationToken cancellationToken = default)
+    {
+        tracker.Track(message);
+        return Task.CompletedTask;
+    }
+}
+
 /// <summary>
 /// A consumer that handles two distinct message types.
 /// With the one-queue-per-consumer design it is assigned a single queue; messages of both

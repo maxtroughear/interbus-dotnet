@@ -19,7 +19,7 @@ public class RequestReplyTests
 
     public sealed class ReplyToCapture { public Uri? Value { get; set; } }
 
-    public sealed class HeaderCapture2 { public string? Value { get; set; } }
+    public sealed class RequestHeaderCapture { public string? Value { get; set; } }
 
     /// <summary>
     /// Consumes <see cref="GetOrderStatus"/> and sends a reply using <see cref="IConsumeContext.ReplyTo"/>.
@@ -59,7 +59,7 @@ public class RequestReplyTests
     /// Captures a custom request header and sends a reply.
     /// </summary>
     public sealed class HeaderCapturingConsumer(
-        HeaderCapture2 capture,
+        RequestHeaderCapture capture,
         IPublisher publisher) : IConsumer<GetOrderStatus>
     {
         public async Task Consume(GetOrderStatus message, IConsumeContext context,
@@ -174,7 +174,7 @@ public class RequestReplyTests
     [Fact]
     public async Task RequestAsync_WithConfigureDelegate_HeadersForwardedToConsumer()
     {
-        var capturedHeaders = new HeaderCapture2();
+        var capturedHeaders = new RequestHeaderCapture();
 
         var (provider, cts) = await StartAsync(
             services => services.AddSingleton(capturedHeaders),

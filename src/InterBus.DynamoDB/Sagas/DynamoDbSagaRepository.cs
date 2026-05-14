@@ -78,6 +78,8 @@ public sealed class DynamoDbSagaRepository<TSaga, TState>(
 
     private readonly string _lockOwner = Guid.NewGuid().ToString("N");
 
+    private TimeSpan LockRenewalInterval => options.LockLeaseDuration / 2;
+
     /// <inheritdoc/>
     /// <remarks>
     /// Implements a lease-style distributed lock using DynamoDB conditional expressions.
@@ -251,6 +253,45 @@ public sealed class DynamoDbSagaRepository<TSaga, TState>(
     }
 
     /// <summary>
+    /// Extends the lock's expiry by another <see cref="DynamoDbSagaOptions{TSaga}.LockLeaseDuration"/>
+    /// only if the caller still owns the lock.
+    /// </summary>
+    private async Task TryExtendLockAsync(string correlationId, string lockOwner)
+    {
+        var lockExpiresAtEpoch = DateTimeOffset.UtcNow.Add(options.LockLeaseDuration)
+            .ToUnixTimeSeconds().ToString();
+
+        try
+        {
+            await dynamoDb.UpdateItemAsync(new UpdateItemRequest
+            {
+                TableName = options.TableName,
+                Key = BuildKey(correlationId),
+                UpdateExpression = "SET #le = :expiresAt",
+                ConditionExpression = "#lo = :owner",
+                ExpressionAttributeNames = new Dictionary<string, string>
+                {
+                    ["#lo"] = AttrLockOwner,
+                    ["#le"] = AttrLockExpiresAt,
+                },
+                ExpressionAttributeValues = new Dictionary<string, AttributeValue>
+                {
+                    [":owner"] = new() { S = lockOwner },
+                    [":expiresAt"] = new() { N = lockExpiresAtEpoch },
+                },
+            });
+        }
+        catch (ConditionalCheckFailedException)
+        {
+            // Lock was reclaimed by another caller — renewal failed silently.
+        }
+        catch (ResourceNotFoundException)
+        {
+            // Item was deleted while the lock was held — nothing to do.
+        }
+    }
+
+    /// <summary>
     /// Releases the lock conditionally: only removes <c>LockOwner</c> / <c>LockExpiresAt</c>
     /// if the caller still owns the lock, preventing accidental release of a lock held by
     /// another caller after a lease expiry.
@@ -297,12 +338,52 @@ public sealed class DynamoDbSagaRepository<TSaga, TState>(
     // Lock releaser
     // -----------------------------------------------------------------------
 
-    private sealed class LockReleaser(
-        DynamoDbSagaRepository<TSaga, TState> repository,
-        string correlationId,
-        string lockOwner) : IAsyncDisposable
+    private sealed class LockReleaser : IAsyncDisposable
     {
-        public ValueTask DisposeAsync() =>
-            new(repository.ReleaseLockAsync(correlationId, lockOwner));
+        private readonly DynamoDbSagaRepository<TSaga, TState> _repository;
+        private readonly string _correlationId;
+        private readonly string _lockOwner;
+        private readonly CancellationTokenSource _renewalCts;
+        private readonly Task _renewalTask;
+
+        public LockReleaser(
+            DynamoDbSagaRepository<TSaga, TState> repository,
+            string correlationId,
+            string lockOwner)
+        {
+            _repository = repository;
+            _correlationId = correlationId;
+            _lockOwner = lockOwner;
+            _renewalCts = new CancellationTokenSource();
+            _renewalTask = RunRenewalLoopAsync(_renewalCts.Token);
+        }
+
+        private async Task RunRenewalLoopAsync(CancellationToken ct)
+        {
+            var interval = _repository.LockRenewalInterval;
+            while (!ct.IsCancellationRequested)
+            {
+                try
+                {
+                    await Task.Delay(interval, ct);
+                    await _repository.TryExtendLockAsync(_correlationId, _lockOwner);
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
+            }
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            await _renewalCts.CancelAsync();
+            // RunRenewalLoopAsync catches OperationCanceledException internally and exits
+            // cleanly, so the task should complete normally. The catch is a safety net for
+            // any unexpected cancellation path.
+            try { await _renewalTask; } catch (OperationCanceledException) { }
+            _renewalCts.Dispose();
+            await _repository.ReleaseLockAsync(_correlationId, _lockOwner);
+        }
     }
 }

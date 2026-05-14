@@ -194,7 +194,7 @@ public class OutboxTests
             bus.AddInMemoryTransport();
             bus.AddConsumer<OrderPlacedConsumer>();
             // Long poll interval so the processor does not run during assertions.
-            bus.UseOutbox<TestDbContext>(o => o.WithPollInterval(TimeSpan.FromHours(1)));
+            bus.UseEfCoreOutbox<TestDbContext>(o => o.WithPollInterval(TimeSpan.FromHours(1)));
         }, services => services.AddSingleton(tracker));
 
         try
@@ -243,7 +243,7 @@ public class OutboxTests
         {
             bus.AddInMemoryTransport();
             bus.AddConsumer<OrderPlacedConsumer>();
-            bus.UseOutbox<TestDbContext>(o => o.WithPollInterval(TimeSpan.FromMilliseconds(50)));
+            bus.UseEfCoreOutbox<TestDbContext>(o => o.WithPollInterval(TimeSpan.FromMilliseconds(50)));
         }, services => services.AddSingleton(tracker));
 
         try
@@ -283,7 +283,7 @@ public class OutboxTests
         {
             bus.AddInMemoryTransport();
             bus.AddConsumer<OrderPlacedConsumer>();
-            bus.UseOutbox<TestDbContext>(o => o.WithPollInterval(TimeSpan.FromMilliseconds(50)));
+            bus.UseEfCoreOutbox<TestDbContext>(o => o.WithPollInterval(TimeSpan.FromMilliseconds(50)));
         }, services => services.AddSingleton(tracker));
 
         try
@@ -331,7 +331,7 @@ public class OutboxTests
         {
             bus.AddInMemoryTransport();
             bus.AddConsumer<OrderPlacedConsumer>();
-            bus.UseOutbox<TestDbContext>(o => o.WithPollInterval(TimeSpan.FromMilliseconds(50)));
+            bus.UseEfCoreOutbox<TestDbContext>(o => o.WithPollInterval(TimeSpan.FromMilliseconds(50)));
         }, services => services.AddSingleton(tracker));
 
         try
@@ -383,7 +383,7 @@ public class OutboxTests
         {
             bus.AddInMemoryTransport();
             // Long poll interval — we only want to inspect the stored row, not forward.
-            bus.UseOutbox<TestDbContext>(o => o.WithPollInterval(TimeSpan.FromHours(1)));
+            bus.UseEfCoreOutbox<TestDbContext>(o => o.WithPollInterval(TimeSpan.FromHours(1)));
         });
 
         try
@@ -418,7 +418,7 @@ public class OutboxTests
         var (provider, cts, conn) = await StartAsync(bus =>
         {
             bus.AddInMemoryTransport();
-            bus.UseOutbox<TestDbContext>(o => o.WithPollInterval(TimeSpan.FromMilliseconds(50)));
+            bus.UseEfCoreOutbox<TestDbContext>(o => o.WithPollInterval(TimeSpan.FromMilliseconds(50)));
         });
 
         try
@@ -477,10 +477,10 @@ public class OutboxTests
         var (provider, cts, conn) = await StartAsync(bus =>
         {
             bus.AddInMemoryTransport();
-            bus.AddConsumer<OrderPlacedPublishingConsumer>(c => c.UseOutboxWithInlineDelivery<TestDbContext>());
+            bus.AddConsumer<OrderPlacedPublishingConsumer>(c => c.UseEfCoreOutboxWithInlineDelivery<TestDbContext>());
             bus.AddConsumer<OrderShippedConsumer>();
             // Long poll interval so the outbox processor does not run during assertions.
-            bus.UseOutbox<TestDbContext>(o => o.WithPollInterval(TimeSpan.FromHours(1)));
+            bus.UseEfCoreOutbox<TestDbContext>(o => o.WithPollInterval(TimeSpan.FromHours(1)));
         }, services => services.AddSingleton(shippedTracker));
 
         try
@@ -538,9 +538,9 @@ public class OutboxTests
         var (provider, cts, conn) = await StartAsync(bus =>
         {
             bus.AddInMemoryTransport();
-            bus.AddConsumer<OrderPlacedPublishingConsumer>(c => c.UseOutboxWithInlineDelivery<TestDbContext>());
+            bus.AddConsumer<OrderPlacedPublishingConsumer>(c => c.UseEfCoreOutboxWithInlineDelivery<TestDbContext>());
             bus.AddConsumer<OrderShippedConsumer>();
-            bus.UseOutbox<TestDbContext>(o => o.DisableOutboxProcessor());
+            bus.UseEfCoreOutbox<TestDbContext>(o => o.DisableOutboxProcessor());
         }, services => services.AddSingleton(shippedTracker));
 
         try
@@ -590,9 +590,9 @@ public class OutboxTests
         // No transport registered — inline delivery will throw, triggering the outbox fallback.
         var (provider, cts, conn) = await StartAsync(bus =>
         {
-            bus.AddConsumer<OrderPlacedPublishingConsumer>(c => c.UseOutboxWithInlineDelivery<TestDbContext>());
+            bus.AddConsumer<OrderPlacedPublishingConsumer>(c => c.UseEfCoreOutboxWithInlineDelivery<TestDbContext>());
             // Use the default ConsumerVisibilityTimeout (5 s); just suppress the background processor.
-            bus.UseOutbox<TestDbContext>(o => o.WithPollInterval(TimeSpan.FromHours(1)));
+            bus.UseEfCoreOutbox<TestDbContext>(o => o.WithPollInterval(TimeSpan.FromHours(1)));
         });
 
         try
@@ -639,7 +639,7 @@ public class OutboxTests
         var (provider, cts, conn) = await StartAsync(bus =>
         {
             bus.AddInMemoryTransport();
-            bus.UseOutbox<TestDbContext>(o => o
+            bus.UseEfCoreOutbox<TestDbContext>(o => o
                 .WithPollInterval(TimeSpan.FromHours(1))
                 .WithConsumerVisibilityTimeout(TimeSpan.FromSeconds(5)));
         });
@@ -681,12 +681,12 @@ public class OutboxTests
             bus.AddInMemoryTransport();
             // Faulting consumer has outbox configured — the dead-letter publish must still
             // reach the transport even without SaveChangesAsync being called.
-            bus.AddConsumer<FaultingOrderPlacedConsumerWithOutbox>(c => c.UseOutbox<TestDbContext>());
+            bus.AddConsumer<FaultingOrderPlacedConsumerWithOutbox>(c => c.UseEfCoreOutbox<TestDbContext>());
             bus.AddConsumer<DeadLetterOrderPlacedConsumerForOutbox>();
             // AddOutbox (not UseOutbox) — only the consumer-level outbox is under test here.
             // Long poll interval effectively disables the background processor so it does not
             // interfere with the assertions.
-            bus.AddOutbox<TestDbContext>(o => o.WithPollInterval(TimeSpan.FromHours(1)));
+            bus.AddEfCoreOutbox<TestDbContext>(o => o.WithPollInterval(TimeSpan.FromHours(1)));
         }, services => services.AddSingleton(deadLetterTracker));
 
         try

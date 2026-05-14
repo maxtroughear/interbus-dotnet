@@ -25,7 +25,7 @@ public static class EfCoreOutboxConsumerBuilderExtensions
         /// </para>
         /// <para>
         /// To also attempt immediate ("inline") delivery after <c>Consume</c> returns, call
-        /// <see cref="UseOutboxWithInlineDelivery{TDbContext}"/> instead.
+        /// <see cref="EfCoreOutboxConsumerBuilderExtensions.UseEfCoreOutboxWithInlineDelivery{TDbContext}"/> instead.
         /// </para>
         /// <para>
         /// Requires <c>bus.AddOutbox&lt;TDbContext&gt;()</c> or <c>bus.UseOutbox&lt;TDbContext&gt;()</c>
@@ -36,7 +36,7 @@ public static class EfCoreOutboxConsumerBuilderExtensions
         /// <typeparam name="TDbContext">
         /// The application's <see cref="DbContext"/>
         /// </typeparam>
-        public ConsumerBuilder UseOutbox<TDbContext>()
+        public ConsumerBuilder UseEfCoreOutbox<TDbContext>()
             where TDbContext : DbContext
         {
             ArgumentNullException.ThrowIfNull(builder);
@@ -71,7 +71,7 @@ public static class EfCoreOutboxConsumerBuilderExtensions
         /// <typeparam name="TDbContext">
         /// The application's <see cref="DbContext"/>
         /// </typeparam>
-        public ConsumerBuilder UseOutboxWithInlineDelivery<TDbContext>()
+        public ConsumerBuilder UseEfCoreOutboxWithInlineDelivery<TDbContext>()
             where TDbContext : DbContext
         {
             ArgumentNullException.ThrowIfNull(builder);

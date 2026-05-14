@@ -52,7 +52,7 @@ public class OutboxPostgreSqlIntegrationTests(string imageTag)
         {
             bus.AddInMemoryTransport();
             bus.AddConsumer<OrderPlacedConsumer>();
-            bus.UseOutbox<TestDbContext>(outbox => outbox
+            bus.UseEfCoreOutbox<TestDbContext>(outbox => outbox
                 .WithPollInterval(TimeSpan.FromMilliseconds(100))
                 .UsePostgreSql());
         });

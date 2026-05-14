@@ -14,8 +14,8 @@ public static class EfCoreOutboxBuilderExtensions
         /// <summary>
         /// Registers the transactional outbox infrastructure for InterBus: the lock provider,
         /// shared options, <see cref="OutboxConsumeState"/>, and the background
-        /// <see cref="Outbox.OutboxProcessor{TDbContext}"/>. Does <b>not</b> add the bus-level publish
-        /// middleware — call <see cref="EfCoreOutboxBuilderExtensions.UseOutbox{TDbContext}"/>
+        /// <see cref="OutboxProcessor{TDbContext}"/>. Does <b>not</b> add the bus-level publish
+        /// middleware — call <see cref="EfCoreOutboxBuilderExtensions.UseEfCoreOutbox{TDbContext}"/>
         /// to also route <see cref="IPublisher"/> calls through the outbox.
         /// <para>
         /// Call this method when you only want consumers (not the global bus publisher) to write to
@@ -31,7 +31,8 @@ public static class EfCoreOutboxBuilderExtensions
         /// The application's <see cref="DbContext"/>
         /// </typeparam>
         /// <param name="configure">Optional delegate to configure the <see cref="OutboxBuilder{TDbContext}"/>.</param>
-        public InterBusBuilder AddOutbox<TDbContext>(Action<OutboxBuilder<TDbContext>>? configure = null)
+        public InterBusBuilder AddEfCoreOutbox<TDbContext>(
+            Action<OutboxBuilder<TDbContext>>? configure = null)
             where TDbContext : DbContext
         {
             ArgumentNullException.ThrowIfNull(builder);
@@ -86,7 +87,7 @@ public static class EfCoreOutboxBuilderExtensions
         /// </para>
         /// <para>
         /// To route only consumer-published messages through the outbox (not the global bus
-        /// publisher), use <see cref="AddOutbox{TDbContext}(InterBusBuilder, Action{OutboxBuilder{TDbContext}})"/>
+        /// publisher), use <see cref="EfCoreOutboxBuilderExtensions.AddEfCoreOutbox{TDbContext}"/>
         /// instead and opt consumers in individually.
         /// </para>
         /// </summary>
@@ -94,12 +95,13 @@ public static class EfCoreOutboxBuilderExtensions
         /// The application's <see cref="DbContext"/>.
         /// </typeparam>
         /// <param name="configure">Optional delegate to configure the <see cref="OutboxBuilder{TDbContext}"/>.</param>
-        public InterBusBuilder UseOutbox<TDbContext>(Action<OutboxBuilder<TDbContext>>? configure = null)
+        public InterBusBuilder UseEfCoreOutbox<TDbContext>(
+            Action<OutboxBuilder<TDbContext>>? configure = null)
             where TDbContext : DbContext
         {
             ArgumentNullException.ThrowIfNull(builder);
 
-            builder.AddOutbox(configure);
+            builder.AddEfCoreOutbox(configure);
             builder.UsePublishMiddleware<OutboxPublishMiddleware<TDbContext>>();
 
             return builder;

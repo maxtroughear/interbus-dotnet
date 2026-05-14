@@ -3,6 +3,7 @@ namespace InterBus.DynamoDB.Sagas;
 /// <summary>
 /// Configuration options for <see cref="DynamoDbSagaRepository{TSaga,TState}"/>.
 /// </summary>
+// ReSharper disable once UnusedTypeParameter
 public sealed class DynamoDbSagaOptions<TSaga>
 {
     /// <summary>

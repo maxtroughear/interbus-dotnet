@@ -61,8 +61,11 @@ public class DynamoDbSagaOutboxIntegrationTests : DynamoDbSagaTestFixtureBase
             var entry = await repository.GetAsync(orderId.ToString());
 
             Assert.That(entry, Is.Not.Null);
-            Assert.That(entry!.State.CustomerEmail, Is.EqualTo("test@example.com"));
-            Assert.That(entry.State.MessageCount, Is.EqualTo(1));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(entry!.State.CustomerEmail, Is.EqualTo("test@example.com"));
+                Assert.That(entry.State.MessageCount, Is.EqualTo(1));
+            }
         }
         finally
         {
@@ -100,9 +103,12 @@ public class DynamoDbSagaOutboxIntegrationTests : DynamoDbSagaTestFixtureBase
             var entry = await repository.GetAsync(orderId.ToString());
 
             Assert.That(entry, Is.Not.Null);
-            Assert.That(entry!.State.CustomerEmail, Is.EqualTo("test@example.com"));
-            Assert.That(entry.State.IsConfirmed, Is.True);
-            Assert.That(entry.State.MessageCount, Is.EqualTo(2));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(entry!.State.CustomerEmail, Is.EqualTo("test@example.com"));
+                Assert.That(entry.State.IsConfirmed, Is.True);
+                Assert.That(entry.State.MessageCount, Is.EqualTo(2));
+            }
         }
         finally
         {
@@ -145,8 +151,11 @@ public class DynamoDbSagaOutboxIntegrationTests : DynamoDbSagaTestFixtureBase
             var outboxContext = provider.GetRequiredService<FailingOutboxContext>();
             var entry = await repository.GetAsync(orderId.ToString());
 
-            Assert.That(outboxContext.Items, Has.Count.EqualTo(1), "Expected one outbox item to be added");
-            Assert.That(entry, Is.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(outboxContext.Items, Has.Count.EqualTo(1), "Expected one outbox item to be added");
+                Assert.That(entry, Is.Null);
+            }
         }
         finally
         {

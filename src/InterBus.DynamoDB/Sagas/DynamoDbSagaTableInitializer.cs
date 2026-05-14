@@ -6,7 +6,7 @@ namespace InterBus.DynamoDB.Sagas;
 
 /// <summary>
 /// Creates the DynamoDB saga table on application startup when
-/// <see cref="DynamoDbSagaOptions.CreateTableOnStartup"/> is <c>true</c>.
+/// <see cref="DynamoDbSagaOptions{TSaga}.CreateTableOnStartup"/> is <c>true</c>.
 /// The operation is idempotent: if the table already exists it is left unchanged.
 /// </summary>
 internal sealed class DynamoDbSagaTableInitializer<TSaga>(

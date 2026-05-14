@@ -28,7 +28,7 @@ namespace InterBus.DynamoDB.Sagas;
 /// Exclusive locking uses a lease-style mechanism: <see cref="AcquireLockAsync"/> attempts a
 /// conditional <c>UpdateItem</c> that succeeds only when no unexpired lock is held by another
 /// caller. The lock owner GUID is stored alongside its expiry so that stale locks (e.g. from
-/// crashed processes) are automatically reclaimed after <see cref="DynamoDbSagaOptions.LockLeaseDuration"/>.
+/// crashed processes) are automatically reclaimed after <see cref="DynamoDbSagaOptions{TSaga}.LockLeaseDuration"/>.
 /// </para>
 /// </remarks>
 /// <typeparam name="TSaga">The saga type.</typeparam>

@@ -74,7 +74,7 @@ public sealed class DynamoDbOutboxOptions
     public int ProcessorQueryBatchSize { get; set; } = 5;
 
     /// <summary>
-    /// When <c>true</c>, the background <see cref="Internal.DynamoDbOutboxProcessor"/> hosted
+    /// When <c>true</c>, the background <see cref="DynamoDbOutboxProcessor"/> hosted
     /// service is registered. Set to <c>false</c> when the processor runs in a separate
     /// process or when tests need direct control over message forwarding. Defaults to
     /// <c>true</c>.

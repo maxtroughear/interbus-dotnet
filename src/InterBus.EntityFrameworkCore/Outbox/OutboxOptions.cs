@@ -1,4 +1,4 @@
-namespace InterBus.EntityFrameworkCore;
+namespace InterBus.EntityFrameworkCore.Outbox;
 
 /// <summary>
 /// Configuration options for the InterBus transactional outbox.

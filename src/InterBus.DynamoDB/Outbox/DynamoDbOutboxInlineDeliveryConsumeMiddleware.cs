@@ -4,7 +4,7 @@ using InterBus.Consuming;
 using InterBus.Sending;
 using Microsoft.Extensions.Logging;
 
-namespace InterBus.DynamoDB.Outbox.Internal;
+namespace InterBus.DynamoDB.Outbox;
 
 /// <summary>
 /// Consume middleware that attempts immediate ("inline") delivery of outbox messages written by

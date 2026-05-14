@@ -23,6 +23,7 @@ public class DynamoDbSagaRepositoryTests : DynamoDbSagaTestFixtureBase
         var state = new OrderSagaState { CustomerEmail = "test@example.com", MessageCount = 3 };
         var entry = new SagaEntry<OrderSagaState>(state);
 
+        await using var sagaLock = await repo.AcquireLockAsync(correlationId);
         await repo.SaveAsync(correlationId, entry);
 
         var loaded = await repo.GetAsync(correlationId);
@@ -42,6 +43,7 @@ public class DynamoDbSagaRepositoryTests : DynamoDbSagaTestFixtureBase
         var state = new OrderSagaState { MessageCount = 1 };
         var entry = new SagaEntry<OrderSagaState>(state) { IsCompleted = true };
 
+        await using var sagaLock = await repo.AcquireLockAsync(correlationId);
         await repo.SaveAsync(correlationId, entry);
 
         var loaded = await repo.GetAsync(correlationId);
@@ -57,6 +59,8 @@ public class DynamoDbSagaRepositoryTests : DynamoDbSagaTestFixtureBase
         var correlationId = Guid.NewGuid().ToString();
 
         var entry = new SagaEntry<OrderSagaState>(new OrderSagaState());
+
+        await using var sagaLock = await repo.AcquireLockAsync(correlationId);
         await repo.SaveAsync(correlationId, entry);
 
         await repo.DeleteAsync(correlationId);
@@ -68,9 +72,11 @@ public class DynamoDbSagaRepositoryTests : DynamoDbSagaTestFixtureBase
     [Test]
     public async Task DeleteAsync_NonExistentEntry_IsNoOp()
     {
+        var correlationId = Guid.NewGuid().ToString();
         var repo = CreateRepo();
+        await using var sagaLock = await repo.AcquireLockAsync(correlationId);
         Assert.DoesNotThrowAsync(async () =>
-            await repo.DeleteAsync(Guid.NewGuid().ToString()));
+            await repo.DeleteAsync(correlationId));
     }
 
     [Test]
@@ -78,12 +84,17 @@ public class DynamoDbSagaRepositoryTests : DynamoDbSagaTestFixtureBase
     {
         var correlationId = Guid.NewGuid().ToString();
 
-        var repoOrder = new DynamoDbSagaRepository<OrderSaga, OrderSagaState>(DynamoDb, Options);
-        var repoDeletion = new DynamoDbSagaRepository<OrderWithDeletionSaga, OrderSagaState>(DynamoDb, Options);
+        var repoOrder = new DynamoDbSagaRepository<OrderSaga, OrderSagaState>(DynamoDb, Options, StateWriter);
+        var repoDeletion =
+            new DynamoDbSagaRepository<OrderWithDeletionSaga, OrderSagaState>(DynamoDb,
+                new DynamoDbSagaOptions<OrderWithDeletionSaga> { TableName = TableName },
+                new DynamoDbStateWriter<OrderWithDeletionSaga>(DynamoDb));
 
         var orderState = new OrderSagaState { CustomerEmail = "order@example.com", MessageCount = 1 };
         var deletionSagaState = new OrderSagaState { CustomerEmail = "deletion@example.com", MessageCount = 99 };
 
+        await using var orderSagaLock = await repoOrder.AcquireLockAsync(correlationId);
+        await using var deletionSagaLock = await repoDeletion.AcquireLockAsync(correlationId);
         await repoOrder.SaveAsync(correlationId, new SagaEntry<OrderSagaState>(orderState));
         await repoDeletion.SaveAsync(correlationId, new SagaEntry<OrderSagaState>(deletionSagaState));
 
@@ -91,17 +102,27 @@ public class DynamoDbSagaRepositoryTests : DynamoDbSagaTestFixtureBase
         var loadedDeletion = await repoDeletion.GetAsync(correlationId);
 
         Assert.That(loadedOrder, Is.Not.Null);
-        Assert.That(loadedOrder!.State.CustomerEmail, Is.EqualTo("order@example.com"));
-        Assert.That(loadedOrder.State.MessageCount, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(loadedOrder!.State.CustomerEmail, Is.EqualTo("order@example.com"));
+            Assert.That(loadedOrder.State.MessageCount, Is.EqualTo(1));
 
-        Assert.That(loadedDeletion, Is.Not.Null);
-        Assert.That(loadedDeletion!.State.CustomerEmail, Is.EqualTo("deletion@example.com"));
-        Assert.That(loadedDeletion.State.MessageCount, Is.EqualTo(99));
+            Assert.That(loadedDeletion, Is.Not.Null);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(loadedDeletion!.State.CustomerEmail, Is.EqualTo("deletion@example.com"));
+            Assert.That(loadedDeletion.State.MessageCount, Is.EqualTo(99));
+        }
 
         await repoOrder.DeleteAsync(correlationId);
 
-        Assert.That(await repoOrder.GetAsync(correlationId), Is.Null);
-        Assert.That(await repoDeletion.GetAsync(correlationId), Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(await repoOrder.GetAsync(correlationId), Is.Null);
+            Assert.That(await repoDeletion.GetAsync(correlationId), Is.Not.Null);
+        }
     }
 
     [Test]
@@ -112,6 +133,7 @@ public class DynamoDbSagaRepositoryTests : DynamoDbSagaTestFixtureBase
 
         var pastExpiry = DateTimeOffset.UtcNow.AddSeconds(-1);
         var entry = new SagaEntry<OrderSagaState>(new OrderSagaState(), pastExpiry);
+        await using var sagaLock = await repo.AcquireLockAsync(correlationId);
         await repo.SaveAsync(correlationId, entry);
 
         var loaded = await repo.GetAsync(correlationId);
@@ -126,6 +148,7 @@ public class DynamoDbSagaRepositoryTests : DynamoDbSagaTestFixtureBase
 
         var futureExpiry = DateTimeOffset.UtcNow.AddMinutes(5);
         var entry = new SagaEntry<OrderSagaState>(new OrderSagaState { MessageCount = 7 }, futureExpiry);
+        await using var sagaLock = await repo.AcquireLockAsync(correlationId);
         await repo.SaveAsync(correlationId, entry);
 
         var loaded = await repo.GetAsync(correlationId);

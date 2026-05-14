@@ -1,4 +1,4 @@
-using InterBus.EntityFrameworkCore.Internal;
+using InterBus.EntityFrameworkCore.Outbox;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;

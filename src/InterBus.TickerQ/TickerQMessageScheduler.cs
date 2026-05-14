@@ -1,4 +1,3 @@
-using InterBus.TickerQ.Internal;
 using TickerQ.Utilities;
 using TickerQ.Utilities.Entities;
 using TickerQ.Utilities.Interfaces.Managers;

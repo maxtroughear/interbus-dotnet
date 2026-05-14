@@ -1,8 +1,8 @@
 using InterBus.Consuming;
 using InterBus.DynamoDB.Outbox;
-using InterBus.DynamoDB.Outbox.Internal;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using DynamoDbOutboxInlineDeliveryConsumeMiddleware = InterBus.DynamoDB.Outbox.DynamoDbOutboxInlineDeliveryConsumeMiddleware;
 
 namespace InterBus.DynamoDB.Extensions;
 
@@ -20,7 +20,7 @@ public static class DynamoDbOutboxConsumerBuilderExtensions
         /// The consumer's publish calls are captured by
         /// <see cref="DynamoDbOutboxPublishMiddleware"/> and will be forwarded to the transport
         /// only after the consumer calls <see cref="IDynamoDbOutboxContext.CommitAsync"/>.
-        /// The background <see cref="DynamoDbOutboxProcessor"/> will process committed groups.
+        /// The background <see cref="Outbox.DynamoDbOutboxProcessor"/> will process committed groups.
         /// </para>
         /// <para>
         /// To also attempt immediate ("inline") delivery after <c>Consume</c> returns, use
@@ -55,7 +55,7 @@ public static class DynamoDbOutboxConsumerBuilderExtensions
         /// and forwards each message directly to the transport, exactly as the background
         /// processor would. If delivery succeeds the group is deleted, saving a background
         /// polling round-trip. If delivery fails the group remains in the outbox so the
-        /// <see cref="DynamoDbOutboxProcessor"/> can retry it after
+        /// <see cref="Outbox.DynamoDbOutboxProcessor"/> can retry it after
         /// <see cref="DynamoDbOutboxOptions.ConsumerVisibilityTimeout"/> has elapsed.
         /// </para>
         /// <para>

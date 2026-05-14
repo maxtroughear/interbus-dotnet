@@ -1,4 +1,5 @@
 using InterBus.EntityFrameworkCore.Extensions;
+using InterBus.EntityFrameworkCore.Outbox;
 using InterBus.Extensions;
 using InterBus.Generated;
 using InterBus.InMemory.Extensions;

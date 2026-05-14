@@ -5,7 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
-namespace InterBus.EntityFrameworkCore.Internal;
+namespace InterBus.EntityFrameworkCore.Outbox;
 
 /// <summary>
 /// Background service that continuously reads pending groups of messages from the transactional

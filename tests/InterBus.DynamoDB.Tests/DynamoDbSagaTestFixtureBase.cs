@@ -12,7 +12,8 @@ public abstract class DynamoDbSagaTestFixtureBase
     private readonly LocalStackContainer? _container = TestHelpers.CreateLocalStackContainer();
 
     protected IAmazonDynamoDB DynamoDb = null!;
-    protected DynamoDbSagaOptions Options = null!;
+    protected DynamoDbSagaOptions<OrderSaga> Options = null!;
+    protected IDynamoDbStateWriter<OrderSaga> StateWriter = null!;
     protected string TableName = string.Empty;
 
     [OneTimeSetUp]
@@ -47,10 +48,12 @@ public abstract class DynamoDbSagaTestFixtureBase
             services.AddDefaultAWSOptions(awsOptions);
 
         services.AddAWSService<IAmazonDynamoDB>();
+        services.AddScoped<IDynamoDbStateWriter<OrderSaga>, DynamoDbStateWriter<OrderSaga>>();
 
         var provider = services.BuildServiceProvider();
         DynamoDb = provider.GetRequiredService<IAmazonDynamoDB>();
-        Options = new DynamoDbSagaOptions { TableName = TableName };
+        Options = new DynamoDbSagaOptions<OrderSaga> { TableName = TableName };
+        StateWriter = provider.GetRequiredService<IDynamoDbStateWriter<OrderSaga>>();
 
         await DynamoDbSagaTable.EnsureTableCreatedAsync(DynamoDb, TableName);
     }
@@ -63,7 +66,7 @@ public abstract class DynamoDbSagaTestFixtureBase
     }
 
     protected DynamoDbSagaRepository<OrderSaga, OrderSagaState> CreateRepo() =>
-        new(DynamoDb, Options);
+        new(DynamoDb, Options, StateWriter);
 
     protected async Task<(ServiceProvider Provider, CancellationTokenSource Cts)> StartBusAsync(
         Action<InterBusBuilder> configureBus)

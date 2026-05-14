@@ -1,4 +1,4 @@
-using InterBus.EntityFrameworkCore.Internal;
+using InterBus.EntityFrameworkCore.Outbox;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -14,7 +14,7 @@ public static class EfCoreOutboxBuilderExtensions
         /// <summary>
         /// Registers the transactional outbox infrastructure for InterBus: the lock provider,
         /// shared options, <see cref="OutboxConsumeState"/>, and the background
-        /// <see cref="OutboxProcessor{TDbContext}"/>. Does <b>not</b> add the bus-level publish
+        /// <see cref="Outbox.OutboxProcessor{TDbContext}"/>. Does <b>not</b> add the bus-level publish
         /// middleware — call <see cref="EfCoreOutboxBuilderExtensions.UseOutbox{TDbContext}"/>
         /// to also route <see cref="IPublisher"/> calls through the outbox.
         /// <para>

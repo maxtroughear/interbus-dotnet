@@ -1,4 +1,4 @@
-namespace InterBus.EntityFrameworkCore;
+namespace InterBus.EntityFrameworkCore.Outbox;
 
 /// <summary>
 /// Header row for a logical outbox group. Processors lock rows from this table

@@ -1,4 +1,4 @@
-namespace InterBus.DynamoDB.Outbox.Internal;
+namespace InterBus.DynamoDB.Outbox;
 
 /// <summary>
 /// Scoped state shared between <see cref="DynamoDbOutboxPublishMiddleware"/> and

@@ -1,5 +1,4 @@
 using InterBus.Scheduling;
-using InterBus.TickerQ.Internal;
 using Microsoft.Extensions.DependencyInjection;
 using TickerQ.Utilities;
 using TickerQ.Utilities.Base;

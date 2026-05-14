@@ -1,3 +1,4 @@
+using InterBus.EntityFrameworkCore.Outbox;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Testcontainers.MsSql;

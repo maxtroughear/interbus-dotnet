@@ -3,7 +3,7 @@ using System.Text.Json;
 using Amazon.DynamoDBv2;
 using Amazon.DynamoDBv2.Model;
 
-namespace InterBus.DynamoDB.Outbox.Internal;
+namespace InterBus.DynamoDB.Outbox;
 
 /// <summary>
 /// DynamoDB-backed implementation of <see cref="IDynamoDbOutboxContext"/>.

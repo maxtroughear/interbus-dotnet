@@ -1,7 +1,7 @@
 using InterBus.Sending;
 using TickerQ.Utilities.Base;
 
-namespace InterBus.TickerQ.Internal;
+namespace InterBus.TickerQ;
 
 /// <summary>
 /// TickerQ function handler for all scheduled InterBus messages (both topic fan-out and

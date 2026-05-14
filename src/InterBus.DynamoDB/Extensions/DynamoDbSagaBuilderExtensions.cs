@@ -21,22 +21,22 @@ public static class DynamoDbSagaBuilderExtensions
     /// (e.g. via <c>builder.Services.AddAWSService&lt;IAmazonDynamoDB&gt;()</c>).
     /// </remarks>
     /// <param name="builder">The saga builder.</param>
-    /// <param name="configure">Optional delegate to customise <see cref="DynamoDbSagaOptions"/>.</param>
+    /// <param name="configure">Optional delegate to customise <see cref="DynamoDbSagaOptions{TSaga}"/>.</param>
     public static SagaBuilder<TSaga, TState> UseDynamoDbRepository<TSaga, TState>(
         this SagaBuilder<TSaga, TState> builder,
-        Action<DynamoDbSagaOptions>? configure = null)
+        Action<DynamoDbSagaBuilder<TSaga>>? configure = null)
         where TSaga : class, ISaga<TState>
         where TState : class, new()
     {
-        var sagaOptions = new DynamoDbSagaOptions();
-        configure?.Invoke(sagaOptions);
+        var sagaBuilder = new DynamoDbSagaBuilder<TSaga>(builder.Services);
+        configure?.Invoke(sagaBuilder);
 
-        builder.Services.TryAddSingleton(sagaOptions);
-        builder.Services.TryAddSingleton<ISagaRepository<TSaga, TState>,
-            DynamoDbSagaRepository<TSaga, TState>>();
+        builder.Services.TryAddSingleton(sagaBuilder.Options);
+        builder.Services.TryAddScoped<ISagaRepository<TSaga, TState>, DynamoDbSagaRepository<TSaga, TState>>();
+        builder.Services.TryAddScoped<IDynamoDbStateWriter<TSaga>, DynamoDbStateWriter<TSaga>>();
 
-        if (sagaOptions.CreateTableOnStartup)
-            builder.Services.AddHostedService<DynamoDbSagaTableInitializer>();
+        if (sagaBuilder.Options.CreateTableOnStartup)
+            builder.Services.AddHostedService<DynamoDbSagaTableInitializer<TSaga>>();
 
         return builder;
     }

@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using InterBus.Consuming;
 using InterBus.DeadLettering;
 using InterBus.EntityFrameworkCore.Extensions;
+using InterBus.EntityFrameworkCore.Outbox;
 using InterBus.Extensions;
 using InterBus.Generated;
 using InterBus.InMemory.Extensions;

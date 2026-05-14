@@ -1,4 +1,5 @@
 using InterBus.EntityFrameworkCore.Extensions;
+using InterBus.EntityFrameworkCore.Outbox;
 using Microsoft.EntityFrameworkCore;
 
 namespace InterBus.EntityFrameworkCore.SqlServer.IntegrationTests;

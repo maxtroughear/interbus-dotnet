@@ -1,6 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 
-namespace InterBus.EntityFrameworkCore.Internal;
+namespace InterBus.EntityFrameworkCore.Outbox;
 
 /// <summary>
 /// Default <see cref="IOutboxLockProvider{TDbContext}"/> that uses plain EF Core LINQ queries with no

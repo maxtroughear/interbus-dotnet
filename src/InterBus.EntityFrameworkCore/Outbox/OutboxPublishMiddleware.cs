@@ -3,7 +3,7 @@ using InterBus.DeadLettering;
 using InterBus.Publishing;
 using Microsoft.EntityFrameworkCore;
 
-namespace InterBus.EntityFrameworkCore.Internal;
+namespace InterBus.EntityFrameworkCore.Outbox;
 
 /// <summary>
 /// Publish middleware that writes every outgoing message to the transactional outbox instead of

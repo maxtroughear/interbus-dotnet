@@ -99,20 +99,4 @@ public sealed class ConsumerDescriptor(Type consumerType, Uri queue)
         CancellationToken cancellationToken) =>
         throw new InvalidOperationException(
             $"No dispatch configured for consumer {context.Descriptor.ConsumerType.FullName}");
-
-    /// <summary>
-    /// Creates a <see cref="ConsumerDescriptor"/> for a temporary one-shot reply consumer.
-    /// The supplied <paramref name="dispatch"/> delegate is invoked instead of the normal
-    /// consumer executor, allowing the caller (e.g. a request client) to complete a
-    /// <see cref="System.Threading.Tasks.TaskCompletionSource{T}"/> when the reply arrives.
-    /// </summary>
-    public static ConsumerDescriptor CreateForReply(
-        Type replyConsumerType,
-        Uri queue,
-        Func<DispatchContext, ConsumePipelineExecutor, IServiceProvider, CancellationToken, Task> dispatch)
-    {
-        var descriptor = new ConsumerDescriptor(replyConsumerType, queue);
-        descriptor.Dispatch = dispatch;
-        return descriptor;
-    }
 }

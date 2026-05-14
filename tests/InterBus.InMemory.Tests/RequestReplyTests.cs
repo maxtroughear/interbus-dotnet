@@ -37,7 +37,7 @@ public class RequestReplyTests
     }
 
     /// <summary>
-    /// Captures the <see cref="IConsumeContext.ReplyTo"/> URI and then sends a placeholder reply so the
+    /// Captures the <see cref="IConsumeContext.ReplyTo"/> URI and sends a placeholder reply so the
     /// request client does not wait forever.
     /// </summary>
     public sealed class CapturingReplyToConsumer(
@@ -117,7 +117,6 @@ public class RequestReplyTests
             {
                 bus.AddInMemoryTransport();
                 bus.AddConsumer<ReplyingOrderStatusConsumer>();
-                bus.AddRequestClient<ReplyingOrderStatusConsumer, GetOrderStatus, OrderStatusReply>();
             });
 
         try
@@ -150,7 +149,6 @@ public class RequestReplyTests
             {
                 bus.AddInMemoryTransport();
                 bus.AddConsumer<CapturingReplyToConsumer>();
-                bus.AddRequestClient<CapturingReplyToConsumer, GetOrderStatus, OrderStatusReply>();
             });
 
         try
@@ -182,7 +180,6 @@ public class RequestReplyTests
             {
                 bus.AddInMemoryTransport();
                 bus.AddConsumer<HeaderCapturingConsumer>();
-                bus.AddRequestClient<HeaderCapturingConsumer, GetOrderStatus, OrderStatusReply>();
             });
 
         try

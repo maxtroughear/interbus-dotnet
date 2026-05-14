@@ -77,6 +77,10 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ITransportFactory, TransportFactory>();
         services.AddScoped<IPublisher, Publisher>();
 
+        // Register IRequestClient<,> as an open-generic scoped service.
+        // Requires the transport to register IReplyEndpointFactory.
+        services.AddScoped(typeof(IRequestClient<,>), typeof(RequestClient<,>));
+
         return services;
     }
 }

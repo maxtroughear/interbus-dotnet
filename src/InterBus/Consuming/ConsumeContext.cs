@@ -26,4 +26,8 @@ public class ConsumeContext(ConsumerDescriptor descriptor, MessageHeaders header
     public MessageHeaders Headers { get; } = headers;
 
     public string? CorrelationId => Headers.GetValueOrDefault(InterBusHeaders.CorrelationId);
+
+    public Uri? ReplyTo => Headers.TryGetValue(InterBusHeaders.ReplyTo, out var value) && Uri.TryCreate(value, UriKind.Absolute, out var uri)
+        ? uri
+        : null;
 }

@@ -11,6 +11,13 @@ public static class InterBusHeaders
     public const string CorrelationId = "interbus-correlation-id";
 
     /// <summary>
+    /// Header key for the reply-to address. When set on an outgoing message, the consumer
+    /// should send the reply to this URI. Set automatically by <see cref="IRequestClient{TRequest,TReply}"/>
+    /// on request messages; readable via <see cref="IConsumeContext.ReplyTo"/> inside a consumer.
+    /// </summary>
+    public const string ReplyTo = "interbus-reply-to";
+
+    /// <summary>
     /// Header key for the fully-qualified message type name (e.g. <c>MyApp.OrderPlaced</c>).
     /// Set automatically by <see cref="IPublisher"/> on every published and sent message.
     /// Source-generated consumer dispatch delegates read this header to select the correct

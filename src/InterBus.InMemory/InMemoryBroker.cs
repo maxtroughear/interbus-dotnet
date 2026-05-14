@@ -18,6 +18,7 @@ public sealed class InMemoryBroker : IDisposable
     private readonly ConcurrentDictionary<string, InMemoryTopic> _topics = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, InMemoryQueue> _queues = new(StringComparer.Ordinal);
     private readonly Dictionary<string, ConsumerDescriptor> _consumerDescriptorsByQueue = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, InMemoryQueue> _temporaryQueues = new(StringComparer.Ordinal);
     private bool _disposed;
 
     public InMemoryBroker(InterBusOptions options)
@@ -35,9 +36,14 @@ public sealed class InMemoryBroker : IDisposable
     internal Task SendToQueueAsync(string queueName, InMemoryEnvelope envelope, CancellationToken cancellationToken)
     {
         var queue = TryEnsureQueue(queueName);
-        return queue is null
-            ? Task.CompletedTask
-            : queue.WriteAsync(envelope, cancellationToken).AsTask();
+        if (queue is not null)
+            return queue.WriteAsync(envelope, cancellationToken).AsTask();
+
+        // Fall back to temporary reply queues (created by IRequestClient).
+        if (_temporaryQueues.TryGetValue(queueName, out var temporaryQueue))
+            return temporaryQueue.WriteAsync(envelope, cancellationToken).AsTask();
+
+        return Task.CompletedTask;
     }
 
     /// <summary>Returns all registered queues. Used by the message pump to start consumers.</summary>
@@ -56,6 +62,26 @@ public sealed class InMemoryBroker : IDisposable
     internal InMemoryQueue EnsureQueue(ConsumerDescriptor descriptor) =>
         EnsureQueueInternal(descriptor);
 
+    /// <summary>
+    /// Creates a temporary reply queue backed by the given <paramref name="descriptor"/>.
+    /// The queue is stored separately from registered consumer queues and will not be
+    /// picked up by the main <see cref="InMemoryMessagePump"/>. Call
+    /// <see cref="RemoveTemporaryQueue"/> when the request/reply exchange is complete.
+    /// </summary>
+    internal InMemoryQueue CreateTemporaryQueue(ConsumerDescriptor descriptor)
+    {
+        var queue = new InMemoryQueue(descriptor);
+        _temporaryQueues[descriptor.QueueName] = queue;
+        return queue;
+    }
+
+    /// <summary>Removes and completes a temporary reply queue created by <see cref="CreateTemporaryQueue"/>.</summary>
+    internal void RemoveTemporaryQueue(string queueName)
+    {
+        if (_temporaryQueues.TryRemove(queueName, out var queue))
+            queue.Complete();
+    }
+
     private InMemoryTopic EnsureTopicInternal(string topicName) =>
         _topics.GetOrAdd(topicName, _ => new InMemoryTopic());
 
@@ -68,6 +94,8 @@ public sealed class InMemoryBroker : IDisposable
         if (_disposed) return;
         _disposed = true;
         foreach (var queue in _queues.Values)
+            queue.Complete();
+        foreach (var queue in _temporaryQueues.Values)
             queue.Complete();
     }
 }

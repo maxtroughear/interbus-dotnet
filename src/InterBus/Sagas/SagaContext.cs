@@ -18,6 +18,9 @@ internal sealed class SagaContext<TState>(SagaEntry<TState> entry, IConsumeConte
     public string? CorrelationId => inner.CorrelationId;
 
     /// <inheritdoc/>
+    public Uri? ReplyTo => inner.ReplyTo;
+
+    /// <inheritdoc/>
     public void Delete() => entry.IsDeleted = true;
 
     /// <inheritdoc/>

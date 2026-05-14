@@ -15,4 +15,12 @@ public interface IConsumeContext
     /// Returns <c>null</c> if the header is not present.
     /// </summary>
     string? CorrelationId { get; }
+
+    /// <summary>
+    /// The reply-to address from the <see cref="InterBusHeaders.ReplyTo"/> header,
+    /// parsed as a <see cref="Uri"/>. Returns <c>null</c> if the header is absent or
+    /// cannot be parsed as a valid URI.
+    /// Set on request messages by <see cref="IRequestClient{TRequest,TReply}"/>.
+    /// </summary>
+    Uri? ReplyTo { get; }
 }

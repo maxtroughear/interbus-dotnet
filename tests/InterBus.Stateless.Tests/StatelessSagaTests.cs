@@ -183,7 +183,7 @@ public class StatelessSagaTests
     }
 
     [Fact]
-    public async Task StateMachine_FullCycle_TrackesEachTransition()
+    public async Task StateMachine_FullCycle_TracksEachTransition()
     {
         var id = Guid.NewGuid();
         var (provider, cts) = await StartAsync(bus =>

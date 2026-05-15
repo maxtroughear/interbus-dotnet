@@ -1,4 +1,5 @@
 using InterBus.Consuming;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace InterBus.InMemory;
 
@@ -9,21 +10,21 @@ namespace InterBus.InMemory;
 internal sealed class InMemoryReplyEndpointFactory(
     InMemoryBroker broker,
     InterBusOptions options,
-    IMessageSerializer serializer)
+    IServiceScopeFactory scopeFactory)
     : IReplyEndpointFactory
 {
-    public Task<IReplyEndpoint<TReply>> CreateAsync<TReply>(CancellationToken cancellationToken = default)
-        where TReply : class
+    public Task<IReplyEndpoint> CreateAsync(CancellationToken cancellationToken = default)
     {
         var queueName = $"reply-{Guid.CreateVersion7()}";
         var address = RoutingConventions.QueueUri(options.QueueUriScheme, queueName);
 
         // Create a minimal descriptor so the broker can index the queue by name.
-        // The Dispatch delegate is never invoked — the endpoint reads from the channel directly.
+        // The Dispatch delegate is never invoked via this descriptor —
+        // InMemoryReplyEndpoint creates per-reply descriptors in ReceiveAsync<TReply>.
         var descriptor = new ConsumerDescriptor(typeof(InMemoryReplyEndpointFactory), address);
         var queue = broker.CreateTemporaryQueue(descriptor);
 
-        return Task.FromResult<IReplyEndpoint<TReply>>(
-            new InMemoryReplyEndpoint<TReply>(broker, serializer, address, queue));
+        return Task.FromResult<IReplyEndpoint>(
+            new InMemoryReplyEndpoint(broker, scopeFactory, address, queue));
     }
 }

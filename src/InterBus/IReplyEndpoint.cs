@@ -5,9 +5,7 @@ namespace InterBus;
 /// The endpoint owns the transport-level temporary queue for the duration of a single
 /// request/reply exchange, and must be disposed when the exchange completes.
 /// </summary>
-/// <typeparam name="TReply">The expected reply message type.</typeparam>
-public interface IReplyEndpoint<TReply> : IAsyncDisposable
-    where TReply : class
+public interface IReplyEndpoint : IAsyncDisposable
 {
     /// <summary>
     /// The address of the temporary reply queue.
@@ -18,7 +16,10 @@ public interface IReplyEndpoint<TReply> : IAsyncDisposable
 
     /// <summary>
     /// Waits for a reply of type <typeparamref name="TReply"/> on this endpoint.
-    /// Messages that cannot be deserialized as <typeparamref name="TReply"/> are silently skipped.
+    /// The incoming message is dispatched through the full consume pipeline before being
+    /// returned. Messages of a different type are silently skipped until the expected type
+    /// arrives or the cancellation token fires.
     /// </summary>
-    Task<TReply> ReceiveAsync(CancellationToken cancellationToken = default);
+    Task<TReply> ReceiveAsync<TReply>(CancellationToken cancellationToken = default)
+        where TReply : class;
 }

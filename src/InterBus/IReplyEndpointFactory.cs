@@ -8,9 +8,8 @@ namespace InterBus;
 public interface IReplyEndpointFactory
 {
     /// <summary>
-    /// Creates a new temporary <see cref="IReplyEndpoint{TReply}"/> that is ready to receive
+    /// Creates a new temporary <see cref="IReplyEndpoint"/> that is ready to receive
     /// a single reply. The caller must dispose the endpoint after the exchange is complete.
     /// </summary>
-    Task<IReplyEndpoint<TReply>> CreateAsync<TReply>(CancellationToken cancellationToken = default)
-        where TReply : class;
+    Task<IReplyEndpoint> CreateAsync(CancellationToken cancellationToken = default);
 }

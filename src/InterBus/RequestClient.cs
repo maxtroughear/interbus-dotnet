@@ -25,7 +25,7 @@ internal sealed class RequestClient<TRequest, TReply>(
         Action<PublishContext<TRequest>> configure,
         CancellationToken cancellationToken = default)
     {
-        await using var endpoint = await endpointFactory.CreateAsync<TReply>(cancellationToken);
+        await using var endpoint = await endpointFactory.CreateAsync(cancellationToken);
 
         await publisher.PublishAsync(request, ctx =>
         {
@@ -33,6 +33,6 @@ internal sealed class RequestClient<TRequest, TReply>(
             ctx.Headers[InterBusHeaders.ReplyTo] = endpoint.Address.ToString();
         }, cancellationToken);
 
-        return await endpoint.ReceiveAsync(cancellationToken);
+        return await endpoint.ReceiveAsync<TReply>(cancellationToken);
     }
 }

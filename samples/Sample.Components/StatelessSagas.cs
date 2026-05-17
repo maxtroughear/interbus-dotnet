@@ -2,6 +2,7 @@ using InterBus;
 using InterBus.Sagas;
 using InterBus.Stateless;
 using Stateless;
+using Stateless.Graph;
 
 namespace Sample.Components;
 
@@ -23,9 +24,22 @@ public record CancelOrder(Guid OrderId);
 // State machine types
 // ---------------------------------------------------------------------------
 
-public enum OrderState { Placed, Confirmed, Shipped, Completed, Cancelled }
+public enum OrderState
+{
+    Placed,
+    Confirmed,
+    Shipped,
+    Completed,
+    Cancelled
+}
 
-public enum OrderTrigger { Confirm, Ship, Deliver, Cancel }
+public enum OrderTrigger
+{
+    Confirm,
+    Ship,
+    Deliver,
+    Cancel
+}
 
 // ---------------------------------------------------------------------------
 // Saga state
@@ -58,17 +72,26 @@ public class OrderSaga(IPublisher publisher)
     // State machine configuration
     // ---------------------------------------------------------------------------
 
+    private StateMachine<OrderState, OrderTrigger>.TriggerWithParameters<ConfirmOrder>? _confirmTrigger;
+    private StateMachine<OrderState, OrderTrigger>.TriggerWithParameters<ShipOrder>? _shipTrigger;
+
     protected override void Configure(StateMachine<OrderState, OrderTrigger> machine, OrderSagaState state)
     {
+        _confirmTrigger = machine.SetTriggerParameters<ConfirmOrder>(OrderTrigger.Confirm);
+        _shipTrigger = machine.SetTriggerParameters<ShipOrder>(OrderTrigger.Ship);
+
         machine.Configure(OrderState.Placed)
             .Permit(OrderTrigger.Confirm, OrderState.Confirmed)
             .Permit(OrderTrigger.Cancel, OrderState.Cancelled);
 
         machine.Configure(OrderState.Confirmed)
+            .OnEntryFromAsync(_confirmTrigger,
+                order => publisher.PublishAsync(new ShipOrder(order.OrderId, $"TRK-{order.OrderId:N}"[..12])))
             .Permit(OrderTrigger.Ship, OrderState.Shipped)
             .Permit(OrderTrigger.Cancel, OrderState.Cancelled);
 
         machine.Configure(OrderState.Shipped)
+            .OnEntryFromAsync(_shipTrigger, order => publisher.PublishAsync(new DeliverOrder(order.OrderId)))
             .Permit(OrderTrigger.Deliver, OrderState.Completed);
 
         machine.Configure(OrderState.Completed)
@@ -96,7 +119,8 @@ public class OrderSaga(IPublisher publisher)
         CancellationToken cancellationToken = default)
     {
         context.State.CustomerEmail = message.CustomerEmail;
-        Console.WriteLine($"[OrderSaga] Order {message.OrderId} placed by {message.CustomerEmail} — state: {context.State.CurrentState}");
+        Console.WriteLine(
+            $"[OrderSaga] Order {message.OrderId} placed by {message.CustomerEmail} — state: {context.State.CurrentState}");
         return Task.CompletedTask;
     }
 
@@ -104,12 +128,8 @@ public class OrderSaga(IPublisher publisher)
         CancellationToken cancellationToken = default)
     {
         var machine = CreateStateMachine(context.State);
-        await machine.FireAsync(OrderTrigger.Confirm);
+        await machine.FireAsync(_confirmTrigger, message);
         Console.WriteLine($"[OrderSaga] Order {message.OrderId} confirmed — state: {context.State.CurrentState}");
-
-        // Simulate shipping request sent
-        await publisher.PublishAsync(new ShipOrder(message.OrderId, $"TRK-{message.OrderId:N}"[..12]),
-            cancellationToken);
     }
 
     public async Task Consume(ShipOrder message, ISagaContext<OrderSagaState> context,
@@ -117,11 +137,9 @@ public class OrderSaga(IPublisher publisher)
     {
         context.State.TrackingNumber = message.TrackingNumber;
         var machine = CreateStateMachine(context.State);
-        await machine.FireAsync(OrderTrigger.Ship);
-        Console.WriteLine($"[OrderSaga] Order {message.OrderId} shipped ({message.TrackingNumber}) — state: {context.State.CurrentState}");
-
-        // Simulate delivery notification
-        await publisher.PublishAsync(new DeliverOrder(message.OrderId), cancellationToken);
+        await machine.FireAsync(_shipTrigger, message);
+        Console.WriteLine(
+            $"[OrderSaga] Order {message.OrderId} shipped ({message.TrackingNumber}) — state: {context.State.CurrentState}");
     }
 
     public async Task Consume(DeliverOrder message, ISagaContext<OrderSagaState> context,

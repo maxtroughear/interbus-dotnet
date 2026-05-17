@@ -1,4 +1,4 @@
-namespace InterBus;
+namespace InterBus.Requests;
 
 /// <summary>
 /// Represents a temporary reply endpoint created by <see cref="IReplyEndpointFactory"/>.

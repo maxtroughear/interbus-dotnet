@@ -1,6 +1,6 @@
 using InterBus.Publishing;
 
-namespace InterBus;
+namespace InterBus.Requests;
 
 /// <summary>
 /// Core implementation of <see cref="IRequestClient{TRequest,TReply}"/>.

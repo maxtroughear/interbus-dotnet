@@ -1,3 +1,4 @@
+using System.Security.Principal;
 using InterBus.Dispatching;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -115,9 +116,22 @@ public sealed class ConsumerDescriptor(Type consumerType, Uri queue)
     public static ConsumerDescriptor CreateForReply<TReply>(Uri queue, Func<TReply, Task> capture)
         where TReply : class
     {
+        var expectedType = RoutingConventions.MessageTypeString(typeof(TReply));
+
         var descriptor = new ConsumerDescriptor(typeof(ReplyEndpointConsumer), queue);
         descriptor.Dispatch = (context, consumePipeline, sp, ct) =>
         {
+            if (!context.Headers.TryGetValue(descriptor.MessageTypeHeader, out var msgType))
+            {
+                throw new InvalidOperationException(
+                    $"InterBus: message received without {descriptor.MessageTypeHeader} header for consumer {descriptor.ConsumerType.FullName}");
+            }
+
+            if (msgType != expectedType)
+            {
+                return Task.CompletedTask; // Silently skip messages of unexpected types
+            }
+
             var serializer = sp.GetRequiredService<IMessageSerializer>();
             var reply = serializer.Deserialize<TReply>(context.Payload);
             if (reply is null)
@@ -130,5 +144,7 @@ public sealed class ConsumerDescriptor(Type consumerType, Uri queue)
     }
 
     /// <summary>Marker type used as the consumer type for temporary reply descriptors.</summary>
-    private sealed class ReplyEndpointConsumer { }
+    private sealed class ReplyEndpointConsumer
+    {
+    }
 }

@@ -1,3 +1,4 @@
+using InterBus.Requests;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace InterBus.InMemory.Extensions;

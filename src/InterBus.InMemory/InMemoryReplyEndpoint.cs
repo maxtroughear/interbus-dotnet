@@ -1,5 +1,6 @@
 using InterBus.Consuming;
 using InterBus.Dispatching;
+using InterBus.Requests;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace InterBus.InMemory;
@@ -24,15 +25,8 @@ internal sealed class InMemoryReplyEndpoint(
     public async Task<TReply> ReceiveAsync<TReply>(CancellationToken cancellationToken = default)
         where TReply : class
     {
-        var expectedType = RoutingConventions.TopicName(typeof(TReply));
-
         await foreach (var envelope in queue.ReadAllAsync(cancellationToken))
         {
-            // Skip messages whose message-type header doesn't match the expected reply type.
-            if (envelope.Headers.TryGetValue(InterBusHeaders.MessageType, out var msgType) &&
-                !string.Equals(msgType, expectedType, StringComparison.Ordinal))
-                continue;
-
             var tcs = new TaskCompletionSource<TReply>(TaskCreationOptions.RunContinuationsAsynchronously);
 
             var descriptor = ConsumerDescriptor.CreateForReply<TReply>(

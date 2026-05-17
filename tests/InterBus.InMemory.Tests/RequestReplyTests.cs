@@ -7,19 +7,25 @@ using Xunit;
 
 namespace InterBus.InMemory.Tests;
 
+public record GetOrderStatus(Guid OrderId);
+
+public record OrderStatusReply(Guid OrderId, string Status);
+
+public record OrderStatusUnexpectedReply(Guid OrderId);
+
 public class RequestReplyTests
 {
-    // ── Test messages ─────────────────────────────────────────────────────────
-
-    public record GetOrderStatus(Guid OrderId);
-
-    public record OrderStatusReply(Guid OrderId, string Status);
-
     // ── Supporting types ──────────────────────────────────────────────────────
 
-    public sealed class ReplyToCapture { public Uri? Value { get; set; } }
+    public sealed class ReplyToCapture
+    {
+        public Uri? Value { get; set; }
+    }
 
-    public sealed class RequestHeaderCapture { public string? Value { get; set; } }
+    public sealed class RequestHeaderCapture
+    {
+        public string? Value { get; set; }
+    }
 
     /// <summary>
     /// Consumes <see cref="GetOrderStatus"/> and sends a reply using <see cref="IConsumeContext.ReplyTo"/>.
@@ -30,7 +36,7 @@ public class RequestReplyTests
             CancellationToken cancellationToken = default)
         {
             if (context.ReplyTo is null) return;
-            await publisher.SendAsync<OrderStatusReply>(context.ReplyTo,
+            await publisher.SendAsync(context.ReplyTo,
                 new OrderStatusReply(message.OrderId, "Shipped"),
                 cancellationToken);
         }
@@ -49,7 +55,7 @@ public class RequestReplyTests
         {
             capture.Value = context.ReplyTo;
             if (context.ReplyTo is null) return;
-            await publisher.SendAsync<OrderStatusReply>(context.ReplyTo,
+            await publisher.SendAsync(context.ReplyTo,
                 new OrderStatusReply(message.OrderId, "Captured"),
                 cancellationToken);
         }
@@ -67,7 +73,28 @@ public class RequestReplyTests
         {
             capture.Value = context.Headers.GetValueOrDefault("x-custom");
             if (context.ReplyTo is null) return;
-            await publisher.SendAsync<OrderStatusReply>(context.ReplyTo,
+            await publisher.SendAsync(context.ReplyTo,
+                new OrderStatusReply(message.OrderId, "Ok"),
+                cancellationToken);
+        }
+    }
+
+    public sealed class UnexpectedReplyConsumer(
+        RequestHeaderCapture capture,
+        IPublisher publisher) : IConsumer<GetOrderStatus>
+    {
+        public async Task Consume(GetOrderStatus message, IConsumeContext context,
+            CancellationToken cancellationToken = default)
+        {
+            capture.Value = context.Headers.GetValueOrDefault("x-custom");
+            if (context.ReplyTo is null) return;
+            await publisher.SendAsync(context.ReplyTo,
+                new OrderStatusUnexpectedReply(message.OrderId),
+                cancellationToken);
+
+            await Task.Delay(100, cancellationToken);
+
+            await publisher.SendAsync(context.ReplyTo,
                 new OrderStatusReply(message.OrderId, "Ok"),
                 cancellationToken);
         }
@@ -98,8 +125,13 @@ public class RequestReplyTests
         await cts.CancelAsync();
         foreach (var svc in provider.GetServices<IHostedService>())
         {
-            try { await svc.StopAsync(CancellationToken.None); }
-            catch (OperationCanceledException) { }
+            try
+            {
+                await svc.StopAsync(CancellationToken.None);
+            }
+            catch (OperationCanceledException)
+            {
+            }
         }
 
         await provider.DisposeAsync();
@@ -193,6 +225,39 @@ public class RequestReplyTests
                 TestContext.Current.CancellationToken);
 
             Assert.Equal("hello", capturedHeaders.Value);
+        }
+        finally
+        {
+            await StopAsync(provider, cts);
+        }
+    }
+
+    [Fact]
+    public async Task RequestAsync_UnexpectedMessages_AreIgnored()
+    {
+        var capturedHeaders = new RequestHeaderCapture();
+
+        var (provider, cts) = await StartAsync(
+            services => services.AddSingleton(capturedHeaders),
+            bus =>
+            {
+                bus.AddInMemoryTransport();
+                bus.AddConsumer<UnexpectedReplyConsumer>();
+            });
+
+        try
+        {
+            using var scope = provider.CreateScope();
+            var client = scope.ServiceProvider.GetRequiredService<IRequestClient<GetOrderStatus, OrderStatusReply>>();
+
+            var orderId = Guid.NewGuid();
+            var reply = await client.RequestAsync(
+                new GetOrderStatus(orderId),
+                ctx => ctx.Headers["x-custom"] = "hello",
+                TestContext.Current.CancellationToken);
+
+            Assert.Equal("hello", capturedHeaders.Value);
+            Assert.Equal(orderId, reply.OrderId);
         }
         finally
         {

@@ -5,6 +5,7 @@ using InterBus.Internal;
 using InterBus.Middleware;
 using InterBus.Middleware.Internal;
 using InterBus.Publishing;
+using InterBus.Requests;
 using InterBus.Sending;
 using InterBus.Serialization;
 using InterBus.Telemetry;

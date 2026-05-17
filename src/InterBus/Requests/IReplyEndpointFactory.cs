@@ -1,4 +1,4 @@
-namespace InterBus;
+namespace InterBus.Requests;
 
 /// <summary>
 /// Transport-specific factory that creates temporary reply endpoints for

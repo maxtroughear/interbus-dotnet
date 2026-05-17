@@ -131,7 +131,7 @@ internal sealed class AzureServiceBusMessagePump(
                         {
                             [InterBusHeaders.DeadLetterReason] = result.DeadLetterReason!,
                             [InterBusHeaders.DeadLetterError] = result.DeadLetterError!,
-                            [InterBusHeaders.DeadLetteredAt] = result.DeadLetteredAtUtc?.ToString("O")!,
+                            [InterBusHeaders.DeadLetteredAt] = result.DeadLetteredAtUtc!.Value.ToString("O"),
                         },
                         cancellationToken: CancellationToken.None);
 

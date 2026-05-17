@@ -241,7 +241,7 @@ internal sealed class RabbitMqMessagePump(
 
         properties.Headers[InterBusHeaders.DeadLetterReason] = result.DeadLetterReason;
         properties.Headers[InterBusHeaders.DeadLetterError] = result.DeadLetterError;
-        properties.Headers[InterBusHeaders.DeadLetteredAt] = result.DeadLetteredAtUtc?.ToString("O");
+        properties.Headers[InterBusHeaders.DeadLetteredAt] = result.DeadLetteredAtUtc!.Value.ToString("O");
 
         await publishChannel.BasicPublishAsync(
             exchange: deadLetterExchangeName,

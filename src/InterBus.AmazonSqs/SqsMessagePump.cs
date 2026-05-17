@@ -275,7 +275,7 @@ internal sealed class SqsMessagePump(
             deadLetterMessageAttributes[InterBusHeaders.DeadLetteredAt] = new MessageAttributeValue
             {
                 DataType = "String",
-                StringValue = result.DeadLetteredAtUtc?.ToString("O")
+                StringValue = result.DeadLetteredAtUtc!.Value.ToString("O")
             };
 
             await sqsClient.SendMessageAsync(

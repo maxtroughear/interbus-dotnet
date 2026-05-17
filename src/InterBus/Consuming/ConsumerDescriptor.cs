@@ -1,4 +1,6 @@
+using System.Security.Principal;
 using InterBus.Dispatching;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace InterBus.Consuming;
 
@@ -99,4 +101,50 @@ public sealed class ConsumerDescriptor(Type consumerType, Uri queue)
         CancellationToken cancellationToken) =>
         throw new InvalidOperationException(
             $"No dispatch configured for consumer {context.Descriptor.ConsumerType.FullName}");
+
+    /// <summary>
+    /// Creates a <see cref="ConsumerDescriptor"/> for a temporary one-shot reply endpoint.
+    /// Incoming messages are dispatched through the full consume pipeline before
+    /// <paramref name="capture"/> is called with the deserialized reply.
+    /// </summary>
+    /// <typeparam name="TReply">The expected reply message type.</typeparam>
+    /// <param name="queue">The temporary reply queue address.</param>
+    /// <param name="capture">
+    /// Called with the deserialized reply once it is available.
+    /// Typically completes a <see cref="System.Threading.Tasks.TaskCompletionSource{T}"/>.
+    /// </param>
+    public static ConsumerDescriptor CreateForReply<TReply>(Uri queue, Func<TReply, Task> capture)
+        where TReply : class
+    {
+        var expectedType = RoutingConventions.MessageTypeString(typeof(TReply));
+
+        var descriptor = new ConsumerDescriptor(typeof(ReplyEndpointConsumer), queue);
+        descriptor.Dispatch = (context, consumePipeline, sp, ct) =>
+        {
+            if (!context.Headers.TryGetValue(descriptor.MessageTypeHeader, out var msgType))
+            {
+                throw new InvalidOperationException(
+                    $"InterBus: message received without {descriptor.MessageTypeHeader} header for consumer {descriptor.ConsumerType.FullName}");
+            }
+
+            if (msgType != expectedType)
+            {
+                return Task.CompletedTask; // Silently skip messages of unexpected types
+            }
+
+            var serializer = sp.GetRequiredService<IMessageSerializer>();
+            var reply = serializer.Deserialize<TReply>(context.Payload);
+            if (reply is null)
+                return Task.CompletedTask;
+
+            var consumeContext = new ConsumeContext<TReply>(descriptor, reply, context.Headers);
+            return consumePipeline.ExecuteAsync(consumeContext, (ctx, _) => capture(ctx.Message), ct);
+        };
+        return descriptor;
+    }
+
+    /// <summary>Marker type used as the consumer type for temporary reply descriptors.</summary>
+    private sealed class ReplyEndpointConsumer
+    {
+    }
 }

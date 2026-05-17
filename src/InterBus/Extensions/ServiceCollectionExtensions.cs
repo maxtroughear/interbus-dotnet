@@ -5,6 +5,7 @@ using InterBus.Internal;
 using InterBus.Middleware;
 using InterBus.Middleware.Internal;
 using InterBus.Publishing;
+using InterBus.Requests;
 using InterBus.Sending;
 using InterBus.Serialization;
 using InterBus.Telemetry;
@@ -76,6 +77,10 @@ public static class ServiceCollectionExtensions
         // Register the transport factory and the scoped publisher.
         services.AddSingleton<ITransportFactory, TransportFactory>();
         services.AddScoped<IPublisher, Publisher>();
+
+        // Register IRequestClient<,> as an open-generic scoped service.
+        // Requires the transport to register IReplyEndpointFactory.
+        services.AddScoped(typeof(IRequestClient<,>), typeof(RequestClient<,>));
 
         return services;
     }

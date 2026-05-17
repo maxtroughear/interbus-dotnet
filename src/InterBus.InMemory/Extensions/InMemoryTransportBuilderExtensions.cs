@@ -1,3 +1,4 @@
+using InterBus.Requests;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace InterBus.InMemory.Extensions;
@@ -12,6 +13,10 @@ public static class InMemoryTransportBuilderExtensions
     /// Registers <c><see cref="InMemoryBroker.TopicScheme">memorytopic</see>://</c> and
     /// <c><see cref="InMemoryBroker.QueueScheme">memoryqueue</see>://</c> as the destination
     /// URI schemes for topic and queue messages respectively.
+    /// </para>
+    /// <para>
+    /// Also registers <see cref="IReplyEndpointFactory"/> so that
+    /// <see cref="IRequestClient{TRequest,TReply}"/> works without any additional configuration.
     /// </para>
     /// </summary>
     public static InterBusBuilder AddInMemoryTransport(this InterBusBuilder builder)
@@ -30,6 +35,9 @@ public static class InMemoryTransportBuilderExtensions
 
         // Message pump runs as a background service.
         builder.Services.AddHostedService<InMemoryMessagePump>();
+
+        // Reply endpoint factory enables IRequestClient<,> without additional registration.
+        builder.Services.AddSingleton<IReplyEndpointFactory, InMemoryReplyEndpointFactory>();
 
         return builder;
     }

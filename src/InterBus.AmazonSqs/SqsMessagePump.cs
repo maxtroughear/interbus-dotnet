@@ -1,7 +1,6 @@
 using Amazon.SQS;
 using Amazon.SQS.Model;
 using InterBus.Consuming;
-using InterBus.DeadLettering;
 using InterBus.Dispatching;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -195,29 +194,41 @@ internal sealed class SqsMessagePump(
 
         try
         {
-            await DispatchAsync(descriptor, message, ct);
+            var result = await DispatchAsync(descriptor, message, ct);
+            switch (result.Kind)
+            {
+                case DispatchResultKind.Success:
+                    await prefetched.RenewalCts.CancelAsync();
 
-            await prefetched.RenewalCts.CancelAsync();
+                    logger.LogTrace(
+                        "InterBus AmazonSqs: message {MessageId} dispatched successfully; deleting from queue {QueueName}",
+                        message.MessageId,
+                        descriptor.Queue);
 
-            logger.LogTrace(
-                "InterBus AmazonSqs: message {MessageId} dispatched successfully; deleting from queue {QueueName}",
-                message.MessageId,
-                descriptor.Queue);
-
-            // ACK: delete the message from SQS.
-            // Use CancellationToken.None so that a graceful shutdown does not leave
-            // successfully-dispatched messages to be redelivered unnecessarily.
-            await sqsClient.DeleteMessageAsync(queueUrl, message.ReceiptHandle,
-                CancellationToken.None);
+                    // ACK: delete the message from SQS.
+                    // Use CancellationToken.None so that a graceful shutdown does not leave
+                    // successfully-dispatched messages to be redelivered unnecessarily.
+                    await sqsClient.DeleteMessageAsync(queueUrl, message.ReceiptHandle,
+                        CancellationToken.None);
+                    break;
+                case DispatchResultKind.DeadLetter:
+                    if (await TryDeadLetterAsync(descriptor, message, result))
+                        await sqsClient.DeleteMessageAsync(queueUrl, message.ReceiptHandle, CancellationToken.None);
+                    break;
+                case DispatchResultKind.Release:
+                    logger.LogWarning(
+                        result.Exception,
+                        "InterBus AmazonSqs: consumer {ConsumerType} failed for queue {QueueName}; message will be redelivered after visibility timeout",
+                        descriptor.ConsumerType.Name,
+                        descriptor.Queue);
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException();
+            }
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
             // Dispatch was cancelled mid-flight; do not delete – SQS will redeliver.
-        }
-        catch (DeadLetterException ex)
-        {
-            if (await TryDeadLetterAsync(descriptor, message, ex))
-                await sqsClient.DeleteMessageAsync(queueUrl, message.ReceiptHandle, CancellationToken.None);
         }
         catch (Exception ex)
         {
@@ -234,13 +245,13 @@ internal sealed class SqsMessagePump(
         }
     }
 
-    private async Task<bool> TryDeadLetterAsync(ConsumerDescriptor descriptor, Message message, DeadLetterException ex)
+    private async Task<bool> TryDeadLetterAsync(ConsumerDescriptor descriptor, Message message, DispatchResult result)
     {
         var deadLetterQueueName = topology.BuildDeadLetterQueueName(descriptor.QueueName);
         if (!topology.QueueUrls.TryGetValue(deadLetterQueueName, out var deadLetterQueueUrl))
         {
             logger.LogWarning(
-                ex,
+                result.Exception,
                 "InterBus AmazonSqs: failed to dead-letter message for consumer {ConsumerType}; dead-letter queue {DeadLetterQueue} is not available",
                 descriptor.ConsumerType.Name,
                 deadLetterQueueName);
@@ -254,17 +265,17 @@ internal sealed class SqsMessagePump(
             deadLetterMessageAttributes[InterBusHeaders.DeadLetterReason] = new MessageAttributeValue
             {
                 DataType = "String",
-                StringValue = ex.Reason
+                StringValue = result.DeadLetterReason
             };
             deadLetterMessageAttributes[InterBusHeaders.DeadLetterError] = new MessageAttributeValue
             {
                 DataType = "String",
-                StringValue = ex.Error
+                StringValue = result.DeadLetterError
             };
             deadLetterMessageAttributes[InterBusHeaders.DeadLetteredAt] = new MessageAttributeValue
             {
                 DataType = "String",
-                StringValue = ex.DeadLetteredAtUtc.ToString("O")
+                StringValue = result.DeadLetteredAtUtc?.ToString("O")
             };
 
             await sqsClient.SendMessageAsync(
@@ -277,7 +288,7 @@ internal sealed class SqsMessagePump(
                 CancellationToken.None);
 
             logger.LogWarning(
-                ex,
+                result.Exception,
                 "InterBus AmazonSqs: consumer {ConsumerType} failed for queue {QueueName}; message moved to dead-letter queue {DeadLetterQueue}",
                 descriptor.ConsumerType.Name,
                 descriptor.Queue,
@@ -368,7 +379,7 @@ internal sealed class SqsMessagePump(
         }
     }
 
-    private async Task DispatchAsync(ConsumerDescriptor descriptor, Message message, CancellationToken ct)
+    private async Task<DispatchResult> DispatchAsync(ConsumerDescriptor descriptor, Message message, CancellationToken ct)
     {
         await using var scope = scopeFactory.CreateAsyncScope();
         var executor = scope.ServiceProvider.GetRequiredService<DispatchPipelineExecutor>();
@@ -394,5 +405,6 @@ internal sealed class SqsMessagePump(
 
         var context = new DispatchContext(descriptor, payload, headers);
         await executor.ExecuteAsync(context, ct);
+        return context.Result;
     }
 }

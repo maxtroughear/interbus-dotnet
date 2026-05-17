@@ -45,23 +45,38 @@ public sealed class ConsumePipelineExecutor(
     /// <summary>
     /// Builds and runs the consume pipeline for the given <paramref name="context"/>
     /// </summary>
-    public Task ExecuteAsync<TConsume, TMessage>(
+    public async Task ExecuteAsync<TConsume, TMessage>(
         DispatchContext context,
         CancellationToken cancellationToken = default)
         where TConsume : IConsume<TMessage>
         where TMessage : class
     {
-        var message = serializer.Deserialize<TMessage>(context.Payload);
-        if (message is null)
+        try
         {
-            throw new InvalidOperationException(
-                $"Failed to deserialize message of type {typeof(TMessage).FullName} for consumer {typeof(TConsume).FullName}");
+            var message = serializer.Deserialize<TMessage>(context.Payload);
+            if (message is null)
+            {
+                throw new InvalidOperationException(
+                    $"Failed to deserialize message of type {typeof(TMessage).FullName} for consumer {typeof(TConsume).FullName}");
+            }
+
+            var consumeContext = new ConsumeContext<TMessage>(context.Descriptor, message, context.Headers)
+            {
+                Result = context.Result
+            };
+
+            var executor = serviceProvider.GetRequiredService<IConsumerExecutor<TConsume, TMessage>>();
+
+            await ExecuteAsync(consumeContext, executor.ExecuteAsync, cancellationToken);
+            context.Result = consumeContext.Result;
         }
-
-        var consumeContext = new ConsumeContext<TMessage>(context.Descriptor, message, context.Headers);
-
-        var executor = serviceProvider.GetRequiredService<IConsumerExecutor<TConsume, TMessage>>();
-
-        return ExecuteAsync(consumeContext, executor.ExecuteAsync, cancellationToken);
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            context.Result = DispatchResult.Release(ex);
+        }
     }
 }

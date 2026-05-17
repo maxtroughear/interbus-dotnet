@@ -14,4 +14,9 @@ public sealed class DispatchContext(ConsumerDescriptor descriptor, byte[] payloa
     public byte[] Payload { get; set; } = payload;
 
     public MessageHeaders Headers { get; } = headers;
+
+    /// <summary>
+    /// The broker action requested after dispatch completes.
+    /// </summary>
+    public DispatchResult Result { get; set; } = DispatchResult.Success;
 }

@@ -1,4 +1,5 @@
 using InterBus.Consuming;
+using InterBus.Dispatching;
 
 namespace InterBus.DeadLettering;
 
@@ -26,10 +27,6 @@ public sealed class DeadLetterConsumeMiddleware(IPublisher publisher) : IConsume
             await next(context, cancellationToken);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (DeadLetterException)
         {
             throw;
         }
@@ -67,7 +64,7 @@ public sealed class DeadLetterConsumeMiddleware(IPublisher publisher) : IConsume
                 }
             }
 
-            throw new DeadLetterException(reason, ex.ToString(), deadLetteredAtUtc, ex);
+            context.Result = DispatchResult.DeadLetter(reason, ex.ToString(), deadLetteredAtUtc, ex);
         }
     }
 }

@@ -1,5 +1,6 @@
 using InterBus.Consuming;
 using InterBus.DeadLettering;
+using InterBus.Dispatching;
 using InterBus.Publishing;
 using Xunit;
 
@@ -12,18 +13,19 @@ public class DeadLetterConsumeMiddlewareTests
             new Uri("testqueue://dead-letter-consumer"));
 
     [Fact]
-    public async Task InvokeAsync_WhenUnhandledException_ThrowsDeadLetterExceptionAndSetsHeaders()
+    public async Task InvokeAsync_WhenUnhandledException_SetsDeadLetterResultAndHeaders()
     {
         var publisher = new RecordingPublisher();
         var middleware = new DeadLetterConsumeMiddleware(publisher);
         var context = new ConsumeContext<TestMessage>(CreateDescriptor(), new TestMessage(), new MessageHeaders());
 
-        var exception = await Assert.ThrowsAsync<DeadLetterException>(() => middleware.InvokeAsync(
+        await middleware.InvokeAsync(
             context,
             (_, _) => throw new InvalidOperationException("boom"),
-            CancellationToken.None));
+            CancellationToken.None);
 
-        Assert.Equal("Unhandled exception in consume pipeline", exception.Reason);
+        Assert.Equal(DispatchResultKind.DeadLetter, context.Result.Kind);
+        Assert.Equal("Unhandled exception in consume pipeline", context.Result.DeadLetterReason);
         Assert.True(context.Headers.ContainsKey(InterBusHeaders.DeadLetterReason));
         Assert.True(context.Headers.ContainsKey(InterBusHeaders.DeadLetterError));
         Assert.True(context.Headers.ContainsKey(InterBusHeaders.DeadLetteredAt));
@@ -37,10 +39,10 @@ public class DeadLetterConsumeMiddlewareTests
         var original = new TestMessage();
         var context = new ConsumeContext<TestMessage>(CreateDescriptor(), original, new MessageHeaders());
 
-        await Assert.ThrowsAsync<DeadLetterException>(() => middleware.InvokeAsync(
+        await middleware.InvokeAsync(
             context,
             (_, _) => throw new InvalidOperationException("boom"),
-            CancellationToken.None));
+            CancellationToken.None);
 
         var published = Assert.Single(publisher.Published);
         var deadLetter = Assert.IsType<DeadLetter<TestMessage>>(published);
@@ -71,12 +73,13 @@ public class DeadLetterConsumeMiddlewareTests
         };
         var context = new ConsumeContext<DeadLetter<TestMessage>>(descriptor, deadLetterMessage, new MessageHeaders());
 
-        await Assert.ThrowsAsync<DeadLetterException>(() => middleware.InvokeAsync(
+        await middleware.InvokeAsync(
             context,
             (_, _) => throw new InvalidOperationException("boom"),
-            CancellationToken.None));
+            CancellationToken.None);
 
         Assert.Empty(publisher.Published);
+        Assert.Equal(DispatchResultKind.DeadLetter, context.Result.Kind);
     }
 
     [Fact]
@@ -95,18 +98,19 @@ public class DeadLetterConsumeMiddlewareTests
     }
 
     [Fact]
-    public async Task InvokeAsync_WhenPublishFails_OriginalDeadLetterExceptionIsStillThrown()
+    public async Task InvokeAsync_WhenPublishFails_StillSetsDeadLetterResult()
     {
         var publisher = new FailingPublisher();
         var middleware = new DeadLetterConsumeMiddleware(publisher);
         var context = new ConsumeContext<TestMessage>(CreateDescriptor(), new TestMessage(), new MessageHeaders());
 
-        var exception = await Assert.ThrowsAsync<DeadLetterException>(() => middleware.InvokeAsync(
+        await middleware.InvokeAsync(
             context,
             (_, _) => throw new InvalidOperationException("boom"),
-            CancellationToken.None));
+            CancellationToken.None);
 
-        Assert.Equal("Unhandled exception in consume pipeline", exception.Reason);
+        Assert.Equal(DispatchResultKind.DeadLetter, context.Result.Kind);
+        Assert.Equal("Unhandled exception in consume pipeline", context.Result.DeadLetterReason);
     }
 
     private sealed class TestConsumer : IConsumer<TestMessage>

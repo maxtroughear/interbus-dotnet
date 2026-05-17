@@ -25,6 +25,11 @@ public class ConsumeContext(ConsumerDescriptor descriptor, MessageHeaders header
     /// </summary>
     public MessageHeaders Headers { get; } = headers;
 
+    /// <summary>
+    /// The broker action requested by the consume pipeline for the current message.
+    /// </summary>
+    public Dispatching.DispatchResult Result { get; set; } = Dispatching.DispatchResult.Success;
+
     public string? CorrelationId => Headers.GetValueOrDefault(InterBusHeaders.CorrelationId);
 
     public Uri? ReplyTo

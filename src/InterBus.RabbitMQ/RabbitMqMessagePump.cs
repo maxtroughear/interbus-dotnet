@@ -1,5 +1,4 @@
 using InterBus.Consuming;
-using InterBus.DeadLettering;
 using InterBus.Dispatching;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -140,16 +139,31 @@ internal sealed class RabbitMqMessagePump(
 
             try
             {
-                await DispatchAsync(descriptor, ea, stoppingToken);
-                await channel.BasicAckAsync(ea.DeliveryTag, multiple: false);
+                var result = await DispatchAsync(descriptor, ea, stoppingToken);
+                switch (result.Kind)
+                {
+                    case DispatchResultKind.Success:
+                        await channel.BasicAckAsync(ea.DeliveryTag, multiple: false);
+                        break;
+                    case DispatchResultKind.DeadLetter:
+                        await DeadLetterAsync(channel, descriptor, ea, result);
+                        break;
+                    case DispatchResultKind.Release:
+                        logger.LogWarning(
+                            result.Exception,
+                            "InterBus RabbitMQ: consumer {ConsumerType} failed for queue {QueueName}; requeueing message for redelivery",
+                            descriptor.ConsumerType.Name,
+                            descriptor.QueueName);
+
+                        await channel.BasicNackAsync(ea.DeliveryTag, multiple: false, requeue: true);
+                        break;
+                    default:
+                        throw new ArgumentOutOfRangeException();
+                }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
                 await channel.BasicNackAsync(ea.DeliveryTag, multiple: false, requeue: true);
-            }
-            catch (DeadLetterException deadLetterException)
-            {
-                await DeadLetterAsync(channel, descriptor, ea, deadLetterException);
             }
             catch (Exception ex)
             {
@@ -189,20 +203,21 @@ internal sealed class RabbitMqMessagePump(
         await channel.DisposeAsync();
     }
 
-    private async Task DispatchAsync(ConsumerDescriptor descriptor, BasicDeliverEventArgs ea, CancellationToken ct)
+    private async Task<DispatchResult> DispatchAsync(ConsumerDescriptor descriptor, BasicDeliverEventArgs ea, CancellationToken ct)
     {
         await using var scope = scopeFactory.CreateAsyncScope();
         var executor = scope.ServiceProvider.GetRequiredService<DispatchPipelineExecutor>();
         var headers = RabbitMqHeaders.ParseAmqpHeaders(ea.BasicProperties.Headers);
         var context = new DispatchContext(descriptor, ea.Body.ToArray(), headers);
         await executor.ExecuteAsync(context, ct);
+        return context.Result;
     }
 
     private async Task DeadLetterAsync(
         IChannel consumeChannel,
         ConsumerDescriptor descriptor,
         BasicDeliverEventArgs ea,
-        DeadLetterException ex)
+        DispatchResult result)
     {
         var deadLetterExchangeName = descriptor.QueueName + options.DeadLetterExchangeSuffix;
         var publishConnection = await connectionProvider.GetPublishConnectionAsync(CancellationToken.None);
@@ -224,9 +239,9 @@ internal sealed class RabbitMqMessagePump(
                 : new Dictionary<string, object?>(ea.BasicProperties.Headers, StringComparer.Ordinal),
         };
 
-        properties.Headers[InterBusHeaders.DeadLetterReason] = ex.Reason;
-        properties.Headers[InterBusHeaders.DeadLetterError] = ex.Error;
-        properties.Headers[InterBusHeaders.DeadLetteredAt] = ex.DeadLetteredAtUtc.ToString("O");
+        properties.Headers[InterBusHeaders.DeadLetterReason] = result.DeadLetterReason;
+        properties.Headers[InterBusHeaders.DeadLetterError] = result.DeadLetterError;
+        properties.Headers[InterBusHeaders.DeadLetteredAt] = result.DeadLetteredAtUtc?.ToString("O");
 
         await publishChannel.BasicPublishAsync(
             exchange: deadLetterExchangeName,
@@ -239,7 +254,7 @@ internal sealed class RabbitMqMessagePump(
         await consumeChannel.BasicAckAsync(ea.DeliveryTag, multiple: false);
 
         logger.LogWarning(
-            ex,
+            result.Exception,
             "InterBus RabbitMQ: consumer {ConsumerType} failed for queue {QueueName}; message moved to dead-letter exchange {DeadLetterExchange}",
             descriptor.ConsumerType.Name,
             descriptor.QueueName,

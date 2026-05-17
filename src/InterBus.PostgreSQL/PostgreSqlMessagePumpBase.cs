@@ -177,7 +177,7 @@ internal abstract class PostgreSqlMessagePumpBase(
         await cmd.ExecuteNonQueryAsync(cancellationToken);
     }
 
-    protected async Task DispatchAsync(
+    protected async Task<DispatchResult> DispatchAsync(
         ConsumerDescriptor descriptor,
         byte[] payload,
         MessageHeaders headers,
@@ -187,6 +187,7 @@ internal abstract class PostgreSqlMessagePumpBase(
         var executor = scope.ServiceProvider.GetRequiredService<DispatchPipelineExecutor>();
         var context = new DispatchContext(descriptor, payload, headers);
         await executor.ExecuteAsync(context, ct);
+        return context.Result;
     }
 
     protected static string EscapeIdentifier(string name) =>

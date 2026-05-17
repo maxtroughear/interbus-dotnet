@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using InterBus.Consuming;
 using InterBus.DeadLettering;
+using InterBus.Dispatching;
 using InterBus.EntityFrameworkCore.Extensions;
 using InterBus.EntityFrameworkCore.Outbox;
 using InterBus.Extensions;
@@ -797,19 +798,14 @@ public class OutboxTests
                 // The consumer throws; DeadLetterConsumeMiddleware catches it and publishes
                 // DeadLetter<OrderPlaced>. OutboxPublishMiddleware must forward it directly
                 // to the transport instead of buffering it in the outbox.
-                try
+                await executor.ExecuteAsync(context, (ctx, ct) =>
                 {
-                    await executor.ExecuteAsync(context, (ctx, ct) =>
-                    {
-                        var consumer = scope.ServiceProvider
-                            .GetRequiredService<FaultingOrderPlacedConsumerWithOutbox>();
-                        return consumer.Consume(ctx.Message, ctx, ct);
-                    }, TestContext.Current.CancellationToken);
-                }
-                catch (DeadLetterException)
-                {
-                    /* expected — the consumer threw */
-                }
+                    var consumer = scope.ServiceProvider
+                        .GetRequiredService<FaultingOrderPlacedConsumerWithOutbox>();
+                    return consumer.Consume(ctx.Message, ctx, ct);
+                }, TestContext.Current.CancellationToken);
+
+                Assert.Equal(DispatchResultKind.DeadLetter, context.Result.Kind);
             }
 
             await WaitUntilAsync(() => deadLetterTracker.Messages.Count >= 1);

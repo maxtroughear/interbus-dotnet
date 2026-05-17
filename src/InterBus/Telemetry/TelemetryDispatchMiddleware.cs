@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using InterBus.DeadLettering;
 using InterBus.Dispatching;
 
 namespace InterBus.Telemetry;
@@ -25,14 +24,23 @@ public sealed class TelemetryDispatchMiddleware(
         try
         {
             await next(context, cancellationToken);
-            activity?.SetStatus(ActivityStatusCode.Ok);
-            metrics.RecordConsumed(consumerName, queueName);
-        }
-        catch (DeadLetterException ex)
-        {
-            activity?.SetStatus(ActivityStatusCode.Error, ex.Reason);
-            metrics.RecordFailed(consumerName, queueName);
-            throw;
+
+            switch (context.Result.Kind)
+            {
+                case DispatchResultKind.Success:
+                    activity?.SetStatus(ActivityStatusCode.Ok);
+                    metrics.RecordConsumed(consumerName, queueName);
+                    break;
+                case DispatchResultKind.DeadLetter:
+                    activity?.SetStatus(ActivityStatusCode.Error, context.Result.DeadLetterReason);
+                    metrics.RecordFailed(consumerName, queueName);
+                    break;
+                case DispatchResultKind.Release:
+                    activity?.SetStatus(ActivityStatusCode.Error, context.Result.Exception?.Message);
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException();
+            }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

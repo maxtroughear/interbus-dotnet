@@ -20,9 +20,20 @@ public sealed class DispatchPipelineExecutor(
 
         return pipeline(context, cancellationToken);
 
-        Task TerminalDispatchDelegate(DispatchContext ctx, CancellationToken ct)
+        async Task TerminalDispatchDelegate(DispatchContext ctx, CancellationToken ct)
         {
-            return context.Descriptor.Dispatch(context, consumePipelineExecutor, serviceProvider, cancellationToken);
+            try
+            {
+                await ctx.Descriptor.Dispatch(ctx, consumePipelineExecutor, serviceProvider, ct);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                ctx.Result = DispatchResult.Release(ex);
+            }
         }
     }
 }

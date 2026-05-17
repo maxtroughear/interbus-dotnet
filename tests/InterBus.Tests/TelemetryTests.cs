@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using InterBus.Consuming;
-using InterBus.DeadLettering;
 using InterBus.Dispatching;
 using InterBus.Extensions;
 using InterBus.Sagas;
@@ -149,7 +148,7 @@ public sealed class TelemetryTests
     }
 
     [Fact]
-    public async Task DispatchMiddleware_SetsErrorStatus_WhenDeadLetterException()
+    public async Task DispatchMiddleware_SetsErrorStatus_WhenDeadLetterRequested()
     {
         var stopped = new List<Activity>();
 
@@ -158,11 +157,14 @@ public sealed class TelemetryTests
             var context = BuildDispatchContext();
             var middleware = BuildDispatchMiddleware();
 
-            await Assert.ThrowsAsync<DeadLetterException>(() =>
-                middleware.InvokeAsync(context,
-                    (_, _) => throw new DeadLetterException("dead-reason", "err", DateTimeOffset.UtcNow,
-                        new Exception()),
-                    TestContext.Current.CancellationToken));
+            await middleware.InvokeAsync(context,
+                (ctx, _) =>
+                {
+                    ctx.Result = DispatchResult.DeadLetter("dead-reason", "err", DateTimeOffset.UtcNow,
+                        new Exception());
+                    return Task.CompletedTask;
+                },
+                TestContext.Current.CancellationToken);
         }
 
         var act = Assert.Single(stopped, a => a.OperationName == "NoOpConsumer process");

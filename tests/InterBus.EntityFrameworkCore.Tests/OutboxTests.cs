@@ -6,6 +6,7 @@ using InterBus.EntityFrameworkCore.Outbox;
 using InterBus.Extensions;
 using InterBus.Generated;
 using InterBus.InMemory.Extensions;
+using InterBus.Sending;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -56,6 +57,27 @@ public sealed class OrderPlacedPublishingConsumer(TestDbContext dbContext, IPubl
     }
 }
 
+public sealed class OrderPlacedPublishingTracker
+{
+    private readonly ConcurrentBag<Guid> _orderIds = [];
+    public IReadOnlyCollection<Guid> OrderIds => _orderIds;
+    public void Track(Guid orderId) => _orderIds.Add(orderId);
+}
+
+public sealed class OrderPlacedPublishingTrackedConsumer(
+    TestDbContext dbContext,
+    IPublisher publisher,
+    OrderPlacedPublishingTracker tracker) : IConsumer<OrderPlaced>
+{
+    public async Task Consume(OrderPlaced message, IConsumeContext context,
+        CancellationToken cancellationToken = default)
+    {
+        tracker.Track(message.OrderId);
+        await publisher.PublishAsync(new OrderShipped(message.OrderId), cancellationToken);
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+}
+
 public sealed class OrderShippedConsumer(OrderShippedTracker tracker) : IConsumer<OrderShipped>
 {
     public Task Consume(OrderShipped message, IConsumeContext context, CancellationToken cancellationToken = default)
@@ -68,11 +90,30 @@ public sealed class OrderShippedConsumer(OrderShippedTracker tracker) : IConsume
 public sealed class TestDbContext(DbContextOptions<TestDbContext> options)
     : DbContext(options)
 {
+    public DbSet<InboxState> InboxStates => Set<InboxState>();
     public DbSet<OutboxGroup> OutboxGroups => Set<OutboxGroup>();
     public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder) =>
         modelBuilder.AddInterBusOutbox();
+}
+
+public sealed class FailSendOnceController
+{
+    public bool ShouldFail { get; set; } = true;
+}
+
+public sealed class FailSendOnceMiddleware(FailSendOnceController controller) : ISendMiddleware
+{
+    public Task InvokeAsync(SendContext context, Func<SendContext, CancellationToken, Task> next,
+        CancellationToken cancellationToken = default)
+    {
+        if (!controller.ShouldFail)
+            return next(context, cancellationToken);
+
+        controller.ShouldFail = false;
+        throw new InvalidOperationException("Simulated send failure");
+    }
 }
 
 /// <summary>
@@ -579,6 +620,81 @@ public class OutboxTests
         }
     }
 
+    [Fact]
+    public async Task ConsumerPublish_InlineDelivery_RedeliverySkipsConsumerAndClearsOutbox()
+    {
+        var shippedTracker = new OrderShippedTracker();
+        var publishTracker = new OrderPlacedPublishingTracker();
+        var failSend = new FailSendOnceController();
+
+        var (provider, cts, conn) = await StartAsync(bus =>
+        {
+            bus.AddInMemoryTransport();
+            bus.AddConsumer<OrderPlacedPublishingTrackedConsumer>(c =>
+            {
+                c.UseEfCoreOutboxWithInlineDelivery<TestDbContext>();
+                c.UseSendMiddleware<FailSendOnceMiddleware>();
+            });
+            bus.AddConsumer<OrderShippedConsumer>();
+            bus.UseEfCoreOutbox<TestDbContext>(o => o.DisableOutboxProcessor());
+        }, services =>
+        {
+            services.AddSingleton(shippedTracker);
+            services.AddSingleton(publishTracker);
+            services.AddSingleton(failSend);
+        });
+
+        try
+        {
+            await StartHostedServicesAsync(provider, cts.Token);
+            var messageId = Guid.NewGuid().ToString();
+
+            async Task ExecuteOnceAsync()
+            {
+                await using var scope = provider.CreateAsyncScope();
+                var executor = scope.ServiceProvider.GetRequiredService<ConsumePipelineExecutor>();
+                var descriptor = scope.ServiceProvider.GetRequiredService<InterBusOptions>()
+                    .Consumers.Single(d => d.ConsumerType == typeof(OrderPlacedPublishingTrackedConsumer));
+
+                var orderId = Guid.NewGuid();
+                var headers = new MessageHeaders(new Dictionary<string, string>
+                {
+                    [InterBusHeaders.MessageType] = "OrderPlaced",
+                    [InterBusHeaders.MessageId] = messageId,
+                });
+                var context = new ConsumeContext<OrderPlaced>(
+                    descriptor, new OrderPlaced(orderId, "redelivery@example.com", 10m), headers);
+
+                await executor.ExecuteAsync(context, (ctx, ct) =>
+                {
+                    var consumer = scope.ServiceProvider.GetRequiredService<OrderPlacedPublishingTrackedConsumer>();
+                    return consumer.Consume(ctx.Message, ctx, ct);
+                }, TestContext.Current.CancellationToken);
+            }
+
+            await Assert.ThrowsAsync<DeadLetterException>(ExecuteOnceAsync);
+
+            await ExecuteOnceAsync();
+
+            await WaitUntilAsync(() => shippedTracker.Messages.Count == 1);
+
+            Assert.Single(shippedTracker.Messages);
+            Assert.Single(publishTracker.OrderIds);
+
+            await using var verifyScope = provider.CreateAsyncScope();
+            var db = verifyScope.ServiceProvider.GetRequiredService<TestDbContext>();
+            Assert.Equal(0, await db.OutboxMessages.CountAsync(TestContext.Current.CancellationToken));
+            Assert.Equal(0, await db.OutboxGroups.CountAsync(TestContext.Current.CancellationToken));
+            var inbox = await db.InboxStates.SingleAsync(TestContext.Current.CancellationToken);
+            Assert.Equal(InboxProcessingState.Completed, inbox.State);
+            Assert.Null(inbox.OutboxGroupId);
+        }
+        finally
+        {
+            await StopAsync(provider, cts, conn);
+        }
+    }
+
     /// <summary>
     /// When inline delivery fails (e.g. no transport registered), the outbox entry written
     /// atomically during <c>Consume</c> is left in the database with <c>VisibleAt</c> set to a
@@ -611,16 +727,20 @@ public class OutboxTests
             var context = new ConsumeContext<OrderPlaced>(
                 descriptor, new OrderPlaced(orderId, "fallback@example.com", 10m), headers);
 
-            await executor.ExecuteAsync(context, (ctx, ct) =>
-            {
-                var consumer = scope.ServiceProvider.GetRequiredService<OrderPlacedPublishingConsumer>();
-                return consumer.Consume(ctx.Message, ctx, ct);
-            }, TestContext.Current.CancellationToken);
+            await Assert.ThrowsAsync<DeadLetterException>(async () =>
+                await executor.ExecuteAsync(context, (ctx, ct) =>
+                {
+                    var consumer = scope.ServiceProvider.GetRequiredService<OrderPlacedPublishingConsumer>();
+                    return consumer.Consume(ctx.Message, ctx, ct);
+                }, TestContext.Current.CancellationToken));
 
             // Inline delivery failed — outbox entry should remain with VisibleAt in the future.
             var dbContext = scope.ServiceProvider.GetRequiredService<TestDbContext>();
             var group = await dbContext.OutboxGroups.SingleAsync(TestContext.Current.CancellationToken);
             Assert.True(group.VisibleAt > DateTime.UtcNow);
+            var inbox = await dbContext.InboxStates.SingleAsync(TestContext.Current.CancellationToken);
+            Assert.Equal(InboxProcessingState.PendingOutbox, inbox.State);
+            Assert.Equal(group.Id, inbox.OutboxGroupId);
         }
         finally
         {

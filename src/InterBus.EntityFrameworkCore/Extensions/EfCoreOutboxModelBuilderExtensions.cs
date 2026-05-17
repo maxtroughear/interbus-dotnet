@@ -7,7 +7,7 @@ namespace InterBus.EntityFrameworkCore.Extensions;
 public static class EfCoreOutboxModelBuilderExtensions
 {
     /// <summary>
-    /// Registers the <see cref="OutboxGroup"/> and <see cref="OutboxMessage"/> entity types
+    /// Registers the <see cref="OutboxGroup"/>, <see cref="OutboxMessage"/>, and <see cref="InboxState"/> entity types
     /// and applies recommended constraints/indexes for efficient outbox polling. Call this inside your
     /// <c>DbContext.OnModelCreating</c> override:
     /// <code>
@@ -49,6 +49,16 @@ public static class EfCoreOutboxModelBuilderExtensions
             b.Property(m => m.CreatedAt).IsRequired();
 
             b.HasIndex(m => new { m.GroupId, m.CreatedAt });
+        });
+
+        modelBuilder.Entity<InboxState>(b =>
+        {
+            b.HasKey(i => new { i.ConsumerName, i.MessageId });
+            b.Property(i => i.ConsumerName).HasMaxLength(1024);
+            b.Property(i => i.MessageId).HasMaxLength(256);
+            b.Property(i => i.State).IsRequired();
+            b.Property(i => i.UpdatedAt).IsRequired();
+            b.HasIndex(i => i.UpdatedAt);
         });
 
         return modelBuilder;

@@ -44,12 +44,67 @@ internal sealed partial class OutboxInlineDeliveryConsumeMiddleware<TDbContext>(
     {
         consumeState.IsDeliveryInline = true;
 
-        // Run the consumer handler. The consumer is expected to call SaveChangesAsync inside
-        // Consume, which commits any outbox entries written by OutboxPublishMiddleware to the DB.
-        await next(context, cancellationToken);
+        if (!context.Headers.TryGetValue(InterBusHeaders.MessageId, out var messageId) || string.IsNullOrWhiteSpace(messageId))
+        {
+            await next(context, cancellationToken);
+            return;
+        }
+
+        var consumerName = context.Descriptor.ConsumerType.FullName ?? context.Descriptor.ConsumerType.Name;
+        var inbox = await dbContext.Set<InboxState>()
+            .FirstOrDefaultAsync(i => i.ConsumerName == consumerName && i.MessageId == messageId, cancellationToken);
+
+        switch (inbox?.State)
+        {
+            case InboxProcessingState.Completed:
+                return;
+            case InboxProcessingState.PendingConsumer:
+                throw new InvalidOperationException(
+                    $"InterBus outbox inbox: message {messageId} for consumer {consumerName} is already being processed");
+            case InboxProcessingState.PendingOutbox:
+                consumeState.GroupId = inbox.OutboxGroupId;
+                break;
+            case null:
+                inbox = new InboxState
+                {
+                    ConsumerName = consumerName,
+                    MessageId = messageId,
+                    State = InboxProcessingState.PendingConsumer
+                };
+                dbContext.Set<InboxState>().Add(inbox);
+                await dbContext.SaveChangesAsync(cancellationToken);
+                break;
+        }
+
+        if (inbox.State == InboxProcessingState.PendingConsumer)
+        {
+            try
+            {
+                // Run the consumer handler. The consumer is expected to call SaveChangesAsync inside
+                // Consume, which commits any outbox entries written by OutboxPublishMiddleware to the DB.
+                await next(context, cancellationToken);
+            }
+            catch
+            {
+                dbContext.Set<InboxState>().Remove(inbox);
+                await dbContext.SaveChangesAsync(cancellationToken);
+                throw;
+            }
+        }
 
         if (consumeState.GroupId is not { } groupId)
+        {
+            inbox.State = InboxProcessingState.Completed;
+            inbox.OutboxGroupId = null;
+            inbox.UpdatedAt = DateTime.UtcNow;
+            await dbContext.SaveChangesAsync(cancellationToken);
             return;
+        }
+
+        inbox.State = InboxProcessingState.PendingOutbox;
+        inbox.OutboxGroupId = groupId;
+        inbox.UpdatedAt = DateTime.UtcNow;
+        await dbContext.SaveChangesAsync(cancellationToken);
 
         var outboxGroup = await dbContext.Set<OutboxGroup>()
             .AsNoTracking()
@@ -57,7 +112,13 @@ internal sealed partial class OutboxInlineDeliveryConsumeMiddleware<TDbContext>(
             .FirstOrDefaultAsync(g => g.Id == groupId, cancellationToken);
 
         if (outboxGroup is null)
+        {
+            inbox.State = InboxProcessingState.Completed;
+            inbox.OutboxGroupId = null;
+            inbox.UpdatedAt = DateTime.UtcNow;
+            await dbContext.SaveChangesAsync(cancellationToken);
             return;
+        }
 
         LogInlineDelivery(outboxGroup.Id, outboxGroup.Messages.Count);
 
@@ -81,23 +142,18 @@ internal sealed partial class OutboxInlineDeliveryConsumeMiddleware<TDbContext>(
         }
         catch (Exception ex)
         {
-            // Inline delivery failed - leave the group for the background processor.
             LogInlineDeliveryFailed(outboxGroup.Id, ex);
-            return;
+            throw;
         }
 
-        try
-        {
-            await dbContext.Set<OutboxGroup>()
-                .Where(g => g.Id == groupId)
-                .ExecuteDeleteAsync(cancellationToken);
-        }
-        catch (Exception ex)
-        {
-            // Delete failed. The processor will pick up and re-deliver the group. Consumers
-            // should be idempotent.
-            LogInlineDeleteFailed(outboxGroup.Id, ex);
-        }
+        await dbContext.Set<OutboxGroup>()
+            .Where(g => g.Id == groupId)
+            .ExecuteDeleteAsync(cancellationToken);
+
+        inbox.State = InboxProcessingState.Completed;
+        inbox.OutboxGroupId = null;
+        inbox.UpdatedAt = DateTime.UtcNow;
+        await dbContext.SaveChangesAsync(cancellationToken);
     }
 
     private static MessageHeaders DeserializeHeaders(string json)
@@ -115,7 +171,4 @@ internal sealed partial class OutboxInlineDeliveryConsumeMiddleware<TDbContext>(
         "InterBus outbox: inline delivery failed for group {GroupId}; group left for background processor")]
     partial void LogInlineDeliveryFailed(Guid groupId, Exception ex);
 
-    [LoggerMessage(LogLevel.Warning,
-        "InterBus outbox: failed to delete inline-delivered group {GroupId}; processor will re-deliver")]
-    partial void LogInlineDeleteFailed(Guid groupId, Exception ex);
 }

@@ -25,7 +25,7 @@ public static class EfCoreOutboxConsumerBuilderExtensions
         /// </para>
         /// <para>
         /// To also attempt immediate ("inline") delivery after <c>Consume</c> returns, call
-        /// <see cref="EfCoreOutboxConsumerBuilderExtensions.UseEfCoreOutboxWithInlineDelivery{TDbContext}"/> instead.
+        /// <see cref="EfCoreOutboxConsumerBuilderExtensions.UseEfCoreInboxOutbox{TDbContext}"/> instead.
         /// </para>
         /// <para>
         /// Requires <c>bus.AddOutbox&lt;TDbContext&gt;()</c> or <c>bus.UseOutbox&lt;TDbContext&gt;()</c>
@@ -54,7 +54,7 @@ public static class EfCoreOutboxConsumerBuilderExtensions
         /// <para>
         /// The consumer's publish calls are written to the outbox atomically with
         /// <c>SaveChangesAsync()</c>. After <c>Consume</c> returns,
-        /// <see cref="Outbox.OutboxInlineDeliveryConsumeMiddleware{TDbContext}"/> reads the committed group and forwards
+        /// <see cref="InboxOutboxConsumeMiddleware{TDbContext}"/> reads the committed group and forwards
         /// each message directly to the transport via <see cref="SendPipelineExecutor"/>,
         /// exactly as the background processor would. If delivery succeeds the group is deleted,
         /// saving a background-processor round-trip. If delivery fails the group remains in the
@@ -71,15 +71,17 @@ public static class EfCoreOutboxConsumerBuilderExtensions
         /// <typeparam name="TDbContext">
         /// The application's <see cref="DbContext"/>
         /// </typeparam>
-        public ConsumerBuilder UseEfCoreOutboxWithInlineDelivery<TDbContext>()
+        public ConsumerBuilder UseEfCoreInboxOutbox<TDbContext>()
             where TDbContext : DbContext
         {
             ArgumentNullException.ThrowIfNull(builder);
 
             builder.Services.TryAddScoped<OutboxConsumeState>();
-
-            builder.UsePublishMiddleware<OutboxPublishMiddleware<TDbContext>>();
-            builder.UseConsumeMiddleware<OutboxInlineDeliveryConsumeMiddleware<TDbContext>>();
+            builder.Services.TryAddScoped<InboxLoopConsumeState>();
+            
+            builder.UseConsumeMiddleware<TransactionConsumeMiddleware<TDbContext>>();
+            builder.UseConsumeMiddleware<InboxOutboxConsumeMiddleware<TDbContext>>();
+            builder.UsePublishMiddleware<InboxOutboxPublishMiddleware>();
 
             return builder;
         }

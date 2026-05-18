@@ -25,7 +25,7 @@ namespace InterBus.EntityFrameworkCore.Sagas;
 /// <typeparam name="TDbContext">The application's <see cref="DbContext"/>.</typeparam>
 public sealed class EfCoreSagaRepository<TSaga, TState, TDbContext>(
     TDbContext dbContext,
-    ISagaLockProvider<TDbContext> lockProvider)
+    ILockProvider lockProvider)
     : ISagaRepository<TSaga, TState>
     where TSaga : class, ISaga<TState>
     where TState : class, new()
@@ -39,7 +39,7 @@ public sealed class EfCoreSagaRepository<TSaga, TState, TDbContext>(
         CancellationToken cancellationToken = default)
     {
         var lockKey = $"{SagaTypeName}:{correlationId}";
-        return lockProvider.AcquireLockAsync(dbContext, lockKey, cancellationToken);
+        return lockProvider.AcquireLockAsync(lockKey, cancellationToken);
     }
 
     /// <inheritdoc/>

@@ -33,7 +33,6 @@ public static class EfCoreOutboxModelBuilderExtensions
             b.HasMany<OutboxMessage>()
                 .WithOne(m => m.Group)
                 .HasForeignKey(m => m.GroupId)
-                .IsRequired()
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
@@ -42,23 +41,31 @@ public static class EfCoreOutboxModelBuilderExtensions
             b.HasKey(m => m.Id);
             // Client-side Guid; no auto-generation needed.
             b.Property(m => m.Id).ValueGeneratedNever();
-            b.Property(m => m.GroupId).IsRequired();
             b.Property(m => m.Destination).IsRequired().HasMaxLength(2048);
             b.Property(m => m.Payload).IsRequired();
             b.Property(m => m.HeadersJson).IsRequired().HasMaxLength(4096);
             b.Property(m => m.CreatedAt).IsRequired();
 
-            b.HasIndex(m => new { m.GroupId, m.CreatedAt });
+            b.HasIndex(m => new { m.GroupId, m.Id });
+            b.HasIndex(m => new { m.InboxId, m.Id });
         });
 
         modelBuilder.Entity<InboxState>(b =>
         {
-            b.HasKey(i => new { i.ConsumerName, i.MessageId });
+            b.HasKey(i => i.Id);
             b.Property(i => i.ConsumerName).HasMaxLength(1024);
             b.Property(i => i.MessageId).HasMaxLength(256);
             b.Property(i => i.State).IsRequired();
-            b.Property(i => i.UpdatedAt).IsRequired();
-            b.HasIndex(i => i.UpdatedAt);
+            b.Property(i => i.CreatedAt).IsRequired();
+
+            b.HasIndex(i => i.CreatedAt);
+            b.HasIndex(i => i.DeliveredAt);
+            b.HasIndex(i => new { i.ConsumerName, i.MessageId }).IsUnique();
+            
+            b.HasMany<OutboxMessage>()
+                .WithOne(m => m.Inbox)
+                .HasForeignKey(m => m.InboxId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         return modelBuilder;

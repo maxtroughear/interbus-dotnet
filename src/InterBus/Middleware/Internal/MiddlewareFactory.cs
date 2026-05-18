@@ -8,7 +8,8 @@ internal sealed class MiddlewareFactory(IServiceProvider serviceProvider) : IMid
     public IEnumerable<TMiddleware> Resolve<TMiddleware>(Type? key = null) where TMiddleware : IMiddleware
     {
         return key is not null
-            ? serviceProvider.GetKeyedServices<TMiddleware>(key).Reverse()
-            : serviceProvider.GetKeyedServices<TMiddleware>(InterBusConstants.BusContext).Reverse();
+            ? serviceProvider.GetKeyedServices<TMiddleware>(key).Reverse().DistinctBy(x => x.GetType())
+            : serviceProvider.GetKeyedServices<TMiddleware>(InterBusConstants.BusContext).Reverse()
+                .DistinctBy(x => x.GetType());
     }
 }

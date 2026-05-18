@@ -1,3 +1,4 @@
+using InterBus.EntityFrameworkCore.LockProviders;
 using InterBus.EntityFrameworkCore.Sagas;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -6,7 +7,7 @@ using Testcontainers.PostgreSql;
 namespace InterBus.EntityFrameworkCore.PostgreSQL.IntegrationTests;
 
 /// <summary>
-/// Verifies that <see cref="PostgreSqlSagaLockProvider{TDbContext}"/> correctly implements
+/// Verifies that <see cref="PostgreSqlLockProvider{TDbContext}"/> correctly implements
 /// <c>pg_advisory_lock</c> semantics: an advisory lock acquired by one session blocks
 /// a concurrent session from acquiring the same lock until it is released.
 /// </summary>
@@ -54,12 +55,13 @@ public class SagaPostgreSqlLockingTests(string imageTag)
     public async Task LockProvider_SecondSession_WaitsForFirstToRelease()
     {
         const string lockKey = "TestSaga:corr-lock-test";
-        var lockProvider = new PostgreSqlSagaLockProvider<SagaTestDbContext>();
 
         // Session A acquires the lock.
         await using var scopeA = _provider.CreateAsyncScope();
         var dbA = scopeA.ServiceProvider.GetRequiredService<SagaTestDbContext>();
-        var lockA = await lockProvider.AcquireLockAsync(dbA, lockKey);
+        await using var txA = await dbA.Database.BeginTransactionAsync();
+        var lockProviderA = new PostgreSqlLockProvider<SagaTestDbContext>(dbA);
+        var lockA = await lockProviderA.AcquireLockAsync(lockKey);
 
         var sessionBStarted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         var sessionBReleased = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -70,11 +72,13 @@ public class SagaPostgreSqlLockingTests(string imageTag)
         {
             await using var scopeB = _provider.CreateAsyncScope();
             var dbB = scopeB.ServiceProvider.GetRequiredService<SagaTestDbContext>();
-
+            await using var txB = await dbB.Database.BeginTransactionAsync();
+            var lockProviderB = new PostgreSqlLockProvider<SagaTestDbContext>(dbB);
+            
             sessionBStarted.SetResult(true);
 
             // This call blocks until session A releases.
-            var lockB = await lockProvider.AcquireLockAsync(dbB, lockKey);
+            var lockB = await lockProviderB.AcquireLockAsync(lockKey);
             sessionBReleased.SetResult(true);
             await lockB.DisposeAsync();
         });
@@ -101,18 +105,21 @@ public class SagaPostgreSqlLockingTests(string imageTag)
     [Test]
     public async Task LockProvider_DifferentKeys_DoNotBlockEachOther()
     {
-        var lockProvider = new PostgreSqlSagaLockProvider<SagaTestDbContext>();
 
         await using var scopeA = _provider.CreateAsyncScope();
         var dbA = scopeA.ServiceProvider.GetRequiredService<SagaTestDbContext>();
-        var lockA = await lockProvider.AcquireLockAsync(dbA, "TestSaga:corr-key-a");
+        await using var txA = await dbA.Database.BeginTransactionAsync();
+        var lockProviderA = new PostgreSqlLockProvider<SagaTestDbContext>(dbA);
+        var lockA = await lockProviderA.AcquireLockAsync("TestSaga:corr-key-a");
 
         await using var scopeB = _provider.CreateAsyncScope();
         var dbB = scopeB.ServiceProvider.GetRequiredService<SagaTestDbContext>();
 
         // Should not block because the key is different.
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-        var lockB = await lockProvider.AcquireLockAsync(dbB, "TestSaga:corr-key-b", cts.Token);
+        await using var txB = await dbB.Database.BeginTransactionAsync();
+        var lockProviderB = new PostgreSqlLockProvider<SagaTestDbContext>(dbB);
+        var lockB = await lockProviderB.AcquireLockAsync("TestSaga:corr-key-b", cts.Token);
 
         Assert.Pass("Session B acquired a different key lock without blocking");
 

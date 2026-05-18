@@ -218,6 +218,7 @@ public class EfCoreSagaTests
         var (provider, cts, conn) = await StartAsync(bus =>
         {
             bus.AddInMemoryTransport();
+            bus.AddEfCore<SagaTestDbContext>();
             bus.AddSaga<EfSagaOrderSaga, EfSagaOrderState>(saga =>
                 saga.UseEfCoreRepository<EfSagaOrderSaga, EfSagaOrderState, SagaTestDbContext>());
         });
@@ -253,6 +254,7 @@ public class EfCoreSagaTests
         var (provider, cts, conn) = await StartAsync(bus =>
         {
             bus.AddInMemoryTransport();
+            bus.AddEfCore<SagaTestDbContext>();
             bus.AddSaga<EfSagaOrderSaga, EfSagaOrderState>(saga =>
                 saga.UseEfCoreRepository<EfSagaOrderSaga, EfSagaOrderState, SagaTestDbContext>());
         });
@@ -292,6 +294,7 @@ public class EfCoreSagaTests
         var (provider, cts, conn) = await StartAsync(bus =>
         {
             bus.AddInMemoryTransport();
+            bus.AddEfCore<SagaTestDbContext>();
             bus.AddSaga<EfSagaOrderSaga, EfSagaOrderState>(saga =>
                 saga.UseEfCoreRepository<EfSagaOrderSaga, EfSagaOrderState, SagaTestDbContext>());
         });
@@ -335,6 +338,7 @@ public class EfCoreSagaTests
         var (provider, cts, conn) = await StartAsync(bus =>
         {
             bus.AddInMemoryTransport();
+            bus.AddEfCore<SagaTestDbContext>();
             bus.AddSaga<EfSagaOrderWithDeletionSaga, EfSagaOrderState>(saga =>
                 saga.UseEfCoreRepository<EfSagaOrderWithDeletionSaga, EfSagaOrderState, SagaTestDbContext>());
         });
@@ -374,6 +378,7 @@ public class EfCoreSagaTests
         var (provider, cts, conn) = await StartAsync(bus =>
         {
             bus.AddInMemoryTransport();
+            bus.AddEfCore<SagaTestDbContext>();
             bus.AddSaga<EfSagaCompletingOrderSaga, EfSagaOrderState>(saga =>
                 saga.UseEfCoreRepository<EfSagaCompletingOrderSaga, EfSagaOrderState, SagaTestDbContext>());
         });
@@ -428,6 +433,7 @@ public class EfCoreSagaTests
         var (provider, cts, conn) = await StartAsync(bus =>
         {
             bus.AddInMemoryTransport();
+            bus.AddEfCore<SagaTestDbContext>();
             bus.AddSaga<EfSagaOrderSaga, EfSagaOrderState>(saga =>
                 saga.UseEfCoreRepository<EfSagaOrderSaga, EfSagaOrderState, SagaTestDbContext>()
                     .WithTimeToLive(TimeSpan.FromMilliseconds(100)));

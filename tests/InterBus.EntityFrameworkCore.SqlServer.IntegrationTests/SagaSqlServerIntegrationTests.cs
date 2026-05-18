@@ -1,4 +1,5 @@
 using InterBus.EntityFrameworkCore.Extensions;
+using InterBus.EntityFrameworkCore.LockProviders;
 using InterBus.EntityFrameworkCore.Sagas;
 using InterBus.Extensions;
 using InterBus.Generated;
@@ -53,7 +54,7 @@ public sealed class SqlSagaOrderSaga :
 /// <summary>
 /// Integration tests for the EF Core saga repository using a real SQL Server database.
 /// Validates that saga state is persisted correctly and that the
-/// <see cref="SqlServerSagaLockProvider{TDbContext}"/> correctly serialises concurrent
+/// <see cref="SqlServerLockProvider{TDbContext}"/> correctly serialises concurrent
 /// access to the same saga instance.
 /// </summary>
 [TestFixtureSource(typeof(SqlServerVersions), nameof(SqlServerVersions.All))]
@@ -85,9 +86,9 @@ public class SagaSqlServerIntegrationTests(string imageTag)
         services.AddInterBus(bus =>
         {
             bus.AddInMemoryTransport();
+            bus.AddEfCore<SagaTestDbContext>(ef => ef.UseSqlServer());
             bus.AddSaga<SqlSagaOrderSaga, SqlSagaOrderState>(saga =>
-                saga.UseEfCoreRepository<SqlSagaOrderSaga, SqlSagaOrderState, SagaTestDbContext>(repo =>
-                    repo.UseSqlServer()));
+                saga.UseEfCoreRepository<SqlSagaOrderSaga, SqlSagaOrderState, SagaTestDbContext>());
         });
 
         _provider = services.BuildServiceProvider();

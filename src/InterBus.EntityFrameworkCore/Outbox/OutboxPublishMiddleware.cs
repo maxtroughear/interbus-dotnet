@@ -21,7 +21,7 @@ namespace InterBus.EntityFrameworkCore.Outbox;
 /// <see cref="OutboxGroup.VisibleAt"/> timestamp of
 /// <c>UtcNow + <see cref="OutboxOptions.ConsumerVisibilityTimeout"/></c>.
 /// After the consumer's <c>Consume</c> handler completes (and its transaction has committed), the
-/// paired <see cref="OutboxInlineDeliveryConsumeMiddleware{TDbContext}"/> (when registered) attempts immediate
+/// paired <see cref="InboxOutboxConsumeMiddleware{TDbContext}"/> (when registered) attempts immediate
 /// inline delivery, deleting the group on success. If inline delivery fails the group remains in
 /// the outbox and the processor retries it after <see cref="OutboxGroup.VisibleAt"/> has elapsed.
 /// </para>
@@ -31,11 +31,7 @@ namespace InterBus.EntityFrameworkCore.Outbox;
 /// single atomic group.
 /// </para>
 /// </summary>
-internal sealed class OutboxPublishMiddleware<TDbContext>(
-    TDbContext dbContext,
-    IMessageSerializer serializer,
-    OutboxOptions options,
-    OutboxConsumeState consumeState)
+internal sealed class OutboxPublishMiddleware<TDbContext>(TDbContext dbContext, IMessageSerializer serializer)
     : IPublishMiddleware
     where TDbContext : DbContext
 {
@@ -72,19 +68,10 @@ internal sealed class OutboxPublishMiddleware<TDbContext>(
         if (_outboxGroup is not null)
             return _outboxGroup;
 
-        // Bus context: VisibleAt = UtcNow (immediately eligible).
-        // Consumer context & inline delivery: VisibleAt = UtcNow + ConsumerVisibilityTimeout (may equal UtcNow when
-        // timeout is zero) - prevents the processor racing with inline delivery
-        var visibleAt = consumeState.IsDeliveryInline
-            ? DateTime.UtcNow + options.ConsumerVisibilityTimeout
-            : DateTime.UtcNow;
+        var visibleAt = DateTime.UtcNow;
 
         _outboxGroup = new OutboxGroup { Id = Guid.CreateVersion7(), VisibleAt = visibleAt };
         dbContext.Add(_outboxGroup);
-
-        // Notify the paired OutboxConsumeMiddleware so it can attempt inline delivery
-        // after the consumer's Consume handler (and its SaveChangesAsync) has finished.
-        if (consumeState.IsDeliveryInline) consumeState.GroupId = _outboxGroup.Id;
 
         return _outboxGroup;
     }

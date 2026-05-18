@@ -81,6 +81,7 @@ public class SagaPostgreSqlLockingTests(string imageTag)
             var lockB = await lockProviderB.AcquireLockAsync(lockKey);
             sessionBReleased.SetResult(true);
             await lockB.DisposeAsync();
+            await txB.CommitAsync();
         });
 
         // Wait for session B to be running but blocked.
@@ -92,6 +93,7 @@ public class SagaPostgreSqlLockingTests(string imageTag)
 
         // Release session A's lock — session B should now proceed.
         await lockA.DisposeAsync();
+        await txA.CommitAsync();
 
         await Task.WhenAny(sessionBTask, Task.Delay(5000));
 

@@ -29,6 +29,7 @@ public static class EfCoreSagaBuilderExtensions
         {
             ArgumentNullException.ThrowIfNull(builder);
 
+            builder.Services.TryAddScoped<InboxLoopConsumeState>();
             builder.UseConsumeMiddleware<TransactionConsumeMiddleware<TDbContext>>();
 
             builder.Services

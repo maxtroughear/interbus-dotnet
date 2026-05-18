@@ -90,7 +90,7 @@ public class SagaPostgreSqlIntegrationTests(string imageTag)
             bus.AddSaga<PgSagaOrderSaga, PgSagaOrderState>(saga =>
             {
                 saga.UseEfCoreRepository<PgSagaOrderSaga, PgSagaOrderState, SagaTestDbContext>();
-                saga.UseEfCoreInboxOutbox<SagaTestDbContext>();
+                // saga.UseEfCoreInboxOutbox<SagaTestDbContext>();
             });
         });
 

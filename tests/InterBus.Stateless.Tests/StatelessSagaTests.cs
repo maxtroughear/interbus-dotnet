@@ -15,9 +15,19 @@ namespace InterBus.Stateless.Tests;
 // State machine types
 // ---------------------------------------------------------------------------
 
-public enum TrafficLightState { Red, Green, Yellow }
+public enum TrafficLightState
+{
+    Red,
+    Green,
+    Yellow
+}
 
-public enum TrafficLightTrigger { GoGreen, GoYellow, GoRed }
+public enum TrafficLightTrigger
+{
+    GoGreen,
+    GoYellow,
+    GoRed
+}
 
 // ---------------------------------------------------------------------------
 // Saga messages
@@ -52,13 +62,9 @@ public sealed class TrafficLightSaga
         ISagaConsumer<TrafficLightSagaState, TurnYellow>,
         ISagaConsumer<TrafficLightSagaState, TurnRed>
 {
-    /// <summary>Exposes the protected base-class method for unit testing.</summary>
-    public StateMachine<TrafficLightState, TrafficLightTrigger> ExposedCreateStateMachine(
-        TrafficLightSagaState state) => CreateStateMachine(state);
-
     protected override void Configure(
         StateMachine<TrafficLightState, TrafficLightTrigger> machine,
-        TrafficLightSagaState state)
+        ISagaContext<TrafficLightSagaState> context)
     {
         machine.Configure(TrafficLightState.Red)
             .Permit(TrafficLightTrigger.GoGreen, TrafficLightState.Green);
@@ -68,7 +74,7 @@ public sealed class TrafficLightSaga
 
         machine.Configure(TrafficLightState.Yellow)
             .Permit(TrafficLightTrigger.GoRed, TrafficLightState.Red)
-            .OnEntry(() => state.TransitionCount++);
+            .OnEntry(() => context.State.TransitionCount++);
     }
 
     public string GetCorrelationId(TrafficLightCreated message) => message.Id.ToString();
@@ -83,21 +89,21 @@ public sealed class TrafficLightSaga
     public async Task Consume(TurnGreen message, ISagaContext<TrafficLightSagaState> context,
         CancellationToken cancellationToken = default)
     {
-        var machine = CreateStateMachine(context.State);
+        var machine = CreateStateMachine(context);
         await machine.FireAsync(TrafficLightTrigger.GoGreen);
     }
 
     public async Task Consume(TurnYellow message, ISagaContext<TrafficLightSagaState> context,
         CancellationToken cancellationToken = default)
     {
-        var machine = CreateStateMachine(context.State);
+        var machine = CreateStateMachine(context);
         await machine.FireAsync(TrafficLightTrigger.GoYellow);
     }
 
     public async Task Consume(TurnRed message, ISagaContext<TrafficLightSagaState> context,
         CancellationToken cancellationToken = default)
     {
-        var machine = CreateStateMachine(context.State);
+        var machine = CreateStateMachine(context);
         await machine.FireAsync(TrafficLightTrigger.GoRed);
     }
 }
@@ -139,8 +145,13 @@ public class StatelessSagaTests
         await cts.CancelAsync();
         foreach (var svc in provider.GetServices<IHostedService>())
         {
-            try { await svc.StopAsync(CancellationToken.None); }
-            catch (OperationCanceledException) { }
+            try
+            {
+                await svc.StopAsync(CancellationToken.None);
+            }
+            catch (OperationCanceledException)
+            {
+            }
         }
 
         await provider.DisposeAsync();
@@ -207,7 +218,7 @@ public class StatelessSagaTests
             {
                 var e = repo.GetAsync(id.ToString()).GetAwaiter().GetResult();
                 return e?.State.CurrentState == TrafficLightState.Red
-                    && e.State.TransitionCount == 1;
+                       && e.State.TransitionCount == 1;
             });
 
             var entry = await repo.GetAsync(id.ToString(), TestContext.Current.CancellationToken);
@@ -263,20 +274,5 @@ public class StatelessSagaTests
         {
             await StopAsync(provider, cts);
         }
-    }
-
-    [Fact]
-    public void CreateStateMachine_StateAccessorMutator_ReadsAndWritesThroughState()
-    {
-        var saga = new TrafficLightSaga();
-        var state = new TrafficLightSagaState { CurrentState = TrafficLightState.Red };
-
-        var machine = saga.ExposedCreateStateMachine(state);
-
-        Assert.Equal(TrafficLightState.Red, machine.State);
-
-        machine.Fire(TrafficLightTrigger.GoGreen);
-        Assert.Equal(TrafficLightState.Green, machine.State);
-        Assert.Equal(TrafficLightState.Green, state.CurrentState);
     }
 }

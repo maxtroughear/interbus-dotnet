@@ -56,7 +56,7 @@ public interface IScheduler
     /// <returns>An opaque schedule identifier that can be passed to <see cref="CancelAsync"/>.</returns>
     Task<Guid> ScheduleSendAsync<TConsumer, T>(T message, DateTimeOffset scheduledAt,
         CancellationToken cancellationToken = default)
-        where TConsumer : IConsumer<T>
+        where TConsumer : IConsume<T>
         where T : class;
 
     /// <summary>
@@ -69,7 +69,7 @@ public interface IScheduler
     Task<Guid> ScheduleSendAsync<TConsumer, T>(T message, DateTimeOffset scheduledAt,
         Action<PublishContext<T>> configure,
         CancellationToken cancellationToken = default)
-        where TConsumer : IConsumer<T>
+        where TConsumer : IConsume<T>
         where T : class;
 
     /// <summary>
@@ -78,7 +78,7 @@ public interface IScheduler
     /// </summary>
     /// <returns>An opaque schedule identifier that can be passed to <see cref="CancelAsync"/>.</returns>
     Task<Guid> ScheduleSendAsync<TConsumer, T>(T message, TimeSpan delay, CancellationToken cancellationToken = default)
-        where TConsumer : IConsumer<T>
+        where TConsumer : IConsume<T>
         where T : class =>
         ScheduleSendAsync<TConsumer, T>(message, DateTimeOffset.UtcNow + delay, cancellationToken);
 
@@ -91,7 +91,7 @@ public interface IScheduler
     /// <returns>An opaque schedule identifier that can be passed to <see cref="CancelAsync"/>.</returns>
     Task<Guid> ScheduleSendAsync<TConsumer, T>(T message, TimeSpan delay, Action<PublishContext<T>> configure,
         CancellationToken cancellationToken = default)
-        where TConsumer : IConsumer<T>
+        where TConsumer : IConsume<T>
         where T : class =>
         ScheduleSendAsync<TConsumer, T>(message, DateTimeOffset.UtcNow + delay, configure, cancellationToken);
 

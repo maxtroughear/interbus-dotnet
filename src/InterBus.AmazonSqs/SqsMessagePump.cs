@@ -229,8 +229,14 @@ internal sealed class SqsMessagePump(
         }
         finally
         {
-            await StopRenewalAsync(prefetched);
-            semaphore.Release();
+            try
+            {
+                await StopRenewalAsync(prefetched);
+            }
+            finally
+            {
+                semaphore.Release();
+            }
         }
     }
 

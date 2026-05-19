@@ -211,12 +211,12 @@ public sealed class RedeliverySchedulingMiddlewareTests
             => Task.CompletedTask;
 
         public Task SendAsync<TConsumer, T>(T message, CancellationToken cancellationToken = default)
-            where TConsumer : IConsumer<T> where T : class
+            where TConsumer : IConsume<T> where T : class
             => Task.CompletedTask;
 
         public Task SendAsync<TConsumer, T>(T message, Action<PublishContext<T>> configure,
             CancellationToken cancellationToken = default)
-            where TConsumer : IConsumer<T> where T : class
+            where TConsumer : IConsume<T> where T : class
             => Task.CompletedTask;
 
         public Task SendAsync<T>(string queueName, T message, CancellationToken cancellationToken = default)
@@ -254,12 +254,12 @@ public sealed class RedeliverySchedulingMiddlewareTests
             Task.FromResult(Guid.CreateVersion7());
 
         public Task<Guid> ScheduleSendAsync<TConsumer, T>(T message, DateTimeOffset scheduledAt,
-            CancellationToken cancellationToken = default) where TConsumer : IConsumer<T> where T : class =>
+            CancellationToken cancellationToken = default) where TConsumer : IConsume<T> where T : class =>
             Task.FromResult(Guid.CreateVersion7());
 
         public Task<Guid> ScheduleSendAsync<TConsumer, T>(T message, DateTimeOffset scheduledAt,
             Action<PublishContext<T>> configure,
-            CancellationToken cancellationToken = default) where TConsumer : IConsumer<T> where T : class =>
+            CancellationToken cancellationToken = default) where TConsumer : IConsume<T> where T : class =>
             Task.FromResult(Guid.CreateVersion7());
 
         public Task<Guid> ScheduleSendAsync<T>(string queueName, T message, DateTimeOffset scheduledAt,

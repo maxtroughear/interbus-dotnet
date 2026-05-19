@@ -34,14 +34,14 @@ internal class Scheduler(
 
     public Task<Guid> ScheduleSendAsync<TConsumer, T>(T message, DateTimeOffset scheduledAt,
         CancellationToken cancellationToken = default)
-        where TConsumer : IConsumer<T>
+        where TConsumer : IConsume<T>
         where T : class =>
         ScheduleSendAsync<TConsumer, T>(message, scheduledAt, _ => { }, cancellationToken);
 
     public Task<Guid> ScheduleSendAsync<TConsumer, T>(T message, DateTimeOffset scheduledAt,
         Action<PublishContext<T>> configure,
         CancellationToken cancellationToken = default)
-        where TConsumer : IConsumer<T>
+        where TConsumer : IConsume<T>
         where T : class =>
         ScheduleSendAsync(RoutingConventions.QueueUri(options.QueueUriScheme, typeof(TConsumer)), message, scheduledAt,
             configure, cancellationToken);

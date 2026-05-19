@@ -30,7 +30,7 @@ public interface IPublisher
     /// Only <typeparamref name="TConsumer"/> will receive the message (Point-to-Point Channel).
     /// </summary>
     Task SendAsync<TConsumer, T>(T message, CancellationToken cancellationToken = default)
-        where TConsumer : IConsumer<T>
+        where TConsumer : IConsume<T>
         where T : class;
 
     /// <summary>
@@ -41,7 +41,7 @@ public interface IPublisher
     /// </summary>
     Task SendAsync<TConsumer, T>(T message, Action<PublishContext<T>> configure,
         CancellationToken cancellationToken = default)
-        where TConsumer : IConsumer<T>
+        where TConsumer : IConsume<T>
         where T : class;
 
     /// <summary>

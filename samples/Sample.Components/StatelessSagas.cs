@@ -26,6 +26,7 @@ public record CancelOrder(Guid OrderId);
 
 public enum OrderState
 {
+    Pending,
     Placed,
     Confirmed,
     Shipped,
@@ -35,6 +36,7 @@ public enum OrderState
 
 public enum OrderTrigger
 {
+    Place,
     Confirm,
     Ship,
     Deliver,
@@ -47,7 +49,7 @@ public enum OrderTrigger
 
 public class OrderSagaState : IStateMachineSagaState<OrderState>
 {
-    public OrderState CurrentState { get; set; } = OrderState.Placed;
+    public OrderState CurrentState { get; set; } = OrderState.Pending;
     public string? CustomerEmail { get; set; }
     public string? TrackingNumber { get; set; }
 }
@@ -72,15 +74,21 @@ public class OrderSaga(IPublisher publisher)
     // State machine configuration
     // ---------------------------------------------------------------------------
 
+    private StateMachine<OrderState, OrderTrigger>.TriggerWithParameters<PlaceOrder>? _placedTrigger;
     private StateMachine<OrderState, OrderTrigger>.TriggerWithParameters<ConfirmOrder>? _confirmTrigger;
     private StateMachine<OrderState, OrderTrigger>.TriggerWithParameters<ShipOrder>? _shipTrigger;
 
-    protected override void Configure(StateMachine<OrderState, OrderTrigger> machine, OrderSagaState state)
+    protected override void Configure(StateMachine<OrderState, OrderTrigger> machine, ISagaContext<OrderSagaState> context)
     {
+        _placedTrigger = machine.SetTriggerParameters<PlaceOrder>(OrderTrigger.Place);
         _confirmTrigger = machine.SetTriggerParameters<ConfirmOrder>(OrderTrigger.Confirm);
         _shipTrigger = machine.SetTriggerParameters<ShipOrder>(OrderTrigger.Ship);
 
+        machine.Configure(OrderState.Pending)
+            .Permit(OrderTrigger.Place, OrderState.Placed);
+        
         machine.Configure(OrderState.Placed)
+            .OnEntryFrom(_placedTrigger, order => context.State.CustomerEmail = order.CustomerEmail)
             .Permit(OrderTrigger.Confirm, OrderState.Confirmed)
             .Permit(OrderTrigger.Cancel, OrderState.Cancelled);
 
@@ -91,14 +99,18 @@ public class OrderSaga(IPublisher publisher)
             .Permit(OrderTrigger.Cancel, OrderState.Cancelled);
 
         machine.Configure(OrderState.Shipped)
-            .OnEntryFromAsync(_shipTrigger, order => publisher.PublishAsync(new DeliverOrder(order.OrderId)))
+            .OnEntryFromAsync(_shipTrigger, order =>
+            {
+                context.State.TrackingNumber = order.TrackingNumber;
+                return publisher.PublishAsync(new DeliverOrder(order.OrderId));
+            })
             .Permit(OrderTrigger.Deliver, OrderState.Completed);
 
         machine.Configure(OrderState.Completed)
-            .OnEntry(() => Console.WriteLine($"[OrderSaga] Order {state.CustomerEmail} delivered — saga complete"));
+            .OnEntry(() => Console.WriteLine($"[OrderSaga] Order {context.State.CustomerEmail} delivered — saga complete"));
 
         machine.Configure(OrderState.Cancelled)
-            .OnEntry(() => Console.WriteLine($"[OrderSaga] Order for {state.CustomerEmail} was cancelled"));
+            .OnEntry(() => Console.WriteLine($"[OrderSaga] Order for {context.State.CustomerEmail} was cancelled"));
     }
 
     // ---------------------------------------------------------------------------
@@ -115,19 +127,19 @@ public class OrderSaga(IPublisher publisher)
     // Handlers
     // ---------------------------------------------------------------------------
 
-    public Task Consume(PlaceOrder message, ISagaContext<OrderSagaState> context,
+    public async Task Consume(PlaceOrder message, ISagaContext<OrderSagaState> context,
         CancellationToken cancellationToken = default)
     {
-        context.State.CustomerEmail = message.CustomerEmail;
+        var machine = CreateStateMachine(context);
+        await machine.FireAsync(_placedTrigger, message);
         Console.WriteLine(
             $"[OrderSaga] Order {message.OrderId} placed by {message.CustomerEmail} — state: {context.State.CurrentState}");
-        return Task.CompletedTask;
     }
 
     public async Task Consume(ConfirmOrder message, ISagaContext<OrderSagaState> context,
         CancellationToken cancellationToken = default)
     {
-        var machine = CreateStateMachine(context.State);
+        var machine = CreateStateMachine(context);
         await machine.FireAsync(_confirmTrigger, message);
         Console.WriteLine($"[OrderSaga] Order {message.OrderId} confirmed — state: {context.State.CurrentState}");
     }
@@ -135,8 +147,7 @@ public class OrderSaga(IPublisher publisher)
     public async Task Consume(ShipOrder message, ISagaContext<OrderSagaState> context,
         CancellationToken cancellationToken = default)
     {
-        context.State.TrackingNumber = message.TrackingNumber;
-        var machine = CreateStateMachine(context.State);
+        var machine = CreateStateMachine(context);
         await machine.FireAsync(_shipTrigger, message);
         Console.WriteLine(
             $"[OrderSaga] Order {message.OrderId} shipped ({message.TrackingNumber}) — state: {context.State.CurrentState}");
@@ -145,7 +156,7 @@ public class OrderSaga(IPublisher publisher)
     public async Task Consume(DeliverOrder message, ISagaContext<OrderSagaState> context,
         CancellationToken cancellationToken = default)
     {
-        var machine = CreateStateMachine(context.State);
+        var machine = CreateStateMachine(context);
         await machine.FireAsync(OrderTrigger.Deliver);
         Console.WriteLine($"[OrderSaga] Order {message.OrderId} delivered — state: {context.State.CurrentState}");
         context.Complete();
@@ -154,7 +165,7 @@ public class OrderSaga(IPublisher publisher)
     public async Task Consume(CancelOrder message, ISagaContext<OrderSagaState> context,
         CancellationToken cancellationToken = default)
     {
-        var machine = CreateStateMachine(context.State);
+        var machine = CreateStateMachine(context);
         await machine.FireAsync(OrderTrigger.Cancel);
         Console.WriteLine($"[OrderSaga] Order {message.OrderId} cancelled — state: {context.State.CurrentState}");
         context.Complete();

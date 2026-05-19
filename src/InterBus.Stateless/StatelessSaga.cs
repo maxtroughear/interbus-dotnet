@@ -1,4 +1,4 @@
-using global::Stateless;
+using Stateless;
 using InterBus.Sagas;
 
 namespace InterBus.Stateless;
@@ -34,24 +34,24 @@ public abstract class StatelessSaga<TState, TStateMachineState, TTrigger>
     /// Configures the state machine's states, permitted transitions, and entry/exit actions.
     /// Called each time <see cref="CreateStateMachine"/> is invoked.
     /// </summary>
-    /// <param name="machine">The state machine to configure.</param>
-    /// <param name="state">The current saga state, available for use in entry/exit action closures.</param>
-    protected abstract void Configure(StateMachine<TStateMachineState, TTrigger> machine, TState state);
+    /// <param name="machine">The state machine to configure</param>
+    /// <param name="context">The current saga context, available for use in entry/exit action closures</param>
+    protected abstract void Configure(StateMachine<TStateMachineState, TTrigger> machine, ISagaContext<TState> context);
 
     /// <summary>
     /// Creates a <see cref="StateMachine{TState,TTrigger}"/> whose current state is read from
-    /// and written back to <paramref name="sagaState"/>.<see cref="IStateMachineSagaState{TStateMachineState}.CurrentState"/>.
+    /// and written back to <paramref name="context"/>.<see cref="IStateMachineSagaState{TStateMachineState}.CurrentState"/>.
     /// Calls <see cref="Configure"/> to apply transitions and actions before returning.
     /// </summary>
-    /// <param name="sagaState">The current saga state instance.</param>
+    /// <param name="context">The current saga context</param>
     /// <returns>A configured <see cref="StateMachine{TState,TTrigger}"/> ready to fire triggers.</returns>
-    protected StateMachine<TStateMachineState, TTrigger> CreateStateMachine(TState sagaState)
+    protected StateMachine<TStateMachineState, TTrigger> CreateStateMachine(ISagaContext<TState> context)
     {
         var machine = new StateMachine<TStateMachineState, TTrigger>(
-            () => sagaState.CurrentState,
-            s => sagaState.CurrentState = s);
+            () => context.State.CurrentState,
+            s => context.State.CurrentState = s);
 
-        Configure(machine, sagaState);
+        Configure(machine, context);
 
         return machine;
     }

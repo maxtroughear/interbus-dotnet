@@ -89,21 +89,21 @@ public sealed class TrafficLightSaga
     public async Task Consume(TurnGreen message, ISagaContext<TrafficLightSagaState> context,
         CancellationToken cancellationToken = default)
     {
-        var machine = CreateStateMachine(context);
+        var machine = await CreateStateMachineAsync(context);
         await machine.FireAsync(TrafficLightTrigger.GoGreen);
     }
 
     public async Task Consume(TurnYellow message, ISagaContext<TrafficLightSagaState> context,
         CancellationToken cancellationToken = default)
     {
-        var machine = CreateStateMachine(context);
+        var machine = await CreateStateMachineAsync(context);
         await machine.FireAsync(TrafficLightTrigger.GoYellow);
     }
 
     public async Task Consume(TurnRed message, ISagaContext<TrafficLightSagaState> context,
         CancellationToken cancellationToken = default)
     {
-        var machine = CreateStateMachine(context);
+        var machine = await CreateStateMachineAsync(context);
         await machine.FireAsync(TrafficLightTrigger.GoRed);
     }
 }

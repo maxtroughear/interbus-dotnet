@@ -8,14 +8,14 @@ namespace InterBus.Stateless;
 /// <a href="https://github.com/dotnet-state-machine/stateless">stateless</a> state machine.
 /// <para>
 /// Derive from this class and implement <see cref="ISagaConsumer{TState,TMessage}"/> for each
-/// message type the saga handles. In each handler, call <see cref="CreateStateMachine"/> to obtain
+/// message type the saga handles. In each handler, call <see cref="CreateStateMachineAsync"/> to obtain
 /// a <see cref="StateMachine{TState,TTrigger}"/> bound to the current saga state, then fire the
 /// appropriate trigger.
 /// </para>
 /// <para>
 /// Override <see cref="Configure"/> to declare states, permitted transitions, and
 /// entry/exit actions. <see cref="Configure"/> is called every time
-/// <see cref="CreateStateMachine"/> is invoked, so closures in <see cref="Configure"/> may
+/// <see cref="CreateStateMachineAsync"/> is invoked, so closures in <see cref="Configure"/> may
 /// safely capture <c>this</c> and access saga dependencies.
 /// </para>
 /// </summary>
@@ -32,7 +32,7 @@ public abstract class StatelessSaga<TState, TStateMachineState, TTrigger>
 {
     /// <summary>
     /// Configures the state machine's states, permitted transitions, and entry/exit actions.
-    /// Called each time <see cref="CreateStateMachine"/> is invoked.
+    /// Called each time <see cref="CreateStateMachineAsync"/> is invoked.
     /// </summary>
     /// <param name="machine">The state machine to configure</param>
     /// <param name="context">The current saga context, available for use in entry/exit action closures</param>
@@ -45,13 +45,15 @@ public abstract class StatelessSaga<TState, TStateMachineState, TTrigger>
     /// </summary>
     /// <param name="context">The current saga context</param>
     /// <returns>A configured <see cref="StateMachine{TState,TTrigger}"/> ready to fire triggers.</returns>
-    protected StateMachine<TStateMachineState, TTrigger> CreateStateMachine(ISagaContext<TState> context)
+    protected async Task<StateMachine<TStateMachineState, TTrigger>> CreateStateMachineAsync(ISagaContext<TState> context)
     {
         var machine = new StateMachine<TStateMachineState, TTrigger>(
             () => context.State.CurrentState,
             s => context.State.CurrentState = s);
 
         Configure(machine, context);
+
+        await machine.ActivateAsync();
 
         return machine;
     }

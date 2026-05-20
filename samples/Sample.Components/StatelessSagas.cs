@@ -130,7 +130,7 @@ public class OrderSaga(IPublisher publisher)
     public async Task Consume(PlaceOrder message, ISagaContext<OrderSagaState> context,
         CancellationToken cancellationToken = default)
     {
-        var machine = CreateStateMachine(context);
+        var machine = CreateStateMachineAsync(context);
         await machine.FireAsync(_placedTrigger, message);
         Console.WriteLine(
             $"[OrderSaga] Order {message.OrderId} placed by {message.CustomerEmail} — state: {context.State.CurrentState}");
@@ -139,7 +139,7 @@ public class OrderSaga(IPublisher publisher)
     public async Task Consume(ConfirmOrder message, ISagaContext<OrderSagaState> context,
         CancellationToken cancellationToken = default)
     {
-        var machine = CreateStateMachine(context);
+        var machine = CreateStateMachineAsync(context);
         await machine.FireAsync(_confirmTrigger, message);
         Console.WriteLine($"[OrderSaga] Order {message.OrderId} confirmed — state: {context.State.CurrentState}");
     }
@@ -147,7 +147,7 @@ public class OrderSaga(IPublisher publisher)
     public async Task Consume(ShipOrder message, ISagaContext<OrderSagaState> context,
         CancellationToken cancellationToken = default)
     {
-        var machine = CreateStateMachine(context);
+        var machine = CreateStateMachineAsync(context);
         await machine.FireAsync(_shipTrigger, message);
         Console.WriteLine(
             $"[OrderSaga] Order {message.OrderId} shipped ({message.TrackingNumber}) — state: {context.State.CurrentState}");
@@ -156,7 +156,7 @@ public class OrderSaga(IPublisher publisher)
     public async Task Consume(DeliverOrder message, ISagaContext<OrderSagaState> context,
         CancellationToken cancellationToken = default)
     {
-        var machine = CreateStateMachine(context);
+        var machine = CreateStateMachineAsync(context);
         await machine.FireAsync(OrderTrigger.Deliver);
         Console.WriteLine($"[OrderSaga] Order {message.OrderId} delivered — state: {context.State.CurrentState}");
         context.Complete();
@@ -165,7 +165,7 @@ public class OrderSaga(IPublisher publisher)
     public async Task Consume(CancelOrder message, ISagaContext<OrderSagaState> context,
         CancellationToken cancellationToken = default)
     {
-        var machine = CreateStateMachine(context);
+        var machine = CreateStateMachineAsync(context);
         await machine.FireAsync(OrderTrigger.Cancel);
         Console.WriteLine($"[OrderSaga] Order {message.OrderId} cancelled — state: {context.State.CurrentState}");
         context.Complete();

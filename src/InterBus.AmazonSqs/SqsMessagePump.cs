@@ -229,18 +229,7 @@ internal sealed class SqsMessagePump(
         }
         finally
         {
-            await prefetched.RenewalCts.CancelAsync();
-
-            try
-            {
-                await prefetched.RenewalTask;
-            }
-            catch
-            {
-                // ignored
-            }
-
-            prefetched.RenewalCts.Dispose();
+            await StopRenewalAsync(prefetched);
             semaphore.Release();
         }
     }
@@ -309,18 +298,16 @@ internal sealed class SqsMessagePump(
 
     private static async Task StopRenewalAsync(PrefetchedMessage prefetched)
     {
-        await prefetched.RenewalCts.CancelAsync();
-
         try
         {
+            await prefetched.RenewalCts.CancelAsync();
             await prefetched.RenewalTask;
+            prefetched.RenewalCts.Dispose();
         }
         catch
         {
             // ignored
         }
-
-        prefetched.RenewalCts.Dispose();
     }
 
     private PrefetchedMessage StartPrefetchedMessage(

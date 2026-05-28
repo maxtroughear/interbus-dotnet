@@ -19,11 +19,6 @@ namespace InterBus.EntityFrameworkCore.Outbox;
 /// polling round-trip.
 /// </para>
 /// <para>
-/// If delivery fails for any reason the exception is swallowed and the group remains in the
-/// database with its <see cref="OutboxGroup.VisibleAt"/> timestamp intact, so the background
-/// processor will retry it after the visibility window has elapsed.
-/// </para>
-/// <para>
 /// This middleware must be registered <b>together</b> with
 /// <see cref="OutboxPublishMiddleware{TDbContext}"/> on the same consumer (via
 /// <c>ConsumerBuilder.UseOutboxWithInlineDelivery&lt;TDbContext&gt;()</c>) because it relies on

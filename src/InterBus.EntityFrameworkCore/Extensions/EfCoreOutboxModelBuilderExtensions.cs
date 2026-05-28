@@ -26,9 +26,6 @@ public static class EfCoreOutboxModelBuilderExtensions
             b.HasKey(g => g.Id);
             b.Property(g => g.Id).ValueGeneratedNever();
             b.Property(g => g.CreatedAt).IsRequired();
-            b.Property(g => g.VisibleAt).IsRequired();
-
-            b.HasIndex(g => new { g.VisibleAt, g.Id });
 
             b.HasMany<OutboxMessage>()
                 .WithOne(m => m.Group)

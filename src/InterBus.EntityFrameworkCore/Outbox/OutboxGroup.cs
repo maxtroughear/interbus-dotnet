@@ -12,11 +12,5 @@ public sealed class OutboxGroup
     /// <summary>When the group was created (UTC).</summary>
     public DateTime CreatedAt { get; init; } = DateTime.UtcNow;
 
-    /// <summary>
-    /// When the group becomes eligible for processing (UTC). Groups with a <c>VisibleAt</c>
-    /// timestamp in the future are ignored by the outbox processor until that time has elapsed.
-    /// </summary>
-    public required DateTime VisibleAt { get; init; }
-
     public ICollection<OutboxMessage> Messages { get; } = new List<OutboxMessage>();
 }

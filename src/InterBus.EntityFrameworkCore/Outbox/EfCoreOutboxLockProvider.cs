@@ -11,16 +11,11 @@ namespace InterBus.EntityFrameworkCore.Outbox;
 internal sealed class EfCoreOutboxLockProvider<TDbContext> : IOutboxLockProvider<TDbContext>
     where TDbContext : DbContext
 {
-    public async Task<OutboxGroup?> TryFetchGroupAsync(
+    public Task<OutboxGroup?> TryFetchGroupAsync(
         TDbContext context,
-        CancellationToken cancellationToken)
-    {
-        var now = DateTime.UtcNow;
-        return await context.Set<OutboxGroup>()
-            .Where(g => g.VisibleAt <= now)
-            .OrderBy(g => g.VisibleAt)
-            .ThenBy(g => g.Id)
+        CancellationToken cancellationToken) =>
+        context.Set<OutboxGroup>()
+            .OrderBy(g => g.Id)
             .Include(g => g.Messages.OrderBy(m => m.Id))
             .FirstOrDefaultAsync(cancellationToken);
-    }
 }

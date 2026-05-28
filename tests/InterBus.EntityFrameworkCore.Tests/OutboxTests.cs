@@ -476,7 +476,7 @@ public class OutboxTests
             await using (var scope = provider.CreateAsyncScope())
             {
                 var dbContext = scope.ServiceProvider.GetRequiredService<TestDbContext>();
-                dbContext.OutboxGroups.Add(new OutboxGroup { Id = groupId, VisibleAt = DateTime.UtcNow });
+                dbContext.OutboxGroups.Add(new OutboxGroup { Id = groupId });
                 await dbContext.SaveChangesAsync(TestContext.Current.CancellationToken);
             }
 

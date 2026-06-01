@@ -199,8 +199,8 @@ jobs:
           dotnet test tests/InterBus.PostgreSQL.Tests/InterBus.PostgreSQL.Tests.csproj
           --no-build --configuration Release --verbosity normal
 
-  test-efcore:
-    name: Test – EntityFrameworkCore
+  test-efcore-postgresql:
+    name: Test – EntityFrameworkCore (PostgreSQL)
     runs-on: ubuntu-latest
 
     steps:
@@ -218,11 +218,32 @@ jobs:
         run: dotnet build --no-restore --configuration Release
 
       - name: Test
-        run: |
-          dotnet test tests/InterBus.EntityFrameworkCore.PostgreSQL.IntegrationTests/InterBus.EntityFrameworkCore.PostgreSQL.IntegrationTests.csproj \
-            --no-build --configuration Release --verbosity normal
-          dotnet test tests/InterBus.EntityFrameworkCore.SqlServer.IntegrationTests/InterBus.EntityFrameworkCore.SqlServer.IntegrationTests.csproj \
-            --no-build --configuration Release --verbosity normal
+        run: >
+          dotnet test tests/InterBus.EntityFrameworkCore.PostgreSQL.IntegrationTests/InterBus.EntityFrameworkCore.PostgreSQL.IntegrationTests.csproj
+          --no-build --configuration Release --verbosity normal
+
+  test-efcore-sqlserver:
+    name: Test – EntityFrameworkCore (SQL Server)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --no-restore --configuration Release
+
+      - name: Test
+        run: >
+          dotnet test tests/InterBus.EntityFrameworkCore.SqlServer.IntegrationTests/InterBus.EntityFrameworkCore.SqlServer.IntegrationTests.csproj
+          --no-build --configuration Release --verbosity normal
           
   test-azure-service-bus:
     name: Test – Azure Service Bus

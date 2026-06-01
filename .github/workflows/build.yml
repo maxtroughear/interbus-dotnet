@@ -202,6 +202,8 @@ jobs:
   test-efcore-postgresql:
     name: Test – EntityFrameworkCore (PostgreSQL)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
 
     steps:
       - uses: actions/checkout@v6
@@ -225,6 +227,8 @@ jobs:
   test-efcore-sqlserver:
     name: Test – EntityFrameworkCore (SQL Server)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
 
     steps:
       - uses: actions/checkout@v6

@@ -1,4 +1,5 @@
 using InterBus.EntityFrameworkCore.Extensions;
+using InterBus.EntityFrameworkCore.LockProviders;
 using InterBus.EntityFrameworkCore.Sagas;
 using InterBus.Extensions;
 using InterBus.Generated;
@@ -53,7 +54,7 @@ public sealed class PgSagaOrderSaga :
 /// <summary>
 /// Integration tests for the EF Core saga repository using a real PostgreSQL database.
 /// Validates that saga state is persisted correctly and that the
-/// <see cref="PostgreSqlSagaLockProvider{TDbContext}"/> correctly serialises concurrent
+/// <see cref="PostgreSqlLockProvider{TDbContext}"/> correctly serialises concurrent
 /// access to the same saga instance.
 /// </summary>
 [TestFixtureSource(typeof(PostgreSqlVersions), nameof(PostgreSqlVersions.All))]
@@ -85,9 +86,12 @@ public class SagaPostgreSqlIntegrationTests(string imageTag)
         services.AddInterBus(bus =>
         {
             bus.AddInMemoryTransport();
+            bus.AddEfCore<SagaTestDbContext>(ef => ef.UsePostgreSql());
             bus.AddSaga<PgSagaOrderSaga, PgSagaOrderState>(saga =>
-                saga.UseEfCoreRepository<PgSagaOrderSaga, PgSagaOrderState, SagaTestDbContext>(repo =>
-                    repo.UsePostgreSql()));
+            {
+                saga.UseEfCoreRepository<PgSagaOrderSaga, PgSagaOrderState, SagaTestDbContext>();
+                // saga.UseEfCoreInboxOutbox<SagaTestDbContext>();
+            });
         });
 
         _provider = services.BuildServiceProvider();

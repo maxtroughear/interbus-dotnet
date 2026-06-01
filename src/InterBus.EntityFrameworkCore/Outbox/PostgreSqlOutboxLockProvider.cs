@@ -15,15 +15,13 @@ public sealed class PostgreSqlOutboxLockProvider<TDbContext> : IOutboxLockProvid
         TDbContext context,
         CancellationToken cancellationToken)
     {
-        var (groupsFqn, visibleAtCol, idCol) =
-            GetTableInfo(context.Set<OutboxGroup>().EntityType, nameof(OutboxGroup.VisibleAt), nameof(OutboxGroup.Id));
+        var (groupsFqn, idCol) = GetTableInfo(context.Set<OutboxGroup>().EntityType, nameof(OutboxGroup.Id));
 
         // Lock one oldest eligible group row; empty groups are still claimable and will be cleaned up.
         var groupSql = $"""
                         SELECT g.*
                         FROM {groupsFqn} g
-                        WHERE g.{visibleAtCol} <= NOW()
-                        ORDER BY g.{visibleAtCol}, g.{idCol}
+                        ORDER BY g.{idCol}
                         LIMIT 1
                         FOR UPDATE SKIP LOCKED
                         """;
@@ -36,26 +34,21 @@ public sealed class PostgreSqlOutboxLockProvider<TDbContext> : IOutboxLockProvid
         return group;
     }
 
-    private static (string fqn, string col1, string col2) GetTableInfo(IEntityType entityType, string colProperty1,
-        string colProperty2)
+    private static (string fqn, string col) GetTableInfo(IEntityType entityType, string colProperty)
     {
         var tableName = entityType.GetTableName() ?? entityType.ShortName();
         var schemaName = entityType.GetSchema();
         var storeObject = StoreObjectIdentifier.Table(tableName, schemaName);
 
-        var col1 = Quote(
-            entityType.FindProperty(colProperty1)!.GetColumnName(storeObject)
-            ?? colProperty1);
-
-        var col2 = Quote(
-            entityType.FindProperty(colProperty2)!.GetColumnName(storeObject)
-            ?? colProperty2);
+        var col = Quote(
+            entityType.FindProperty(colProperty)!.GetColumnName(storeObject)
+            ?? colProperty);
 
         var fqn = schemaName is not null
             ? $"{Quote(schemaName)}.{Quote(tableName)}"
             : Quote(tableName);
 
-        return (fqn, col1, col2);
+        return (fqn, col);
     }
 
     private static string Quote(string name) =>

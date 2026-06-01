@@ -16,9 +16,13 @@ public sealed class OutboxMessage
     /// Foreign key to the outbox group/header row that owns this message.
     /// All messages in the same group are forwarded atomically.
     /// </summary>
-    public required Guid GroupId { get; init; }
+    public Guid? GroupId { get; init; }
 
-    public OutboxGroup Group { get; init; } = null!;
+    public OutboxGroup? Group { get; init; }
+    
+    public Guid? InboxId { get; init; }
+    
+    public InboxState? Inbox { get; init; }
 
     /// <summary>The serialized destination URI (e.g. <c>memorytopic://interbus/my-topic</c>).</summary>
     public required string Destination { get; init; }

@@ -6,8 +6,10 @@ using InterBus.EntityFrameworkCore.Outbox;
 using InterBus.Extensions;
 using InterBus.Generated;
 using InterBus.InMemory.Extensions;
+using InterBus.Sending;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Query;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Xunit;
@@ -56,6 +58,27 @@ public sealed class OrderPlacedPublishingConsumer(TestDbContext dbContext, IPubl
     }
 }
 
+public sealed class OrderPlacedPublishingTracker
+{
+    private readonly ConcurrentBag<Guid> _orderIds = [];
+    public IReadOnlyCollection<Guid> OrderIds => _orderIds;
+    public void Track(Guid orderId) => _orderIds.Add(orderId);
+}
+
+public sealed class OrderPlacedPublishingTrackedConsumer(
+    TestDbContext dbContext,
+    IPublisher publisher,
+    OrderPlacedPublishingTracker tracker) : IConsumer<OrderPlaced>
+{
+    public async Task Consume(OrderPlaced message, IConsumeContext context,
+        CancellationToken cancellationToken = default)
+    {
+        tracker.Track(message.OrderId);
+        await publisher.PublishAsync(new OrderShipped(message.OrderId), cancellationToken);
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+}
+
 public sealed class OrderShippedConsumer(OrderShippedTracker tracker) : IConsumer<OrderShipped>
 {
     public Task Consume(OrderShipped message, IConsumeContext context, CancellationToken cancellationToken = default)
@@ -68,11 +91,30 @@ public sealed class OrderShippedConsumer(OrderShippedTracker tracker) : IConsume
 public sealed class TestDbContext(DbContextOptions<TestDbContext> options)
     : DbContext(options)
 {
+    public DbSet<InboxState> InboxStates => Set<InboxState>();
     public DbSet<OutboxGroup> OutboxGroups => Set<OutboxGroup>();
     public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder) =>
         modelBuilder.AddInterBusOutbox();
+}
+
+public sealed class FailSendOnceController
+{
+    public bool ShouldFail { get; set; } = true;
+}
+
+public sealed class FailSendOnceMiddleware(FailSendOnceController controller) : ISendMiddleware
+{
+    public Task InvokeAsync(SendContext context, Func<SendContext, CancellationToken, Task> next,
+        CancellationToken cancellationToken = default)
+    {
+        if (!controller.ShouldFail)
+            return next(context, cancellationToken);
+
+        controller.ShouldFail = false;
+        throw new InvalidOperationException("Simulated send failure");
+    }
 }
 
 /// <summary>
@@ -192,6 +234,7 @@ public class OutboxTests
         var (provider, cts, conn) = await StartAsync(bus =>
         {
             bus.AddInMemoryTransport();
+            bus.AddEfCore<TestDbContext>();
             bus.AddConsumer<OrderPlacedConsumer>();
             // Long poll interval so the processor does not run during assertions.
             bus.UseEfCoreOutbox<TestDbContext>(o => o.WithPollInterval(TimeSpan.FromHours(1)));
@@ -242,6 +285,7 @@ public class OutboxTests
         var (provider, cts, conn) = await StartAsync(bus =>
         {
             bus.AddInMemoryTransport();
+            bus.AddEfCore<TestDbContext>();
             bus.AddConsumer<OrderPlacedConsumer>();
             bus.UseEfCoreOutbox<TestDbContext>(o => o.WithPollInterval(TimeSpan.FromMilliseconds(50)));
         }, services => services.AddSingleton(tracker));
@@ -282,6 +326,7 @@ public class OutboxTests
         var (provider, cts, conn) = await StartAsync(bus =>
         {
             bus.AddInMemoryTransport();
+            bus.AddEfCore<TestDbContext>();
             bus.AddConsumer<OrderPlacedConsumer>();
             bus.UseEfCoreOutbox<TestDbContext>(o => o.WithPollInterval(TimeSpan.FromMilliseconds(50)));
         }, services => services.AddSingleton(tracker));
@@ -330,6 +375,7 @@ public class OutboxTests
         var (provider, cts, conn) = await StartAsync(bus =>
         {
             bus.AddInMemoryTransport();
+            bus.AddEfCore<TestDbContext>();
             bus.AddConsumer<OrderPlacedConsumer>();
             bus.UseEfCoreOutbox<TestDbContext>(o => o.WithPollInterval(TimeSpan.FromMilliseconds(50)));
         }, services => services.AddSingleton(tracker));
@@ -382,6 +428,7 @@ public class OutboxTests
         var (provider, cts, conn) = await StartAsync(bus =>
         {
             bus.AddInMemoryTransport();
+            bus.AddEfCore<TestDbContext>();
             // Long poll interval — we only want to inspect the stored row, not forward.
             bus.UseEfCoreOutbox<TestDbContext>(o => o.WithPollInterval(TimeSpan.FromHours(1)));
         });
@@ -418,6 +465,7 @@ public class OutboxTests
         var (provider, cts, conn) = await StartAsync(bus =>
         {
             bus.AddInMemoryTransport();
+            bus.AddEfCore<TestDbContext>();
             bus.UseEfCoreOutbox<TestDbContext>(o => o.WithPollInterval(TimeSpan.FromMilliseconds(50)));
         });
 
@@ -428,7 +476,7 @@ public class OutboxTests
             await using (var scope = provider.CreateAsyncScope())
             {
                 var dbContext = scope.ServiceProvider.GetRequiredService<TestDbContext>();
-                dbContext.OutboxGroups.Add(new OutboxGroup { Id = groupId, VisibleAt = DateTime.UtcNow });
+                dbContext.OutboxGroups.Add(new OutboxGroup { Id = groupId });
                 await dbContext.SaveChangesAsync(TestContext.Current.CancellationToken);
             }
 
@@ -477,7 +525,8 @@ public class OutboxTests
         var (provider, cts, conn) = await StartAsync(bus =>
         {
             bus.AddInMemoryTransport();
-            bus.AddConsumer<OrderPlacedPublishingConsumer>(c => c.UseEfCoreOutboxWithInlineDelivery<TestDbContext>());
+            bus.AddEfCore<TestDbContext>();
+            bus.AddConsumer<OrderPlacedPublishingConsumer>(c => c.UseEfCoreInboxOutbox<TestDbContext>());
             bus.AddConsumer<OrderShippedConsumer>();
             // Long poll interval so the outbox processor does not run during assertions.
             bus.UseEfCoreOutbox<TestDbContext>(o => o.WithPollInterval(TimeSpan.FromHours(1)));
@@ -538,7 +587,8 @@ public class OutboxTests
         var (provider, cts, conn) = await StartAsync(bus =>
         {
             bus.AddInMemoryTransport();
-            bus.AddConsumer<OrderPlacedPublishingConsumer>(c => c.UseEfCoreOutboxWithInlineDelivery<TestDbContext>());
+            bus.AddEfCore<TestDbContext>();
+            bus.AddConsumer<OrderPlacedPublishingConsumer>(c => c.UseEfCoreInboxOutbox<TestDbContext>());
             bus.AddConsumer<OrderShippedConsumer>();
             bus.UseEfCoreOutbox<TestDbContext>(o => o.DisableOutboxProcessor());
         }, services => services.AddSingleton(shippedTracker));
@@ -579,18 +629,89 @@ public class OutboxTests
         }
     }
 
-    /// <summary>
-    /// When inline delivery fails (e.g. no transport registered), the outbox entry written
-    /// atomically during <c>Consume</c> is left in the database with <c>VisibleAt</c> set to a
-    /// future timestamp so the processor does not race with the remaining inline-delivery attempt.
-    /// </summary>
     [Fact]
-    public async Task ConsumerPublish_InlineDeliveryFails_FallsBackToOutboxWithVisibleAt()
+    public async Task ConsumerPublish_InlineDelivery_RedeliverySkipsConsumerAndClearsOutbox()
+    {
+        var shippedTracker = new OrderShippedTracker();
+        var publishTracker = new OrderPlacedPublishingTracker();
+        var failSend = new FailSendOnceController();
+
+        var (provider, cts, conn) = await StartAsync(bus =>
+        {
+            bus.AddInMemoryTransport();
+            bus.AddEfCore<TestDbContext>();
+            bus.AddConsumer<OrderPlacedPublishingTrackedConsumer>(c =>
+            {
+                c.UseEfCoreInboxOutbox<TestDbContext>();
+                c.UseSendMiddleware<FailSendOnceMiddleware>();
+            });
+            bus.AddConsumer<OrderShippedConsumer>();
+            bus.UseEfCoreOutbox<TestDbContext>(o => o.DisableOutboxProcessor());
+        }, services =>
+        {
+            services.AddSingleton(shippedTracker);
+            services.AddSingleton(publishTracker);
+            services.AddSingleton(failSend);
+        });
+
+        try
+        {
+            await StartHostedServicesAsync(provider, cts.Token);
+            var messageId = Guid.NewGuid().ToString();
+
+            async Task ExecuteOnceAsync()
+            {
+                await using var scope = provider.CreateAsyncScope();
+                var executor = scope.ServiceProvider.GetRequiredService<ConsumePipelineExecutor>();
+                var descriptor = scope.ServiceProvider.GetRequiredService<InterBusOptions>()
+                    .Consumers.Single(d => d.ConsumerType == typeof(OrderPlacedPublishingTrackedConsumer));
+
+                var orderId = Guid.NewGuid();
+                var headers = new MessageHeaders(new Dictionary<string, string>
+                {
+                    [InterBusHeaders.MessageType] = "OrderPlaced",
+                    [InterBusHeaders.MessageId] = messageId,
+                });
+                var context = new ConsumeContext<OrderPlaced>(
+                    descriptor, new OrderPlaced(orderId, "redelivery@example.com", 10m), headers);
+
+                await executor.ExecuteAsync(context, (ctx, ct) =>
+                {
+                    var consumer = scope.ServiceProvider.GetRequiredService<OrderPlacedPublishingTrackedConsumer>();
+                    return consumer.Consume(ctx.Message, ctx, ct);
+                }, TestContext.Current.CancellationToken);
+            }
+
+            await Assert.ThrowsAsync<DeadLetterException>(ExecuteOnceAsync);
+
+            await ExecuteOnceAsync();
+
+            await WaitUntilAsync(() => shippedTracker.Messages.Count == 1);
+
+            Assert.Single(shippedTracker.Messages);
+            Assert.Single(publishTracker.OrderIds);
+
+            await using var verifyScope = provider.CreateAsyncScope();
+            var db = verifyScope.ServiceProvider.GetRequiredService<TestDbContext>();
+            var inbox = await db.InboxStates.Include(i => i.Messages)
+                .SingleAsync(TestContext.Current.CancellationToken);
+            Assert.Equal(InboxProcessingState.Completed, inbox.State);
+            Assert.Empty(inbox.Messages);
+        }
+        finally
+        {
+            await StopAsync(provider, cts, conn);
+        }
+    }
+
+    [Fact]
+    public async Task ConsumerPublish_InlineDeliveryFails_InboxRemainsWithMessages()
     {
         // No transport registered — inline delivery will throw, triggering the outbox fallback.
         var (provider, cts, conn) = await StartAsync(bus =>
         {
-            bus.AddConsumer<OrderPlacedPublishingConsumer>(c => c.UseEfCoreOutboxWithInlineDelivery<TestDbContext>());
+            bus.AddEfCore<TestDbContext>();
+            bus.AddConsumer<OrderPlacedPublishingConsumer>(c => c.UseEfCoreInboxOutbox<TestDbContext>());
             // Use the default ConsumerVisibilityTimeout (5 s); just suppress the background processor.
             bus.UseEfCoreOutbox<TestDbContext>(o => o.WithPollInterval(TimeSpan.FromHours(1)));
         });
@@ -611,53 +732,18 @@ public class OutboxTests
             var context = new ConsumeContext<OrderPlaced>(
                 descriptor, new OrderPlaced(orderId, "fallback@example.com", 10m), headers);
 
-            await executor.ExecuteAsync(context, (ctx, ct) =>
-            {
-                var consumer = scope.ServiceProvider.GetRequiredService<OrderPlacedPublishingConsumer>();
-                return consumer.Consume(ctx.Message, ctx, ct);
-            }, TestContext.Current.CancellationToken);
+            await Assert.ThrowsAsync<DeadLetterException>(async () =>
+                await executor.ExecuteAsync(context, (ctx, ct) =>
+                {
+                    var consumer = scope.ServiceProvider.GetRequiredService<OrderPlacedPublishingConsumer>();
+                    return consumer.Consume(ctx.Message, ctx, ct);
+                }, TestContext.Current.CancellationToken));
 
-            // Inline delivery failed — outbox entry should remain with VisibleAt in the future.
             var dbContext = scope.ServiceProvider.GetRequiredService<TestDbContext>();
-            var group = await dbContext.OutboxGroups.SingleAsync(TestContext.Current.CancellationToken);
-            Assert.True(group.VisibleAt > DateTime.UtcNow);
-        }
-        finally
-        {
-            await StopAsync(provider, cts, conn);
-        }
-    }
-
-    /// <summary>
-    /// Non-consumer publish calls (via <see cref="IPublisher"/>) have
-    /// <c>VisibleAt</c> set to <c>UtcNow</c> (immediately eligible), even when
-    /// <see cref="OutboxOptions.ConsumerVisibilityTimeout"/> is configured.
-    /// </summary>
-    [Fact]
-    public async Task BusPublish_GroupHasImmediateVisibleAt()
-    {
-        var (provider, cts, conn) = await StartAsync(bus =>
-        {
-            bus.AddInMemoryTransport();
-            bus.UseEfCoreOutbox<TestDbContext>(o => o
-                .WithPollInterval(TimeSpan.FromHours(1))
-                .WithConsumerVisibilityTimeout(TimeSpan.FromSeconds(5)));
-        });
-
-        try
-        {
-            await using var scope = provider.CreateAsyncScope();
-            var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
-            var dbContext = scope.ServiceProvider.GetRequiredService<TestDbContext>();
-
-            await publisher.PublishAsync(
-                new OrderPlaced(Guid.NewGuid(), "bus@example.com", 1m),
-                TestContext.Current.CancellationToken);
-            await dbContext.SaveChangesAsync(TestContext.Current.CancellationToken);
-
-            var group = await dbContext.OutboxGroups.SingleAsync(TestContext.Current.CancellationToken);
-            // Bus-context publishes are immediately eligible; VisibleAt should be <= UtcNow.
-            Assert.True(group.VisibleAt <= DateTime.UtcNow);
+            var inbox = await dbContext.InboxStates.Include(i => i.Messages)
+                .SingleAsync(TestContext.Current.CancellationToken);
+            Assert.Equal(InboxProcessingState.PendingOutbox, inbox.State);
+            Assert.Single(inbox.Messages);
         }
         finally
         {
@@ -686,7 +772,8 @@ public class OutboxTests
             // AddOutbox (not UseOutbox) — only the consumer-level outbox is under test here.
             // Long poll interval effectively disables the background processor so it does not
             // interfere with the assertions.
-            bus.AddEfCoreOutbox<TestDbContext>(o => o.WithPollInterval(TimeSpan.FromHours(1)));
+            bus.AddEfCore<TestDbContext>();
+            bus.UseEfCoreOutbox<TestDbContext>(o => o.WithPollInterval(TimeSpan.FromHours(1)));
         }, services => services.AddSingleton(deadLetterTracker));
 
         try

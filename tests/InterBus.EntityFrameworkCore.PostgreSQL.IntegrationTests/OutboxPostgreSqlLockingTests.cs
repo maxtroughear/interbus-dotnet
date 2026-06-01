@@ -75,7 +75,7 @@ public class OutboxPostgreSqlLockingTests(string imageTag)
         await using (var scope = _provider.CreateAsyncScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<TestDbContext>();
-            db.OutboxGroups.Add(new OutboxGroup { Id = GroupAId, VisibleAt = DateTime.UtcNow });
+            db.OutboxGroups.Add(new OutboxGroup { Id = GroupAId });
             await db.SaveChangesAsync();
         }
 
@@ -116,8 +116,8 @@ public class OutboxPostgreSqlLockingTests(string imageTag)
         {
             var db = scope.ServiceProvider.GetRequiredService<TestDbContext>();
             db.OutboxGroups.AddRange(
-                new OutboxGroup { Id = GroupAId, VisibleAt = DateTime.UtcNow },
-                new OutboxGroup { Id = GroupBId, VisibleAt = DateTime.UtcNow });
+                new OutboxGroup { Id = GroupAId },
+                new OutboxGroup { Id = GroupBId });
             await db.SaveChangesAsync();
         }
 

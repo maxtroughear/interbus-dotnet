@@ -10,7 +10,6 @@ using InterBus.InMemory.Extensions;
 using InterBus.Sending;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Query;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Xunit;
@@ -660,7 +659,7 @@ public class OutboxTests
             await StartHostedServicesAsync(provider, cts.Token);
             var messageId = Guid.NewGuid().ToString();
 
-            async Task ExecuteOnceAsync()
+            async Task<DispatchResult> ExecuteOnceAsync()
             {
                 await using var scope = provider.CreateAsyncScope();
                 var executor = scope.ServiceProvider.GetRequiredService<ConsumePipelineExecutor>();
@@ -681,9 +680,12 @@ public class OutboxTests
                     var consumer = scope.ServiceProvider.GetRequiredService<OrderPlacedPublishingTrackedConsumer>();
                     return consumer.Consume(ctx.Message, ctx, ct);
                 }, TestContext.Current.CancellationToken);
+
+                return context.Result;
             }
 
-            await Assert.ThrowsAsync<DeadLetterException>(ExecuteOnceAsync);
+            var firstExecutionResult = await ExecuteOnceAsync();
+            Assert.Equal(DispatchResultKind.DeadLetter, firstExecutionResult.Kind);
 
             await ExecuteOnceAsync();
 
@@ -733,12 +735,13 @@ public class OutboxTests
             var context = new ConsumeContext<OrderPlaced>(
                 descriptor, new OrderPlaced(orderId, "fallback@example.com", 10m), headers);
 
-            await Assert.ThrowsAsync<DeadLetterException>(async () =>
-                await executor.ExecuteAsync(context, (ctx, ct) =>
-                {
-                    var consumer = scope.ServiceProvider.GetRequiredService<OrderPlacedPublishingConsumer>();
-                    return consumer.Consume(ctx.Message, ctx, ct);
-                }, TestContext.Current.CancellationToken));
+            await executor.ExecuteAsync(context, (ctx, ct) =>
+            {
+                var consumer = scope.ServiceProvider.GetRequiredService<OrderPlacedPublishingConsumer>();
+                return consumer.Consume(ctx.Message, ctx, ct);
+            }, TestContext.Current.CancellationToken);
+
+            Assert.Equal(DispatchResultKind.DeadLetter, context.Result.Kind);
 
             var dbContext = scope.ServiceProvider.GetRequiredService<TestDbContext>();
             var inbox = await dbContext.InboxStates.Include(i => i.Messages)

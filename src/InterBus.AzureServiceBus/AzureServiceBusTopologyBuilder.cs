@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Runtime.InteropServices.ComTypes;
 using Azure.Messaging.ServiceBus;
 using Azure.Messaging.ServiceBus.Administration;
 using Microsoft.Extensions.Logging;
@@ -28,6 +29,7 @@ internal sealed class AzureServiceBusTopologyBuilder(
             var rawQueueName = descriptor.QueueName;
 
             var queueName = BuildQueueName(rawQueueName);
+            // TODO: create queue only based on descriptor to enable configuring the max receive count properly
             await EnsureQueueExistsAsync(queueName, cancellationToken);
 
             foreach (var messageType in descriptor.MessageTypes)

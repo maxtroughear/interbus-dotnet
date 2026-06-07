@@ -53,6 +53,8 @@ public sealed class ConsumerDescriptor(Type consumerType, Uri queue)
     /// Defaults to <c>1</c> (sequential dispatch).
     /// </summary>
     public int ConcurrencyCount { get; internal set; } = 1;
+    
+    public int MaxDeliveryCount { get; internal set; } = 5;
 
     /// <summary>
     /// 

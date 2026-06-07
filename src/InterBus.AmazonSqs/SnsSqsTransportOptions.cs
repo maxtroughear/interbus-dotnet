@@ -112,16 +112,6 @@ public sealed class SnsSqsTransportOptions
     public bool EnableSnsEncryption { get; set; } = true;
 
     /// <summary>
-    /// Maximum number of receives before SQS moves a message to the configured dead-letter queue.
-    /// Used when topology is created by InterBus.
-    /// <para>
-    /// Keep this value higher than InterBus retry/redelivery counts so middleware-controlled
-    /// retries happen before broker-level dead-lettering.
-    /// </para>
-    /// </summary>
-    public int DeadLetterMaxReceiveCount { get; set; } = 100;
-
-    /// <summary>
     /// Suffix appended to the source queue name for the dead-letter queue created by InterBus.
     /// </summary>
     public string DeadLetterQueueSuffix { get; set; } = "-dlq";

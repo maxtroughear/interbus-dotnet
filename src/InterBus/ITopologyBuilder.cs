@@ -18,6 +18,10 @@ public interface ITopologyBuilder
         throw new NotSupportedException(
             "Topic topology must be implemented by the transport-specific topology builder");
 
+    /* TODO: remove - or only make available to create for a consumer descriptor.
+     * A queue is OWNED by the consumer so if it doesn't exist when sending, that should probably be an error
+     * rather than creating it on the fly.
+     */
     /// <summary>
     /// Ensure a send queue exists (or is verified) and return its transport-specific identifier
     /// (e.g. a queue URL for SQS).

@@ -101,7 +101,7 @@ public sealed partial class SnsSqsTopologyBuilder(
                     ["RedrivePolicy"] = JsonSerializer.Serialize(new
                     {
                         deadLetterTargetArn = deadLetterQueueArn,
-                        maxReceiveCount = Math.Max(1, transportOptions.DeadLetterMaxReceiveCount).ToString(),
+                        maxReceiveCount = Math.Max(1, descriptor.MaxDeliveryCount).ToString()
                     }),
                 });
 
@@ -269,6 +269,7 @@ public sealed partial class SnsSqsTopologyBuilder(
         }
     }
 
+    // TODO: Remove in favour of building the URL based on queue name
     private async Task<string> VerifyQueueAsync(string queueName, CancellationToken cancellationToken)
     {
         LogDebugVerifyingSqsQueue(queueName);
@@ -289,6 +290,9 @@ public sealed partial class SnsSqsTopologyBuilder(
         return url;
     }
 
+    /* TODO: Remove the verification, simply build the ARN and assume it exists - misconfigurations will be surfaced as
+     * publish failures
+     */
     private async Task<string> VerifyTopicAsync(string topicName, CancellationToken cancellationToken)
     {
         // AWS SNS does not provide a simple endpoint for retrieving a topic by name

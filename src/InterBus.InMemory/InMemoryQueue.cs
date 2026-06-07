@@ -17,6 +17,8 @@ internal sealed class InMemoryQueue
 
     /// <summary>The consumer descriptor that owns this queue.</summary>
     public ConsumerDescriptor Descriptor { get; }
+    
+    public TimeSpan DeliveryTimeout { get; } = TimeSpan.FromMilliseconds(10);
 
     internal InMemoryQueue(ConsumerDescriptor descriptor)
     {

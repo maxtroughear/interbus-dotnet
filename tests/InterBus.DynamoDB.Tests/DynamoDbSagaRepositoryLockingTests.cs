@@ -21,8 +21,10 @@ public class DynamoDbSagaRepositoryLockingTests : DynamoDbSagaTestFixtureBase
                 LockAcquireTimeout = TimeSpan.FromMilliseconds(300),
             };
             var repo2 = new DynamoDbSagaRepository<OrderSaga, OrderSagaState>(DynamoDb, shortOpts, StateWriter);
-            Assert.ThrowsAsync<TimeoutException>(async () =>
-                await repo2.AcquireLockAsync(correlationId));
+
+            Assert.That(async () =>
+                    await repo2.AcquireLockAsync(correlationId),
+                Throws.TypeOf<TimeoutException>());
         }
 
         await using var _ = await repo.AcquireLockAsync(correlationId);
@@ -45,7 +47,7 @@ public class DynamoDbSagaRepositoryLockingTests : DynamoDbSagaTestFixtureBase
         await Task.Delay(TimeSpan.FromSeconds(2));
 
         await lock1.DisposeAsync(); // Abandon the lock
-        
+
         await using var lock2 = await repo.AcquireLockAsync(correlationId);
         Assert.That(lock2, Is.Not.Null);
     }
@@ -70,8 +72,9 @@ public class DynamoDbSagaRepositoryLockingTests : DynamoDbSagaTestFixtureBase
             await Task.Delay(TimeSpan.FromSeconds(4));
 
             // A second repo instance must NOT be able to steal the lock.
-            Assert.ThrowsAsync<TimeoutException>(async () =>
-                await repo2.AcquireLockAsync(correlationId));
+            Assert.That(async () =>
+                    await repo2.AcquireLockAsync(correlationId),
+                Throws.TypeOf<TimeoutException>());
         }
     }
 }

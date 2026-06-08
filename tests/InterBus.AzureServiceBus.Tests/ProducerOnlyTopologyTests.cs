@@ -105,7 +105,7 @@ public class ProducerOnlyTopologyTests
         Assert.That(
             async () => await publisher.SendAsync(rawQueueName, msg, TestContext.CurrentContext.CancellationToken),
             Throws.TypeOf<ServiceBusException>());
-
+        
         var adminClient = new ServiceBusAdministrationClient(_container.GetHttpConnectionString());
         var exists = await adminClient.QueueExistsAsync(
             expectedQueueName,

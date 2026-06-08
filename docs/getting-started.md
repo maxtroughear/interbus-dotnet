@@ -2,14 +2,13 @@
 
 ## Installation
 
-Add the core package plus a transport package. For local development and tests, the in-memory transport is the easiest place to start:
+Add the core package. For local development and tests, the in-memory transport is the easiest place to start:
 
 ```bash
 dotnet add package InterBus
-dotnet add package InterBus.InMemory
 ```
 
-`InterBus.InMemory` includes the source generator used for compile-time consumer registration.
+The in-memory transport extensions and source generator support are included through `InterBus`.
 
 ## Basic usage
 

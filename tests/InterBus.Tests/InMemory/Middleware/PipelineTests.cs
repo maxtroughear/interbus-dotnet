@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using InterBus.Tests.InMemory;
 using InterBus.Consuming;
 using InterBus.Extensions;
 using InterBus.Generated;
@@ -8,7 +9,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Xunit;
 
-namespace InterBus.InMemory.Tests;
+namespace InterBus.Tests.InMemory.Middleware;
 
 /// <summary>
 /// Tests for the publish and consume middleware pipelines.

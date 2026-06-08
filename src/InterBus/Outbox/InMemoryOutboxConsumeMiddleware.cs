@@ -1,6 +1,6 @@
 using InterBus.Consuming;
 
-namespace InterBus.Outbox;
+namespace InterBus.InMemory.Outbox;
 
 internal sealed class InMemoryOutboxConsumeMiddleware(InMemoryOutboxConsumeState consumeState) : IConsumeMiddleware
 {

@@ -20,7 +20,6 @@
     <ItemGroup>
         <ProjectReference Include="..\..\src\InterBus\InterBus.csproj"/>
         <ProjectReference Include="..\..\src\InterBus.EntityFrameworkCore\InterBus.EntityFrameworkCore.csproj"/>
-        <ProjectReference Include="..\..\src\InterBus.InMemory\InterBus.InMemory.csproj"/>
         <ProjectReference Include="..\..\src\InterBus.SourceGenerator\InterBus.SourceGenerator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false"/>
     </ItemGroup>
 </Project>

@@ -5,10 +5,28 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Xunit;
 
-namespace InterBus.InMemory.Tests;
+namespace InterBus.Tests.InMemory;
 
-public class TopicConfigurationTests
+public class PublishConsumeTests
 {
+    /// <summary>
+    /// Polls <paramref name="condition"/> up to <paramref name="timeoutMs"/> milliseconds,
+    /// checking every <paramref name="intervalMs"/> milliseconds. Avoids hard-coded sleeps.
+    /// </summary>
+    private static async Task WaitUntilAsync(
+        Func<bool> condition,
+        int timeoutMs = 5000,
+        int intervalMs = 25)
+    {
+        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+        while (!condition() && DateTime.UtcNow < deadline)
+            await Task.Delay(intervalMs);
+    }
+
+    /// <summary>
+    /// Builds a DI container with the given consumer registrations and bus configuration,
+    /// starts all hosted services, and returns the provider + CTS for cleanup.
+    /// </summary>
     private static async Task<(ServiceProvider Provider, CancellationTokenSource Cts)> StartAsync(
         Action<IServiceCollection> registerSingletons,
         Action<InterBusBuilder> configureBus)
@@ -45,39 +63,28 @@ public class TopicConfigurationTests
         cts.Dispose();
     }
 
-    private static async Task WaitUntilAsync(Func<bool> condition, int timeoutMs = 5000, int intervalMs = 25)
-    {
-        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
-        while (!condition() && DateTime.UtcNow < deadline)
-            await Task.Delay(intervalMs);
-    }
-
     [Fact]
-    public async Task ConfigureTopic_CustomTopicName_ConsumerReceivesPublishedMessage()
+    public async Task Publish_SingleConsumer_MessageIsDelivered()
     {
-        // Arrange: configure a custom topic name before registering the consumer.
         var tracker = new OrderPlacedTracker();
 
         var (provider, cts) = await StartAsync(
-            services => services.AddSingleton(tracker),
+            services => { services.AddSingleton(tracker); },
             bus =>
             {
                 bus.AddInMemoryTransport();
-                bus.ConfigureTopic<OrderPlaced>("custom.orders.topic");
                 bus.AddConsumer<OrderPlacedConsumer>();
             });
 
         try
         {
-            // Act: publish using the same configured topic name (resolved from options).
             using var scope = provider.CreateScope();
             var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
-            var msg = new OrderPlaced(Guid.NewGuid(), "custom@topic.test", 10m);
+            var msg = new OrderPlaced(Guid.NewGuid(), "test@example.com", 99.99m);
             await publisher.PublishAsync(msg, TestContext.Current.CancellationToken);
 
             await WaitUntilAsync(() => tracker.Messages.Count == 1);
 
-            // Assert: consumer received the message via the custom topic.
             Assert.Single(tracker.Messages);
             Assert.Equal(msg.OrderId, tracker.Messages.Single().OrderId);
         }
@@ -88,7 +95,7 @@ public class TopicConfigurationTests
     }
 
     [Fact]
-    public async Task ConfigureTopic_CustomTopicName_MultipleConsumersAllReceiveMessage()
+    public async Task Publish_MultipleConsumers_AllReceiveMessage()
     {
         var orderTracker = new OrderPlacedTracker();
         var auditTracker = new AuditTracker();
@@ -102,7 +109,6 @@ public class TopicConfigurationTests
             bus =>
             {
                 bus.AddInMemoryTransport();
-                bus.ConfigureTopic<OrderPlaced>("orders");
                 bus.AddConsumer<OrderPlacedConsumer>();
                 bus.AddConsumer<AuditConsumer>();
             });
@@ -111,13 +117,16 @@ public class TopicConfigurationTests
         {
             using var scope = provider.CreateScope();
             var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
-            var msg = new OrderPlaced(Guid.NewGuid(), "fanout@custom.test", 20m);
+            var msg = new OrderPlaced(Guid.NewGuid(), "fan@out.test", 50m);
             await publisher.PublishAsync(msg, TestContext.Current.CancellationToken);
 
+            // Both consumers should receive the message via topic fan-out.
             await WaitUntilAsync(() => orderTracker.Messages.Count == 1 && auditTracker.Messages.Count == 1);
 
             Assert.Single(orderTracker.Messages);
+            Assert.Equal(msg.OrderId, orderTracker.Messages.Single().OrderId);
             Assert.Single(auditTracker.Messages);
+            Assert.Equal(msg.OrderId, auditTracker.Messages.Single().OrderId);
         }
         finally
         {
@@ -126,7 +135,7 @@ public class TopicConfigurationTests
     }
 
     [Fact]
-    public async Task Send_ResolvesQueueFromRegisteredDescriptor_OnlyTargetConsumerReceives()
+    public async Task Send_DirectToConsumer_OnlyTargetReceives()
     {
         var orderTracker = new OrderPlacedTracker();
         var auditTracker = new AuditTracker();
@@ -140,7 +149,6 @@ public class TopicConfigurationTests
             bus =>
             {
                 bus.AddInMemoryTransport();
-                bus.ConfigureTopic<OrderPlaced>("orders");
                 bus.AddConsumer<OrderPlacedConsumer>();
                 bus.AddConsumer<AuditConsumer>();
             });
@@ -149,9 +157,9 @@ public class TopicConfigurationTests
         {
             using var scope = provider.CreateScope();
             var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
-            var msg = new OrderPlaced(Guid.NewGuid(), "send@resolve.test", 30m);
+            var msg = new OrderPlaced(Guid.NewGuid(), "direct@send.test", 25m);
 
-            // Send directly to OrderPlacedConsumer - queue is resolved from the registered descriptor.
+            // Send directly to OrderPlacedConsumer only - AuditConsumer should NOT receive.
             await publisher.SendAsync<OrderPlacedConsumer, OrderPlaced>(msg, TestContext.Current.CancellationToken);
 
             await WaitUntilAsync(() => orderTracker.Messages.Count == 1);
@@ -167,13 +175,12 @@ public class TopicConfigurationTests
     }
 
     [Fact]
-    public async Task Send_ByQueueName_OnlyTargetConsumerReceives()
+    public async Task AddConsumer_RegistersExplicitConsumers_MessagesDelivered()
     {
         var orderTracker = new OrderPlacedTracker();
         var auditTracker = new AuditTracker();
 
-        InterBusOptions? capturedOptions = null;
-
+        // Register the exact consumers this test needs.
         var (provider, cts) = await StartAsync(
             services =>
             {
@@ -185,28 +192,23 @@ public class TopicConfigurationTests
                 bus.AddInMemoryTransport();
                 bus.AddConsumer<OrderPlacedConsumer>();
                 bus.AddConsumer<AuditConsumer>();
-                capturedOptions = bus.Options;
             });
 
         try
         {
-            // Obtain the queue name from the descriptor (simulates a cross-project sender that resolves
-            // the name once at startup and passes it as a string).
-            var queueName = capturedOptions!.Consumers
-                .Single(c => c.ConsumerType == typeof(OrderPlacedConsumer))
-                .Queue;
-
             using var scope = provider.CreateScope();
             var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
-            var msg = new OrderPlaced(Guid.NewGuid(), "queue@name.test", 40m);
+            var msg = new OrderPlaced(Guid.NewGuid(), "generated@test.com", 75m);
+            await publisher.PublishAsync(msg, TestContext.Current.CancellationToken);
 
-            await publisher.SendAsync(queueName, msg, TestContext.Current.CancellationToken);
-
-            await WaitUntilAsync(() => orderTracker.Messages.Count == 1);
+            // Both explicitly registered consumers should receive.
+            await WaitUntilAsync(() =>
+                orderTracker.Messages.Count == 1 && auditTracker.Messages.Count == 1);
 
             Assert.Single(orderTracker.Messages);
             Assert.Equal(msg.OrderId, orderTracker.Messages.Single().OrderId);
-            Assert.Empty(auditTracker.Messages);
+            Assert.Single(auditTracker.Messages);
+            Assert.Equal(msg.OrderId, auditTracker.Messages.Single().OrderId);
         }
         finally
         {
@@ -214,46 +216,54 @@ public class TopicConfigurationTests
         }
     }
 
+    /// <summary>
+    /// Verifies the one-queue-per-consumer design: a consumer implementing two <c>IConsumer&lt;T&gt;</c>
+    /// interfaces shares a single queue. Both message types are dispatched to the correct
+    /// <c>Consume</c> overload via the source-generated delegate - no runtime reflection.
+    /// </summary>
     [Fact]
-    public async Task Send_ByQueueNameWithHeaders_ConsumerReceivesHeaders()
+    public async Task MultiTypeConsumer_SingleQueue_ReceivesBothMessageTypes()
     {
-        var orderTracker = new OrderPlacedTracker();
-        var auditTracker = new AuditTracker();
-
+        var orderTracker = new MultiTypeOrderPlacedTracker();
+        var shippedTracker = new MultiTypeOrderShippedTracker();
         InterBusOptions? capturedOptions = null;
 
         var (provider, cts) = await StartAsync(
             services =>
             {
                 services.AddSingleton(orderTracker);
-                services.AddSingleton(auditTracker);
+                services.AddSingleton(shippedTracker);
             },
             bus =>
             {
                 bus.AddInMemoryTransport();
-                bus.AddConsumer<OrderPlacedConsumer>();
-                bus.AddConsumer<AuditConsumer>();
+                bus.AddConsumer<MultiTypeConsumer>();
                 capturedOptions = bus.Options;
             });
 
         try
         {
-            var queueName = capturedOptions!.Consumers
-                .Single(c => c.ConsumerType == typeof(OrderPlacedConsumer))
-                .Queue;
+            // Structural assertion: ONE descriptor for MultiTypeConsumer with TWO topic names.
+            var descriptor = capturedOptions!.Consumers
+                .Single(c => c.ConsumerType == typeof(MultiTypeConsumer));
+            Assert.Equal(2, descriptor.MessageTypes.Count);
 
             using var scope = provider.CreateScope();
             var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
-            var msg = new OrderPlaced(Guid.NewGuid(), "hdr@queue.test", 5m);
 
-            await publisher.SendAsync(queueName, msg, ctx => ctx.Headers["x-source"] = "cross-project",
-                TestContext.Current.CancellationToken);
+            var orderMsg = new OrderPlaced(Guid.NewGuid(), "multi@test.com", 100m);
+            var shippedMsg = new OrderShipped(Guid.NewGuid(), "TRK-001");
 
-            await WaitUntilAsync(() => orderTracker.Messages.Count == 1);
+            await publisher.PublishAsync(orderMsg, TestContext.Current.CancellationToken);
+            await publisher.PublishAsync(shippedMsg, TestContext.Current.CancellationToken);
+
+            await WaitUntilAsync(() =>
+                orderTracker.Messages.Count == 1 && shippedTracker.Messages.Count == 1);
 
             Assert.Single(orderTracker.Messages);
-            Assert.Equal(msg.OrderId, orderTracker.Messages.Single().OrderId);
-            Assert.Empty(auditTracker.Messages);
+            Assert.Equal(orderMsg.OrderId, orderTracker.Messages.Single().OrderId);
+            Assert.Single(shippedTracker.Messages);
+            Assert.Equal(shippedMsg.OrderId, shippedTracker.Messages.Single().OrderId);
         }
         finally
         {

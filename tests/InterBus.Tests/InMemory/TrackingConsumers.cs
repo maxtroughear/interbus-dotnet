@@ -1,7 +1,7 @@
 using System.Collections.Concurrent;
 using InterBus.DeadLettering;
 
-namespace InterBus.InMemory.Tests;
+namespace InterBus.Tests.InMemory;
 
 // ReSharper disable ClassNeverInstantiated.Global
 /// <summary>

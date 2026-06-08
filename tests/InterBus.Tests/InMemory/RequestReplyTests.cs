@@ -1,11 +1,12 @@
 using InterBus.Extensions;
 using InterBus.Generated;
+using InterBus.InMemory;
 using InterBus.InMemory.Extensions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Xunit;
 
-namespace InterBus.InMemory.Tests;
+namespace InterBus.Tests.InMemory;
 
 public record GetOrderStatus(Guid OrderId);
 

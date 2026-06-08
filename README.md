@@ -16,7 +16,7 @@ At runtime, applications publish or send messages through `IPublisher`; transpor
 
 ### Transports
 
-- In-memory (`InterBus.InMemory`)
+- In-memory (built into `InterBus` via the `InterBus.InMemory` namespace)
 - Amazon SNS/SQS (`InterBus.AmazonSqs`)
 - Azure Service Bus (`InterBus.AzureServiceBus`)
 - RabbitMQ (`InterBus.RabbitMQ`)

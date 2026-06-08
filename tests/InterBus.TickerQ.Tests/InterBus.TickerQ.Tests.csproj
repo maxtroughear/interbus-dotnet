@@ -19,7 +19,6 @@
     </ItemGroup>
     <ItemGroup>
         <ProjectReference Include="..\..\src\InterBus\InterBus.csproj"/>
-        <ProjectReference Include="..\..\src\InterBus.InMemory\InterBus.InMemory.csproj"/>
         <ProjectReference Include="..\..\src\InterBus.TickerQ\InterBus.TickerQ.csproj"/>
     </ItemGroup>
 </Project>

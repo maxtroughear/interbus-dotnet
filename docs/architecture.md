@@ -42,7 +42,7 @@ This architecture allows swapping transports or infrastructure integrations with
 - **`InterBusOptions`** — Holds all registered `ConsumerDescriptor` instances.
 - **`IInterBusBuilder`** — Fluent builder returned by `AddInterBus(...)`.
 
-### InMemory Transport (`InterBus.InMemory`)
+### InMemory Transport (`InterBus` / `InterBus.InMemory` namespace)
 
 - **`InMemoryBroker`** — Singleton that owns all `InMemoryTopic` and `InMemoryQueue` instances.
 - **`InMemoryTopic`** — Fans out payloads to all subscriber queues (`Channel<byte[]>`-backed).
@@ -51,7 +51,7 @@ This architecture allows swapping transports or infrastructure integrations with
 
 ## Currently Supported Transports
 
-- **`InterBus.InMemory`** via `AddInMemoryTransport(...)`
+- **`InterBus`** via `AddInMemoryTransport(...)`
 - **`InterBus.AmazonSqs`** (SNS/SQS) via `AddAmazonSqsTransport(...)`
 - **`InterBus.AzureServiceBus`** via `AddAzureServiceBusTransport(...)`
 - **`InterBus.RabbitMQ`** via `AddRabbitMqTransport(...)`

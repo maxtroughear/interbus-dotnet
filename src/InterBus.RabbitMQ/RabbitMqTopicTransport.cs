@@ -16,7 +16,6 @@ internal sealed class RabbitMqTopicTransport(
 
     public async Task SendAsync(TransportSendContext context, CancellationToken cancellationToken)
     {
-        var channel = await EnsureChannelAsync(cancellationToken);
         var topicName = RoutingConventions.GetDestinationName(context.Destination);
         var headers = RabbitMqHeaders.BuildAmqpHeaders(context.Headers);
         var props = new BasicProperties
@@ -25,33 +24,34 @@ internal sealed class RabbitMqTopicTransport(
             Headers = headers,
         };
 
-        var exchangeName = await topologyBuilder.EnsureTopicAsync(topicName, cancellationToken);
-
-        try
+        for (var i = 0; i < 2; i++)
         {
-            await channel.BasicPublishAsync(
-                exchange: exchangeName,
-                routingKey: string.Empty,
-                mandatory: false,
-                basicProperties: props,
-                body: context.Payload,
-                cancellationToken: cancellationToken);
-        }
-        catch (Exception) when (!channel.IsOpen)
-        {
-            if (topologyBuilder is RabbitMqTopologyBuilder rabbitMqTopologyBuilder)
-                rabbitMqTopologyBuilder.InvalidateTopic(exchangeName);
+            var exchangeName = await topologyBuilder.EnsureTopicAsync(topicName, cancellationToken);
 
-            _publishChannel = null;
-            var freshChannel = await EnsureChannelAsync(cancellationToken);
-            exchangeName = await topologyBuilder.EnsureTopicAsync(topicName, cancellationToken);
-            await freshChannel.BasicPublishAsync(
-                exchange: exchangeName,
-                routingKey: string.Empty,
-                mandatory: false,
-                basicProperties: props,
-                body: context.Payload,
-                cancellationToken: cancellationToken);
+            var channel = await EnsureChannelAsync(cancellationToken);
+
+            try
+            {
+                await channel.BasicPublishAsync(
+                    exchange: exchangeName,
+                    routingKey: string.Empty,
+                    mandatory: false,
+                    basicProperties: props,
+                    body: context.Payload,
+                    cancellationToken: cancellationToken);
+
+                return;
+            }
+            catch (Exception) when (!channel.IsOpen)
+            {
+                logger.LogWarning("InterBus RabbitMQ: channel closed during publish to {Exchange}. Invalidating cache",
+                    exchangeName);
+
+                if (topologyBuilder is RabbitMqTopologyBuilder rabbitMqTopologyBuilder)
+                    rabbitMqTopologyBuilder.InvalidateTopic(exchangeName);
+
+                _publishChannel = null;
+            }
         }
     }
 

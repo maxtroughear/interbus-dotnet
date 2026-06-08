@@ -88,6 +88,7 @@ internal sealed class AzureServiceBusMessagePump(
             {
                 MaxConcurrentCalls = concurrency,
                 AutoCompleteMessages = false,
+                ReceiveMode = ServiceBusReceiveMode.PeekLock,
                 MaxAutoLockRenewalDuration = TimeSpan.FromHours(12), // TODO: configurable by consumer
             };
 

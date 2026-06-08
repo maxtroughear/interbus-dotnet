@@ -54,7 +54,7 @@ public sealed class ConsumerDescriptor(Type consumerType, Uri queue)
     /// </summary>
     public int ConcurrencyCount { get; internal set; } = 1;
     
-    public int MaxDeliveryCount { get; internal set; } = 5;
+    public int MaxDeliveryCount { get; internal set; } = 10;
 
     /// <summary>
     /// 

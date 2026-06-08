@@ -1,7 +1,7 @@
 using System.Collections.Concurrent;
-using System.Runtime.InteropServices.ComTypes;
 using Azure.Messaging.ServiceBus;
 using Azure.Messaging.ServiceBus.Administration;
+using InterBus.Consuming;
 using Microsoft.Extensions.Logging;
 
 namespace InterBus.AzureServiceBus;
@@ -18,6 +18,8 @@ internal sealed class AzureServiceBusTopologyBuilder(
     ILogger<AzureServiceBusTopologyBuilder> logger)
     : ITopologyBuilder
 {
+    private static readonly TimeSpan QueueLockDuration = TimeSpan.FromSeconds(60);
+
     private ConcurrentDictionary<string, Task> Topics { get; } = new(StringComparer.Ordinal);
     private ConcurrentDictionary<string, Task> Queues { get; } = new(StringComparer.Ordinal);
     private ConcurrentDictionary<string, Task> Subscriptions { get; } = new(StringComparer.Ordinal);
@@ -29,8 +31,7 @@ internal sealed class AzureServiceBusTopologyBuilder(
             var rawQueueName = descriptor.QueueName;
 
             var queueName = BuildQueueName(rawQueueName);
-            // TODO: create queue only based on descriptor to enable configuring the max receive count properly
-            await EnsureQueueExistsAsync(queueName, cancellationToken);
+            await EnsureQueueExistsAsync(descriptor, queueName, cancellationToken);
 
             foreach (var messageType in descriptor.MessageTypes)
             {
@@ -58,14 +59,10 @@ internal sealed class AzureServiceBusTopologyBuilder(
         return topicName;
     }
 
-    public async Task<string> EnsureQueueAsync(string rawQueueName, CancellationToken cancellationToken)
-    {
-        var queueName = BuildQueueName(rawQueueName);
-        await EnsureQueueExistsAsync(queueName, cancellationToken);
-        return queueName;
-    }
-
-    private Task EnsureQueueExistsAsync(string queueName, CancellationToken cancellationToken) =>
+    private Task EnsureQueueExistsAsync(
+        ConsumerDescriptor descriptor,
+        string queueName,
+        CancellationToken cancellationToken) =>
         EnsureWithCacheAsync(
             Queues,
             queueName,
@@ -77,7 +74,8 @@ internal sealed class AzureServiceBusTopologyBuilder(
                 {
                     await admin.CreateQueueAsync(new CreateQueueOptions(queueName)
                     {
-                        LockDuration = TimeSpan.FromSeconds(60),
+                        LockDuration = QueueLockDuration,
+                        MaxDeliveryCount = Math.Max(1, descriptor.MaxDeliveryCount),
                     }, ct);
 
                     logger.LogDebug("InterBus AzureServiceBus: created queue {QueueName}", queueName);

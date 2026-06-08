@@ -54,7 +54,6 @@ internal sealed class InMemoryTransport(
 
         if (context.Destination.Scheme == InMemoryBroker.QueueScheme)
         {
-            await topologyBuilder.EnsureQueueAsync(name, cancellationToken);
             await broker.SendToQueueAsync(name, envelope, cancellationToken);
             return;
         }

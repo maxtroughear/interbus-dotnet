@@ -57,12 +57,6 @@ internal sealed class RabbitMqTopologyBuilder(
         return exchangeName;
     }
 
-    public async Task<string> EnsureQueueAsync(string rawQueueName, CancellationToken cancellationToken)
-    {
-        await EnsureQueueDeclaredAsync(rawQueueName, cancellationToken);
-        return rawQueueName;
-    }
-
     internal void InvalidateTopic(string exchangeName)
     {
         DeclaredTopics.TryRemove(exchangeName, out _);
@@ -70,17 +64,6 @@ internal sealed class RabbitMqTopologyBuilder(
         foreach (var bindingKey in DeclaredBindings.Keys)
         {
             if (bindingKey.StartsWith(exchangeName + "|", StringComparison.Ordinal))
-                DeclaredBindings.TryRemove(bindingKey, out _);
-        }
-    }
-
-    internal void InvalidateQueue(string queueName)
-    {
-        DeclaredQueues.TryRemove(queueName, out _);
-
-        foreach (var bindingKey in DeclaredBindings.Keys)
-        {
-            if (bindingKey.EndsWith("|" + queueName, StringComparison.Ordinal))
                 DeclaredBindings.TryRemove(bindingKey, out _);
         }
     }
@@ -106,27 +89,6 @@ internal sealed class RabbitMqTopologyBuilder(
             },
             cancellationToken);
 
-    private Task EnsureQueueDeclaredAsync(string queueName, CancellationToken cancellationToken) =>
-        EnsureWithCacheAsync(
-            DeclaredQueues,
-            queueName,
-            async ct =>
-            {
-                await ExecuteWithRetryAsync(
-                    async retryCt =>
-                    {
-                        var connection = await connectionProvider.GetPublishConnectionAsync(retryCt);
-                        await using var channel = await connection.CreateChannelAsync(cancellationToken: retryCt);
-                        await DeclareQueueOnChannelAsync(
-                            channel,
-                            queueName,
-                            BuildDeadLetterExchangeName(queueName),
-                            retryCt);
-                    },
-                    ct);
-            },
-            cancellationToken);
-
     private async Task<string> EnsureTopicDeclaredOnChannelAsync(
         IChannel channel,
         string rawTopicName,
@@ -141,7 +103,8 @@ internal sealed class RabbitMqTopologyBuilder(
         return exchangeName;
     }
 
-    private async Task EnsureQueueDeclaredOnChannelAsync(IChannel channel,
+    private async Task EnsureQueueDeclaredOnChannelAsync(
+        IChannel channel,
         string queueName,
         string deadLetterExchangeName,
         CancellationToken cancellationToken)

@@ -69,6 +69,8 @@ internal sealed class InMemoryMessagePump(
                         default:
                             throw new ArgumentOutOfRangeException();
                     }
+
+                    break;
                 }
 
                 if (envelope.DeliveryCount > queue.Descriptor.MaxDeliveryCount)

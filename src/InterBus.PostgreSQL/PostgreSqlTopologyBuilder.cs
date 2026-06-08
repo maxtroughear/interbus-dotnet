@@ -38,12 +38,6 @@ internal sealed class PostgreSqlTopologyBuilder(
         return rawTopicName;
     }
 
-    public async Task<string> EnsureQueueAsync(string rawQueueName, CancellationToken cancellationToken)
-    {
-        await EnsureQueueIdAsync(rawQueueName, cancellationToken);
-        return rawQueueName;
-    }
-
     private Task<long> EnsureQueueIdAsync(string queueName, CancellationToken cancellationToken) =>
         EnsureWithCacheAsync(_queueIds, queueName, ct =>
             PostgreSqlConnectionRetry.ExecuteAsync(

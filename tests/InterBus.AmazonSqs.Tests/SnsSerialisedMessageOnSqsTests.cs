@@ -102,7 +102,9 @@ public class SnsSerialisedMessageOnSqsTests
     {
         var sns = _provider.GetRequiredService<IAmazonSimpleNotificationService>();
         var sqs = _provider.GetRequiredService<IAmazonSQS>();
-        var topologyBuilder = _provider.GetRequiredService<ITopologyBuilder>();
+        var topologyBuilder = _provider.GetRequiredService<ITopologyBuilder>() as SnsSqsTopologyBuilder ??
+                              throw new InvalidOperationException(
+                                  "Expected ITopologyBuilder to be of type SnsSqsTopologyBuilder.");
         var cancellationToken = TestContext.CurrentContext.CancellationToken;
 
         var queueUrl = await topologyBuilder.EnsureQueueAsync(

@@ -338,9 +338,9 @@ public sealed class RetryMiddlewareTests
 
     #region Support types
 
-    private sealed record TestMessage;
+    internal sealed record TestMessage;
 
-    private sealed class NoOpConsumer : IConsumer<TestMessage>
+    internal sealed class NoOpConsumer : IConsumer<TestMessage>
     {
         public Task Consume(TestMessage message, IConsumeContext context,
             CancellationToken cancellationToken = default)

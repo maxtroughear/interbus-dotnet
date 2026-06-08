@@ -500,23 +500,23 @@ public sealed class TelemetryTests
             new StubDiagnostics(),
             NullLogger<SagaExecutor<TSaga, TState, TestMessage>>.Instance);
 
-    private sealed record TestMessage;
+    internal sealed record TestMessage;
 
-    private sealed class NoOpConsumer : IConsumer<TestMessage>
+    internal sealed class NoOpConsumer : IConsumer<TestMessage>
     {
         public Task Consume(TestMessage message, IConsumeContext context,
             CancellationToken cancellationToken = default)
             => Task.CompletedTask;
     }
 
-    private sealed class ThrowingConsumer : IConsumer<TestMessage>
+    internal sealed class ThrowingConsumer : IConsumer<TestMessage>
     {
         public Task Consume(TestMessage message, IConsumeContext context,
             CancellationToken cancellationToken = default)
             => throw new InvalidOperationException("boom");
     }
 
-    private sealed class CancellingConsumer : IConsumer<TestMessage>
+    internal sealed class CancellingConsumer : IConsumer<TestMessage>
     {
         public Task Consume(TestMessage message, IConsumeContext context,
             CancellationToken cancellationToken = default)
@@ -539,9 +539,9 @@ public sealed class TelemetryTests
         public ActivitySource ActivitySource { get; } = new(InterBusTelemetry.ActivitySourceName);
     }
 
-    private sealed class NoOpSagaState;
+    internal sealed class NoOpSagaState;
 
-    private sealed class NoOpSaga :
+    internal sealed class NoOpSaga :
         ISagaConsumer<NoOpSagaState, TestMessage>
     {
         public string GetCorrelationId(TestMessage message) => "test";
@@ -551,7 +551,7 @@ public sealed class TelemetryTests
             => Task.CompletedTask;
     }
 
-    private sealed class ThrowingSaga :
+    internal sealed class ThrowingSaga :
         ISagaConsumer<NoOpSagaState, TestMessage>
     {
         public string GetCorrelationId(TestMessage message) => "test";
@@ -561,7 +561,7 @@ public sealed class TelemetryTests
             => throw new InvalidOperationException("saga boom");
     }
 
-    private sealed class CancellingSaga :
+    internal sealed class CancellingSaga :
         ISagaConsumer<NoOpSagaState, TestMessage>
     {
         public string GetCorrelationId(TestMessage message) => "test";

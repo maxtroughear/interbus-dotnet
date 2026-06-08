@@ -149,9 +149,9 @@ public sealed class TransportDelaySchedulingTests
 
     #region Support types
 
-    private sealed record TestMessage;
+    internal sealed record TestMessage;
 
-    private sealed class TestConsumer : IConsumer<TestMessage>
+    internal sealed class TestConsumer : IConsumer<TestMessage>
     {
         public Task Consume(TestMessage message, IConsumeContext context,
             CancellationToken cancellationToken = default) => Task.CompletedTask;

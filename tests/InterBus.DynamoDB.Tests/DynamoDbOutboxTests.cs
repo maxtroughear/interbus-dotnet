@@ -548,6 +548,7 @@ public class DynamoDbOutboxTests
     [Test]
     public async Task Consumer_UseInboxOutbox_RedeliverySkipsConsumerAndClearsOutbox()
     {
+        const string completedInboxState = "2";
         var shippedTracker = new OutboxOrderShippedTracker();
         var executionTracker = new OutboxConsumerExecutionTracker();
         var (provider, cts) = await StartBusAsync(bus =>
@@ -607,7 +608,7 @@ public class DynamoDbOutboxTests
             }, CancellationToken.None);
             Assert.That(inboxScan.Count, Is.EqualTo(1));
             Assert.That(inboxScan.Items.Single()[DynamoDbInboxTable.State].N,
-                Is.EqualTo("2"));
+                Is.EqualTo(completedInboxState));
         }
         finally
         {

@@ -45,6 +45,8 @@ internal sealed partial class DynamoDbInboxOutboxConsumeMiddleware(
         var consumerName = context.Descriptor.ConsumerType.FullName ?? context.Descriptor.ConsumerType.Name;
         var inboxKey = BuildInboxKey(consumerName, messageId);
 
+        // Retry loop handles races where another dispatcher inserts the inbox row between
+        // our GetItem and PutItem attempts; it exits once ownership/state is determined.
         while (true)
         {
             cancellationToken.ThrowIfCancellationRequested();

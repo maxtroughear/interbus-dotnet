@@ -29,8 +29,6 @@ jobs:
         run: |
           dotnet test tests/InterBus.Tests/InterBus.Tests.csproj \
             --no-build --configuration Release --verbosity normal
-          dotnet test tests/InterBus.InMemory.Tests/InterBus.InMemory.Tests.csproj \
-            --no-build --configuration Release --verbosity normal
           dotnet test tests/InterBus.SourceGenerator.Tests/InterBus.SourceGenerator.Tests.csproj \
             --no-build --configuration Release --verbosity normal
           dotnet test tests/InterBus.EntityFrameworkCore.Tests/InterBus.EntityFrameworkCore.Tests.csproj \

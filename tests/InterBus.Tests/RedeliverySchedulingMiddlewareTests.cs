@@ -190,9 +190,9 @@ public sealed class RedeliverySchedulingMiddlewareTests
 
     #region Support types
 
-    private sealed class TestMessage;
+    internal sealed class TestMessage;
 
-    private sealed class NoOpConsumer : IConsumer<TestMessage>
+    internal sealed class NoOpConsumer : IConsumer<TestMessage>
     {
         public Task Consume(TestMessage message, IConsumeContext context,
             CancellationToken cancellationToken = default)

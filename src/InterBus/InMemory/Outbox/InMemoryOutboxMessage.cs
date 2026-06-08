@@ -1,6 +1,6 @@
 using InterBus.Sending;
 
-namespace InterBus.Outbox;
+namespace InterBus.InMemory.Outbox;
 
 internal class InMemoryOutboxMessage(SendContext context, Func<SendContext, CancellationToken, Task> next)
 {

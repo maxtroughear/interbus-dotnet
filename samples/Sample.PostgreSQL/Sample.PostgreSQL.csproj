@@ -7,7 +7,6 @@
         <PublishAot>true</PublishAot>
     </PropertyGroup>
     <ItemGroup>
-        <ProjectReference Include="..\..\src\InterBus\InterBus.csproj"/>
         <ProjectReference Include="..\..\src\InterBus.PostgreSQL\InterBus.PostgreSQL.csproj"/>
         <ProjectReference Include="..\..\src\InterBus.SourceGenerator\InterBus.SourceGenerator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false"/>
         <ProjectReference Include="..\Sample.AuditComponents\Sample.AuditComponents.csproj"/>

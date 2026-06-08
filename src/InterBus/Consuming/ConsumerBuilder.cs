@@ -1,6 +1,6 @@
 using System.Diagnostics.CodeAnalysis;
 using InterBus.Dispatching;
-using InterBus.Outbox;
+using InterBus.InMemory.Outbox;
 using InterBus.Publishing;
 using InterBus.Sending;
 using Microsoft.Extensions.DependencyInjection;

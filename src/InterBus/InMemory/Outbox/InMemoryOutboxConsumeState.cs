@@ -1,4 +1,4 @@
-namespace InterBus.Outbox;
+namespace InterBus.InMemory.Outbox;
 
 internal sealed class InMemoryOutboxConsumeState
 {

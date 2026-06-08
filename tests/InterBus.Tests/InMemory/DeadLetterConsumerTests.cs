@@ -6,7 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Xunit;
 
-namespace InterBus.InMemory.Tests;
+namespace InterBus.Tests.InMemory;
 
 /// <summary>
 /// Integration tests verifying that dead-lettered messages are published as

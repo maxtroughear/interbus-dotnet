@@ -6,7 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Xunit;
 
-namespace InterBus.InMemory.Tests;
+namespace InterBus.Tests.InMemory;
 
 // ---------------------------------------------------------------------------
 // Test messages (top-level to avoid nested-type name mismatch between CLR and

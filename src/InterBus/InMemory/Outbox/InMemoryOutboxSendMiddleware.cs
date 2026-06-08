@@ -1,6 +1,6 @@
 using InterBus.Sending;
 
-namespace InterBus.Outbox;
+namespace InterBus.InMemory.Outbox;
 
 internal sealed class InMemoryOutboxSendMiddleware(InMemoryOutboxConsumeState consumeState) : ISendMiddleware
 {

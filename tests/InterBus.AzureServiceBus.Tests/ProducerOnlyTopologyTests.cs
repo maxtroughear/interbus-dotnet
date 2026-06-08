@@ -102,8 +102,9 @@ public class ProducerOnlyTopologyTests
         var expectedQueueName = _queuePrefix + rawQueueName;
 
         var msg = new OrderPlaced(Guid.NewGuid(), "queue-only@test.com", 7m);
-        Assert.ThrowsAsync<ServiceBusException>(async () =>
-            await publisher.SendAsync(rawQueueName, msg, TestContext.CurrentContext.CancellationToken));
+        Assert.That(
+            async () => await publisher.SendAsync(rawQueueName, msg, TestContext.CurrentContext.CancellationToken),
+            Throws.TypeOf<ServiceBusException>());
 
         var adminClient = new ServiceBusAdministrationClient(_container.GetHttpConnectionString());
         var exists = await adminClient.QueueExistsAsync(

@@ -93,7 +93,7 @@ public class ProducerOnlyTopologyTests
     }
 
     [Test]
-    public async Task Send_NoConsumers_QueueIsEnsuredAndReceivesMessage()
+    public async Task Send_NoConsumers_DoesNotEnsureQueue()
     {
         using var scope = _provider.CreateScope();
         var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
@@ -102,22 +102,15 @@ public class ProducerOnlyTopologyTests
         var expectedQueueName = _queuePrefix + rawQueueName;
 
         var msg = new OrderPlaced(Guid.NewGuid(), "queue-only@test.com", 7m);
-        await publisher.SendAsync(rawQueueName, msg, TestContext.CurrentContext.CancellationToken);
+        Assert.ThrowsAsync<ServiceBusException>(async () =>
+            await publisher.SendAsync(rawQueueName, msg, TestContext.CurrentContext.CancellationToken));
 
         var adminClient = new ServiceBusAdministrationClient(_container.GetHttpConnectionString());
         var exists = await adminClient.QueueExistsAsync(
             expectedQueueName,
             TestContext.CurrentContext.CancellationToken);
 
-        Assert.That(exists.Value, Is.True,
-            $"Expected queue '{expectedQueueName}' to exist after send");
-
-        await using var client = new ServiceBusClient(_container.GetConnectionString());
-        var receiver = client.CreateReceiver(expectedQueueName);
-        var received = await receiver.ReceiveMessageAsync(TimeSpan.FromSeconds(10),
-            TestContext.CurrentContext.CancellationToken);
-
-        Assert.That(received, Is.Not.Null,
-            $"Expected queue '{expectedQueueName}' to contain the sent message");
+        Assert.That(exists.Value, Is.False,
+            $"Expected queue '{expectedQueueName}' not to be created by send");
     }
 }

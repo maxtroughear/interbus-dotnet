@@ -6,15 +6,15 @@ namespace InterBus;
 /// </summary>
 public interface ITopologyBuilder
 {
-     /// <summary>
-     /// Build or verify transport topology for registered consumers.
-     /// </summary>
+    /// <summary>
+    /// Build or verify transport topology for registered consumers.
+    /// </summary>
     Task BuildTopologyAsync(CancellationToken cancellationToken);
 
-     /// <summary>
-     /// Ensure a publish topic exists (or is verified) and return its transport-specific identifier.
-     /// </summary>
+    /// <summary>
+    /// Ensure a publish topic exists (or is verified) and return its transport-specific identifier.
+    /// </summary>
     Task<string> EnsureTopicAsync(string rawTopicName, CancellationToken cancellationToken) =>
         throw new NotSupportedException(
-             "Topic topology must be implemented by the transport-specific topology builder");
+            "Topic topology must be implemented by the transport-specific topology builder");
 }

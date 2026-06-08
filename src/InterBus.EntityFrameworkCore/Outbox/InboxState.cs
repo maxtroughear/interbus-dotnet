@@ -18,7 +18,7 @@ public sealed class InboxState(string consumerName, string messageId)
     public DateTime CreatedAt { get; private set; } = DateTime.UtcNow;
     public DateTime? ConsumedAt { get; private set; }
     public DateTime? DeliveredAt { get; private set; }
-    
+
     public ICollection<OutboxMessage> Messages { get; } = new List<OutboxMessage>();
 
     public void Consume()

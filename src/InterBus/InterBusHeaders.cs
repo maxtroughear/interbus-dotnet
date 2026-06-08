@@ -81,7 +81,7 @@ public static class InterBusHeaders
     /// <summary>
     /// Header key storing the UTC time when the message was dead-lettered.
     /// </summary>
-    public const string DeadLetteredAt = "interbus-dead-lettered-at";
+    public const string DeadLetterTime = "interbus-dead-letter-time";
 
     /// <summary>
     /// W3C Trace Context header key for the trace parent.

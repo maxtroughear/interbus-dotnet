@@ -74,7 +74,7 @@ public static class EfCoreOutboxConsumerBuilderExtensions
 
             builder.Services.TryAddScoped<OutboxConsumeState>();
             builder.Services.TryAddScoped<InboxLoopConsumeState>();
-            
+
             builder.UseConsumeMiddleware<TransactionConsumeMiddleware<TDbContext>>();
             builder.UseConsumeMiddleware<InboxOutboxConsumeMiddleware<TDbContext>>();
             builder.UsePublishMiddleware<InboxOutboxPublishMiddleware>();

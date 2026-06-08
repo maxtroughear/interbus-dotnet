@@ -19,10 +19,10 @@ internal sealed class InboxOutboxPublishMiddleware(
         {
             throw new InvalidOperationException("Ef Core Inbox and Outbox not configured");
         }
-        
+
         var payload = serializer.Serialize(context.Message);
         var headersJson = SerializeHeaders(context.Headers);
-        
+
         consumeState.Inbox.Messages.Add(new OutboxMessage
         {
             InboxId = consumeState.Inbox.Id,
@@ -31,10 +31,10 @@ internal sealed class InboxOutboxPublishMiddleware(
             HeadersJson = headersJson,
             Delay = context.Delay,
         });
-        
+
         return Task.CompletedTask;
     }
-    
+
     private static string SerializeHeaders(MessageHeaders headers) =>
         JsonSerializer.Serialize(headers, OutboxJsonContext.Default.DictionaryStringString);
 }

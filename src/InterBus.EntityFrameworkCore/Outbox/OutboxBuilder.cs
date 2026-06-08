@@ -49,7 +49,7 @@ public sealed class OutboxBuilder<TDbContext>
         Options.RunOutboxProcessor = false;
         return this;
     }
-    
+
     /// <summary>
     /// Configures the outbox to use the default EF Core lock provider.
     /// Uses plain LINQ queries with no database-level row locking — safe for single-instance

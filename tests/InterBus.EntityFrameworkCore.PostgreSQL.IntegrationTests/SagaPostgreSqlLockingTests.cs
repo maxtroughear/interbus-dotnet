@@ -74,7 +74,7 @@ public class SagaPostgreSqlLockingTests(string imageTag)
             var dbB = scopeB.ServiceProvider.GetRequiredService<SagaTestDbContext>();
             await using var txB = await dbB.Database.BeginTransactionAsync();
             var lockProviderB = new PostgreSqlLockProvider<SagaTestDbContext>(dbB);
-            
+
             sessionBStarted.SetResult(true);
 
             // This call blocks until session A releases.
@@ -107,7 +107,6 @@ public class SagaPostgreSqlLockingTests(string imageTag)
     [Test]
     public async Task LockProvider_DifferentKeys_DoNotBlockEachOther()
     {
-
         await using var scopeA = _provider.CreateAsyncScope();
         var dbA = scopeA.ServiceProvider.GetRequiredService<SagaTestDbContext>();
         await using var txA = await dbA.Database.BeginTransactionAsync();

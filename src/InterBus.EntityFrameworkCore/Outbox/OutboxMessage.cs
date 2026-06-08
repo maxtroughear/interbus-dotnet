@@ -19,9 +19,9 @@ public sealed class OutboxMessage
     public Guid? GroupId { get; init; }
 
     public OutboxGroup? Group { get; init; }
-    
+
     public Guid? InboxId { get; init; }
-    
+
     public InboxState? Inbox { get; init; }
 
     /// <summary>The serialized destination URI (e.g. <c>memorytopic://interbus/my-topic</c>).</summary>

@@ -12,7 +12,7 @@ public class DynamoDbSagaBuilder<TSaga>(IServiceCollection services)
         Options.TableName = tableName;
         return this;
     }
-    
+
     public DynamoDbSagaBuilder<TSaga> ShareOutboxTransaction()
     {
         services.Replace(ServiceDescriptor.Scoped<IDynamoDbStateWriter<TSaga>, DynamoDbOutboxStateWriter<TSaga>>());

@@ -54,7 +54,7 @@ public class DeadLetteringTests(string imageTag)
         {
             Assert.That(row, Is.Not.Null, "Expected a row in dead_letter_messages");
             Assert.That(row!.QueueName, Does.Contain(nameof(DeadLetterOrderPlacedConsumer)));
-            Assert.That(row.Reason, Is.EqualTo("Unhandled exception in consume pipeline"));
+            Assert.That(row.Reason, Is.EqualTo("InvalidOperationException"));
             Assert.That(row.Error, Does.Contain("Simulated dead-letter failure"));
             Assert.That(row.DeliveryCount, Is.EqualTo(1));
             Assert.That(row.DeadLetteredAt,
@@ -95,7 +95,7 @@ public class DeadLetteringTests(string imageTag)
         {
             Assert.That(row, Is.Not.Null, "Expected a row in dead_letter_messages");
             Assert.That(row!.QueueName, Does.Contain(nameof(DeadLetterOrderPlacedConsumer)));
-            Assert.That(row.Reason, Is.EqualTo("Unhandled exception in consume pipeline"));
+            Assert.That(row.Reason, Is.EqualTo("InvalidOperationException"));
             Assert.That(row.Error, Does.Contain("Simulated dead-letter failure"));
             Assert.That(counter.Count, Is.EqualTo(1),
                 "Message should be dead-lettered on the first attempt, not retried");

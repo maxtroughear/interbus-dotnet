@@ -12,10 +12,7 @@ builder.Services.AddInterBus(bus =>
 {
     bus.AddInMemoryTransport();
 
-    bus.AddSaga<OrderSaga, OrderSagaState>(saga =>
-    {
-        saga.UseInMemoryRepository();
-    });
+    bus.AddSaga<OrderSaga, OrderSagaState>(saga => { saga.UseInMemoryRepository(); });
 });
 
 var host = builder.Build();

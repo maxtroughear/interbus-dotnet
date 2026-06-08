@@ -1,3 +1,4 @@
+using System.Text.Json;
 using InterBus.Consuming;
 using InterBus.Dispatching;
 
@@ -33,11 +34,8 @@ public sealed class DeadLetterConsumeMiddleware(IPublisher publisher) : IConsume
         catch (Exception ex)
         {
             var deadLetteredAtUtc = DateTimeOffset.UtcNow;
-            const string reason = "Unhandled exception in consume pipeline";
 
-            context.Headers[InterBusHeaders.DeadLetterReason] = reason;
-            context.Headers[InterBusHeaders.DeadLetterError] = ex.ToString();
-            context.Headers[InterBusHeaders.DeadLetteredAt] = deadLetteredAtUtc.ToString("O");
+            context.Result = DispatchResult.DeadLetter(deadLetteredAtUtc, ex);
 
             // Publish a DeadLetter<T> event so application consumers can subscribe to failed messages.
             // Skip publishing if T is already a DeadLetter<> type to prevent infinite nesting.
@@ -47,8 +45,8 @@ public sealed class DeadLetterConsumeMiddleware(IPublisher publisher) : IConsume
                 {
                     OriginalMessage = context.Message,
                     OriginalHeaders = context.Headers,
-                    Reason = reason,
-                    Error = ex.ToString(),
+                    Reason = context.Result.DeadLetterReason,
+                    Error = context.Result.DeadLetterError,
                     DeadLetteredAtUtc = deadLetteredAtUtc,
                 };
 
@@ -56,15 +54,18 @@ public sealed class DeadLetterConsumeMiddleware(IPublisher publisher) : IConsume
                 {
                     // Use CancellationToken.None so a cancelled consumer token does not suppress
                     // the dead-letter publish.
-                    await publisher.PublishAsync(deadLetter, CancellationToken.None);
+                    await publisher.PublishAsync(deadLetter, publishContext =>
+                    {
+                        publishContext.Headers[InterBusHeaders.DeadLetterReason] = context.Result.DeadLetterReason;
+                        publishContext.Headers[InterBusHeaders.DeadLetterError] = context.Result.DeadLetterError;
+                        publishContext.Headers[InterBusHeaders.DeadLetterTime] = deadLetteredAtUtc.ToString("O");
+                    }, CancellationToken.None);
                 }
                 catch
                 {
                     // Swallow publish errors to avoid masking the original consumer exception.
                 }
             }
-
-            context.Result = DispatchResult.DeadLetter(reason, ex.ToString(), deadLetteredAtUtc, ex);
         }
     }
 }

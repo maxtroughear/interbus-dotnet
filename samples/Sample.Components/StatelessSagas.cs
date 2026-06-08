@@ -78,7 +78,8 @@ public class OrderSaga(IPublisher publisher)
     private StateMachine<OrderState, OrderTrigger>.TriggerWithParameters<ConfirmOrder>? _confirmTrigger;
     private StateMachine<OrderState, OrderTrigger>.TriggerWithParameters<ShipOrder>? _shipTrigger;
 
-    protected override void Configure(StateMachine<OrderState, OrderTrigger> machine, ISagaContext<OrderSagaState> context)
+    protected override void Configure(StateMachine<OrderState, OrderTrigger> machine,
+        ISagaContext<OrderSagaState> context)
     {
         _placedTrigger = machine.SetTriggerParameters<PlaceOrder>(OrderTrigger.Place);
         _confirmTrigger = machine.SetTriggerParameters<ConfirmOrder>(OrderTrigger.Confirm);
@@ -86,7 +87,7 @@ public class OrderSaga(IPublisher publisher)
 
         machine.Configure(OrderState.Pending)
             .Permit(OrderTrigger.Place, OrderState.Placed);
-        
+
         machine.Configure(OrderState.Placed)
             .OnEntryFrom(_placedTrigger, order => context.State.CustomerEmail = order.CustomerEmail)
             .Permit(OrderTrigger.Confirm, OrderState.Confirmed)
@@ -107,7 +108,8 @@ public class OrderSaga(IPublisher publisher)
             .Permit(OrderTrigger.Deliver, OrderState.Completed);
 
         machine.Configure(OrderState.Completed)
-            .OnEntry(() => Console.WriteLine($"[OrderSaga] Order {context.State.CustomerEmail} delivered — saga complete"));
+            .OnEntry(() =>
+                Console.WriteLine($"[OrderSaga] Order {context.State.CustomerEmail} delivered — saga complete"));
 
         machine.Configure(OrderState.Cancelled)
             .OnEntry(() => Console.WriteLine($"[OrderSaga] Order for {context.State.CustomerEmail} was cancelled"));

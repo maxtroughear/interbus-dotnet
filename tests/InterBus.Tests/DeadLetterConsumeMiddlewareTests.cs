@@ -13,25 +13,6 @@ public class DeadLetterConsumeMiddlewareTests
             new Uri("testqueue://dead-letter-consumer"));
 
     [Fact]
-    public async Task InvokeAsync_WhenUnhandledException_SetsDeadLetterResultAndHeaders()
-    {
-        var publisher = new RecordingPublisher();
-        var middleware = new DeadLetterConsumeMiddleware(publisher);
-        var context = new ConsumeContext<TestMessage>(CreateDescriptor(), new TestMessage(), new MessageHeaders());
-
-        await middleware.InvokeAsync(
-            context,
-            (_, _) => throw new InvalidOperationException("boom"),
-            CancellationToken.None);
-
-        Assert.Equal(DispatchResultKind.DeadLetter, context.Result.Kind);
-        Assert.Equal("Unhandled exception in consume pipeline", context.Result.DeadLetterReason);
-        Assert.True(context.Headers.ContainsKey(InterBusHeaders.DeadLetterReason));
-        Assert.True(context.Headers.ContainsKey(InterBusHeaders.DeadLetterError));
-        Assert.True(context.Headers.ContainsKey(InterBusHeaders.DeadLetteredAt));
-    }
-
-    [Fact]
     public async Task InvokeAsync_WhenUnhandledException_PublishesDeadLetterMessage()
     {
         var publisher = new RecordingPublisher();
@@ -47,8 +28,8 @@ public class DeadLetterConsumeMiddlewareTests
         var published = Assert.Single(publisher.Published);
         var deadLetter = Assert.IsType<DeadLetter<TestMessage>>(published);
         Assert.Same(original, deadLetter.OriginalMessage);
-        Assert.Equal("Unhandled exception in consume pipeline", deadLetter.Reason);
-        Assert.NotEmpty(deadLetter.Error);
+        Assert.Equal("InvalidOperationException", deadLetter.Reason);
+        Assert.Contains("boom", deadLetter.Error);
         Assert.True(deadLetter.DeadLetteredAtUtc <= DateTimeOffset.UtcNow);
     }
 
@@ -110,7 +91,8 @@ public class DeadLetterConsumeMiddlewareTests
             CancellationToken.None);
 
         Assert.Equal(DispatchResultKind.DeadLetter, context.Result.Kind);
-        Assert.Equal("Unhandled exception in consume pipeline", context.Result.DeadLetterReason);
+        Assert.Equal("InvalidOperationException", context.Result.DeadLetterReason);
+        Assert.Contains("boom", context.Result.DeadLetterError);
     }
 
     private sealed class TestConsumer : IConsumer<TestMessage>

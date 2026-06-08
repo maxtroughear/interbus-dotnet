@@ -207,8 +207,8 @@ internal sealed class PostgreSqlLeaseMessagePump : PostgreSqlMessagePumpBase
         cmd.Parameters.Add(new NpgsqlParameter<long> { TypedValue = payloadId });
         cmd.Parameters.Add(new NpgsqlParameter<string> { TypedValue = leaseToken });
         cmd.Parameters.Add(new NpgsqlParameter<string> { TypedValue = queueName });
-        cmd.Parameters.Add(new NpgsqlParameter<string> { TypedValue = result.DeadLetterReason! });
-        cmd.Parameters.Add(new NpgsqlParameter<string> { TypedValue = result.DeadLetterError! });
+        cmd.Parameters.Add(new NpgsqlParameter<string> { TypedValue = result.DeadLetterReason });
+        cmd.Parameters.Add(new NpgsqlParameter<string> { TypedValue = result.DeadLetterError });
         cmd.Parameters.Add(new NpgsqlParameter<DateTimeOffset>
         {
             TypedValue = result.DeadLetteredAtUtc!.Value,

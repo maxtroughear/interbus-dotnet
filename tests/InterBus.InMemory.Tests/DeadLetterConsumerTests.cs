@@ -95,8 +95,8 @@ public class DeadLetterConsumerTests
             var deadLetter = deadLetterTracker.Messages.First();
             Assert.NotNull(deadLetter.OriginalMessage);
             Assert.Equal("deadletter@test.com", deadLetter.OriginalMessage.CustomerEmail);
-            Assert.Equal("Unhandled exception in consume pipeline", deadLetter.Reason);
-            Assert.NotEmpty(deadLetter.Error);
+            Assert.Equal("InvalidOperationException", deadLetter.Reason);
+            Assert.Contains("Intentional failure for dead-letter test", deadLetter.Error);
             Assert.True(deadLetter.DeadLetteredAtUtc <= DateTimeOffset.UtcNow);
         }
         finally

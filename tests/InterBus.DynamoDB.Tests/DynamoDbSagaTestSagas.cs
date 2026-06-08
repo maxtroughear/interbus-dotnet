@@ -34,7 +34,8 @@ public sealed class OrderSaga :
     }
 }
 
-public sealed class OrderWithPublishSaga(IPublisher publisher) : ISagaConsumer<OrderSagaState, OrderStarted>, ISagaConsumer<OrderSagaState, OrderConfirmed>
+public sealed class OrderWithPublishSaga(IPublisher publisher) : ISagaConsumer<OrderSagaState, OrderStarted>,
+    ISagaConsumer<OrderSagaState, OrderConfirmed>
 {
     public string GetCorrelationId(OrderStarted message) => message.OrderId.ToString();
     public string GetCorrelationId(OrderConfirmed message) => message.OrderId.ToString();

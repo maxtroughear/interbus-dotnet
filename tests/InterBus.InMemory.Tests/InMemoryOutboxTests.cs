@@ -268,7 +268,7 @@ public class InMemoryOutboxTests
             await WaitUntilAsync(() => delayedController.Published);
 
             Assert.Empty(orderShippedTracker.Messages);
-            
+
             delayedController.Semaphore.Release();
 
             await WaitUntilAsync(() => orderShippedTracker.Messages.Count == 1);

@@ -381,7 +381,14 @@ public sealed class DynamoDbSagaRepository<TSaga, TState>(
             // RunRenewalLoopAsync catches OperationCanceledException internally and exits
             // cleanly, so the task should complete normally. The catch is a safety net for
             // any unexpected cancellation path.
-            try { await _renewalTask; } catch (OperationCanceledException) { }
+            try
+            {
+                await _renewalTask;
+            }
+            catch (OperationCanceledException)
+            {
+            }
+
             _renewalCts.Dispose();
             await _repository.ReleaseLockAsync(_correlationId, _lockOwner);
         }

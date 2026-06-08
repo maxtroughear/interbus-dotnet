@@ -29,7 +29,7 @@ public sealed class PostgreSqlLockProvider<TDbContext>(TDbContext context) : ILo
     private sealed class AdvisoryLockReleaser : IAsyncDisposable
     {
         public static readonly AdvisoryLockReleaser Instance = new();
-        
+
         // Released as part of transaction
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }

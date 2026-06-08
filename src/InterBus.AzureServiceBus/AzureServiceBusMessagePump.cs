@@ -130,9 +130,9 @@ internal sealed class AzureServiceBusMessagePump(
                         deadLetterErrorDescription: result.DeadLetterError,
                         propertiesToModify: new Dictionary<string, object>
                         {
-                            [InterBusHeaders.DeadLetterReason] = result.DeadLetterReason!,
-                            [InterBusHeaders.DeadLetterError] = result.DeadLetterError!,
-                            [InterBusHeaders.DeadLetteredAt] = result.DeadLetteredAtUtc!.Value.ToString("O"),
+                            [InterBusHeaders.DeadLetterReason] = result.DeadLetterReason,
+                            [InterBusHeaders.DeadLetterError] = result.DeadLetterError,
+                            [InterBusHeaders.DeadLetterTime] = result.DeadLetteredAtUtc!.Value.ToString("O"),
                         },
                         cancellationToken: CancellationToken.None);
 

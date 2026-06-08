@@ -816,7 +816,7 @@ public class OutboxTests
             Assert.NotEmpty(deadLetterTracker.Messages);
             var dl = deadLetterTracker.Messages.First();
             Assert.Equal("faulting@example.com", dl.OriginalMessage.CustomerEmail);
-            Assert.Equal("Unhandled exception in consume pipeline", dl.Reason);
+            Assert.Equal("InvalidOperationException", dl.Reason);
 
             // No outbox entry should have been created for the dead-letter message —
             // OutboxPublishMiddleware forwarded it directly to the transport.

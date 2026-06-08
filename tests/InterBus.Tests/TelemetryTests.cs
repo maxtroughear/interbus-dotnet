@@ -160,7 +160,7 @@ public sealed class TelemetryTests
             await middleware.InvokeAsync(context,
                 (ctx, _) =>
                 {
-                    ctx.Result = DispatchResult.DeadLetter("dead-reason", "err", DateTimeOffset.UtcNow,
+                    ctx.Result = DispatchResult.DeadLetter(DateTimeOffset.UtcNow,
                         new Exception());
                     return Task.CompletedTask;
                 },
@@ -169,7 +169,7 @@ public sealed class TelemetryTests
 
         var act = Assert.Single(stopped, a => a.OperationName == "NoOpConsumer process");
         Assert.Equal(ActivityStatusCode.Error, act.Status);
-        Assert.Equal("dead-reason", act.StatusDescription);
+        Assert.Equal("Exception of type 'System.Exception' was thrown.", act.StatusDescription);
     }
 
     // ── InterBusTelemetry.StartConsumerActivity ──────────────────────────────

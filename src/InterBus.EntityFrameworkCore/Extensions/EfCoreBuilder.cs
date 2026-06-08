@@ -14,7 +14,7 @@ public class EfCoreBuilder<TDbContext> where TDbContext : DbContext
     {
         Services = services;
     }
-    
+
     /// <summary>
     /// Configures the saga repository to use the default in-process lock provider.
     /// Provides per-correlation-ID locking via <see cref="System.Threading.SemaphoreSlim"/> —

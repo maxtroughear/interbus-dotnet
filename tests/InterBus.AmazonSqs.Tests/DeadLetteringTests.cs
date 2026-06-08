@@ -134,7 +134,7 @@ public class DeadLetteringTests
         Assert.That(deadLetterMessage, Is.Not.Null);
         Assert.That(deadLetterMessage!.MessageAttributes.ContainsKey(InterBusHeaders.DeadLetterReason), Is.True);
         Assert.That(deadLetterMessage.MessageAttributes.ContainsKey(InterBusHeaders.DeadLetterError), Is.True);
-        Assert.That(deadLetterMessage.MessageAttributes.ContainsKey(InterBusHeaders.DeadLetteredAt), Is.True);
+        Assert.That(deadLetterMessage.MessageAttributes.ContainsKey(InterBusHeaders.DeadLetterTime), Is.True);
         Assert.That(_receiveTracker.Count, Is.EqualTo(1));
     }
 

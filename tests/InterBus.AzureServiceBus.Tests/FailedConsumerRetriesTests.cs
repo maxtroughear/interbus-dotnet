@@ -92,7 +92,7 @@ public class FailedConsumerRetriesTests
         Assert.That(deadLetterMessage, Is.Not.Null);
         Assert.That(deadLetterMessage!.DeadLetterReason, Is.EqualTo("Unhandled exception in consume pipeline"));
         Assert.That(deadLetterMessage.ApplicationProperties.ContainsKey(InterBusHeaders.DeadLetterError), Is.True);
-        Assert.That(deadLetterMessage.ApplicationProperties.ContainsKey(InterBusHeaders.DeadLetteredAt), Is.True);
+        Assert.That(deadLetterMessage.ApplicationProperties.ContainsKey(InterBusHeaders.DeadLetterTime), Is.True);
         Assert.That(_tracker.Messages, Is.Empty);
         Assert.That(_receiveTracker.Count, Is.EqualTo(1));
     }

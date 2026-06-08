@@ -45,7 +45,8 @@ public abstract class StatelessSaga<TState, TStateMachineState, TTrigger>
     /// </summary>
     /// <param name="context">The current saga context</param>
     /// <returns>A configured <see cref="StateMachine{TState,TTrigger}"/> ready to fire triggers.</returns>
-    protected async Task<StateMachine<TStateMachineState, TTrigger>> CreateStateMachineAsync(ISagaContext<TState> context)
+    protected async Task<StateMachine<TStateMachineState, TTrigger>> CreateStateMachineAsync(
+        ISagaContext<TState> context)
     {
         var machine = new StateMachine<TStateMachineState, TTrigger>(
             () => context.State.CurrentState,

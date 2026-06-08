@@ -24,9 +24,9 @@ public sealed class SnsSqsTransportOptions
     /// Prefix applied to SQS queue names. Defaults to <c>interbus-</c>.
     /// </summary>
     public string QueuePrefix { get; set; } = "interbus-";
-    
+
     public string TopicSuffix { get; set; } = string.Empty;
-    
+
     public string QueueSuffix { get; set; } = string.Empty;
 
     /// <summary>

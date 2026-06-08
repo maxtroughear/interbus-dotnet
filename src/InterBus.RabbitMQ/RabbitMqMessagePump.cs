@@ -203,7 +203,8 @@ internal sealed class RabbitMqMessagePump(
         await channel.DisposeAsync();
     }
 
-    private async Task<DispatchResult> DispatchAsync(ConsumerDescriptor descriptor, BasicDeliverEventArgs ea, CancellationToken ct)
+    private async Task<DispatchResult> DispatchAsync(ConsumerDescriptor descriptor, BasicDeliverEventArgs ea,
+        CancellationToken ct)
     {
         await using var scope = scopeFactory.CreateAsyncScope();
         var executor = scope.ServiceProvider.GetRequiredService<DispatchPipelineExecutor>();
@@ -241,7 +242,7 @@ internal sealed class RabbitMqMessagePump(
 
         properties.Headers[InterBusHeaders.DeadLetterReason] = result.DeadLetterReason;
         properties.Headers[InterBusHeaders.DeadLetterError] = result.DeadLetterError;
-        properties.Headers[InterBusHeaders.DeadLetteredAt] = result.DeadLetteredAtUtc!.Value.ToString("O");
+        properties.Headers[InterBusHeaders.DeadLetterTime] = result.DeadLetteredAtUtc!.Value.ToString("O");
 
         await publishChannel.BasicPublishAsync(
             exchange: deadLetterExchangeName,

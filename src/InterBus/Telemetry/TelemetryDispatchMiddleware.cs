@@ -20,7 +20,8 @@ public sealed class TelemetryDispatchMiddleware(
         var consumerName = context.Descriptor.ConsumerType.Name;
         var queueName = context.Descriptor.QueueName;
         var activity = InterBusTelemetry.StartConsumerActivity(diagnostics, context.Headers, consumerName, queueName);
-        var stopwatch = Stopwatch.StartNew();
+        var startingTime = Stopwatch.GetTimestamp();
+
         try
         {
             await next(context, cancellationToken);
@@ -32,11 +33,9 @@ public sealed class TelemetryDispatchMiddleware(
                     metrics.RecordConsumed(consumerName, queueName);
                     break;
                 case DispatchResultKind.DeadLetter:
-                    activity?.SetStatus(ActivityStatusCode.Error, context.Result.DeadLetterReason);
-                    metrics.RecordFailed(consumerName, queueName);
-                    break;
                 case DispatchResultKind.Release:
                     activity?.SetStatus(ActivityStatusCode.Error, context.Result.Exception?.Message);
+                    metrics.RecordFailed(consumerName, queueName);
                     break;
                 default:
                     throw new ArgumentOutOfRangeException();
@@ -45,12 +44,12 @@ public sealed class TelemetryDispatchMiddleware(
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+            metrics.RecordFailed(consumerName, queueName);
             throw;
         }
         finally
         {
-            stopwatch.Stop();
-            metrics.RecordDuration(stopwatch.Elapsed.TotalSeconds, consumerName, queueName);
+            metrics.RecordDuration(Stopwatch.GetElapsedTime(startingTime).TotalSeconds, consumerName, queueName);
             activity?.Dispose();
         }
     }

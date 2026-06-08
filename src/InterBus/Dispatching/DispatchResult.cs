@@ -8,14 +8,10 @@ public sealed class DispatchResult
     private DispatchResult(
         DispatchResultKind kind,
         Exception? exception = null,
-        string? deadLetterReason = null,
-        string? deadLetterError = null,
         DateTimeOffset? deadLetteredAtUtc = null)
     {
         Kind = kind;
         Exception = exception;
-        DeadLetterReason = deadLetterReason;
-        DeadLetterError = deadLetterError;
         DeadLetteredAtUtc = deadLetteredAtUtc;
     }
 
@@ -25,9 +21,31 @@ public sealed class DispatchResult
 
     public Exception? Exception { get; }
 
-    public string? DeadLetterReason { get; }
+    public string DeadLetterReason
+    {
+        get
+        {
+            if (field is null && Exception is not null)
+            {
+                field = Exception.GetType().Name;
+            }
 
-    public string? DeadLetterError { get; }
+            return field ?? "DefaultDispatchException";
+        }
+    }
+
+    public string DeadLetterError
+    {
+        get
+        {
+            if (field is null && Exception is not null)
+            {
+                field = Exception.ToString();
+            }
+
+            return field ?? "DefaultDispatchException";
+        }
+    }
 
     public DateTimeOffset? DeadLetteredAtUtc { get; }
 
@@ -38,22 +56,12 @@ public sealed class DispatchResult
     }
 
     public static DispatchResult DeadLetter(
-        string reason,
-        string error,
         DateTimeOffset deadLetteredAtUtc,
-        Exception exception)
-    {
-        ArgumentNullException.ThrowIfNull(reason);
-        ArgumentNullException.ThrowIfNull(error);
-        ArgumentNullException.ThrowIfNull(exception);
-
-        return new DispatchResult(
+        Exception exception) =>
+        new(
             DispatchResultKind.DeadLetter,
             exception,
-            reason,
-            error,
             deadLetteredAtUtc);
-    }
 }
 
 public enum DispatchResultKind

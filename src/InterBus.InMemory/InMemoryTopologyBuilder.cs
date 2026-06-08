@@ -23,8 +23,8 @@ internal sealed class InMemoryTopologyBuilder(
     }
 
     public Task<string> EnsureTopicAsync(string rawTopicName, CancellationToken cancellationToken)
-       {
-         broker.EnsureTopic(rawTopicName);
-         return Task.FromResult(rawTopicName);
-       }
+    {
+        broker.EnsureTopic(rawTopicName);
+        return Task.FromResult(rawTopicName);
+    }
 }

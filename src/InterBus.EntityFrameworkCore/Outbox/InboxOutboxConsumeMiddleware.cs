@@ -64,7 +64,7 @@ internal sealed partial class InboxOutboxConsumeMiddleware<TDbContext>(
             inbox = new InboxState(consumerName, messageId);
             dbContext.Set<InboxState>().Add(inbox);
         }
-        
+
         consumeState.Inbox = inbox;
 
         var inboxTask = inbox.State switch

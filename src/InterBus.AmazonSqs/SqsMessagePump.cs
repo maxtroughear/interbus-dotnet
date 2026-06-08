@@ -272,7 +272,7 @@ internal sealed class SqsMessagePump(
                 DataType = "String",
                 StringValue = result.DeadLetterError
             };
-            deadLetterMessageAttributes[InterBusHeaders.DeadLetteredAt] = new MessageAttributeValue
+            deadLetterMessageAttributes[InterBusHeaders.DeadLetterTime] = new MessageAttributeValue
             {
                 DataType = "String",
                 StringValue = result.DeadLetteredAtUtc!.Value.ToString("O")
@@ -379,7 +379,8 @@ internal sealed class SqsMessagePump(
         }
     }
 
-    private async Task<DispatchResult> DispatchAsync(ConsumerDescriptor descriptor, Message message, CancellationToken ct)
+    private async Task<DispatchResult> DispatchAsync(ConsumerDescriptor descriptor, Message message,
+        CancellationToken ct)
     {
         await using var scope = scopeFactory.CreateAsyncScope();
         var executor = scope.ServiceProvider.GetRequiredService<DispatchPipelineExecutor>();

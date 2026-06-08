@@ -2,7 +2,6 @@ using InterBus.Consuming;
 using InterBus.DynamoDB.Outbox;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using DynamoDbOutboxInlineDeliveryConsumeMiddleware = InterBus.DynamoDB.Outbox.DynamoDbOutboxInlineDeliveryConsumeMiddleware;
 
 namespace InterBus.DynamoDB.Extensions;
 

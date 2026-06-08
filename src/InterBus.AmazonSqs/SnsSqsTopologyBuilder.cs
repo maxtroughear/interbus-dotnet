@@ -260,34 +260,34 @@ public sealed partial class SnsSqsTopologyBuilder(
     }
 
     private async Task VerifyConsumerTopologyAsync(CancellationToken cancellationToken)
-     {
+    {
         var (accountId, partition) = await ResolveCallerIdentityAsync(cancellationToken);
 
         foreach (var descriptor in busOptions.Consumers)
-         {
+        {
             var queueName = topology.BuildSqsQueueName(descriptor.QueueName);
 
             LogDebugVerifyingSqsQueue(queueName);
 
             var sqsRegion = sqsClient.Config.RegionEndpoint?.SystemName
-                              ?? throw new InvalidOperationException(
-                                  "Cannot determine the AWS region from the IAmazonSQS client configuration. Ensure a region has been configured on the AWS client (e.g. via environment variable AWS_DEFAULT_REGION or AWSOptions.Region)");
+                            ?? throw new InvalidOperationException(
+                                "Cannot determine the AWS region from the IAmazonSQS client configuration. Ensure a region has been configured on the AWS client (e.g. via environment variable AWS_DEFAULT_REGION or AWSOptions.Region)");
 
             var url = $"{sqsClient.Config.ServiceURL}/{accountId}/{queueName}";
             var queueArn = $"arn:{partition}:sqs:{sqsRegion}:{accountId}:{queueName}";
 
             topology.QueueUrls.TryAdd(queueName, url);
             topology.QueueArns.TryAdd(url, queueArn);
-         }
-     }
+        }
+    }
 
     private async Task<string> VerifyQueueAsync(string queueName, CancellationToken cancellationToken)
-     {
+    {
         var (accountId, partition) = await ResolveCallerIdentityAsync(cancellationToken);
 
         var sqsRegion = sqsClient.Config.RegionEndpoint?.SystemName
-                          ?? throw new InvalidOperationException(
-                              "Cannot determine the AWS region from the IAmazonSQS client configuration. Ensure a region has been configured on the AWS client (e.g. via environment variable AWS_DEFAULT_REGION or AWSOptions.Region)");
+                        ?? throw new InvalidOperationException(
+                            "Cannot determine the AWS region from the IAmazonSQS client configuration. Ensure a region has been configured on the AWS client (e.g. via environment variable AWS_DEFAULT_REGION or AWSOptions.Region)");
 
         var url = $"{sqsClient.Config.ServiceURL}/{accountId}/{queueName}";
         var queueArn = $"arn:{partition}:sqs:{sqsRegion}:{accountId}:{queueName}";
@@ -296,30 +296,31 @@ public sealed partial class SnsSqsTopologyBuilder(
         topology.QueueArns.TryAdd(url, queueArn);
 
         return url;
-     }
+    }
 
     private async Task<string> VerifyTopicAsync(string topicName, CancellationToken cancellationToken)
-     {
+    {
         var (accountId, partition) = await ResolveCallerIdentityAsync(cancellationToken);
 
         var region = snsClient.Config.RegionEndpoint?.SystemName
-                      ?? throw new InvalidOperationException(
-                          "Cannot determine the AWS region from the IAmazonSimpleNotificationService client configuration. Ensure a region has been configured on the AWS client (e.g. via environment variable AWS_DEFAULT_REGION or AWSOptions.Region)");
+                     ?? throw new InvalidOperationException(
+                         "Cannot determine the AWS region from the IAmazonSimpleNotificationService client configuration. Ensure a region has been configured on the AWS client (e.g. via environment variable AWS_DEFAULT_REGION or AWSOptions.Region)");
 
-         var topicArn = $"arn:{partition}:sns:{region}:{accountId}:{topicName}";
+        var topicArn = $"arn:{partition}:sns:{region}:{accountId}:{topicName}";
         topology.TopicArns.TryAdd(topicName, topicArn);
         return topicArn;
-     }
+    }
 
-    private async Task<(string AccountId, string Partition)> ResolveCallerIdentityAsync(CancellationToken cancellationToken)
-     {
+    private async Task<(string AccountId, string Partition)> ResolveCallerIdentityAsync(
+        CancellationToken cancellationToken)
+    {
         _callerIdentity ??= await stsClient.GetCallerIdentityAsync(new GetCallerIdentityRequest(), cancellationToken);
         var callerArn = _callerIdentity.Arn;
         var partition = callerArn.Split(':') is { Length: >= 2 } parts ? parts[1] : "aws";
         return (_callerIdentity.Account, partition);
-     }
+    }
 
-      [LoggerMessage(LogLevel.Debug, "InterBus AmazonSqs: verifying SQS queue {QueueName}")]
+    [LoggerMessage(LogLevel.Debug, "InterBus AmazonSqs: verifying SQS queue {QueueName}")]
     partial void LogDebugVerifyingSqsQueue(string queueName);
 
     private static async Task<TValue> EnsureWithCacheAsync<TValue>(

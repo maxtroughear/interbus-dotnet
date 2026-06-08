@@ -58,7 +58,7 @@ public static class EfCoreOutboxModelBuilderExtensions
             b.HasIndex(i => i.CreatedAt);
             b.HasIndex(i => i.DeliveredAt);
             b.HasIndex(i => new { i.ConsumerName, i.MessageId }).IsUnique();
-            
+
             b.HasMany<OutboxMessage>()
                 .WithOne(m => m.Inbox)
                 .HasForeignKey(m => m.InboxId)

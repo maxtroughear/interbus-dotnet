@@ -16,6 +16,16 @@ public sealed class DynamoDbOutboxOptions
     public string TableName { get; set; } = "InterBusOutbox";
 
     /// <summary>
+    /// Name of the DynamoDB table used by the inbox+outbox consumer flow to track per-consumer
+    /// message processing state across redeliveries.
+    /// <para>
+    /// The table must be created with partition key <c>ConsumerName</c> (String) and sort key
+    /// <c>MessageId</c> (String). Defaults to <c>"InterBusInbox"</c>.
+    /// </para>
+    /// </summary>
+    public string InboxTableName { get; set; } = "InterBusInbox";
+
+    /// <summary>
     /// How often the background processor polls the outbox table when there are no pending
     /// messages. Defaults to 5 seconds. Lower values reduce end-to-end latency at the cost of
     /// more frequent DynamoDB reads when the outbox is empty.
@@ -98,4 +108,11 @@ public sealed class DynamoDbOutboxOptions
     /// </para>
     /// </summary>
     public bool CreateTableOnStartup { get; set; }
+
+    /// <summary>
+    /// When <c>true</c>, the DynamoDB inbox table used by
+    /// <c>UseDynamoDbInboxOutbox()</c> is automatically created on startup if missing.
+    /// Defaults to <c>false</c>.
+    /// </summary>
+    public bool CreateInboxTableOnStartup { get; set; }
 }

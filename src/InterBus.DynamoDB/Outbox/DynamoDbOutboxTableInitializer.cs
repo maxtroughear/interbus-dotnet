@@ -21,6 +21,14 @@ internal sealed class DynamoDbOutboxTableInitializer(
         await DynamoDbOutboxTable.EnsureTableCreatedAsync(
             dynamoDb, options.TableName, options.GsiIndexName, cancellationToken);
         logger.LogDebug("DynamoDB outbox table '{TableName}' is ready", options.TableName);
+
+        if (!options.CreateInboxTableOnStartup)
+            return;
+
+        logger.LogDebug("Ensuring DynamoDB inbox table '{TableName}' exists", options.InboxTableName);
+        await DynamoDbInboxTable.EnsureTableCreatedAsync(
+            dynamoDb, options.InboxTableName, cancellationToken);
+        logger.LogDebug("DynamoDB inbox table '{TableName}' is ready", options.InboxTableName);
     }
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;

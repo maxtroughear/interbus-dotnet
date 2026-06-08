@@ -75,5 +75,35 @@ public static class DynamoDbOutboxConsumerBuilderExtensions
 
             return builder;
         }
+
+        /// <summary>
+        /// Enables stateful DynamoDB inbox+outbox processing for this consumer.
+        /// <para>
+        /// The middleware persists per-consumer inbox state in
+        /// <see cref="DynamoDbOutboxOptions.InboxTableName"/> so redeliveries can skip
+        /// rerunning consumer code and retry only outbox delivery when needed.
+        /// </para>
+        /// <para>
+        /// When the consumer publishes messages, they are committed transactionally with inbox
+        /// state and any additional <see cref="IDynamoDbOutboxContext.AddTransactItem"/> writes.
+        /// </para>
+        /// <para>
+        /// This flow is intended to run without the background outbox processor
+        /// (<see cref="DynamoDbOutboxOptions.RunOutboxProcessor"/> set to <c>false</c>).
+        /// </para>
+        /// </summary>
+        public ConsumerBuilder UseDynamoDbInboxOutbox()
+        {
+            ArgumentNullException.ThrowIfNull(builder);
+
+            builder.Services.TryAddScoped<DynamoDbOutboxConsumeState>();
+            builder.Services.TryAddScoped<DynamoDbOutboxContext>();
+            builder.Services.TryAddScoped<IDynamoDbOutboxContext>(sp => sp.GetRequiredService<DynamoDbOutboxContext>());
+
+            builder.UseConsumeMiddleware<DynamoDbInboxOutboxConsumeMiddleware>();
+            builder.UsePublishMiddleware<DynamoDbOutboxPublishMiddleware>();
+
+            return builder;
+        }
     }
 }

@@ -38,6 +38,9 @@ internal sealed class DynamoDbOutboxContext(
     private readonly List<TransactWriteItem> _businessItems = [];
     private readonly List<PendingOutboxMessage> _outboxMessages = [];
     private Guid? _groupId;
+    internal bool HasPendingBusinessItems => _businessItems.Count > 0;
+    internal bool HasPendingOutboxMessages => _outboxMessages.Count > 0;
+    internal Guid? PendingGroupId => _groupId;
 
     // -----------------------------------------------------------------------
     // IDynamoDbOutboxContext
@@ -119,6 +122,10 @@ internal sealed class DynamoDbOutboxContext(
         {
             TransactItems = items,
         }, cancellationToken);
+
+        _businessItems.Clear();
+        _outboxMessages.Clear();
+        _groupId = null;
     }
 
     // -----------------------------------------------------------------------

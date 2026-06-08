@@ -250,8 +250,9 @@ public sealed class EventBridgeSchedulerTests
 
         await provider.CancelAsync(scheduleId, ct);
 
-        Assert.ThrowsAsync<ResourceNotFoundException>(() => SchedulerClient.GetScheduleAsync(
-            new GetScheduleRequest { Name = scheduleId.ToString(), GroupName = "default" }, ct));
+        Assert.That(() => SchedulerClient.GetScheduleAsync(
+                new GetScheduleRequest { Name = scheduleId.ToString(), GroupName = "default" }, ct),
+            Throws.TypeOf<ResourceNotFoundException>());
     }
 
     [Test]
@@ -272,8 +273,9 @@ public sealed class EventBridgeSchedulerTests
 
         await provider.CancelAsync(scheduleId, ct);
 
-        Assert.ThrowsAsync<ResourceNotFoundException>(() => SchedulerClient.GetScheduleAsync(
-            new GetScheduleRequest { Name = scheduleId.ToString(), GroupName = groupName }, ct));
+        Assert.That(() => SchedulerClient.GetScheduleAsync(
+                new GetScheduleRequest { Name = scheduleId.ToString(), GroupName = groupName }, ct),
+            Throws.TypeOf<ResourceNotFoundException>());
     }
 
     #endregion

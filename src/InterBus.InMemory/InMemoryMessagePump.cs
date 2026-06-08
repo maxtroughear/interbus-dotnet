@@ -1,5 +1,4 @@
 using InterBus.Consuming;
-using InterBus.DeadLettering;
 using InterBus.Dispatching;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -43,37 +42,49 @@ internal sealed class InMemoryMessagePump(
         {
             try
             {
-                await DispatchAsync(queue.Descriptor, envelope, stoppingToken);
+                while (envelope.DeliveryCount <= queue.Descriptor.MaxDeliveryCount)
+                {
+                    envelope.DeliveryCount++;
+                    var result = await DispatchAsync(queue.Descriptor, envelope, stoppingToken);
+                    switch (result.Kind)
+                    {
+                        case DispatchResultKind.Success:
+                            break;
+                        case DispatchResultKind.DeadLetter:
+                            logger.LogWarning(
+                                result.Exception,
+                                "InterBus InMemory: consumer {ConsumerType} failed for queue {QueueName}; message dead-lettered and discarded",
+                                queue.Descriptor.ConsumerType.Name,
+                                queue.Descriptor.QueueName);
+                            break;
+                        case DispatchResultKind.Release:
+                            logger.LogWarning(
+                                result.Exception,
+                                "InterBus InMemory: consumer {ConsumerType} failed for queue {QueueName}; releasing message back to queue for redelivery",
+                                queue.Descriptor.ConsumerType.Name,
+                                queue.Descriptor.QueueName);
+
+                            await Task.Delay(queue.DeliveryTimeout, stoppingToken);
+                            continue;
+                        default:
+                            throw new ArgumentOutOfRangeException();
+                    }
+
+                    break;
+                }
+
+                if (envelope.DeliveryCount > queue.Descriptor.MaxDeliveryCount)
+                {
+                    logger.LogWarning(
+                        "InterBus InMemory: consumer {ConsumerType} failed for queue {QueueName}; message discarded after {DeliveryCount} delivery attempts",
+                        queue.Descriptor.ConsumerType.Name,
+                        queue.Descriptor.QueueName,
+                        envelope.DeliveryCount);
+                }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
                 throw;
-            }
-            catch (DeadLetterException ex)
-            {
-                // The DeadLetterConsumeMiddleware has already published the DeadLetter<T>
-                // notification. Discard the message so it is not re-enqueued, which would
-                // cause an infinite processing loop.
-                logger.LogWarning(
-                    ex,
-                    "InterBus InMemory: consumer {ConsumerType} failed for queue {QueueName}; message dead-lettered and discarded",
-                    queue.Descriptor.ConsumerType.Name,
-                    queue.Descriptor.QueueName);
-            }
-            catch (Exception ex)
-            {
-                logger.LogWarning(
-                    ex,
-                    "InterBus InMemory: consumer {ConsumerType} failed for queue {QueueName}; releasing message back to queue for redelivery",
-                    queue.Descriptor.ConsumerType.Name,
-                    queue.Descriptor.QueueName);
-
-                // In-memory transport simulates broker behaviour by re-enqueueing the same
-                // envelope when processing fails (no ACK semantics).
-                // Yield to the thread pool scheduler before re-enqueuing so that rapid failure
-                // loops do not starve other consumer pumps running on the same thread pool.
-                await Task.Yield();
-                await queue.WriteAsync(envelope, stoppingToken);
             }
         }
 
@@ -82,11 +93,13 @@ internal sealed class InMemoryMessagePump(
             queue.Descriptor.QueueName);
     }
 
-    private async Task DispatchAsync(ConsumerDescriptor descriptor, InMemoryEnvelope envelope, CancellationToken ct)
+    private async Task<DispatchResult> DispatchAsync(ConsumerDescriptor descriptor, InMemoryEnvelope envelope,
+        CancellationToken ct)
     {
         await using var scope = scopeFactory.CreateAsyncScope();
         var executor = scope.ServiceProvider.GetRequiredService<DispatchPipelineExecutor>();
         var context = new DispatchContext(descriptor, envelope.Payload, envelope.Headers);
         await executor.ExecuteAsync(context, ct);
+        return context.Result;
     }
 }

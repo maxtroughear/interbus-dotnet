@@ -81,30 +81,38 @@ public sealed class EventBridgeSchedulingProvider(
     /// Resolves the AWS ARN of the target resource (SQS queue ARN or SNS topic ARN) from the
     /// InterBus destination URI.
     /// </summary>
-    private async Task<string> ResolveTargetArnAsync(Uri destination, CancellationToken cancellationToken)
-    {
-        if (destination.Scheme == SnsTransport.TopicScheme)
-        {
-            var rawTopicName = RoutingConventions.GetDestinationName(destination);
-            return await topologyBuilder.EnsureTopicAsync(rawTopicName, cancellationToken);
-        }
+     private async Task<string> ResolveTargetArnAsync(Uri destination, CancellationToken cancellationToken)
+      {
+         if (destination.Scheme == SnsTransport.TopicScheme)
+          {
+             var rawTopicName = RoutingConventions.GetDestinationName(destination);
+             return await topologyBuilder.EnsureTopicAsync(rawTopicName, cancellationToken);
+          }
 
-        if (destination.Scheme == SqsTransport.QueueScheme)
-        {
-            var rawQueueName = RoutingConventions.GetDestinationName(destination);
-            var queueUrl = await topologyBuilder.EnsureQueueAsync(rawQueueName, cancellationToken);
-            if (!topology.QueueArns.TryGetValue(queueUrl, out var queueArn))
-                throw new InvalidOperationException(
-                    $"Queue ARN for '{rawQueueName}' (resolved URL: '{queueUrl}') is not available " +
-                    "in the SNS/SQS topology. Ensure the Amazon SQS transport has been configured " +
-                    "and initialized before scheduling messages.");
+         if (destination.Scheme == SqsTransport.QueueScheme)
+           {
+             var rawQueueName = RoutingConventions.GetDestinationName(destination);
+             var queueName = topology.BuildSqsQueueName(rawQueueName);
+
+              // Queue URL and ARN must already be cached from startup topology setup.
+             if (!topology.QueueUrls.TryGetValue(queueName, out var queueUrl))
+                 throw new InvalidOperationException(
+                       $"Queue '{rawQueueName}' has not been declared. Ensure the consumer for this queue " +
+                       "is registered so that its queue is created during startup topology setup, or schedule " +
+                       "messages to an SNS topic instead.");
+
+             if (!topology.QueueArns.TryGetValue(queueUrl, out var queueArn))
+                 throw new InvalidOperationException(
+                      $"Queue ARN for '{rawQueueName}' (resolved URL: '{queueUrl}') is not available " +
+                      "in the SNS/SQS topology. Ensure the Amazon SQS transport has been configured " +
+                      "and initialized before scheduling messages.");
 
             return queueArn;
-        }
+           }
 
-        throw new ArgumentException(
-            $"Unsupported destination URI scheme '{destination.Scheme}' for EventBridge Scheduler. " +
-            $"Expected '{SnsTransport.TopicScheme}' or '{SqsTransport.QueueScheme}'.",
+         throw new ArgumentException(
+              $"Unsupported destination URI scheme '{destination.Scheme}' for EventBridge Scheduler. " +
+              $"Expected '{SnsTransport.TopicScheme}' or '{SqsTransport.QueueScheme}'.",
             nameof(destination));
-    }
+      }
 }

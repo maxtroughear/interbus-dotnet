@@ -44,12 +44,6 @@ public sealed class PostgreSqlTransport(
 
         if (context.Destination.Scheme == TopicScheme)
             await topologyBuilder.EnsureTopicAsync(name, cancellationToken);
-        else if (context.Destination.Scheme == QueueScheme)
-            await topologyBuilder.EnsureQueueAsync(name, cancellationToken);
-        else
-            throw new ArgumentException(
-                $"Unsupported destination URI scheme '{context.Destination.Scheme}'. " +
-                $"Expected '{TopicScheme}' or '{QueueScheme}'", nameof(context));
 
         await using var cmd = dataSource.CreateCommand();
 
@@ -62,14 +56,17 @@ public sealed class PostgreSqlTransport(
                 $"Expected '{TopicScheme}' or '{QueueScheme}'", nameof(context))
         };
 
-        cmd.Parameters.Add(new NpgsqlParameter<string> { TypedValue = name });
+        cmd.Parameters.Add(new NpgsqlParameter<string>
+            { TypedValue = name });
         cmd.Parameters.Add(new NpgsqlParameter<byte[]>
             { TypedValue = context.Payload, NpgsqlDbType = NpgsqlDbType.Bytea });
-        cmd.Parameters.Add(new NpgsqlParameter<string> { TypedValue = headersJson });
+        cmd.Parameters.Add(new NpgsqlParameter<string>
+            { TypedValue = headersJson });
         cmd.Parameters.Add(visibleAt.HasValue
             ? new NpgsqlParameter<DateTimeOffset>
                 { TypedValue = visibleAt.Value, NpgsqlDbType = NpgsqlDbType.TimestampTz }
-            : new NpgsqlParameter { Value = DBNull.Value, NpgsqlDbType = NpgsqlDbType.TimestampTz });
+            : new NpgsqlParameter
+                { Value = DBNull.Value, NpgsqlDbType = NpgsqlDbType.TimestampTz });
         await cmd.ExecuteNonQueryAsync(cancellationToken);
     }
 

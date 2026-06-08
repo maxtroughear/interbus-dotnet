@@ -60,7 +60,7 @@ public sealed class InterBusMetrics : IDisposable
 
     /// <summary>
     /// Increments the <c>interbus.messages.failed</c> counter.
-    /// Called by <see cref="TelemetryDispatchMiddleware"/> when a <see cref="DeadLetterException"/> propagates through the dispatch pipeline.
+    /// Called by <see cref="TelemetryDispatchMiddleware"/> when the dispatch pipeline requests dead-lettering.
     /// </summary>
     public void RecordFailed(string consumerName, string queueName) =>
         MessagesFailed.Add(1, new TagList

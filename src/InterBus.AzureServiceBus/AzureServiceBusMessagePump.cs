@@ -1,6 +1,5 @@
 using Azure.Messaging.ServiceBus;
 using InterBus.Consuming;
-using InterBus.DeadLettering;
 using InterBus.Dispatching;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -89,6 +88,7 @@ internal sealed class AzureServiceBusMessagePump(
             {
                 MaxConcurrentCalls = concurrency,
                 AutoCompleteMessages = false,
+                ReceiveMode = ServiceBusReceiveMode.PeekLock,
                 MaxAutoLockRenewalDuration = TimeSpan.FromHours(12), // TODO: configurable by consumer
             };
 
@@ -117,32 +117,47 @@ internal sealed class AzureServiceBusMessagePump(
 
         try
         {
-            await DispatchAsync(descriptor, args.Message, args.CancellationToken);
-            await args.CompleteMessageAsync(args.Message);
+            var result = await DispatchAsync(descriptor, args.Message, args.CancellationToken);
+            switch (result.Kind)
+            {
+                case DispatchResultKind.Success:
+                    await args.CompleteMessageAsync(args.Message);
+                    break;
+                case DispatchResultKind.DeadLetter:
+                    await args.DeadLetterMessageAsync(
+                        args.Message,
+                        deadLetterReason: result.DeadLetterReason,
+                        deadLetterErrorDescription: result.DeadLetterError,
+                        propertiesToModify: new Dictionary<string, object>
+                        {
+                            [InterBusHeaders.DeadLetterReason] = result.DeadLetterReason!,
+                            [InterBusHeaders.DeadLetterError] = result.DeadLetterError!,
+                            [InterBusHeaders.DeadLetteredAt] = result.DeadLetteredAtUtc!.Value.ToString("O"),
+                        },
+                        cancellationToken: CancellationToken.None);
+
+                    logger.LogWarning(
+                        result.Exception,
+                        "InterBus AzureServiceBus: consumer {ConsumerType} failed for queue {QueueName}; message moved to dead-letter queue",
+                        descriptor.ConsumerType.Name,
+                        descriptor.Queue);
+                    break;
+                case DispatchResultKind.Release:
+                    logger.LogWarning(
+                        result.Exception,
+                        "InterBus AzureServiceBus: consumer {ConsumerType} failed for queue {QueueName}; abandoning message for redelivery",
+                        descriptor.ConsumerType.Name,
+                        descriptor.Queue);
+
+                    await args.AbandonMessageAsync(args.Message, cancellationToken: CancellationToken.None);
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException();
+            }
         }
         catch (OperationCanceledException) when (args.CancellationToken.IsCancellationRequested)
         {
             await args.AbandonMessageAsync(args.Message, cancellationToken: CancellationToken.None);
-        }
-        catch (DeadLetterException ex)
-        {
-            await args.DeadLetterMessageAsync(
-                args.Message,
-                deadLetterReason: ex.Reason,
-                deadLetterErrorDescription: ex.Error,
-                propertiesToModify: new Dictionary<string, object>
-                {
-                    [InterBusHeaders.DeadLetterReason] = ex.Reason,
-                    [InterBusHeaders.DeadLetterError] = ex.Error,
-                    [InterBusHeaders.DeadLetteredAt] = ex.DeadLetteredAtUtc.ToString("O"),
-                },
-                cancellationToken: CancellationToken.None);
-
-            logger.LogWarning(
-                ex,
-                "InterBus AzureServiceBus: consumer {ConsumerType} failed for queue {QueueName}; message moved to dead-letter queue",
-                descriptor.ConsumerType.Name,
-                descriptor.Queue);
         }
         catch (Exception ex)
         {
@@ -167,7 +182,7 @@ internal sealed class AzureServiceBusMessagePump(
         return Task.CompletedTask;
     }
 
-    private async Task DispatchAsync(
+    private async Task<DispatchResult> DispatchAsync(
         ConsumerDescriptor descriptor,
         ServiceBusReceivedMessage message,
         CancellationToken ct)
@@ -177,6 +192,7 @@ internal sealed class AzureServiceBusMessagePump(
         var headers = ParseApplicationProperties(message.ApplicationProperties);
         var context = new DispatchContext(descriptor, message.Body.ToArray(), headers);
         await executor.ExecuteAsync(context, ct);
+        return context.Result;
     }
 
     private static MessageHeaders ParseApplicationProperties(

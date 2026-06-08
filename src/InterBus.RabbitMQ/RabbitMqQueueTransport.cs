@@ -6,7 +6,6 @@ namespace InterBus.RabbitMQ;
 
 internal sealed class RabbitMqQueueTransport(
     RabbitMqConnectionProvider connectionProvider,
-    ITopologyBuilder topologyBuilder,
     ILogger<RabbitMqQueueTransport> logger)
     : ITransport, IAsyncDisposable
 {
@@ -16,7 +15,6 @@ internal sealed class RabbitMqQueueTransport(
 
     public async Task SendAsync(TransportSendContext context, CancellationToken cancellationToken)
     {
-        var channel = await EnsureChannelAsync(cancellationToken);
         var queueName = RoutingConventions.GetDestinationName(context.Destination);
         var headers = RabbitMqHeaders.BuildAmqpHeaders(context.Headers);
         var props = new BasicProperties
@@ -25,33 +23,26 @@ internal sealed class RabbitMqQueueTransport(
             Headers = headers,
         };
 
-        await topologyBuilder.EnsureQueueAsync(queueName, cancellationToken);
-
-        try
+        for (var i = 0; i < 2; i++)
         {
-            await channel.BasicPublishAsync(
-                exchange: string.Empty,
-                routingKey: queueName,
-                mandatory: false,
-                basicProperties: props,
-                body: context.Payload,
-                cancellationToken: cancellationToken);
-        }
-        catch (Exception) when (!channel.IsOpen)
-        {
-            if (topologyBuilder is RabbitMqTopologyBuilder rabbitMqTopologyBuilder)
-                rabbitMqTopologyBuilder.InvalidateQueue(queueName);
+            var channel = await EnsureChannelAsync(cancellationToken);
+            try
+            {
+                await channel.BasicPublishAsync(
+                    exchange: string.Empty,
+                    routingKey: queueName,
+                    mandatory: false,
+                    basicProperties: props,
+                    body: context.Payload,
+                    cancellationToken: cancellationToken);
 
-            _publishChannel = null;
-            var freshChannel = await EnsureChannelAsync(cancellationToken);
-            await topologyBuilder.EnsureQueueAsync(queueName, cancellationToken);
-            await freshChannel.BasicPublishAsync(
-                exchange: string.Empty,
-                routingKey: queueName,
-                mandatory: false,
-                basicProperties: props,
-                body: context.Payload,
-                cancellationToken: cancellationToken);
+                return;
+            }
+            catch (Exception) when (!channel.IsOpen)
+            {
+                logger.LogWarning("InterBus RabbitMQ: channel closed during publish to {Queue}", queueName);
+                _publishChannel = null;
+            }
         }
     }
 

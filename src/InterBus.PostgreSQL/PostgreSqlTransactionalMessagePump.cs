@@ -1,5 +1,5 @@
 using InterBus.Consuming;
-using InterBus.DeadLettering;
+using InterBus.Dispatching;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Npgsql;
@@ -83,68 +83,72 @@ internal class PostgreSqlTransactionalMessagePump : PostgreSqlMessagePumpBase
         PostgreSqlTransactionContext.Current.Value = tx;
         try
         {
-            await DispatchAsync(descriptor, payload, headers, stoppingToken);
+            var result = await DispatchAsync(descriptor, payload, headers, stoppingToken);
+            switch (result.Kind)
+            {
+                case DispatchResultKind.Success:
+                    // Delete the routing row and (when unreferenced) the shared payload in one round trip.
+                    await using (var ackCmd = conn.CreateCommand())
+                    {
+                        ackCmd.Transaction = tx;
+                        ackCmd.CommandText =
+                            $"SELECT \"{EscapeIdentifier(Options.SchemaName)}\".ack_message($1, $2)";
+                        ackCmd.Parameters.Add(new NpgsqlParameter<long> { TypedValue = id });
+                        ackCmd.Parameters.Add(new NpgsqlParameter<long> { TypedValue = payloadId });
+                        await ackCmd.ExecuteNonQueryAsync(stoppingToken);
+                    }
 
-            // Delete the routing row and (when unreferenced) the shared payload in one round trip.
-            await using var ackCmd = conn.CreateCommand();
-            ackCmd.Transaction = tx;
-            ackCmd.CommandText =
-                $"SELECT \"{EscapeIdentifier(Options.SchemaName)}\".ack_message($1, $2)";
-            ackCmd.Parameters.Add(new NpgsqlParameter<long> { TypedValue = id });
-            ackCmd.Parameters.Add(new NpgsqlParameter<long> { TypedValue = payloadId });
-            await ackCmd.ExecuteNonQueryAsync(stoppingToken);
+                    await tx.CommitAsync(stoppingToken);
+                    break;
+                case DispatchResultKind.DeadLetter:
+                    // Move the message to the dead-letter table within the same transaction so the
+                    // row lock from consume_next is still held, preventing concurrent re-delivery.
+                    await using (var dlCmd = conn.CreateCommand())
+                    {
+                        dlCmd.Transaction = tx;
+                        dlCmd.CommandText =
+                            $"SELECT \"{EscapeIdentifier(Options.SchemaName)}\".dead_letter_message($1, $2, $3, $4, $5, $6)";
+                        dlCmd.Parameters.Add(new NpgsqlParameter<long> { TypedValue = id });
+                        dlCmd.Parameters.Add(new NpgsqlParameter<long> { TypedValue = payloadId });
+                        dlCmd.Parameters.Add(new NpgsqlParameter<string> { TypedValue = descriptor.QueueName });
+                        dlCmd.Parameters.Add(new NpgsqlParameter<string> { TypedValue = result.DeadLetterReason! });
+                        dlCmd.Parameters.Add(new NpgsqlParameter<string> { TypedValue = result.DeadLetterError! });
+                        dlCmd.Parameters.Add(new NpgsqlParameter<DateTimeOffset>
+                        {
+                            TypedValue = result.DeadLetteredAtUtc!.Value,
+                            NpgsqlDbType = NpgsqlDbType.TimestampTz
+                        });
+                        await dlCmd.ExecuteNonQueryAsync(CancellationToken.None);
+                    }
 
-            await tx.CommitAsync(stoppingToken);
+                    await tx.CommitAsync(CancellationToken.None);
+
+                    _logger.LogWarning(
+                        result.Exception,
+                        "InterBus PostgreSQL: transactional consumer {ConsumerType} failed for queue {QueueName}; message moved to dead-letter",
+                        descriptor.ConsumerType.Name,
+                        descriptor.QueueName);
+                    return false;
+                case DispatchResultKind.Release:
+                    _logger.LogWarning(
+                        result.Exception,
+                        "InterBus PostgreSQL: transactional consumer {ConsumerType} failed for queue {QueueName}; message will be retried",
+                        descriptor.ConsumerType.Name,
+                        descriptor.QueueName);
+
+                    // Roll back so the message remains in the table for the next delivery attempt.
+                    await tx.RollbackAsync(CancellationToken.None);
+                    return false;
+                default:
+                    throw new ArgumentOutOfRangeException();
+            }
+
             return true;
         }
         catch (OperationCanceledException)
         {
             await tx.RollbackAsync(CancellationToken.None);
             throw;
-        }
-        catch (DeadLetterException ex)
-        {
-            // Move the message to the dead-letter table within the same transaction so the
-            // row lock from consume_next is still held, preventing concurrent re-delivery.
-            await using var dlCmd = conn.CreateCommand();
-            dlCmd.Transaction = tx;
-            dlCmd.CommandText =
-                $"SELECT \"{EscapeIdentifier(Options.SchemaName)}\".dead_letter_message($1, $2, $3, $4, $5, $6)";
-            dlCmd.Parameters.Add(new NpgsqlParameter<long> { TypedValue = id });
-            dlCmd.Parameters.Add(new NpgsqlParameter<long> { TypedValue = payloadId });
-            dlCmd.Parameters.Add(new NpgsqlParameter<string> { TypedValue = descriptor.QueueName });
-            dlCmd.Parameters.Add(new NpgsqlParameter<string> { TypedValue = ex.Reason });
-            dlCmd.Parameters.Add(new NpgsqlParameter<string> { TypedValue = ex.Error });
-            dlCmd.Parameters.Add(new NpgsqlParameter<DateTimeOffset>
-            {
-                TypedValue = ex.DeadLetteredAtUtc,
-                NpgsqlDbType = NpgsqlDbType.TimestampTz
-            });
-            await dlCmd.ExecuteNonQueryAsync(CancellationToken.None);
-            await tx.CommitAsync(CancellationToken.None);
-
-            _logger.LogWarning(
-                ex,
-                "InterBus PostgreSQL: transactional consumer {ConsumerType} failed for queue {QueueName}; message moved to dead-letter",
-                descriptor.ConsumerType.Name,
-                descriptor.QueueName);
-
-            return false;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(
-                ex,
-                "InterBus PostgreSQL: transactional consumer {ConsumerType} failed for queue {QueueName}; message will be retried",
-                descriptor.ConsumerType.Name,
-                descriptor.QueueName);
-
-            // Roll back so the message remains in the table for the next delivery attempt.
-            await tx.RollbackAsync(CancellationToken.None);
-
-            // Return false so the processing loop backs off; the message will be re-delivered
-            // on the next NOTIFY or on the next fallback poll.
-            return false;
         }
         finally
         {

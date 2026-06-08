@@ -77,7 +77,7 @@ jobs:
           dotnet-version: '10.0.x'
 
       - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v6.1.2
+        uses: aws-actions/configure-aws-credentials@v6.2.0
         with:
           role-to-assume: arn:aws:iam::404304993722:role/InterBus-GitHub-Actions
           aws-region: us-east-1
@@ -134,7 +134,7 @@ jobs:
           dotnet-version: '10.0.x'
 
       - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v6.1.2
+        uses: aws-actions/configure-aws-credentials@v6.2.0
         with:
           role-to-assume: arn:aws:iam::404304993722:role/InterBus-GitHub-Actions
           aws-region: us-east-1

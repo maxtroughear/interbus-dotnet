@@ -2,7 +2,6 @@ using InterBus;
 using InterBus.Sagas;
 using InterBus.Stateless;
 using Stateless;
-using Stateless.Graph;
 
 namespace Sample.Components;
 

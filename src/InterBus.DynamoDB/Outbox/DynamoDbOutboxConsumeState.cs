@@ -1,8 +1,7 @@
 namespace InterBus.DynamoDB.Outbox;
 
 /// <summary>
-/// Scoped state shared between <see cref="DynamoDbOutboxPublishMiddleware"/> and
-/// <see cref="DynamoDbOutboxInlineDeliveryConsumeMiddleware"/> within a single consumer dispatch
+/// Scoped state shared within a single consumer dispatch
 /// scope.
 /// </summary>
 internal sealed class DynamoDbOutboxConsumeState
@@ -13,11 +12,11 @@ internal sealed class DynamoDbOutboxConsumeState
     /// </summary>
     public Guid? GroupId { get; internal set; }
 
-    /// <summary>
-    /// When <c>true</c>, the outbox context applies the consumer visibility timeout so that
-    /// the background processor does not race with inline delivery.
-    /// Set by <see cref="DynamoDbOutboxInlineDeliveryConsumeMiddleware"/> before the consumer
-    /// handler runs.
-    /// </summary>
-    public bool IsDeliveryInline { get; internal set; }
+    public DeliveryType DeliveryType { get; internal set; } = DeliveryType.Background;
+}
+
+internal enum DeliveryType
+{
+    Background,
+    Inbox
 }

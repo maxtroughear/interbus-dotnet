@@ -1,4 +1,3 @@
-using InterBus.EntityFrameworkCore.Outbox;
 using InterBus.EntityFrameworkCore.Sagas;
 using InterBus.Sagas;
 using Microsoft.EntityFrameworkCore;

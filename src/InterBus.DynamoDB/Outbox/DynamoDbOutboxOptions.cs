@@ -16,6 +16,16 @@ public sealed class DynamoDbOutboxOptions
     public string TableName { get; set; } = "InterBusOutbox";
 
     /// <summary>
+    /// Name of the DynamoDB table used by the inbox+outbox consumer flow to track per-consumer
+    /// message processing state across redeliveries.
+    /// <para>
+    /// The table must be created with partition key <c>ConsumerName</c> (String) and sort key
+    /// <c>MessageId</c> (String). Defaults to <c>"InterBusInbox"</c>.
+    /// </para>
+    /// </summary>
+    public string InboxTableName { get; set; } = "InterBusInbox";
+
+    /// <summary>
     /// How often the background processor polls the outbox table when there are no pending
     /// messages. Defaults to 5 seconds. Lower values reduce end-to-end latency at the cost of
     /// more frequent DynamoDB reads when the outbox is empty.
@@ -84,18 +94,14 @@ public sealed class DynamoDbOutboxOptions
     internal int EffectiveProcessorShardCount => ProcessorShardCount ?? ShardCount;
 
     /// <summary>
-    /// When <c>true</c>, the DynamoDB outbox table (and its GSI when
-    /// <see cref="GsiIndexName"/> is set) are automatically created on application startup
+    /// When <c>true</c>, the DynamoDB inbox and outbox tables
+    /// are automatically created on application startup
     /// if they do not already exist. Defaults to <c>false</c>.
-    /// <para>
-    /// The table is created with partition key <c>GroupId</c> (String) and sort key
-    /// <c>EntryId</c> (String), using on-demand billing mode.
-    /// </para>
     /// <para>
     /// <b>This option is intended for development and testing only.</b> For production
     /// environments, prefer managing DynamoDB tables with an Infrastructure-as-Code tool
     /// such as Terraform, AWS CloudFormation, or AWS CDK.
     /// </para>
     /// </summary>
-    public bool CreateTableOnStartup { get; set; }
+    public bool CreateTablesOnStartup { get; set; }
 }

@@ -6,6 +6,8 @@ using InterBus.DynamoDB.Outbox;
 using InterBus.Extensions;
 using InterBus.Generated;
 using InterBus.InMemory.Extensions;
+using InterBus.Retry;
+using InterBus.Sending;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Testcontainers.LocalStack;
@@ -36,6 +38,13 @@ public sealed class OutboxOrderShippedTracker
     private readonly ConcurrentBag<OutboxOrderShipped> _messages = [];
     public IReadOnlyCollection<OutboxOrderShipped> Messages => _messages;
     public void Track(OutboxOrderShipped msg) => _messages.Add(msg);
+}
+
+public sealed class OutboxConsumerExecutionTracker
+{
+    private int _count;
+    public int Count => _count;
+    public void Track() => Interlocked.Increment(ref _count);
 }
 
 // ---------------------------------------------------------------------------
@@ -82,6 +91,78 @@ public sealed class OutboxOrderShippedConsumer(OutboxOrderShippedTracker tracker
     }
 }
 
+public sealed class OutboxInboxPublishingConsumer(
+    OutboxConsumerExecutionTracker executionTracker,
+    IPublisher publisher)
+    : IConsumer<OutboxOrderPlaced>
+{
+    public async Task Consume(OutboxOrderPlaced message, IConsumeContext context,
+        CancellationToken cancellationToken = default)
+    {
+        executionTracker.Track();
+        await publisher.PublishAsync(new OutboxOrderShipped(message.OrderId), cancellationToken);
+    }
+}
+
+public sealed class OutboxInboxExecutionOnlyConsumer(OutboxConsumerExecutionTracker executionTracker)
+    : IConsumer<OutboxOrderPlaced>
+{
+    public Task Consume(OutboxOrderPlaced message, IConsumeContext context,
+        CancellationToken cancellationToken = default)
+    {
+        executionTracker.Track();
+        return Task.CompletedTask;
+    }
+}
+
+public sealed class OutboxInboxFailFirstConsumer(
+    OutboxConsumerExecutionTracker executionTracker,
+    FailFirstConsumeState state)
+    : IConsumer<OutboxOrderPlaced>
+{
+    public Task Consume(OutboxOrderPlaced message, IConsumeContext context,
+        CancellationToken cancellationToken = default)
+    {
+        executionTracker.Track();
+        if (Interlocked.Increment(ref state.CallCount) == 1)
+            throw new Exception("Simulated consumer failure");
+
+        return Task.CompletedTask;
+    }
+}
+
+public sealed class FailFirstConsumeState
+{
+    public int CallCount;
+}
+
+internal sealed class FailFirstSendMiddleware : ISendMiddleware
+{
+    private readonly FailFirstSendState _state;
+
+    public FailFirstSendMiddleware(FailFirstSendState state)
+    {
+        _state = state;
+    }
+
+    public Task InvokeAsync(SendContext context, Func<SendContext, CancellationToken, Task> next,
+        CancellationToken cancellationToken = default)
+    {
+        if (!context.Destination.ToString().Contains(nameof(OutboxOrderShipped), StringComparison.OrdinalIgnoreCase))
+            return next(context, cancellationToken);
+
+        if (Interlocked.Increment(ref _state.CallCount) == 1)
+            throw new Exception("Simulated send failure");
+
+        return next(context, cancellationToken);
+    }
+}
+
+internal sealed class FailFirstSendState
+{
+    public int CallCount;
+}
+
 // ---------------------------------------------------------------------------
 // Test fixture
 // ---------------------------------------------------------------------------
@@ -92,6 +173,7 @@ public class DynamoDbOutboxTests
     private readonly LocalStackContainer? _container = TestHelpers.CreateLocalStackContainer();
     private IAmazonDynamoDB _dynamoDb = null!;
     private string _tableName = string.Empty;
+    private string _inboxTableName = string.Empty;
 
     [OneTimeSetUp]
     public async Task OneTimeSetUp()
@@ -115,6 +197,7 @@ public class DynamoDbOutboxTests
     {
         var runId = Guid.NewGuid().ToString("N");
         _tableName = $"{runId}-InterBusOutboxTest";
+        _inboxTableName = $"{runId}-InterBusInboxTest";
 
         var awsOptions = TestHelpers.CreateAwsOptions(_container);
         var services = new ServiceCollection();
@@ -127,12 +210,14 @@ public class DynamoDbOutboxTests
 
         await DynamoDbOutboxTable.EnsureTableCreatedAsync(_dynamoDb, _tableName,
             new DynamoDbOutboxOptions().GsiIndexName);
+        await DynamoDbInboxTable.EnsureTableCreatedAsync(_dynamoDb, _inboxTableName);
     }
 
     [TearDown]
     public async Task TearDown()
     {
         await _dynamoDb.DeleteTableAsync(_tableName);
+        await _dynamoDb.DeleteTableAsync(_inboxTableName);
         _dynamoDb.Dispose();
     }
 
@@ -434,25 +519,42 @@ public class DynamoDbOutboxTests
     }
 
     /// <summary>
-    /// When inline delivery is configured and succeeds, the group is deleted immediately.
+    /// Inbox+outbox flow should run the consumer once and, on redelivery, resume outbox delivery
+    /// without rerunning the consumer.
     /// </summary>
     [Test]
-    public async Task Consumer_UseOutboxWithInlineDelivery_MessageDeliveredImmediately()
+    public async Task Consumer_UseInboxOutbox_RedeliverySkipsConsumerAndClearsOutbox()
     {
+        const string completedInboxState = "2";
         var shippedTracker = new OutboxOrderShippedTracker();
-
+        var executionTracker = new OutboxConsumerExecutionTracker();
         var (provider, cts) = await StartBusAsync(bus =>
         {
             bus.AddInMemoryTransport();
-            bus.AddConsumer<OutboxOrderPlacedPublishingConsumer>(c => c.UseDynamoDbOutboxWithInlineDelivery());
+            bus.AddConsumer<OutboxInboxPublishingConsumer>(c =>
+            {
+                c.UseRetryMiddleware(options =>
+                {
+                    options.RetryCount = 2;
+                    options.DelayProvider = RetryDelays.Constant(TimeSpan.FromMilliseconds(100));
+                });
+                c.UseDynamoDbInboxOutbox();
+            });
             bus.AddConsumer<OutboxOrderShippedConsumer>();
             bus.AddDynamoDbOutbox(o =>
             {
                 o.TableName = _tableName;
-                o.PollInterval = TimeSpan.FromHours(1);
+                o.InboxTableName = _inboxTableName;
                 o.RunOutboxProcessor = false;
+                o.PollInterval = TimeSpan.FromHours(1);
             });
-        }, services => services.AddSingleton(shippedTracker));
+            bus.UseSendMiddleware<FailFirstSendMiddleware>();
+        }, services =>
+        {
+            services.AddSingleton(shippedTracker);
+            services.AddSingleton(executionTracker);
+            services.AddSingleton<FailFirstSendState>();
+        });
 
         try
         {
@@ -462,25 +564,223 @@ public class DynamoDbOutboxTests
             {
                 var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
                 await publisher.PublishAsync(
-                    new OutboxOrderPlaced(Guid.NewGuid(), "inline@example.com"),
+                    new OutboxOrderPlaced(Guid.NewGuid(), "inbox-outbox@example.com"),
                     CancellationToken.None);
             }
 
-            await TestHelpers.WaitUntilAsync(() => shippedTracker.Messages.Count == 1);
+            await TestHelpers.WaitUntilAsync(() => shippedTracker.Messages.Count == 1, timeoutMs: 10000);
 
+            Assert.That(executionTracker.Count, Is.EqualTo(1));
             Assert.That(shippedTracker.Messages, Has.Count.EqualTo(1));
 
-            // After successful inline delivery, the outbox table should be empty.
-            await TestHelpers.WaitUntilAsync(
-                () => _dynamoDb.ScanAsync(new ScanRequest { TableName = _tableName })
-                    .GetAwaiter().GetResult().Count == 0,
-                timeoutMs: 5000);
-
-            var scanResponse = await _dynamoDb.ScanAsync(new ScanRequest
+            var outboxScan = await _dynamoDb.ScanAsync(new ScanRequest
             {
                 TableName = _tableName,
             }, CancellationToken.None);
-            Assert.That(scanResponse.Count, Is.EqualTo(0));
+            Assert.That(outboxScan.Count, Is.EqualTo(0));
+
+            var inboxScan = await _dynamoDb.ScanAsync(new ScanRequest
+            {
+                TableName = _inboxTableName,
+            }, CancellationToken.None);
+            Assert.That(inboxScan.Count, Is.EqualTo(1));
+            Assert.That(inboxScan.Items.Single()[DynamoDbInboxTable.State].N,
+                Is.EqualTo(completedInboxState));
+        }
+        finally
+        {
+            await StopBusAsync(provider, cts);
+        }
+    }
+
+    [Test]
+    public async Task Consumer_UseInboxOutbox_WithoutMessageIdHeader_BypassesInbox()
+    {
+        var executionTracker = new OutboxConsumerExecutionTracker();
+
+        var (provider, cts) = await StartBusAsync(bus =>
+        {
+            bus.AddInMemoryTransport();
+            bus.AddConsumer<OutboxInboxExecutionOnlyConsumer>(c => c.UseDynamoDbInboxOutbox());
+            bus.AddDynamoDbOutbox(o =>
+            {
+                o.TableName = _tableName;
+                o.InboxTableName = _inboxTableName;
+                o.RunOutboxProcessor = false;
+                o.PollInterval = TimeSpan.FromHours(1);
+            });
+        }, services => services.AddSingleton(executionTracker));
+
+        try
+        {
+            await StartHostedServicesAsync(provider, cts.Token);
+
+            await using (var scope = provider.CreateAsyncScope())
+            {
+                var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
+
+                await publisher.PublishAsync(
+                    new OutboxOrderPlaced(Guid.NewGuid(), "missing-id-1@example.com"),
+                    ctx => ctx.Headers.Remove(InterBusHeaders.MessageId),
+                    CancellationToken.None);
+
+                await publisher.PublishAsync(
+                    new OutboxOrderPlaced(Guid.NewGuid(), "missing-id-2@example.com"),
+                    ctx => ctx.Headers.Remove(InterBusHeaders.MessageId),
+                    CancellationToken.None);
+            }
+
+            await TestHelpers.WaitUntilAsync(() => executionTracker.Count == 2);
+
+            Assert.That(executionTracker.Count, Is.EqualTo(2));
+
+            var inboxScan = await _dynamoDb.ScanAsync(new ScanRequest
+            {
+                TableName = _inboxTableName,
+            }, CancellationToken.None);
+            Assert.That(inboxScan.Count, Is.EqualTo(0));
+        }
+        finally
+        {
+            await StopBusAsync(provider, cts);
+        }
+    }
+
+    [Test]
+    public async Task Consumer_UseInboxOutbox_ConsumerFailureThenRetry_CompletesInboxRow()
+    {
+        const string completedInboxState = "2";
+        var executionTracker = new OutboxConsumerExecutionTracker();
+        var failFirstState = new FailFirstConsumeState();
+        var messageId = Guid.NewGuid().ToString("N");
+        var consumerName = typeof(OutboxInboxFailFirstConsumer).FullName!;
+
+        var (provider, cts) = await StartBusAsync(bus =>
+        {
+            bus.AddInMemoryTransport();
+            bus.AddConsumer<OutboxInboxFailFirstConsumer>(c =>
+            {
+                c.UseRetryMiddleware(options =>
+                {
+                    options.RetryCount = 1;
+                    options.DelayProvider = RetryDelays.Constant(TimeSpan.FromMilliseconds(100));
+                });
+                c.UseDynamoDbInboxOutbox();
+            });
+            bus.AddDynamoDbOutbox(o =>
+            {
+                o.TableName = _tableName;
+                o.InboxTableName = _inboxTableName;
+                o.RunOutboxProcessor = false;
+                o.PollInterval = TimeSpan.FromHours(1);
+            });
+        }, services =>
+        {
+            services.AddSingleton(executionTracker);
+            services.AddSingleton(failFirstState);
+        });
+
+        try
+        {
+            await StartHostedServicesAsync(provider, cts.Token);
+
+            await using (var scope = provider.CreateAsyncScope())
+            {
+                var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
+                await publisher.PublishAsync(
+                    new OutboxOrderPlaced(Guid.NewGuid(), "retry@example.com"),
+                    ctx => ctx.Headers[InterBusHeaders.MessageId] = messageId,
+                    CancellationToken.None);
+            }
+
+            await TestHelpers.WaitUntilAsync(() => executionTracker.Count == 2, timeoutMs: 10000);
+            await WaitForInboxStateAsync(consumerName, messageId, completedInboxState, timeoutMs: 10000);
+
+            Assert.That(executionTracker.Count, Is.EqualTo(2));
+
+            var inboxItem = await _dynamoDb.GetItemAsync(new GetItemRequest
+            {
+                TableName = _inboxTableName,
+                Key = BuildInboxKey(consumerName, messageId),
+                ConsistentRead = true,
+            }, CancellationToken.None);
+
+            Assert.That(inboxItem.IsItemSet, Is.True);
+            Assert.That(inboxItem.Item[DynamoDbInboxTable.State].N, Is.EqualTo(completedInboxState));
+
+            var outboxScan = await _dynamoDb.ScanAsync(new ScanRequest
+            {
+                TableName = _tableName,
+            }, CancellationToken.None);
+            Assert.That(outboxScan.Count, Is.EqualTo(0));
+        }
+        finally
+        {
+            await StopBusAsync(provider, cts);
+        }
+    }
+
+    [Test]
+    public async Task Consumer_UseInboxOutbox_PendingOutboxWithoutGroupId_MarksInboxCompleted()
+    {
+        const string pendingOutboxState = "1";
+        const string completedInboxState = "2";
+        var executionTracker = new OutboxConsumerExecutionTracker();
+        var messageId = Guid.NewGuid().ToString("N");
+        var consumerName = typeof(OutboxInboxExecutionOnlyConsumer).FullName!;
+
+        await _dynamoDb.PutItemAsync(new PutItemRequest
+        {
+            TableName = _inboxTableName,
+            Item = new Dictionary<string, AttributeValue>
+            {
+                [DynamoDbInboxTable.ConsumerName] = new() { S = consumerName },
+                [DynamoDbInboxTable.MessageId] = new() { S = messageId },
+                [DynamoDbInboxTable.State] = new() { N = pendingOutboxState },
+                [DynamoDbInboxTable.CreatedAt] = new()
+                    { N = DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString() },
+            },
+        }, CancellationToken.None);
+
+        var (provider, cts) = await StartBusAsync(bus =>
+        {
+            bus.AddInMemoryTransport();
+            bus.AddConsumer<OutboxInboxExecutionOnlyConsumer>(c => c.UseDynamoDbInboxOutbox());
+            bus.AddDynamoDbOutbox(o =>
+            {
+                o.TableName = _tableName;
+                o.InboxTableName = _inboxTableName;
+                o.RunOutboxProcessor = false;
+                o.PollInterval = TimeSpan.FromHours(1);
+            });
+        }, services => services.AddSingleton(executionTracker));
+
+        try
+        {
+            await StartHostedServicesAsync(provider, cts.Token);
+
+            await using (var scope = provider.CreateAsyncScope())
+            {
+                var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
+                await publisher.PublishAsync(
+                    new OutboxOrderPlaced(Guid.NewGuid(), "pending-outbox-no-group@example.com"),
+                    ctx => ctx.Headers[InterBusHeaders.MessageId] = messageId,
+                    CancellationToken.None);
+            }
+
+            await WaitForInboxStateAsync(consumerName, messageId, completedInboxState, timeoutMs: 10000);
+
+            Assert.That(executionTracker.Count, Is.EqualTo(0));
+
+            var inboxResponse = await _dynamoDb.GetItemAsync(new GetItemRequest
+            {
+                TableName = _inboxTableName,
+                Key = BuildInboxKey(consumerName, messageId),
+                ConsistentRead = true,
+            }, CancellationToken.None);
+
+            Assert.That(inboxResponse.IsItemSet, Is.True);
+            Assert.That(inboxResponse.Item[DynamoDbInboxTable.State].N, Is.EqualTo(completedInboxState));
         }
         finally
         {
@@ -556,4 +856,39 @@ public class DynamoDbOutboxTests
             await Task.Delay(200);
         }
     }
+
+    private async Task WaitForInboxStateAsync(
+        string consumerName,
+        string messageId,
+        string expectedState,
+        int timeoutMs = 30_000,
+        int intervalMs = 200)
+    {
+        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+        while (DateTime.UtcNow < deadline)
+        {
+            var response = await _dynamoDb.GetItemAsync(new GetItemRequest
+            {
+                TableName = _inboxTableName,
+                Key = BuildInboxKey(consumerName, messageId),
+                ConsistentRead = true,
+            }, CancellationToken.None);
+
+            if (response.IsItemSet &&
+                response.Item.TryGetValue(DynamoDbInboxTable.State, out var state) &&
+                state.N == expectedState)
+                return;
+
+            await Task.Delay(intervalMs);
+        }
+
+        Assert.Fail($"Inbox row for '{consumerName}' / '{messageId}' did not reach state '{expectedState}'.");
+    }
+
+    private static Dictionary<string, AttributeValue> BuildInboxKey(string consumerName, string messageId) =>
+        new()
+        {
+            [DynamoDbInboxTable.ConsumerName] = new() { S = consumerName },
+            [DynamoDbInboxTable.MessageId] = new() { S = messageId },
+        };
 }

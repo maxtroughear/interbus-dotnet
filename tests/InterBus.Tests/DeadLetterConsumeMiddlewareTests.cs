@@ -31,6 +31,10 @@ public class DeadLetterConsumeMiddlewareTests
         Assert.Equal("InvalidOperationException", deadLetter.Reason);
         Assert.Contains("boom", deadLetter.Error);
         Assert.True(deadLetter.DeadLetteredAtUtc <= DateTimeOffset.UtcNow);
+        Assert.NotNull(deadLetter.Exception);
+        Assert.Equal("System.InvalidOperationException", deadLetter.Exception.ExceptionType);
+        Assert.Equal("boom", deadLetter.Exception.Message);
+        Assert.Null(deadLetter.Exception.InnerException);
     }
 
     [Fact]

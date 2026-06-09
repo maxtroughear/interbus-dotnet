@@ -40,57 +40,63 @@ internal sealed class InMemoryMessagePump(
 
         await foreach (var envelope in queue.ReadAllAsync(stoppingToken))
         {
-            try
-            {
-                while (envelope.DeliveryCount <= queue.Descriptor.MaxDeliveryCount)
-                {
-                    envelope.DeliveryCount++;
-                    var result = await DispatchAsync(queue.Descriptor, envelope, stoppingToken);
-                    switch (result.Kind)
-                    {
-                        case DispatchResultKind.Success:
-                            break;
-                        case DispatchResultKind.DeadLetter:
-                            logger.LogWarning(
-                                result.Exception,
-                                "InterBus InMemory: consumer {ConsumerType} failed for queue {QueueName}; message dead-lettered and discarded",
-                                queue.Descriptor.ConsumerType.Name,
-                                queue.Descriptor.QueueName);
-                            break;
-                        case DispatchResultKind.Release:
-                            logger.LogWarning(
-                                result.Exception,
-                                "InterBus InMemory: consumer {ConsumerType} failed for queue {QueueName}; releasing message back to queue for redelivery",
-                                queue.Descriptor.ConsumerType.Name,
-                                queue.Descriptor.QueueName);
-
-                            await Task.Delay(queue.DeliveryTimeout, stoppingToken);
-                            continue;
-                        default:
-                            throw new ArgumentOutOfRangeException();
-                    }
-
-                    break;
-                }
-
-                if (envelope.DeliveryCount > queue.Descriptor.MaxDeliveryCount)
-                {
-                    logger.LogWarning(
-                        "InterBus InMemory: consumer {ConsumerType} failed for queue {QueueName}; message discarded after {DeliveryCount} delivery attempts",
-                        queue.Descriptor.ConsumerType.Name,
-                        queue.Descriptor.QueueName,
-                        envelope.DeliveryCount);
-                }
-            }
-            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-            {
-                throw;
-            }
+            await ProcessEnvelopeAsync(queue, envelope, stoppingToken);
         }
 
         logger.LogDebug(
             "InterBus InMemory: pump for queue {QueueName} stopped",
             queue.Descriptor.QueueName);
+    }
+
+    private async Task ProcessEnvelopeAsync(InMemoryQueue queue, InMemoryEnvelope envelope, CancellationToken stoppingToken)
+    {
+        try
+        {
+            var deliveryCount = 0;
+            while (deliveryCount <= queue.Descriptor.MaxDeliveryCount)
+            {
+                deliveryCount++;
+                var result = await DispatchAsync(queue.Descriptor, envelope, stoppingToken);
+                switch (result.Kind)
+                {
+                    case DispatchResultKind.Success:
+                        break;
+                    case DispatchResultKind.DeadLetter:
+                        logger.LogWarning(
+                            result.Exception,
+                            "InterBus InMemory: consumer {ConsumerType} failed for queue {QueueName}; message dead-lettered and discarded",
+                            queue.Descriptor.ConsumerType.Name,
+                            queue.Descriptor.QueueName);
+                        break;
+                    case DispatchResultKind.Release:
+                        logger.LogWarning(
+                            result.Exception,
+                            "InterBus InMemory: consumer {ConsumerType} failed for queue {QueueName}; releasing message back to queue for redelivery",
+                            queue.Descriptor.ConsumerType.Name,
+                            queue.Descriptor.QueueName);
+
+                        await Task.Delay(queue.DeliveryTimeout, stoppingToken);
+                        continue;
+                    default:
+                        throw new ArgumentOutOfRangeException();
+                }
+
+                break;
+            }
+
+            if (deliveryCount > queue.Descriptor.MaxDeliveryCount)
+            {
+                logger.LogWarning(
+                    "InterBus InMemory: consumer {ConsumerType} failed for queue {QueueName}; message discarded after {DeliveryCount} delivery attempts",
+                    queue.Descriptor.ConsumerType.Name,
+                    queue.Descriptor.QueueName,
+                    deliveryCount);
+            }
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            throw;
+        }
     }
 
     private async Task<DispatchResult> DispatchAsync(ConsumerDescriptor descriptor, InMemoryEnvelope envelope,

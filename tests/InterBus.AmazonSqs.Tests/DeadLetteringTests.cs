@@ -138,6 +138,7 @@ public class DeadLetteringTests
         Assert.That(_receiveTracker.Count, Is.EqualTo(1));
     }
 
+    // ReSharper disable once CognitiveComplexity
     private async Task<string?> FindDeadLetterQueueUrlAsync(IAmazonSQS sqsClient)
     {
         var listResponse = await sqsClient.ListQueuesAsync(new ListQueuesRequest { QueueNamePrefix = _queuePrefix });

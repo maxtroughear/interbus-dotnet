@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using InterBus.Tests.InMemory;
 using InterBus.Consuming;
 using InterBus.Extensions;
 using InterBus.Generated;

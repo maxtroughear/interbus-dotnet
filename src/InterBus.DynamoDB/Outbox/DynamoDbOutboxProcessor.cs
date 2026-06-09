@@ -60,14 +60,14 @@ internal sealed partial class DynamoDbOutboxProcessor(
     {
         while (!stoppingToken.IsCancellationRequested)
         {
-            var hadMessages = false;
             try
             {
-                hadMessages = await ProcessShardAsync(shard, stoppingToken);
+                if (await ProcessShardAsync(shard, stoppingToken))
+                    continue;
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
-                break;
+                throw;
             }
             catch (Exception ex)
             {
@@ -76,16 +76,7 @@ internal sealed partial class DynamoDbOutboxProcessor(
                     shard);
             }
 
-            if (hadMessages) continue;
-
-            try
-            {
-                await Task.Delay(options.PollInterval, stoppingToken);
-            }
-            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-            {
-                break;
-            }
+            await Task.Delay(options.PollInterval, stoppingToken);
         }
     }
 
@@ -213,16 +204,7 @@ internal sealed partial class DynamoDbOutboxProcessor(
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                var destination = new Uri(msg[DynamoDbOutboxContext.AttrDestination].S);
-                var payload = msg[DynamoDbOutboxContext.AttrPayload].B.ToArray();
-                var headers = DynamoDbOutboxContext.DeserializeHeaders(
-                    msg[DynamoDbOutboxContext.AttrHeadersJson].S);
-                TimeSpan? delay = null;
-                if (msg.TryGetValue(DynamoDbOutboxContext.AttrDelay, out var delayAttr) &&
-                    long.TryParse(delayAttr.N, out var delaySecs))
-                    delay = TimeSpan.FromSeconds(delaySecs);
-
-                var sendContext = new SendContext(destination, payload, headers, delay);
+                var sendContext = CreateSendContext(msg);
                 await pipeline.ExecuteAsync(sendContext, cancellationToken: cancellationToken);
             }
             catch (OperationCanceledException)
@@ -294,6 +276,21 @@ internal sealed partial class DynamoDbOutboxProcessor(
                 groupId);
             await ReleaseLockAsync(groupId, nowEpoch);
         }
+    }
+
+    private static SendContext CreateSendContext(Dictionary<string, AttributeValue> msg)
+    {
+        var destination = new Uri(msg[DynamoDbOutboxContext.AttrDestination].S);
+        var payload = msg[DynamoDbOutboxContext.AttrPayload].B.ToArray();
+        var headers = DynamoDbOutboxContext.DeserializeHeaders(
+            msg[DynamoDbOutboxContext.AttrHeadersJson].S);
+        TimeSpan? delay = null;
+        if (msg.TryGetValue(DynamoDbOutboxContext.AttrDelay, out var delayAttr) &&
+            long.TryParse(delayAttr.N, out var delaySecs))
+            delay = TimeSpan.FromSeconds(delaySecs);
+
+        var sendContext = new SendContext(destination, payload, headers, delay);
+        return sendContext;
     }
 
     /// <summary>

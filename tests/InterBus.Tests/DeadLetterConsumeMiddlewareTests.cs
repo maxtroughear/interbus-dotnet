@@ -55,6 +55,7 @@ public class DeadLetterConsumeMiddlewareTests
             Reason = "original failure",
             Error = "some error",
             DeadLetteredAtUtc = DateTimeOffset.UtcNow,
+            Exception = SerializedException.FromException(new InvalidOperationException("original failure")),
         };
         var context = new ConsumeContext<DeadLetter<TestMessage>>(descriptor, deadLetterMessage, new MessageHeaders());
 

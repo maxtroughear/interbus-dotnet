@@ -44,7 +44,7 @@ public static class DynamoDbOutboxBuilderExtensions
             if (options.RunOutboxProcessor)
                 builder.Services.AddHostedService<DynamoDbOutboxProcessor>();
 
-            if (options.CreateTableOnStartup)
+            if (options.CreateTablesOnStartup)
                 builder.Services.AddHostedService<DynamoDbOutboxTableInitializer>();
 
             return builder;

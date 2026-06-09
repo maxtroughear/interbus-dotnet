@@ -35,16 +35,16 @@ internal sealed partial class DynamoDbOutboxInlineDeliveryConsumeMiddleware(
         Func<ConsumeContext<T>, CancellationToken, Task> next,
         CancellationToken cancellationToken = default) where T : class
     {
-        consumeState.IsDeliveryInline = true;
+        consumeState.DeliveryType = DeliveryType.Inline;
 
         // Run the consumer handler. The consumer is expected to call CommitAsync inside
         // Consume, which atomically persists any outbox entries to DynamoDB.
         await next(context, cancellationToken);
 
-        if (consumeState.GroupId is not { } groupId)
-            return;
+        var groupId = consumeState.GroupId?.ToString("N");
 
-        var groupIdStr = groupId.ToString("N");
+        if (groupId is null)
+            return;
 
         // Query all items for this group (header + messages), then exclude the header
         // client-side. DynamoDB does not allow primary key attributes in FilterExpression.
@@ -58,7 +58,7 @@ internal sealed partial class DynamoDbOutboxInlineDeliveryConsumeMiddleware(
             },
             ExpressionAttributeValues = new Dictionary<string, AttributeValue>
             {
-                [":gid"] = new() { S = groupIdStr },
+                [":gid"] = new() { S = groupId },
             },
         }, cancellationToken);
 
@@ -69,7 +69,7 @@ internal sealed partial class DynamoDbOutboxInlineDeliveryConsumeMiddleware(
         if (messages.Count == 0)
             return;
 
-        LogInlineDelivery(groupIdStr, messages.Count);
+        LogInlineDelivery(groupId, messages.Count);
 
         try
         {
@@ -97,7 +97,7 @@ internal sealed partial class DynamoDbOutboxInlineDeliveryConsumeMiddleware(
         catch (Exception ex)
         {
             // Inline delivery failed — leave the group for the background processor.
-            LogInlineDeliveryFailed(groupIdStr, ex);
+            LogInlineDeliveryFailed(groupId, ex);
             return;
         }
 
@@ -111,7 +111,7 @@ internal sealed partial class DynamoDbOutboxInlineDeliveryConsumeMiddleware(
                     TableName = options.TableName,
                     Key = new Dictionary<string, AttributeValue>
                     {
-                        [DynamoDbOutboxContext.AttrGroupId] = new() { S = groupIdStr },
+                        [DynamoDbOutboxContext.AttrGroupId] = new() { S = groupId },
                         [DynamoDbOutboxContext.AttrEntryId] =
                             new() { S = DynamoDbOutboxContext.GroupEntryId },
                     },
@@ -128,7 +128,7 @@ internal sealed partial class DynamoDbOutboxInlineDeliveryConsumeMiddleware(
                     TableName = options.TableName,
                     Key = new Dictionary<string, AttributeValue>
                     {
-                        [DynamoDbOutboxContext.AttrGroupId] = new() { S = groupIdStr },
+                        [DynamoDbOutboxContext.AttrGroupId] = new() { S = groupId },
                         [DynamoDbOutboxContext.AttrEntryId] =
                             new() { S = msg[DynamoDbOutboxContext.AttrEntryId].S },
                     },
@@ -147,7 +147,7 @@ internal sealed partial class DynamoDbOutboxInlineDeliveryConsumeMiddleware(
         {
             // Delete failed — the processor will pick up and re-deliver. Consumers should
             // be idempotent.
-            LogInlineDeleteFailed(groupIdStr, ex);
+            LogInlineDeleteFailed(groupId, ex);
         }
     }
 

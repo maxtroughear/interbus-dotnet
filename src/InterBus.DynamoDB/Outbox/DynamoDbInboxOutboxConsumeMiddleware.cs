@@ -1,6 +1,7 @@
 using Amazon.DynamoDBv2;
 using Amazon.DynamoDBv2.Model;
 using InterBus.Consuming;
+using InterBus.Dispatching;
 using InterBus.Sending;
 using Microsoft.Extensions.Logging;
 
@@ -27,6 +28,8 @@ internal sealed partial class DynamoDbInboxOutboxConsumeMiddleware(
     ILogger<DynamoDbInboxOutboxConsumeMiddleware> logger)
     : IConsumeMiddleware
 {
+    private bool _loop;
+
     public async Task InvokeAsync<T>(ConsumeContext<T> context,
         Func<ConsumeContext<T>, CancellationToken, Task> next,
         CancellationToken cancellationToken = default) where T : class
@@ -45,112 +48,44 @@ internal sealed partial class DynamoDbInboxOutboxConsumeMiddleware(
         var consumerName = context.Descriptor.ConsumerType.FullName ?? context.Descriptor.ConsumerType.Name;
         var inboxKey = BuildInboxKey(consumerName, messageId);
 
-        // Retry loop handles races where another dispatcher inserts the inbox row between
-        // our GetItem and PutItem attempts; it exits once ownership/state is determined.
-        while (true)
+        consumeState.DeliveryType = DeliveryType.Inbox;
+
+        try
         {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            var inboxItem = await GetInboxItemAsync(inboxKey, cancellationToken);
-            if (inboxItem is null)
+            do
             {
-                if (await TryCreatePendingConsumerAsync(inboxKey, cancellationToken))
-                    break;
-                continue;
-            }
+                cancellationToken.ThrowIfCancellationRequested();
 
-            var state = ReadState(inboxItem);
-            switch (state)
-            {
-                case DynamoDbInboxProcessingState.Completed:
-                    return;
-                case DynamoDbInboxProcessingState.PendingOutbox:
-                    await DeliverPendingOutboxAsync(inboxKey, inboxItem, cancellationToken);
-                    return;
-                case DynamoDbInboxProcessingState.PendingConsumer:
-                    break;
-                default:
-                    throw new InvalidOperationException(
-                        $"Invalid inbox state {state} for message {messageId} in consumer {consumerName}");
-            }
+                _loop = false;
 
-            break;
+                var inboxItem = await GetInboxItemAsync(inboxKey, cancellationToken);
+                if (inboxItem is null)
+                {
+                    await TryCreatePendingConsumerAsync(inboxKey, cancellationToken);
+                    _loop = true;
+                    continue;
+                }
+
+                var state = ReadState(inboxItem);
+
+                var inboxTask = state switch
+                {
+                    DynamoDbInboxProcessingState.Completed => Task.CompletedTask,
+                    DynamoDbInboxProcessingState.PendingConsumer =>
+                        RunConsumer(inboxKey, context, next, cancellationToken),
+                    DynamoDbInboxProcessingState.PendingOutbox =>
+                        DeliverPendingOutboxAsync(inboxKey, inboxItem, cancellationToken),
+                    _ => throw new InvalidOperationException(
+                        $"Invalid inbox state {state} for message {messageId} in consumer {consumerName}")
+                };
+
+                await inboxTask;
+            } while (_loop);
         }
-
-        consumeState.IsDeliveryInline = true;
-
-        await next(context, cancellationToken);
-
-        var nowEpoch = DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString();
-        if (!outboxContext.HasPendingOutboxMessages)
+        catch (ConditionalCheckFailedException ex)
         {
-            outboxContext.AddTransactItem(new TransactWriteItem
-            {
-                Update = new Update
-                {
-                    TableName = options.InboxTableName,
-                    Key = inboxKey,
-                    ConditionExpression = "#state = :pendingConsumer",
-                    UpdateExpression = "SET #state = :completed, #consumedAt = :now, #deliveredAt = :now",
-                    ExpressionAttributeNames = new Dictionary<string, string>
-                    {
-                        ["#state"] = DynamoDbInboxTable.State,
-                        ["#consumedAt"] = DynamoDbInboxTable.ConsumedAt,
-                        ["#deliveredAt"] = DynamoDbInboxTable.DeliveredAt,
-                    },
-                    ExpressionAttributeValues = new Dictionary<string, AttributeValue>
-                    {
-                        [":pendingConsumer"] =
-                            new() { N = ((int)DynamoDbInboxProcessingState.PendingConsumer).ToString() },
-                        [":completed"] =
-                            new() { N = ((int)DynamoDbInboxProcessingState.Completed).ToString() },
-                        [":now"] = new() { N = nowEpoch },
-                    },
-                },
-            });
-
-            await outboxContext.CommitAsync(cancellationToken);
-            return;
+            context.Result = DispatchResult.Release(ex);
         }
-
-        var groupId = outboxContext.PendingGroupId?.ToString("N")
-                      ?? throw new InvalidOperationException(
-                          "DynamoDB inbox+outbox expected pending outbox group id but none was available.");
-
-        outboxContext.AddTransactItem(new TransactWriteItem
-        {
-            Update = new Update
-            {
-                TableName = options.InboxTableName,
-                Key = inboxKey,
-                ConditionExpression = "#state = :pendingConsumer",
-                UpdateExpression = "SET #state = :pendingOutbox, #groupId = :groupId, #consumedAt = :now",
-                ExpressionAttributeNames = new Dictionary<string, string>
-                {
-                    ["#state"] = DynamoDbInboxTable.State,
-                    ["#groupId"] = DynamoDbInboxTable.GroupId,
-                    ["#consumedAt"] = DynamoDbInboxTable.ConsumedAt,
-                },
-                ExpressionAttributeValues = new Dictionary<string, AttributeValue>
-                {
-                    [":pendingConsumer"] =
-                        new() { N = ((int)DynamoDbInboxProcessingState.PendingConsumer).ToString() },
-                    [":pendingOutbox"] =
-                        new() { N = ((int)DynamoDbInboxProcessingState.PendingOutbox).ToString() },
-                    [":groupId"] = new() { S = groupId },
-                    [":now"] = new() { N = nowEpoch },
-                },
-            },
-        });
-
-        await outboxContext.CommitAsync(cancellationToken);
-
-        await DeliverPendingOutboxAsync(inboxKey, new Dictionary<string, AttributeValue>
-        {
-            [DynamoDbInboxTable.State] =
-                new() { N = ((int)DynamoDbInboxProcessingState.PendingOutbox).ToString() },
-            [DynamoDbInboxTable.GroupId] = new() { S = groupId },
-        }, cancellationToken);
     }
 
     private async Task<Dictionary<string, AttributeValue>?> GetInboxItemAsync(
@@ -166,7 +101,7 @@ internal sealed partial class DynamoDbInboxOutboxConsumeMiddleware(
         return response.IsItemSet ? response.Item : null;
     }
 
-    private async Task<bool> TryCreatePendingConsumerAsync(
+    private async Task TryCreatePendingConsumerAsync(
         Dictionary<string, AttributeValue> inboxKey,
         CancellationToken cancellationToken)
     {
@@ -178,25 +113,17 @@ internal sealed partial class DynamoDbInboxOutboxConsumeMiddleware(
             [DynamoDbInboxTable.CreatedAt] = new() { N = createdAtEpoch },
         };
 
-        try
+        await dynamoDb.PutItemAsync(new PutItemRequest
         {
-            await dynamoDb.PutItemAsync(new PutItemRequest
+            TableName = options.InboxTableName,
+            Item = item,
+            ConditionExpression = "attribute_not_exists(#consumerName) AND attribute_not_exists(#messageId)",
+            ExpressionAttributeNames = new Dictionary<string, string>
             {
-                TableName = options.InboxTableName,
-                Item = item,
-                ConditionExpression = "attribute_not_exists(#consumerName) AND attribute_not_exists(#messageId)",
-                ExpressionAttributeNames = new Dictionary<string, string>
-                {
-                    ["#consumerName"] = DynamoDbInboxTable.ConsumerName,
-                    ["#messageId"] = DynamoDbInboxTable.MessageId,
-                },
-            }, cancellationToken);
-            return true;
-        }
-        catch (ConditionalCheckFailedException)
-        {
-            return false;
-        }
+                ["#consumerName"] = DynamoDbInboxTable.ConsumerName,
+                ["#messageId"] = DynamoDbInboxTable.MessageId,
+            },
+        }, cancellationToken);
     }
 
     private static DynamoDbInboxProcessingState ReadState(Dictionary<string, AttributeValue> item)
@@ -209,6 +136,32 @@ internal sealed partial class DynamoDbInboxOutboxConsumeMiddleware(
         }
 
         return (DynamoDbInboxProcessingState)stateInt;
+    }
+
+    private async Task RunConsumer<T>(
+        Dictionary<string, AttributeValue> inboxKey,
+        ConsumeContext<T> context,
+        Func<ConsumeContext<T>, CancellationToken, Task> next,
+        CancellationToken cancellationToken)
+    {
+        await next(context, cancellationToken);
+
+        var nowEpoch = DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString();
+
+        var groupId = consumeState.GroupId?.ToString("N");
+
+        if (groupId is null)
+        {
+            MarkInboxCompletedEarly(inboxKey, nowEpoch);
+
+            await outboxContext.CommitAsync(cancellationToken);
+            return;
+        }
+
+        MarkInboxConsumed(inboxKey, groupId, nowEpoch);
+
+        await outboxContext.CommitAsync(cancellationToken);
+        _loop = true;
     }
 
     private async Task DeliverPendingOutboxAsync(
@@ -322,6 +275,63 @@ internal sealed partial class DynamoDbInboxOutboxConsumeMiddleware(
         {
             TransactItems = transactItems,
         }, cancellationToken);
+    }
+
+    private void MarkInboxConsumed(Dictionary<string, AttributeValue> inboxKey, string groupId, string nowEpoch)
+    {
+        outboxContext.AddTransactItem(new TransactWriteItem
+        {
+            Update = new Update
+            {
+                TableName = options.InboxTableName,
+                Key = inboxKey,
+                ConditionExpression = "#state = :pendingConsumer",
+                UpdateExpression = "SET #state = :pendingOutbox, #groupId = :groupId, #consumedAt = :now",
+                ExpressionAttributeNames = new Dictionary<string, string>
+                {
+                    ["#state"] = DynamoDbInboxTable.State,
+                    ["#groupId"] = DynamoDbInboxTable.GroupId,
+                    ["#consumedAt"] = DynamoDbInboxTable.ConsumedAt,
+                },
+                ExpressionAttributeValues = new Dictionary<string, AttributeValue>
+                {
+                    [":pendingConsumer"] =
+                        new() { N = ((int)DynamoDbInboxProcessingState.PendingConsumer).ToString() },
+                    [":pendingOutbox"] =
+                        new() { N = ((int)DynamoDbInboxProcessingState.PendingOutbox).ToString() },
+                    [":groupId"] = new() { S = groupId },
+                    [":now"] = new() { N = nowEpoch },
+                },
+            },
+        });
+    }
+
+    private void MarkInboxCompletedEarly(Dictionary<string, AttributeValue> inboxKey, string nowEpoch)
+    {
+        outboxContext.AddTransactItem(new TransactWriteItem
+        {
+            Update = new Update
+            {
+                TableName = options.InboxTableName,
+                Key = inboxKey,
+                ConditionExpression = "#state = :pendingConsumer",
+                UpdateExpression = "SET #state = :completed, #consumedAt = :now, #deliveredAt = :now",
+                ExpressionAttributeNames = new Dictionary<string, string>
+                {
+                    ["#state"] = DynamoDbInboxTable.State,
+                    ["#consumedAt"] = DynamoDbInboxTable.ConsumedAt,
+                    ["#deliveredAt"] = DynamoDbInboxTable.DeliveredAt,
+                },
+                ExpressionAttributeValues = new Dictionary<string, AttributeValue>
+                {
+                    [":pendingConsumer"] =
+                        new() { N = ((int)DynamoDbInboxProcessingState.PendingConsumer).ToString() },
+                    [":completed"] =
+                        new() { N = ((int)DynamoDbInboxProcessingState.Completed).ToString() },
+                    [":now"] = new() { N = nowEpoch },
+                },
+            },
+        });
     }
 
     private async Task MarkInboxCompletedAsync(

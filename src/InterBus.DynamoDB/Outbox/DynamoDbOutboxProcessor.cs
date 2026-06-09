@@ -60,7 +60,7 @@ internal sealed partial class DynamoDbOutboxProcessor(
     {
         while (!stoppingToken.IsCancellationRequested)
         {
-            bool hadMessages;
+            var hadMessages = false;
             try
             {
                 hadMessages = await ProcessShardAsync(shard, stoppingToken);
@@ -74,19 +74,17 @@ internal sealed partial class DynamoDbOutboxProcessor(
                 logger.LogError(ex,
                     "InterBus DynamoDB outbox: unexpected error during group processing for shard {Shard}",
                     shard);
-                hadMessages = false;
             }
 
-            if (!hadMessages)
+            if (hadMessages) continue;
+
+            try
             {
-                try
-                {
-                    await Task.Delay(options.PollInterval, stoppingToken);
-                }
-                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-                {
-                    break;
-                }
+                await Task.Delay(options.PollInterval, stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                break;
             }
         }
     }

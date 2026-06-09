@@ -94,25 +94,14 @@ public sealed class DynamoDbOutboxOptions
     internal int EffectiveProcessorShardCount => ProcessorShardCount ?? ShardCount;
 
     /// <summary>
-    /// When <c>true</c>, the DynamoDB outbox table (and its GSI when
-    /// <see cref="GsiIndexName"/> is set) are automatically created on application startup
+    /// When <c>true</c>, the DynamoDB inbox and outbox tables
+    /// are automatically created on application startup
     /// if they do not already exist. Defaults to <c>false</c>.
-    /// <para>
-    /// The table is created with partition key <c>GroupId</c> (String) and sort key
-    /// <c>EntryId</c> (String), using on-demand billing mode.
-    /// </para>
     /// <para>
     /// <b>This option is intended for development and testing only.</b> For production
     /// environments, prefer managing DynamoDB tables with an Infrastructure-as-Code tool
     /// such as Terraform, AWS CloudFormation, or AWS CDK.
     /// </para>
     /// </summary>
-    public bool CreateTableOnStartup { get; set; }
-
-    /// <summary>
-    /// When <c>true</c>, the DynamoDB inbox table used by
-    /// <c>UseDynamoDbInboxOutbox()</c> is automatically created on startup if missing.
-    /// Defaults to <c>false</c>.
-    /// </summary>
-    public bool CreateInboxTableOnStartup { get; set; }
+    public bool CreateTablesOnStartup { get; set; }
 }

@@ -85,7 +85,7 @@ public static class DynamoDbOutboxTable
     public static async Task EnsureTableCreatedAsync(
         IAmazonDynamoDB dynamoDb,
         string tableName,
-        string? gsiIndexName = null,
+        string gsiIndexName,
         CancellationToken cancellationToken = default)
     {
         try
@@ -95,7 +95,6 @@ public static class DynamoDbOutboxTable
         }
         catch (ResourceNotFoundException)
         {
-            // Table does not exist — create it below.
         }
 
         var request = new CreateTableRequest

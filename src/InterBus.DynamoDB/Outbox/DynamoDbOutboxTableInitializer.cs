@@ -6,7 +6,7 @@ namespace InterBus.DynamoDB.Outbox;
 
 /// <summary>
 /// Creates the DynamoDB outbox table (and its GSI when configured) on application startup
-/// when <see cref="DynamoDbOutboxOptions.CreateTableOnStartup"/> is <c>true</c>.
+/// when <see cref="DynamoDbOutboxOptions.CreateTablesOnStartup"/> is <c>true</c>.
 /// The operation is idempotent: if the table already exists it is left unchanged.
 /// </summary>
 internal sealed class DynamoDbOutboxTableInitializer(
@@ -21,9 +21,6 @@ internal sealed class DynamoDbOutboxTableInitializer(
         await DynamoDbOutboxTable.EnsureTableCreatedAsync(
             dynamoDb, options.TableName, options.GsiIndexName, cancellationToken);
         logger.LogDebug("DynamoDB outbox table '{TableName}' is ready", options.TableName);
-
-        if (!options.CreateInboxTableOnStartup)
-            return;
 
         logger.LogDebug("Ensuring DynamoDB inbox table '{TableName}' exists", options.InboxTableName);
         await DynamoDbInboxTable.EnsureTableCreatedAsync(

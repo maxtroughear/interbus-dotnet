@@ -38,9 +38,6 @@ internal sealed class DynamoDbOutboxContext(
     private readonly List<TransactWriteItem> _businessItems = [];
     private readonly List<PendingOutboxMessage> _outboxMessages = [];
     private Guid? _groupId;
-    internal bool HasPendingBusinessItems => _businessItems.Count > 0;
-    internal bool HasPendingOutboxMessages => _outboxMessages.Count > 0;
-    internal Guid? PendingGroupId => _groupId;
 
     // -----------------------------------------------------------------------
     // IDynamoDbOutboxContext
@@ -58,20 +55,13 @@ internal sealed class DynamoDbOutboxContext(
 
         if (_outboxMessages.Count > 0)
         {
-            var groupIdGuid = _groupId!.Value;
+            var groupIdGuid = consumeState.GroupId!.Value;
             var groupId = groupIdGuid.ToString("N");
             var now = DateTimeOffset.UtcNow;
             var createdAtEpoch = now.ToUnixTimeSeconds().ToString();
-            var visibleAtEpoch = (consumeState.IsDeliveryInline
-                ? now.Add(options.ConsumerVisibilityTimeout)
-                : now).ToUnixTimeSeconds().ToString();
-
-            // Assign the group to a shard deterministically by hashing the group ID.
-            var shardBytes = groupIdGuid.ToByteArray();
-            var shardIndex = XxHash3.HashToUInt64(shardBytes) % (ulong)options.ShardCount;
 
             // Group header item
-            items.Add(new TransactWriteItem
+            var item = new TransactWriteItem
             {
                 Put = new Put
                 {
@@ -80,12 +70,28 @@ internal sealed class DynamoDbOutboxContext(
                     {
                         [AttrGroupId] = new() { S = groupId },
                         [AttrEntryId] = new() { S = GroupEntryId },
-                        [AttrShard] = new() { N = shardIndex.ToString() },
-                        [AttrVisibleAt] = new() { N = visibleAtEpoch },
-                        [AttrCreatedAt] = new() { N = createdAtEpoch },
+                        [AttrCreatedAt] = new() { N = createdAtEpoch }
                     },
                 },
-            });
+            };
+
+
+            // Assign the group to a shard deterministically by hashing the group ID.
+            // These attributes are part of the GSI that is used for the outbox processor.
+            if (consumeState.DeliveryType is DeliveryType.Inline or DeliveryType.Background)
+            {
+                var shardBytes = groupIdGuid.ToByteArray();
+                var shardIndex = XxHash3.HashToUInt64(shardBytes) % (ulong)options.ShardCount;
+
+                var visibleAtEpoch = (consumeState.DeliveryType is DeliveryType.Inline
+                    ? now.Add(options.ConsumerVisibilityTimeout)
+                    : now).ToUnixTimeSeconds().ToString();
+
+                item.Put.Item[AttrShard] = new AttributeValue { N = shardIndex.ToString() };
+                item.Put.Item[AttrVisibleAt] = new AttributeValue { N = visibleAtEpoch };
+            }
+
+            items.Add(item);
 
             // Message items
             foreach (var msg in _outboxMessages)
@@ -114,8 +120,7 @@ internal sealed class DynamoDbOutboxContext(
                 });
             }
 
-            if (consumeState.IsDeliveryInline)
-                consumeState.GroupId = _groupId.Value;
+            consumeState.GroupId = _groupId.Value;
         }
 
         await dynamoDb.TransactWriteItemsAsync(new TransactWriteItemsRequest
@@ -134,7 +139,7 @@ internal sealed class DynamoDbOutboxContext(
 
     internal void AddOutboxMessage(PendingOutboxMessage message)
     {
-        _groupId ??= Guid.CreateVersion7();
+        consumeState.GroupId ??= Guid.CreateVersion7();
         _outboxMessages.Add(message);
     }
 

@@ -47,6 +47,7 @@ public sealed class DeadLetterConsumeMiddleware(IPublisher publisher) : IConsume
                     Reason = context.Result.DeadLetterReason,
                     Error = context.Result.DeadLetterError,
                     DeadLetteredAtUtc = deadLetteredAtUtc,
+                    Exception = SerializedException.FromException(ex),
                 };
 
                 try

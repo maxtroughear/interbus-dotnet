@@ -35,4 +35,9 @@ public sealed class DeadLetter<T> where T : class
     /// When the message was dead-lettered
     /// </summary>
     public required DateTimeOffset DeadLetteredAtUtc { get; init; }
+
+    /// <summary>
+    /// Structured, serialisable representation of the exception that caused dead-lettering.
+    /// </summary>
+    public required SerializedException Exception { get; init; }
 }

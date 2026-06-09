@@ -1,9 +1,7 @@
-using InterBus;
 using InterBus.Extensions;
 using InterBus.Generated;
 using InterBus.InMemory.Extensions;
 using InterBus.Sagas;
-using InterBus.Stateless;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Stateless;

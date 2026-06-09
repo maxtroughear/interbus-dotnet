@@ -111,8 +111,8 @@ internal class PostgreSqlTransactionalMessagePump : PostgreSqlMessagePumpBase
                         dlCmd.Parameters.Add(new NpgsqlParameter<long> { TypedValue = id });
                         dlCmd.Parameters.Add(new NpgsqlParameter<long> { TypedValue = payloadId });
                         dlCmd.Parameters.Add(new NpgsqlParameter<string> { TypedValue = descriptor.QueueName });
-                        dlCmd.Parameters.Add(new NpgsqlParameter<string> { TypedValue = result.DeadLetterReason! });
-                        dlCmd.Parameters.Add(new NpgsqlParameter<string> { TypedValue = result.DeadLetterError! });
+                        dlCmd.Parameters.Add(new NpgsqlParameter<string> { TypedValue = result.DeadLetterReason });
+                        dlCmd.Parameters.Add(new NpgsqlParameter<string> { TypedValue = result.DeadLetterError });
                         dlCmd.Parameters.Add(new NpgsqlParameter<DateTimeOffset>
                         {
                             TypedValue = result.DeadLetteredAtUtc!.Value,

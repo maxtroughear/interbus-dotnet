@@ -1,5 +1,4 @@
 using InterBus.EntityFrameworkCore.LockProviders;
-using InterBus.EntityFrameworkCore.Sagas;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Testcontainers.PostgreSql;

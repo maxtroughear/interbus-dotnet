@@ -1,4 +1,3 @@
-using System.Security.Principal;
 using InterBus.Dispatching;
 using Microsoft.Extensions.DependencyInjection;
 

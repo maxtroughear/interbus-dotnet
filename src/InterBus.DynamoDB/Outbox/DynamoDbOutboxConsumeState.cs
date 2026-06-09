@@ -1,8 +1,7 @@
 namespace InterBus.DynamoDB.Outbox;
 
 /// <summary>
-/// Scoped state shared between <see cref="DynamoDbOutboxPublishMiddleware"/> and
-/// <see cref="DynamoDbOutboxInlineDeliveryConsumeMiddleware"/> within a single consumer dispatch
+/// Scoped state shared within a single consumer dispatch
 /// scope.
 /// </summary>
 internal sealed class DynamoDbOutboxConsumeState
@@ -19,6 +18,5 @@ internal sealed class DynamoDbOutboxConsumeState
 internal enum DeliveryType
 {
     Background,
-    Inline,
     Inbox
 }

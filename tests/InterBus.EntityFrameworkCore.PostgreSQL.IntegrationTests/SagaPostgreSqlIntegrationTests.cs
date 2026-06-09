@@ -1,6 +1,5 @@
 using InterBus.EntityFrameworkCore.Extensions;
 using InterBus.EntityFrameworkCore.LockProviders;
-using InterBus.EntityFrameworkCore.Sagas;
 using InterBus.Extensions;
 using InterBus.Generated;
 using InterBus.InMemory.Extensions;

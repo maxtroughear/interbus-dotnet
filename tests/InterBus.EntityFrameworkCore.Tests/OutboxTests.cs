@@ -518,7 +518,7 @@ public class OutboxTests
     /// after the execute pipeline completes. No outbox processor involvement is needed.
     /// </summary>
     [Fact]
-    public async Task ConsumerPublish_InlineDelivery_SucceedsWithoutOutboxEntry()
+    public async Task ConsumerPublish_WithInbox_SucceedsWithoutOutboxEntry()
     {
         var shippedTracker = new OrderShippedTracker();
 
@@ -580,7 +580,7 @@ public class OutboxTests
     /// forwarded the message.
     /// </summary>
     [Fact]
-    public async Task ConsumerPublish_InlineDelivery_MessageDeliveredByPump()
+    public async Task ConsumerPublish_WithInbox_MessageDeliveredByPump()
     {
         var shippedTracker = new OrderShippedTracker();
 
@@ -630,7 +630,7 @@ public class OutboxTests
     }
 
     [Fact]
-    public async Task ConsumerPublish_InlineDelivery_RedeliverySkipsConsumerAndClearsOutbox()
+    public async Task ConsumerPublish_WithInbox_RedeliverySkipsConsumerAndClearsOutbox()
     {
         var shippedTracker = new OrderShippedTracker();
         var publishTracker = new OrderPlacedPublishingTracker();

@@ -22,10 +22,6 @@ public static class DynamoDbOutboxConsumerBuilderExtensions
         /// The background <see cref="Outbox.DynamoDbOutboxProcessor"/> will process committed groups.
         /// </para>
         /// <para>
-        /// To also attempt immediate ("inline") delivery after <c>Consume</c> returns, use
-        /// <see cref="UseDynamoDbOutboxWithInlineDelivery(ConsumerBuilder)"/> instead.
-        /// </para>
-        /// <para>
         /// Requires <c>bus.AddDynamoDbOutbox()</c> or <c>bus.UseDynamoDbOutbox()</c> to have
         /// been called on the InterBus builder so that the outbox infrastructure is registered.
         /// </para>
@@ -39,39 +35,6 @@ public static class DynamoDbOutboxConsumerBuilderExtensions
             builder.Services.TryAddScoped<IDynamoDbOutboxContext>(sp => sp.GetRequiredService<DynamoDbOutboxContext>());
 
             builder.UsePublishMiddleware<DynamoDbOutboxPublishMiddleware>();
-
-            return builder;
-        }
-
-        /// <summary>
-        /// Routes messages published by this consumer through the DynamoDB transactional outbox
-        /// and also attempts immediate ("inline") delivery after the consumer's <c>Consume</c>
-        /// handler returns.
-        /// <para>
-        /// After <c>Consume</c> returns (including the
-        /// <see cref="IDynamoDbOutboxContext.CommitAsync"/> call that persists the outbox group),
-        /// <see cref="DynamoDbOutboxInlineDeliveryConsumeMiddleware"/> reads the committed group
-        /// and forwards each message directly to the transport, exactly as the background
-        /// processor would. If delivery succeeds the group is deleted, saving a background
-        /// polling round-trip. If delivery fails the group remains in the outbox so the
-        /// <see cref="Outbox.DynamoDbOutboxProcessor"/> can retry it after
-        /// <see cref="DynamoDbOutboxOptions.ConsumerVisibilityTimeout"/> has elapsed.
-        /// </para>
-        /// <para>
-        /// Requires <c>bus.AddDynamoDbOutbox()</c> or <c>bus.UseDynamoDbOutbox()</c> to have
-        /// been called on the InterBus builder.
-        /// </para>
-        /// </summary>
-        public ConsumerBuilder UseDynamoDbOutboxWithInlineDelivery()
-        {
-            ArgumentNullException.ThrowIfNull(builder);
-
-            builder.Services.TryAddScoped<DynamoDbOutboxConsumeState>();
-            builder.Services.TryAddScoped<DynamoDbOutboxContext>();
-            builder.Services.TryAddScoped<IDynamoDbOutboxContext>(sp => sp.GetRequiredService<DynamoDbOutboxContext>());
-
-            builder.UsePublishMiddleware<DynamoDbOutboxPublishMiddleware>();
-            builder.UseConsumeMiddleware<DynamoDbOutboxInlineDeliveryConsumeMiddleware>();
 
             return builder;
         }

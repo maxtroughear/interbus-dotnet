@@ -29,7 +29,7 @@ public class SerializedExceptionTests
     [Fact]
     public void FromException_WithInnerException_RecursivelyCapturesChain()
     {
-        var inner = new ArgumentNullException("param", "inner message");
+        var inner = new FormatException("inner message");
         var outer = new InvalidOperationException("outer message", inner);
 
         var result = SerializedException.FromException(outer);
@@ -37,7 +37,7 @@ public class SerializedExceptionTests
         Assert.Equal("System.InvalidOperationException", result.ExceptionType);
         Assert.Equal("outer message", result.Message);
         Assert.NotNull(result.InnerException);
-        Assert.Equal("System.ArgumentNullException", result.InnerException.ExceptionType);
+        Assert.Equal("System.FormatException", result.InnerException.ExceptionType);
         Assert.Contains("inner message", result.InnerException.Message);
         Assert.Null(result.InnerException.InnerException);
     }

@@ -17,9 +17,8 @@ public sealed class InterBusOptions
     public IReadOnlyList<ConsumerDescriptor> Consumers => _consumers;
 
     /// <summary>
-    /// The set of message types declared as FIFO. Populated by
-    /// <c>builder.Configure&lt;T&gt;(c =&gt; c.Fifo(...))</c> and automatically when a
-    /// FIFO consumer (<c>WithFifo()</c>) is registered.
+    /// The set of message types declared as FIFO via
+    /// <c>builder.Configure&lt;T&gt;(c =&gt; c.Fifo(...))</c>.
     /// Transport implementations use this to create FIFO-capable infrastructure (e.g.
     /// SQS/SNS FIFO queues and topics).
     /// </summary>

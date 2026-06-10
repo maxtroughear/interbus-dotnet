@@ -53,7 +53,7 @@ public class TopicConfigurationTests
     }
 
     [Fact]
-    public async Task ConfigureTopic_CustomTopicName_ConsumerReceivesPublishedMessage()
+    public async Task Configure_CustomTopicName_ConsumerReceivesPublishedMessage()
     {
         // Arrange: configure a custom topic name before registering the consumer.
         var tracker = new OrderPlacedTracker();
@@ -63,7 +63,7 @@ public class TopicConfigurationTests
             bus =>
             {
                 bus.AddInMemoryTransport();
-                bus.ConfigureTopic<OrderPlaced>("custom.orders.topic");
+                bus.Configure<OrderPlaced>(c => c.TopicName("custom.orders.topic"));
                 bus.AddConsumer<OrderPlacedConsumer>();
             });
 
@@ -88,7 +88,7 @@ public class TopicConfigurationTests
     }
 
     [Fact]
-    public async Task ConfigureTopic_CustomTopicName_MultipleConsumersAllReceiveMessage()
+    public async Task Configure_CustomTopicName_MultipleConsumersAllReceiveMessage()
     {
         var orderTracker = new OrderPlacedTracker();
         var auditTracker = new AuditTracker();
@@ -102,7 +102,7 @@ public class TopicConfigurationTests
             bus =>
             {
                 bus.AddInMemoryTransport();
-                bus.ConfigureTopic<OrderPlaced>("orders");
+                bus.Configure<OrderPlaced>(c => c.TopicName("orders"));
                 bus.AddConsumer<OrderPlacedConsumer>();
                 bus.AddConsumer<AuditConsumer>();
             });
@@ -140,7 +140,7 @@ public class TopicConfigurationTests
             bus =>
             {
                 bus.AddInMemoryTransport();
-                bus.ConfigureTopic<OrderPlaced>("orders");
+                bus.Configure<OrderPlaced>(c => c.TopicName("orders"));
                 bus.AddConsumer<OrderPlacedConsumer>();
                 bus.AddConsumer<AuditConsumer>();
             });

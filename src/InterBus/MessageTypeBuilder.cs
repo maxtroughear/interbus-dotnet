@@ -59,7 +59,6 @@ public sealed class MessageTypeBuilder<T>(
     /// </summary>
     public MessageTypeBuilder<T> GroupBy(Func<T, string> selector)
     {
-        ArgumentNullException.ThrowIfNull(selector);
         registry.Register(selector);
         return this;
     }

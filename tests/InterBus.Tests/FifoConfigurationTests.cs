@@ -95,10 +95,10 @@ public sealed class FifoConfigurationTests
         Assert.False(options.IsFifoMessageType(typeof(FifoTestOrderPlaced)));
     }
 
-    // ── WithFifo() on consumer auto-registers message types ────────────────
+    // ── WithFifo() does not implicitly mark message types as FIFO ──────────
 
     [Fact]
-    public void WithFifo_AutoRegistersConsumerMessageTypesAsFifo()
+    public void WithFifo_ConsumerMessageTypesRemainNonFifoWithoutConfigureFifo()
     {
         var services = new ServiceCollection();
         services.AddInterBus(bus =>
@@ -111,7 +111,7 @@ public sealed class FifoConfigurationTests
         var sp = services.BuildServiceProvider();
         var options = sp.GetRequiredService<InterBusOptions>();
 
-        Assert.True(options.IsFifoMessageType(typeof(FifoTestOrderPlaced)));
+        Assert.False(options.IsFifoMessageType(typeof(FifoTestOrderPlaced)));
     }
 
     [Fact]

@@ -24,8 +24,8 @@ const FeatureList: FeatureItem[] = [
     description: (
       <>
         Compose retry, dead-letter, outbox, and custom middleware around every
-        consumer. Middleware is resolved from the per-message DI scope, keeping
-        each handler fully isolated.
+        consumer. Mix and match built-in behaviours or plug in your own — each
+        consumer's pipeline is fully independent.
       </>
     ),
   },

@@ -1,3 +1,7 @@
+---
+sidebar_position: 2
+---
+
 # InterBus Architecture
 
 InterBus is a .NET message bus library built around the **Enterprise Integration Patterns (EIP)**.

@@ -55,10 +55,14 @@ internal sealed class OutboxPublishMiddleware<TDbContext>(
         if (_outboxGroup is not null)
             return _outboxGroup;
 
-        // Distribute groups evenly across shards; with ShardCount=1 everything goes to shard 0.
-        var shard = options.ShardCount > 1 ? Random.Shared.Next(options.ShardCount) : 0;
+        // Deterministically assign the shard by hashing the group ID so that for a given ID the
+        // shard is always the same, and UUIDv7's random bits give an even spread across shards.
+        var groupId = Guid.CreateVersion7();
+        var shard = options.ShardCount > 1
+            ? (int)((uint)groupId.GetHashCode() % (uint)options.ShardCount)
+            : 0;
 
-        _outboxGroup = new OutboxGroup { Id = Guid.CreateVersion7(), Shard = shard };
+        _outboxGroup = new OutboxGroup { Id = groupId, Shard = shard };
         dbContext.Add(_outboxGroup);
 
         return _outboxGroup;

@@ -16,9 +16,15 @@ namespace InterBus.EntityFrameworkCore.Outbox;
 public sealed class PostgreSqlOutboxLockProvider<TDbContext> : IOutboxLockProvider<TDbContext>
     where TDbContext : DbContext
 {
+    // Tracks where round-robin shard selection should start. Updated after each successful claim
+    // so successive iterations prefer the next shard, distributing work across processors.
+    private volatile int _nextShard;
+    private int _shardCount = 1;
+
     /// <inheritdoc/>
     public async Task EnsureShardLocksAsync(TDbContext context, int shardCount, CancellationToken cancellationToken)
     {
+        _shardCount = Math.Max(1, shardCount);
         var (locksFqn, shardCol) = GetTableInfo(context.Set<OutboxLock>().EntityType, nameof(OutboxLock.Shard));
 
         for (var i = 0; i < shardCount; i++)
@@ -37,13 +43,15 @@ public sealed class PostgreSqlOutboxLockProvider<TDbContext> : IOutboxLockProvid
         var (locksFqn, locksShardCol) = GetTableInfo(context.Set<OutboxLock>().EntityType, nameof(OutboxLock.Shard));
         var (groupsFqn, groupsShardCol) = GetTableInfo(context.Set<OutboxGroup>().EntityType, nameof(OutboxGroup.Shard));
 
-        // Claim the lowest-numbered available shard that has pending groups.
-        // FOR UPDATE SKIP LOCKED ensures concurrent processors claim different shards.
+        // Round-robin: prefer shards >= _nextShard so we rotate evenly instead of always
+        // grabbing the lowest numbered shard. FOR UPDATE SKIP LOCKED ensures concurrent
+        // processors claim different shards.
+        var startShard = _nextShard;
         var lockSql = $"""
                        SELECT l.*
                        FROM {locksFqn} l
                        WHERE EXISTS (SELECT 1 FROM {groupsFqn} g WHERE g.{groupsShardCol} = l.{locksShardCol})
-                       ORDER BY l.{locksShardCol}
+                       ORDER BY CASE WHEN l.{locksShardCol} >= {startShard} THEN 0 ELSE 1 END, l.{locksShardCol}
                        LIMIT 1
                        FOR UPDATE SKIP LOCKED
                        """;
@@ -54,6 +62,9 @@ public sealed class PostgreSqlOutboxLockProvider<TDbContext> : IOutboxLockProvid
 
         if (claimedLock is null)
             return null;
+
+        // Advance past the claimed shard for the next call; mod wraps back to 0 after the last shard.
+        _nextShard = (claimedLock.Shard + 1) % _shardCount;
 
         // Fetch the oldest group in the claimed shard (FIFO within the shard).
         var group = await context.Set<OutboxGroup>()

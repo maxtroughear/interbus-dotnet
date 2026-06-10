@@ -1,3 +1,7 @@
+---
+sidebar_position: 1
+---
+
 # Getting Started with InterBus
 
 ## Installation
@@ -94,5 +98,5 @@ await publisher.SendAsync<AuditConsumer, OrderPlaced>(new OrderPlaced(...));
 
 ## Next steps
 
-- For a deeper architectural overview, see `docs/architecture.md`
-- For runnable examples, see the projects under `samples/`
+- For a deeper architectural overview, see [Architecture](./architecture)
+- For runnable examples, see the projects under [`samples/`](https://github.com/maxtroughear/interbus-dotnet/tree/main/samples)

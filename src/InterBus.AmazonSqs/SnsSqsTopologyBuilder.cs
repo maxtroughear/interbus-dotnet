@@ -229,10 +229,9 @@ public sealed partial class SnsSqsTopologyBuilder(
                 attributes[attribute.Key] = attribute.Value;
         }
 
-        if (transportOptions.EnableSqsEncryption && !isFifo)
+        if (transportOptions.EnableSqsEncryption)
         {
-            // SSE-SQS is not compatible with FIFO + content-based dedup on some configurations;
-            // let the caller opt-in via additionalAttributes or use KMS when needed.
+            // Default to SSE-SQS when encryption is enabled.
             attributes["SqsManagedSseEnabled"] = "true";
         }
 
@@ -263,7 +262,7 @@ public sealed partial class SnsSqsTopologyBuilder(
             topicAttributes["FifoTopic"] = "true";
             topicAttributes["ContentBasedDeduplication"] = "true";
         }
-        else if (transportOptions.EnableSnsEncryption)
+        if (transportOptions.EnableSnsEncryption)
         {
             topicAttributes["KmsMasterKeyId"] = "alias/aws/sns";
         }

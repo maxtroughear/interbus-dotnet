@@ -41,14 +41,7 @@ public sealed class SqsTransport(
         TransportSendContext context,
         CancellationToken ct)
     {
-        // Queue must be pre-declared by the consumer's topology builder at startup.
-        // URL lookup fails with a clear error if the queue is not configured.
-        var queueName = topology.BuildSqsQueueName(rawQueueName);
-
-        if (!topology.QueueUrls.TryGetValue(queueName, out var queueUrl))
-            throw new InvalidOperationException(
-                $"Queue '{rawQueueName}' has not been declared. Ensure the consumer for this queue " +
-                "is registered so that its queue is created during startup topology setup.");
+        var queueUrl = await ResolveQueueUrlAsync(rawQueueName, ct);
 
         // Serialise the full payload + headers into the envelope body so that any
         // serialisation format (JSON, MessagePack, gzip, etc.) round-trips without
@@ -76,6 +69,35 @@ public sealed class SqsTransport(
                 MessageGroupId = messageGroupId,
             },
             ct);
+    }
+
+    private async Task<string> ResolveQueueUrlAsync(string rawQueueName, CancellationToken ct)
+    {
+        // If this is a direct send to an exact queue name, reuse the resolved URL cache.
+        if (topology.QueueUrls.TryGetValue(rawQueueName, out var cachedLiteralQueueUrl))
+            return cachedLiteralQueueUrl;
+
+        // For InterBus-declared queues, the destination is convention-based and must be normalized.
+        var declaredQueueName = topology.BuildSqsQueueName(rawQueueName);
+        if (topology.QueueUrls.TryGetValue(declaredQueueName, out var declaredQueueUrl))
+            return declaredQueueUrl;
+
+        // Otherwise treat the provided name as an exact SQS queue name (including optional .fifo).
+        // Do not create queues here (see #165); resolve URL only.
+        try
+        {
+            var literal = await sqsClient.GetQueueUrlAsync(
+                new GetQueueUrlRequest { QueueName = rawQueueName },
+                ct);
+            topology.QueueUrls.TryAdd(rawQueueName, literal.QueueUrl);
+            return literal.QueueUrl;
+        }
+        catch (QueueDoesNotExistException)
+        {
+            throw new InvalidOperationException(
+                $"Queue '{rawQueueName}' was not found in SQS. InterBus does not create queues on send; " +
+                "declare/provision the queue first and pass its exact SQS queue name.");
+        }
     }
 
     private static Dictionary<string, MessageAttributeValue> BuildSqsMessageAttributes(

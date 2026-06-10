@@ -1,5 +1,6 @@
 using Amazon.SimpleNotificationService;
 using Amazon.SQS;
+using Amazon.SQS.Model;
 using InterBus.AmazonSqs.Extensions;
 using InterBus.Extensions;
 using InterBus.Generated;
@@ -173,6 +174,60 @@ public class FifoTests
             Assert.That(tracker.Messages, Has.Count.EqualTo(1));
             Assert.That(tracker.Messages.Single().OrderId, Is.EqualTo(msg.OrderId));
         }
+    }
+
+    [Test]
+    public async Task Send_ExternalFifoQueue_UsesGroupByMessageGroupId()
+    {
+        await SetupProvider(bus =>
+        {
+            bus.Configure<FifoOrderDirect>(c => c.Fifo(o => o.CustomerId));
+        });
+
+        var sqsClient = _provider.GetRequiredService<IAmazonSQS>();
+        var externalQueueName = $"{_queuePrefix}external-target.fifo";
+        var createResponse = await sqsClient.CreateQueueAsync(
+            new CreateQueueRequest
+            {
+                QueueName = externalQueueName,
+                Attributes = new Dictionary<string, string>
+                {
+                    ["FifoQueue"] = "true",
+                    ["ContentBasedDeduplication"] = "true",
+                }
+            },
+            TestContext.CurrentContext.CancellationToken);
+
+        using var scope = _provider.CreateScope();
+        var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
+        var msg = new FifoOrderDirect(Guid.NewGuid(), "cust-external-42");
+        await publisher.SendAsync(externalQueueName, msg, TestContext.CurrentContext.CancellationToken);
+
+        ReceiveMessageResponse? receive = null;
+        var deadline = DateTime.UtcNow.AddSeconds(15);
+        while (DateTime.UtcNow < deadline)
+        {
+            receive = await sqsClient.ReceiveMessageAsync(
+                new ReceiveMessageRequest
+                {
+                    QueueUrl = createResponse.QueueUrl,
+                    MaxNumberOfMessages = 1,
+                    WaitTimeSeconds = 1,
+                    MessageSystemAttributeNames = ["All"]
+                },
+                TestContext.CurrentContext.CancellationToken);
+
+            if (receive.Messages.Count > 0)
+                break;
+        }
+
+        Assert.That(receive, Is.Not.Null);
+        Assert.That(receive!.Messages, Has.Count.EqualTo(1));
+        Assert.That(
+            receive.Messages[0].Attributes.TryGetValue("MessageGroupId", out var messageGroupId)
+                ? messageGroupId
+                : null,
+            Is.EqualTo("cust-external-42"));
     }
 
     [Test]

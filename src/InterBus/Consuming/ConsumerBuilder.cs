@@ -43,6 +43,13 @@ public class ConsumerBuilder<TConsumer>(ConsumerDescriptor descriptor, IServiceC
         Descriptor.Dispatch = dispatch;
         return this;
     }
+
+    /// <inheritdoc cref="ConsumerBuilder.WithFifo"/>
+    public new ConsumerBuilder<TConsumer> WithFifo()
+    {
+        base.WithFifo();
+        return this;
+    }
 }
 
 /// <summary>
@@ -152,6 +159,21 @@ public class ConsumerBuilder(ConsumerDescriptor descriptor, IServiceCollection s
         services.TryAddScoped<InMemoryOutboxConsumeState>();
         UseConsumeMiddleware<InMemoryOutboxConsumeMiddleware>();
         UseSendMiddleware<InMemoryOutboxSendMiddleware>();
+        return this;
+    }
+
+    /// <summary>
+    /// Marks this consumer's queue as a FIFO queue. Transport implementations will provision
+    /// FIFO-capable infrastructure for the queue and all message types handled by this consumer.
+    /// <para>
+    /// For the matching SNS topics to also be FIFO, each service (publisher and subscriber)
+    /// must independently declare the message type as FIFO via
+    /// <c>builder.Configure&lt;TMessage&gt;(c =&gt; c.Fifo(...))</c>.
+    /// </para>
+    /// </summary>
+    public ConsumerBuilder WithFifo()
+    {
+        descriptor.IsFifo = true;
         return this;
     }
 }

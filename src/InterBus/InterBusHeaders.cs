@@ -97,4 +97,18 @@ public static class InterBusHeaders
     /// </summary>
     /// <seealso href="https://www.w3.org/TR/trace-context/#tracestate-header"/>
     public const string Tracestate = "tracestate";
+
+    /// <summary>
+    /// Header key for the message group identifier. Used by FIFO-capable transports (e.g. Amazon SQS/SNS FIFO)
+    /// to group related messages and guarantee ordering within a group.
+    /// <para>
+    /// Set automatically by <see cref="IPublisher"/> on every published and sent message.
+    /// When a GroupBy selector is registered for the message type (via
+    /// <c>builder.Configure&lt;T&gt;(c =&gt; c.Fifo(...))</c> or
+    /// <c>builder.Configure&lt;T&gt;(c =&gt; c.GroupBy(...))</c>), that selector is evaluated
+    /// against the message to produce the group ID. Otherwise the <see cref="CorrelationId"/>
+    /// header value is used as the default.
+    /// </para>
+    /// </summary>
+    public const string MessageGroupId = "interbus-message-group-id";
 }

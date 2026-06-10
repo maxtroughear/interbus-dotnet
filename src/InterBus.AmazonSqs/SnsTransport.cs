@@ -61,12 +61,15 @@ public sealed class SnsTransport(
         var body = envelope.SerializeForSnsPublish(context.Payload, context.Headers);
         var messageAttributes = envelope.BuildSnsMessageAttributes(context.Headers);
 
+        context.Headers.TryGetValue(InterBusHeaders.MessageGroupId, out var messageGroupId);
+
         await snsClient.PublishAsync(
             new PublishRequest
             {
                 TopicArn = topicArn,
                 Message = body,
                 MessageAttributes = messageAttributes,
+                MessageGroupId = messageGroupId,
             },
             ct);
     }

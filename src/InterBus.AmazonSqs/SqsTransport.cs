@@ -64,6 +64,8 @@ public sealed class SqsTransport(
             ? (int)Math.Clamp(context.Delay.Value.TotalSeconds, 0, 900)
             : 0;
 
+        context.Headers.TryGetValue(InterBusHeaders.MessageGroupId, out var messageGroupId);
+
         await sqsClient.SendMessageAsync(
             new SendMessageRequest
             {
@@ -71,6 +73,7 @@ public sealed class SqsTransport(
                 MessageBody = body,
                 MessageAttributes = messageAttributes,
                 DelaySeconds = delaySeconds,
+                MessageGroupId = messageGroupId,
             },
             ct);
     }

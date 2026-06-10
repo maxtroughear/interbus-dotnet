@@ -207,10 +207,21 @@ public sealed partial class SnsSqsTopologyBuilder(
         CancellationToken cancellationToken,
         IDictionary<string, string>? additionalAttributes = null)
     {
+        var isFifo = queueName.EndsWith(".fifo", StringComparison.Ordinal);
+
         var attributes = new Dictionary<string, string>
         {
             ["MessageRetentionPeriod"] = "1209600" // 14 days
         };
+
+        if (isFifo)
+        {
+            // High-throughput FIFO: each message group ID gets its own throughput quota.
+            attributes["FifoQueue"] = "true";
+            attributes["ContentBasedDeduplication"] = "true";
+            attributes["DeduplicationScope"] = "messageGroup";
+            attributes["FifoThroughputLimit"] = "perMessageGroupId";
+        }
 
         if (additionalAttributes is not null)
         {
@@ -218,8 +229,10 @@ public sealed partial class SnsSqsTopologyBuilder(
                 attributes[attribute.Key] = attribute.Value;
         }
 
-        if (transportOptions.EnableSqsEncryption)
+        if (transportOptions.EnableSqsEncryption && !isFifo)
         {
+            // SSE-SQS is not compatible with FIFO + content-based dedup on some configurations;
+            // let the caller opt-in via additionalAttributes or use KMS when needed.
             attributes["SqsManagedSseEnabled"] = "true";
         }
 
@@ -242,9 +255,15 @@ public sealed partial class SnsSqsTopologyBuilder(
 
     private async Task<string> CreateTopicAsync(string topicName, CancellationToken cancellationToken)
     {
+        var isFifo = topicName.EndsWith(".fifo", StringComparison.Ordinal);
         var topicAttributes = new Dictionary<string, string>();
 
-        if (transportOptions.EnableSnsEncryption)
+        if (isFifo)
+        {
+            topicAttributes["FifoTopic"] = "true";
+            topicAttributes["ContentBasedDeduplication"] = "true";
+        }
+        else if (transportOptions.EnableSnsEncryption)
         {
             topicAttributes["KmsMasterKeyId"] = "alias/aws/sns";
         }

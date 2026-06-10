@@ -72,7 +72,7 @@ public sealed class EventBridgeSchedulerTests
         _serviceProvider = services.BuildServiceProvider();
 
         var transportOptions = new SnsSqsTransportOptions { QueuePrefix = _queuePrefix, TopicPrefix = _topicPrefix };
-        _topology = new SnsSqsTopology(transportOptions);
+        _topology = new SnsSqsTopology(transportOptions, new InterBus.InterBusOptions());
         var logger = _serviceProvider.GetRequiredService<ILogger<SnsSqsTopologyBuilder>>();
         _topologyBuilder = new SnsSqsTopologyBuilder(
             SnsClient, SqsClient,

@@ -18,6 +18,10 @@ public sealed class AuditTracker : MessageTracker<OrderPlaced>;
 
 public abstract class OrderShippedTracker : MessageTracker<OrderShipped>;
 
+public sealed class FifoOrderPlacedTracker : MessageTracker<FifoOrderPlaced>;
+
+public sealed class FifoOrderDirectTracker : MessageTracker<FifoOrderDirect>;
+
 public sealed class OrderPlacedConsumer(OrderPlacedTracker tracker) : IConsumer<OrderPlaced>
 {
     public Task Consume(OrderPlaced message, IConsumeContext context, CancellationToken cancellationToken = default)
@@ -39,6 +43,24 @@ public sealed class AuditConsumer(AuditTracker tracker) : IConsumer<OrderPlaced>
 public sealed class OrderShippedConsumer(OrderShippedTracker tracker) : IConsumer<OrderShipped>
 {
     public Task Consume(OrderShipped message, IConsumeContext context, CancellationToken cancellationToken = default)
+    {
+        tracker.Track(message);
+        return Task.CompletedTask;
+    }
+}
+
+public sealed class FifoOrderPlacedConsumer(FifoOrderPlacedTracker tracker) : IConsumer<FifoOrderPlaced>
+{
+    public Task Consume(FifoOrderPlaced message, IConsumeContext context, CancellationToken cancellationToken = default)
+    {
+        tracker.Track(message);
+        return Task.CompletedTask;
+    }
+}
+
+public sealed class FifoOrderDirectConsumer(FifoOrderDirectTracker tracker) : IConsumer<FifoOrderDirect>
+{
+    public Task Consume(FifoOrderDirect message, IConsumeContext context, CancellationToken cancellationToken = default)
     {
         tracker.Track(message);
         return Task.CompletedTask;

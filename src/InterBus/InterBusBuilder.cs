@@ -25,18 +25,42 @@ public sealed class InterBusBuilder
 
     public InterBusOptions Options { get; }
 
-    internal InterBusBuilder(IServiceCollection services, InterBusOptions options)
+    private readonly MessageGroupIdRegistry _registry;
+
+    internal InterBusBuilder(IServiceCollection services, InterBusOptions options, MessageGroupIdRegistry registry)
     {
         Services = services;
         Options = options;
+        _registry = registry;
     }
 
     /// <summary>
-    /// Configure an explicit topic name for message type <typeparamref name="T"/>. The name is used
-    /// by both consumer registration and <c>IMessagePublisher.PublishAsync&lt;T&gt;</c>, overriding the
-    /// convention-based name derived from the type's fully-qualified name.
-    /// Call this before <c>AddConsumer&lt;TConsumer&gt;</c> for the same message type.
+    /// Configure message-type-level options for <typeparamref name="T"/>: topic name override,
+    /// FIFO infrastructure, and GroupBy selector. Replaces the separate
+    /// <see cref="ConfigureTopic{T}"/> and the proposed <c>ConfigureFifo&lt;T&gt;</c> methods.
+    /// <para>
+    /// Both publisher-only and subscriber-only services should call this for shared FIFO message
+    /// types so they agree on the underlying topic/queue names.
+    /// </para>
+    /// <example>
+    /// <code>
+    /// builder.Configure&lt;OrderPlaced&gt;(c => c
+    ///     .TopicName("orders")
+    ///     .Fifo(order => order.CustomerId));
+    /// </code>
+    /// </example>
     /// </summary>
+    public InterBusBuilder Configure<T>(Action<MessageTypeBuilder<T>> configure) where T : class
+    {
+        ArgumentNullException.ThrowIfNull(configure);
+        configure(new MessageTypeBuilder<T>(Options, _registry));
+        return this;
+    }
+
+    /// <summary>
+    /// Configure an explicit topic name for message type <typeparamref name="T"/>.
+    /// </summary>
+    [Obsolete("Use Configure<T>(c => c.TopicName(...)) instead.")]
     public InterBusBuilder ConfigureTopic<T>(string topicName) where T : class
     {
         Options.SetTopicName(typeof(T), topicName);
@@ -75,6 +99,15 @@ public sealed class InterBusBuilder
         configure?.Invoke(consumerBuilder);
 
         descriptor.BuildDispatchFromRoutesIfMissing();
+
+        // If the consumer is FIFO, automatically register all handled message types as FIFO
+        // so that topic infrastructure is provisioned consistently even for publisher-only services
+        // that call Configure<T>(c => c.Fifo()) independently.
+        if (descriptor.IsFifo)
+        {
+            foreach (var messageType in descriptor.MessageTypes)
+                Options.AddFifoMessageType(messageType);
+        }
 
         Options.AddConsumer(descriptor);
         Services.TryAddScoped<TConsumer>();
@@ -138,6 +171,12 @@ public sealed class InterBusBuilder
         configure?.Invoke(sagaBuilder);
 
         descriptor.BuildDispatchFromRoutesIfMissing();
+
+        if (descriptor.IsFifo)
+        {
+            foreach (var messageType in descriptor.MessageTypes)
+                Options.AddFifoMessageType(messageType);
+        }
 
         Services.AddSingleton(sagaOptions);
         Options.AddConsumer(descriptor);

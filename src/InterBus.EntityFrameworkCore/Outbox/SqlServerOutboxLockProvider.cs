@@ -18,7 +18,8 @@ public sealed class SqlServerOutboxLockProvider<TDbContext> : IOutboxLockProvide
 {
     // Tracks where round-robin shard selection should start. Updated after each successful claim
     // so successive iterations prefer the next shard, distributing work across processors.
-    private volatile int _nextShard;
+    // Written via Interlocked.Exchange; plain int reads are atomic on all supported architectures.
+    private int _nextShard;
     private int _shardCount = 1;
 
     /// <inheritdoc/>
@@ -67,7 +68,7 @@ public sealed class SqlServerOutboxLockProvider<TDbContext> : IOutboxLockProvide
             return null;
 
         // Advance past the claimed shard for the next call; mod wraps back to 0 after the last shard.
-        _nextShard = (claimedLock.Shard + 1) % _shardCount;
+        Interlocked.Exchange(ref _nextShard, (claimedLock.Shard + 1) % _shardCount);
 
         // Fetch the oldest group in the claimed shard (FIFO within the shard).
         var group = await context.Set<OutboxGroup>()

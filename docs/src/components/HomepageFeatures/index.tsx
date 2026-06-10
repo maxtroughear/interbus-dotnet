@@ -24,7 +24,8 @@ const FeatureList: FeatureItem[] = [
     description: (
       <>
         Compose retry, dead-letter, outbox, and custom middleware around every
-        consumer. The pipeline is built at startup for zero-overhead dispatch.
+        consumer. Middleware is resolved from the per-message DI scope, keeping
+        each handler fully isolated.
       </>
     ),
   },

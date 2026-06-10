@@ -44,7 +44,8 @@ public static class ServiceCollectionExtensions
         Action<InterBusBuilder> configure)
     {
         var options = new InterBusOptions();
-        var builder = new InterBusBuilder(services, options);
+        var registry = new MessageGroupIdRegistry();
+        var builder = new InterBusBuilder(services, options, registry);
 
         services.AddHostedService<InterBusTopologyHostedService>();
 
@@ -61,6 +62,7 @@ public static class ServiceCollectionExtensions
 
         // Register options so transports can resolve them.
         services.AddSingleton(options);
+        services.AddSingleton(registry);
 
         // Register the default serialiser if the user has not supplied one via UseSerializer<T>()
         // or a direct services.AddSingleton<IMessageSerializer>(...) call inside configure

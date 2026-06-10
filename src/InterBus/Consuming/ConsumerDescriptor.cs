@@ -60,6 +60,13 @@ public sealed class ConsumerDescriptor(Type consumerType, Uri queue)
     /// </summary>
     public TimeSpan? Timeout { get; internal set; }
 
+    /// <summary>
+    /// When <c>true</c>, this consumer's queue should be provisioned as a FIFO queue and all
+    /// message types it handles should be published to FIFO topics.
+    /// Set via <c>consumerBuilder.WithFifo()</c>.
+    /// </summary>
+    public bool IsFifo { get; internal set; }
+
     internal void SetRoute(
         string messageType,
         Func<DispatchContext, ConsumePipelineExecutor, CancellationToken, Task> route)

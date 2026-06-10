@@ -25,21 +25,32 @@ public sealed class InterBusBuilder
 
     public InterBusOptions Options { get; }
 
-    internal InterBusBuilder(IServiceCollection services, InterBusOptions options)
+    private readonly MessageGroupIdRegistry _registry;
+
+    internal InterBusBuilder(IServiceCollection services, InterBusOptions options, MessageGroupIdRegistry registry)
     {
         Services = services;
         Options = options;
+        _registry = registry;
     }
 
     /// <summary>
-    /// Configure an explicit topic name for message type <typeparamref name="T"/>. The name is used
-    /// by both consumer registration and <c>IMessagePublisher.PublishAsync&lt;T&gt;</c>, overriding the
-    /// convention-based name derived from the type's fully-qualified name.
-    /// Call this before <c>AddConsumer&lt;TConsumer&gt;</c> for the same message type.
+    /// Configure message-type-level options for <typeparamref name="T"/>.
+    /// <para>
+    /// Both publisher-only and subscriber-only services should call this for shared FIFO message
+    /// types so they agree on the underlying topic/queue names.
+    /// </para>
+    /// <example>
+    /// <code>
+    /// builder.Configure&lt;OrderPlaced&gt;(c => c
+    ///     .TopicName("orders")
+    ///     .Fifo(order => order.CustomerId));
+    /// </code>
+    /// </example>
     /// </summary>
-    public InterBusBuilder ConfigureTopic<T>(string topicName) where T : class
+    public InterBusBuilder Configure<T>(Action<MessageTypeBuilder<T>> configure) where T : class
     {
-        Options.SetTopicName(typeof(T), topicName);
+        configure(new MessageTypeBuilder<T>(Options, _registry));
         return this;
     }
 

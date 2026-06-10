@@ -8,6 +8,7 @@ namespace InterBus.Publishing;
 /// </summary>
 internal class Publisher(
     InterBusOptions options,
+    MessageGroupIdRegistry groupIdRegistry,
     ConsumeContextAccessor contextAccessor,
     PublishPipelineExecutor pipelineExecutor) : IPublisher
 {
@@ -22,7 +23,7 @@ internal class Publisher(
             ? customName
             : RoutingConventions.TopicName(typeof(T));
         var destination = RoutingConventions.TopicUri(options.TopicUriScheme, topicName);
-        var context = new PublishContext<T>(destination, message, Stamp<T>());
+        var context = new PublishContext<T>(destination, message, Stamp(message));
         configure(context);
 
         return pipelineExecutor.ExecuteAsync(context, cancellationToken);
@@ -39,7 +40,7 @@ internal class Publisher(
         where T : class
     {
         var destination = RoutingConventions.QueueUri(options.QueueUriScheme, typeof(TConsumer));
-        var context = new PublishContext<T>(destination, message, Stamp<T>());
+        var context = new PublishContext<T>(destination, message, Stamp(message));
         configure(context);
 
         return pipelineExecutor.ExecuteAsync(context, cancellationToken);
@@ -62,19 +63,18 @@ internal class Publisher(
         CancellationToken cancellationToken = default)
         where T : class
     {
-        var context = new PublishContext<T>(queue, message, Stamp<T>());
+        var context = new PublishContext<T>(queue, message, Stamp(message));
         configure(context);
 
         return pipelineExecutor.ExecuteAsync(context, cancellationToken);
     }
 
     /// <summary>
-    /// Returns a new <see cref="MessageHeaders"/> with <see cref="InterBusHeaders.MessageType"/>
-    /// stamped to the fully qualified CLR type name of <typeparamref name="T"/> and a
-    /// new <see cref="InterBusHeaders.MessageId"/> set to a V7 <see cref="Guid"/>.
-    /// Subclasses may override this method to stamp additional headers.
+    /// Returns a new <see cref="MessageHeaders"/> stamped with standard InterBus headers and,
+    /// when a group ID selector is registered for <typeparamref name="T"/>,
+    /// <see cref="InterBusHeaders.MessageGroupId"/> (falling back to the CorrelationId).
     /// </summary>
-    private MessageHeaders Stamp<T>() where T : class
+    private MessageHeaders Stamp<T>(T message) where T : class
     {
         var headers = new MessageHeaders
         {
@@ -91,6 +91,11 @@ internal class Publisher(
 
         if (consumeHeaders?.TryGetValue(InterBusHeaders.MessageId, out var messageId) == true)
             headers[InterBusHeaders.CausationId] = messageId;
+
+        // Resolve the message group ID: use the registered selector for T or fall back to CorrelationId.
+        headers[InterBusHeaders.MessageGroupId] =
+            groupIdRegistry.TryResolve(message)
+            ?? headers[InterBusHeaders.CorrelationId];
 
         return headers;
     }

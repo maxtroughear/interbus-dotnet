@@ -11,6 +11,7 @@ namespace InterBus.Scheduling;
 /// </summary>
 internal class Scheduler(
     InterBusOptions options,
+    MessageGroupIdRegistry groupIdRegistry,
     IMessageScheduler messageScheduler,
     ConsumeContextAccessor contextAccessor)
     : IScheduler
@@ -27,7 +28,7 @@ internal class Scheduler(
             ? customName
             : RoutingConventions.TopicName(typeof(T));
         var destination = RoutingConventions.TopicUri(options.TopicUriScheme, topicName);
-        var context = new PublishContext<T>(destination, message, Stamp<T>(scheduledAt));
+        var context = new PublishContext<T>(destination, message, Stamp(message, scheduledAt));
         configure(context);
         return messageScheduler.ScheduleInternalAsync(context, scheduledAt, cancellationToken);
     }
@@ -60,7 +61,7 @@ internal class Scheduler(
         Action<PublishContext<T>> configure,
         CancellationToken cancellationToken = default) where T : class
     {
-        var context = new PublishContext<T>(queue, message, Stamp<T>(scheduledAt));
+        var context = new PublishContext<T>(queue, message, Stamp(message, scheduledAt));
         configure(context);
         return messageScheduler.ScheduleInternalAsync(context, scheduledAt, cancellationToken);
     }
@@ -74,7 +75,7 @@ internal class Scheduler(
     /// <see cref="InterBusHeaders.MessageId"/> set to a V7 <see cref="Guid"/>.
     /// Subclasses may override to stamp additional headers.
     /// </summary>
-    private MessageHeaders Stamp<T>(DateTimeOffset scheduledAt) where T : class
+    private MessageHeaders Stamp<T>(T message, DateTimeOffset scheduledAt) where T : class
     {
         var headers = new MessageHeaders
         {
@@ -92,6 +93,11 @@ internal class Scheduler(
 
         if (consumeHeaders?.TryGetValue(InterBusHeaders.MessageId, out var messageId) == true)
             headers[InterBusHeaders.CausationId] = messageId;
+        
+        // Resolve the message group ID: use the registered selector for T or fall back to CorrelationId.
+        headers[InterBusHeaders.MessageGroupId] =
+            groupIdRegistry.TryResolve(message)
+            ?? headers[InterBusHeaders.CorrelationId];
 
         return headers;
     }

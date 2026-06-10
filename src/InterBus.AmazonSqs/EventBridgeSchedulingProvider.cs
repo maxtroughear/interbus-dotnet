@@ -40,6 +40,11 @@ public sealed class EventBridgeSchedulingProvider(
         var input = rawEnvelope.SerializeForSnsPublish(payload, headers);
         var targetArn = await ResolveTargetArnAsync(destination, cancellationToken);
 
+        headers.TryGetValue(InterBusHeaders.MessageGroupId, out var messageGroupId);
+        var isFifoSqsTarget =
+            destination.Scheme == SqsTransport.QueueScheme &&
+            targetArn.EndsWith(".fifo", StringComparison.Ordinal);
+
         await schedulerClient.CreateScheduleAsync(
             new CreateScheduleRequest
             {
@@ -61,6 +66,10 @@ public sealed class EventBridgeSchedulingProvider(
                         MaximumRetryAttempts = 10,
                         MaximumEventAgeInSeconds = 3600 // 1 hour
                     },
+                    // EventBridge Scheduler validates MessageGroupId only for FIFO SQS targets.
+                    SqsParameters = isFifoSqsTarget && messageGroupId is not null
+                        ? new SqsParameters { MessageGroupId = messageGroupId }
+                        : null,
                 },
                 ActionAfterCompletion = ActionAfterCompletion.DELETE,
             },

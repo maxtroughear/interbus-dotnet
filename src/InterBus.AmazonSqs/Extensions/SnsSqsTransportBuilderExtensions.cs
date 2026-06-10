@@ -1,3 +1,4 @@
+using InterBus.Requests;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
@@ -74,6 +75,12 @@ public static class SnsSqsTransportBuilderExtensions
 
             // Message pump runs as a background service.
             builder.Services.AddHostedService<SqsMessagePump>();
+
+            // Virtual queue host manages one real SQS queue shared across all reply exchanges.
+            builder.Services.AddSingleton<SqsVirtualQueueHost>();
+
+            // Reply endpoint factory enables IRequestClient<,> without additional registration.
+            builder.Services.AddSingleton<IReplyEndpointFactory, SqsReplyEndpointFactory>();
 
             return builder;
         }

@@ -11,10 +11,10 @@ namespace InterBus.EntityFrameworkCore.Outbox;
 /// Background service that continuously reads pending groups of messages from the transactional
 /// outbox and forwards them to the configured transport via <see cref="ITransportFactory"/>.
 /// <para>
-/// Each iteration fetches one complete group (all messages sharing the same
-/// <see cref="OutboxMessage.GroupId"/>) within a database transaction, forwards each message
-/// to the transport, deletes the rows, and commits. If any message in the group fails to
-/// forward, the transaction is rolled back and the entire group is retried on the next poll.
+/// On startup, ensures one <see cref="OutboxLock"/> row exists per configured shard. Each
+/// processing iteration claims the oldest available shard, fetches the oldest pending
+/// <see cref="OutboxGroup"/> within it, and forwards every message in that group to the
+/// transport — guaranteeing FIFO delivery within each shard.
 /// </para>
 /// <para>
 /// The poll delay (<see cref="OutboxOptions.PollInterval"/>) is only applied when the outbox
@@ -35,6 +35,8 @@ internal sealed partial class OutboxProcessor<TDbContext>(
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        await InitializeShardLocksAsync(stoppingToken);
+
         while (!stoppingToken.IsCancellationRequested)
         {
             bool hadMessages;
@@ -68,6 +70,32 @@ internal sealed partial class OutboxProcessor<TDbContext>(
     }
 
     /// <summary>
+    /// Initialises <see cref="OutboxLock"/> rows (one per shard) so that DB-level lock
+    /// providers can claim shards via row-level locking.
+    /// </summary>
+    private async Task InitializeShardLocksAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await using var scope = scopeFactory.CreateAsyncScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<TDbContext>();
+            await lockProvider.EnsureShardLocksAsync(dbContext, options.ShardCount, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // Shutting down before the loop even starts — that's fine.
+        }
+        catch (Exception ex)
+        {
+            // Non-fatal: processing continues without shard rows; the default EfCore provider
+            // does not require them, but DB-specific providers (PostgreSQL, SQL Server) rely on
+            // their existence for multi-instance FIFO locking. Missing rows may allow duplicate
+            // processing across concurrent instances.
+            logger.LogWarning(ex, "InterBus outbox: failed to initialize shard lock rows; concurrent instances may process the same shard simultaneously");
+        }
+    }
+
+    /// <summary>
     /// Processes one group of messages. Returns <c>true</c> if a group was found and
     /// forwarded (successfully or not); <c>false</c> if the outbox was empty.
     /// </summary>
@@ -82,15 +110,21 @@ internal sealed partial class OutboxProcessor<TDbContext>(
 
         try
         {
-            var outboxGroup = await lockProvider.TryFetchGroupAsync(dbContext, cancellationToken);
+            var claimed = await lockProvider.TryClaimAndFetchGroupAsync(dbContext, cancellationToken);
 
-            if (outboxGroup is null)
+            if (claimed is null)
             {
                 await tx.RollbackAsync(cancellationToken);
                 return false;
             }
 
-            using var _ = logger.BeginScope(new Dictionary<string, object> { ["GroupId"] = outboxGroup.Id });
+            var (shard, outboxGroup) = claimed.Value;
+
+            using var _ = logger.BeginScope(new Dictionary<string, object>
+            {
+                ["GroupId"] = outboxGroup.Id,
+                ["Shard"] = shard,
+            });
 
             LogOutboxForwardingGroupCount(outboxGroup.Id, outboxGroup.Messages.Count);
 

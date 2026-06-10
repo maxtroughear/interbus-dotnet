@@ -44,6 +44,25 @@ public sealed class OutboxBuilder<TDbContext>
         return this;
     }
 
+    /// <summary>
+    /// Sets the number of independent FIFO processing shards. Defaults to <c>1</c>.
+    /// <para>
+    /// With a single shard all outbox groups are delivered in strict global FIFO order.
+    /// Increasing the shard count allows multiple processor instances to run in parallel
+    /// (higher throughput) at the expense of global ordering — ordering is only guaranteed
+    /// within each shard.
+    /// </para>
+    /// <para>
+    /// Effective only when combined with a database-level lock provider
+    /// (<c>UsePostgreSql()</c> or <c>UseSqlServer()</c>).
+    /// </para>
+    /// </summary>
+    public OutboxBuilder<TDbContext> WithShardCount(int shardCount)
+    {
+        Options.ShardCount = shardCount;
+        return this;
+    }
+
     public OutboxBuilder<TDbContext> DisableOutboxProcessor()
     {
         Options.RunOutboxProcessor = false;

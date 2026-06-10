@@ -11,11 +11,14 @@ namespace InterBus.EntityFrameworkCore.Outbox;
 /// database transaction, guaranteeing atomicity with any surrounding business-logic writes.
 /// <para>
 /// All messages published within the same DI scope share the same
-/// <see cref="OutboxMessage.GroupId"/>, allowing the processor to fetch and forward them as a
-/// single atomic group.
+/// <see cref="OutboxMessage.GroupId"/> and <see cref="OutboxGroup.Shard"/>, allowing the
+/// processor to fetch and forward them as a single atomic group in FIFO order.
 /// </para>
 /// </summary>
-internal sealed class OutboxPublishMiddleware<TDbContext>(TDbContext dbContext, IMessageSerializer serializer)
+internal sealed class OutboxPublishMiddleware<TDbContext>(
+    TDbContext dbContext,
+    IMessageSerializer serializer,
+    OutboxOptions options)
     : IPublishMiddleware
     where TDbContext : DbContext
 {
@@ -52,7 +55,10 @@ internal sealed class OutboxPublishMiddleware<TDbContext>(TDbContext dbContext, 
         if (_outboxGroup is not null)
             return _outboxGroup;
 
-        _outboxGroup = new OutboxGroup { Id = Guid.CreateVersion7() };
+        // Distribute groups evenly across shards; with ShardCount=1 everything goes to shard 0.
+        var shard = options.ShardCount > 1 ? Random.Shared.Next(options.ShardCount) : 0;
+
+        _outboxGroup = new OutboxGroup { Id = Guid.CreateVersion7(), Shard = shard };
         dbContext.Add(_outboxGroup);
 
         return _outboxGroup;

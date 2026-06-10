@@ -41,6 +41,10 @@ public static class EfCoreOutboxBusBuilderExtensions
             builder.Services.AddSingleton<IOutboxLockProvider<TDbContext>, EfCoreOutboxLockProvider<TDbContext>>();
             builder.Services.AddSingleton<ILockProvider, InMemoryLockProvider>();
 
+            // Register default OutboxOptions so OutboxPublishMiddleware can always resolve it.
+            // UseEfCoreOutbox replaces this with the user-configured instance.
+            builder.Services.TryAddSingleton<OutboxOptions>();
+
             configure?.Invoke(new EfCoreBuilder<TDbContext>(builder.Services));
 
             return builder;

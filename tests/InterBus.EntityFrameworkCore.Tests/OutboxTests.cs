@@ -88,10 +88,30 @@ public sealed class OrderShippedConsumer(OrderShippedTracker tracker) : IConsume
     }
 }
 
+/// <summary>Tracker that preserves insertion order (needed for FIFO assertions).</summary>
+public sealed class FifoOrderIdTracker
+{
+    private readonly object _lock = new();
+    private readonly List<Guid> _orderIds = [];
+    public IReadOnlyList<Guid> OrderIds { get { lock (_lock) return [.. _orderIds]; } }
+    public int Count { get { lock (_lock) return _orderIds.Count; } }
+    public void Track(Guid orderId) { lock (_lock) _orderIds.Add(orderId); }
+}
+
+public sealed class FifoOrderPlacedConsumer(FifoOrderIdTracker tracker) : IConsumer<OrderPlaced>
+{
+    public Task Consume(OrderPlaced message, IConsumeContext context, CancellationToken cancellationToken = default)
+    {
+        tracker.Track(message.OrderId);
+        return Task.CompletedTask;
+    }
+}
+
 public sealed class TestDbContext(DbContextOptions<TestDbContext> options)
     : DbContext(options)
 {
     public DbSet<InboxState> InboxStates => Set<InboxState>();
+    public DbSet<OutboxLock> OutboxLocks => Set<OutboxLock>();
     public DbSet<OutboxGroup> OutboxGroups => Set<OutboxGroup>();
     public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
 
@@ -823,6 +843,66 @@ public class OutboxTests
             await using var assertScope = provider.CreateAsyncScope();
             var db = assertScope.ServiceProvider.GetRequiredService<TestDbContext>();
             Assert.Equal(0, await db.OutboxMessages.CountAsync(TestContext.Current.CancellationToken));
+        }
+        finally
+        {
+            await StopAsync(provider, cts, conn);
+        }
+    }
+
+    /// <summary>
+    /// When multiple outbox groups are committed before the processor runs, they must be
+    /// forwarded to the transport in FIFO order — oldest group first. The processor
+    /// picks the group with the smallest (oldest) <see cref="OutboxGroup.Id"/> on every
+    /// iteration.
+    /// </summary>
+    [Fact]
+    public async Task OutboxProcessor_ForwardsGroups_InFifoOrder()
+    {
+        var tracker = new FifoOrderIdTracker();
+
+        var (provider, cts, conn) = await StartAsync(bus =>
+        {
+            bus.AddInMemoryTransport();
+            bus.AddEfCore<TestDbContext>();
+            bus.AddConsumer<FifoOrderPlacedConsumer>();
+            // Long poll interval — we publish all groups first, then start the processor.
+            bus.UseEfCoreOutbox<TestDbContext>(o => o.WithPollInterval(TimeSpan.FromHours(1)));
+        }, services => services.AddSingleton(tracker));
+
+        try
+        {
+            // Publish three groups in sequence; each scope creates a distinct group with
+            // a monotonically increasing UUIDv7 Id (i.e. created-time order).
+            var orderedIds = new List<Guid>();
+            for (var i = 0; i < 3; i++)
+            {
+                await using var scope = provider.CreateAsyncScope();
+                var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
+                var dbContext = scope.ServiceProvider.GetRequiredService<TestDbContext>();
+
+                var orderId = Guid.NewGuid();
+                orderedIds.Add(orderId);
+                await publisher.PublishAsync(
+                    new OrderPlaced(orderId, $"user{i}@example.com", i * 10m),
+                    TestContext.Current.CancellationToken);
+                await dbContext.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+                // Brief sleep to ensure each UUIDv7 Id is strictly larger than the previous.
+                await Task.Delay(5, TestContext.Current.CancellationToken);
+            }
+
+            // All three groups are in the DB, none yet forwarded.
+            Assert.Equal(0, tracker.Count);
+
+            // Start the processor and wait for all messages to arrive.
+            await StartHostedServicesAsync(provider, cts.Token);
+            await WaitUntilAsync(() => tracker.Count == 3);
+
+            Assert.Equal(3, tracker.Count);
+
+            // Verify the messages arrived in the same order the groups were created (FIFO).
+            Assert.Equal(orderedIds, tracker.OrderIds);
         }
         finally
         {

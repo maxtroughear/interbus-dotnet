@@ -33,6 +33,13 @@ public sealed class SqsTransport(
                 nameof(context));
 
         var rawQueueName = RoutingConventions.GetDestinationName(context.Destination);
+
+        // If the destination URI carries a virtual queue ID (e.g. ?vq=abc123), inject it as
+        // a header so SqsVirtualQueueHost can route the reply to the right in-memory channel.
+        var query = context.Destination.Query;
+        if (query.StartsWith("?vq=", StringComparison.Ordinal) && query.Length > 4)
+            context.Headers[SqsVirtualQueueHost.VirtualQueueIdHeader] = query[4..];
+
         await SendToQueueAsync(rawQueueName, context, cancellationToken);
     }
 

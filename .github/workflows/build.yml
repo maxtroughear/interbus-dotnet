@@ -3,8 +3,18 @@ name: CI
 on:
   push:
     branches: [ "main" ]
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'samples/**'
+      - '.github/workflows/build.yml'
   pull_request:
     branches: [ "main" ]
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'samples/**'
+      - '.github/workflows/build.yml'
 
 jobs:
   build-and-test:

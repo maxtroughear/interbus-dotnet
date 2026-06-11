@@ -61,6 +61,13 @@ internal sealed class AzureServiceBusTopicTransport(
         if (context.Delay.HasValue && context.Delay.Value > TimeSpan.Zero)
             message.ScheduledEnqueueTime = DateTimeOffset.UtcNow + context.Delay.Value;
 
+        // Set SessionId from MessageGroupId header so messages are routed to the correct
+        // session when forwarded to a session-enabled queue (FIFO via topic subscriptions).
+        // Publisher always stamps MessageGroupId (defaults to CorrelationId), so this is safe
+        // even when the target queue does not require sessions.
+        if (context.Headers.TryGetValue(InterBusHeaders.MessageGroupId, out var groupId))
+            message.SessionId = groupId;
+
         return message;
     }
 }

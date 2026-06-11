@@ -91,7 +91,7 @@ internal sealed class AzureServiceBusMessagePump(
         foreach (var descriptor in busOptions.Consumers)
         {
             var consumerQueueName = AzureServiceBusNaming.SanitizeEntityName(
-                options.QueuePrefix + descriptor.Queue);
+                options.QueuePrefix + descriptor.QueueName);
 
             var concurrency = Math.Max(1, descriptor.ConcurrencyCount);
 
@@ -104,6 +104,7 @@ internal sealed class AzureServiceBusMessagePump(
                 {
                     MaxConcurrentSessions = concurrency,
                     MaxConcurrentCallsPerSession = 1,
+                    SessionIdleTimeout = TimeSpan.FromSeconds(2),
                     AutoCompleteMessages = false,
                     ReceiveMode = ServiceBusReceiveMode.PeekLock,
                     MaxAutoLockRenewalDuration = TimeSpan.FromHours(12),
@@ -111,7 +112,7 @@ internal sealed class AzureServiceBusMessagePump(
 
                 var sessionProcessor = clientProvider.CreateQueueSessionProcessor(
                     consumerQueueName, sessionProcessorOptions);
-
+                
                 sessionProcessor.ProcessMessageAsync +=
                     args => HandleSessionMessageAsync(descriptor, args);
                 sessionProcessor.ProcessErrorAsync +=

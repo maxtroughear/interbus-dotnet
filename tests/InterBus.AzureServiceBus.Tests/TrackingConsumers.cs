@@ -18,6 +18,8 @@ public sealed class AuditTracker : MessageTracker<OrderPlaced>;
 
 public sealed class OrderShippedTracker : MessageTracker<OrderShipped>;
 
+public sealed class SessionOrderPlacedTracker : MessageTracker<SessionOrderPlaced>;
+
 public sealed class OrderPlacedConsumer(OrderPlacedTracker tracker) : IConsumer<OrderPlaced>
 {
     public Task Consume(OrderPlaced message, IConsumeContext context, CancellationToken cancellationToken = default)
@@ -42,5 +44,33 @@ public sealed class OrderShippedConsumer(OrderShippedTracker tracker) : IConsume
     {
         tracker.Track(message);
         return Task.CompletedTask;
+    }
+}
+
+public sealed class SessionOrderPlacedConsumer(SessionOrderPlacedTracker tracker)
+    : IConsumer<SessionOrderPlaced>
+{
+    public Task Consume(SessionOrderPlaced message, IConsumeContext context,
+        CancellationToken cancellationToken = default)
+    {
+        tracker.Track(message);
+        return Task.CompletedTask;
+    }
+}
+
+/// <summary>
+/// Consumer for request/reply tests. Reads the ReplyTo address from the consume context
+/// and sends a reply back via the publisher.
+/// </summary>
+public sealed class GetOrderStatusConsumer(IPublisher publisher) : IConsumer<GetOrderStatusRequest>
+{
+    public async Task Consume(GetOrderStatusRequest message, IConsumeContext context,
+        CancellationToken cancellationToken = default)
+    {
+        if (context.ReplyTo is null) return;
+        await publisher.SendAsync(
+            context.ReplyTo,
+            new GetOrderStatusReply(message.OrderId, "Shipped"),
+            cancellationToken);
     }
 }

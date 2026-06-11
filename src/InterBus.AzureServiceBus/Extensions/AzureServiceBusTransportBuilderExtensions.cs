@@ -1,3 +1,4 @@
+using InterBus.Requests;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace InterBus.AzureServiceBus.Extensions;
@@ -58,6 +59,9 @@ public static class AzureServiceBusTransportBuilderExtensions
                 AzureServiceBusQueueTransport.QueueScheme);
 
             builder.Services.AddHostedService<AzureServiceBusMessagePump>();
+
+            builder.Services.AddSingleton<AzureServiceBusSessionQueueHost>();
+            builder.Services.AddSingleton<IReplyEndpointFactory, AzureServiceBusReplyEndpointFactory>();
 
             return builder;
         }

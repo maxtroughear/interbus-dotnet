@@ -79,7 +79,7 @@ internal sealed class AzureServiceBusSessionQueueHost(
             if (_queueName is not null)
                 return;
 
-            var rawName = $"interbus-reply-{Guid.CreateVersion7():N}";
+            var rawName = $"InterBus.Reply.{Guid.CreateVersion7():N}";
             var (rawQueueName, queueName) = await topology.EnsureSessionQueueAsync(rawName, cancellationToken);
             _rawQueueName = rawQueueName;
             _queueName = queueName;
@@ -88,6 +88,7 @@ internal sealed class AzureServiceBusSessionQueueHost(
             {
                 MaxConcurrentSessions = MaxConcurrentReplySessions,
                 MaxConcurrentCallsPerSession = 1,
+                SessionIdleTimeout = TimeSpan.FromSeconds(5),
                 AutoCompleteMessages = false,
                 ReceiveMode = ServiceBusReceiveMode.PeekLock,
             };

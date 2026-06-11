@@ -84,8 +84,8 @@ internal sealed class AzureServiceBusTopologyBuilder(
                         RequiresSession = true,
                         // Short retention: replies are consumed exactly once and discarded.
                         // If the requestor times out or is restarted before receiving the reply,
-                        // the message is automatically cleaned up after 5 minutes.
-                        DefaultMessageTimeToLive = TimeSpan.FromMinutes(5),
+                        // the message is automatically cleaned up.
+                        DefaultMessageTimeToLive = TimeSpan.FromMinutes(10),
                         // One delivery attempt only: replies are idempotent from the sender's
                         // perspective but only consumed once, so dead-lettering after the first
                         // failure avoids unbounded redeliveries.

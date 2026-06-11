@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Threading.Channels;
 using Azure.Messaging.ServiceBus;
 using Microsoft.Extensions.Logging;
+using InterBus.Requests;
 
 namespace InterBus.AzureServiceBus;
 
@@ -24,14 +25,10 @@ namespace InterBus.AzureServiceBus;
 internal sealed class AzureServiceBusSessionQueueHost(
     AzureServiceBusClientProvider clientProvider,
     AzureServiceBusTopologyBuilder topology,
+    AzureServiceBusTransportOptions options,
     ILogger<AzureServiceBusSessionQueueHost> logger)
     : IAsyncDisposable
 {
-    // Processor options for the reply-queue session processor.
-    // MaxConcurrentSessions controls how many reply sessions can be processed in parallel
-    // — set generously since each session holds exactly one reply message.
-    private const int MaxConcurrentReplySessions = 50;
-
     private readonly SemaphoreSlim _initLock = new(1, 1);
     private readonly ConcurrentDictionary<string, Channel<(byte[] Payload, MessageHeaders Headers)>>
         _channels = new(StringComparer.Ordinal);
@@ -86,9 +83,9 @@ internal sealed class AzureServiceBusSessionQueueHost(
 
             var processorOptions = new ServiceBusSessionProcessorOptions
             {
-                MaxConcurrentSessions = MaxConcurrentReplySessions,
+                MaxConcurrentSessions = options.ReplyMaxConcurrentSessions,
                 MaxConcurrentCallsPerSession = 1,
-                SessionIdleTimeout = TimeSpan.FromSeconds(5),
+                SessionIdleTimeout = options.ReplySessionIdleTimeout,
                 AutoCompleteMessages = false,
                 ReceiveMode = ServiceBusReceiveMode.PeekLock,
             };

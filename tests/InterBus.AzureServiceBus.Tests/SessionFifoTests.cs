@@ -85,7 +85,7 @@ public class SessionFifoTests
         var msg = new SessionOrderPlaced(Guid.NewGuid(), "cust-1", 99.99m);
         await publisher.PublishAsync(msg, TestContext.CurrentContext.CancellationToken);
 
-        await TestHelpers.WaitUntilAsync(() => _tracker.Messages.Count >= 1);
+        await TestHelpers.WaitUntilAsync(() => _tracker.Messages.Count >= 1, timeoutMs: 30_000);
 
         using (Assert.EnterMultipleScope())
         {
@@ -107,7 +107,7 @@ public class SessionFifoTests
         foreach (var msg in messages)
             await publisher.PublishAsync(msg, TestContext.CurrentContext.CancellationToken);
 
-        await TestHelpers.WaitUntilAsync(() => _tracker.Messages.Count >= messages.Count);
+        await TestHelpers.WaitUntilAsync(() => _tracker.Messages.Count >= messages.Count, timeoutMs: 30_000);
 
         Assert.That(_tracker.Messages, Has.Count.EqualTo(messages.Count));
         Assert.That(

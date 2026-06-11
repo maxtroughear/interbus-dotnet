@@ -59,7 +59,9 @@ internal sealed class AzureServiceBusReplyEndpoint(
 
         cancellationToken.ThrowIfCancellationRequested();
         throw new InvalidOperationException(
-            $"InterBus AzureServiceBus: reply channel closed without receiving a {typeof(TReply).Name}");
+            $"InterBus AzureServiceBus: reply channel for session '{sessionId}' closed without receiving " +
+            $"a {typeof(TReply).Name} — the channel was completed without delivering a message " +
+            "(possible causes: reply endpoint was disposed early, or the session queue host was shut down)");
     }
 
     public ValueTask DisposeAsync()

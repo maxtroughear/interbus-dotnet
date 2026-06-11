@@ -41,6 +41,21 @@ internal sealed class AzureServiceBusClientProvider : IAsyncDisposable
     public ServiceBusProcessor CreateQueueProcessor(string queueName, ServiceBusProcessorOptions processorOptions) =>
         _client.CreateProcessor(queueName, processorOptions);
 
+    /// <summary>Creates a <see cref="ServiceBusSessionProcessor"/> for the given session-enabled queue.</summary>
+    public ServiceBusSessionProcessor CreateQueueSessionProcessor(
+        string queueName,
+        ServiceBusSessionProcessorOptions processorOptions) =>
+        _client.CreateSessionProcessor(queueName, processorOptions);
+
+    /// <summary>
+    /// Accepts a specific session on <paramref name="queueName"/> for point-in-time message receive.
+    /// </summary>
+    public Task<ServiceBusSessionReceiver> AcceptSessionAsync(
+        string queueName,
+        string sessionId,
+        CancellationToken cancellationToken = default) =>
+        _client.AcceptSessionAsync(queueName, sessionId, cancellationToken: cancellationToken);
+
     /// <summary>Creates a <see cref="ServiceBusProcessor"/> for the given topic subscription.</summary>
     public ServiceBusProcessor CreateSubscriptionProcessor(
         string topicName,

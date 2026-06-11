@@ -112,7 +112,7 @@ internal sealed class SqsMessagePump(
                     },
                     stoppingToken);
 
-                if (response?.Messages is null || !response.Messages.Any())
+                if (response?.Messages is null || response.Messages.Count == 0)
                 {
                     logger.LogTrace(
                         "InterBus AmazonSqs: no messages received from queue {QueueName}",

@@ -29,6 +29,7 @@ internal sealed class AzureServiceBusMessagePump(
     : BackgroundService
 {
     private readonly List<ServiceBusProcessor> _processors = [];
+    private readonly List<ServiceBusSessionProcessor> _sessionProcessors = [];
 
     public override async Task StartAsync(CancellationToken cancellationToken)
     {
@@ -49,6 +50,14 @@ internal sealed class AzureServiceBusMessagePump(
         }
 
         _processors.Clear();
+
+        foreach (var processor in _sessionProcessors)
+        {
+            await processor.StopProcessingAsync(CancellationToken.None);
+            await processor.DisposeAsync();
+        }
+
+        _sessionProcessors.Clear();
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -73,7 +82,8 @@ internal sealed class AzureServiceBusMessagePump(
     }
 
     /// <summary>
-    /// Creates and starts one <see cref="ServiceBusProcessor"/> per consumer, each listening
+    /// Creates and starts one <see cref="ServiceBusProcessor"/> (or
+    /// <see cref="ServiceBusSessionProcessor"/> for FIFO consumers) per consumer, each listening
     /// on the consumer's dedicated queue.
     /// </summary>
     private async Task StartProcessorsAsync(CancellationToken cancellationToken)
@@ -81,29 +91,64 @@ internal sealed class AzureServiceBusMessagePump(
         foreach (var descriptor in busOptions.Consumers)
         {
             var consumerQueueName = AzureServiceBusNaming.SanitizeEntityName(
-                options.QueuePrefix + descriptor.Queue);
+                options.QueuePrefix + descriptor.QueueName);
 
             var concurrency = Math.Max(1, descriptor.ConcurrencyCount);
-            var processorOptions = new ServiceBusProcessorOptions
+
+            if (descriptor.IsFifo)
             {
-                MaxConcurrentCalls = concurrency,
-                AutoCompleteMessages = false,
-                ReceiveMode = ServiceBusReceiveMode.PeekLock,
-                MaxAutoLockRenewalDuration = TimeSpan.FromHours(12), // TODO: configurable by consumer
-            };
+                // Session-enabled queues require ServiceBusSessionProcessor.
+                // Each session is processed serially (MaxConcurrentCallsPerSession = 1) to
+                // guarantee FIFO ordering; multiple sessions run in parallel.
+                var sessionProcessorOptions = new ServiceBusSessionProcessorOptions
+                {
+                    MaxConcurrentSessions = concurrency,
+                    MaxConcurrentCallsPerSession = 1,
+                    SessionIdleTimeout = TimeSpan.FromSeconds(2),
+                    AutoCompleteMessages = false,
+                    ReceiveMode = ServiceBusReceiveMode.PeekLock,
+                    MaxAutoLockRenewalDuration = TimeSpan.FromHours(12),
+                };
 
-            var processor = clientProvider.CreateQueueProcessor(consumerQueueName, processorOptions);
+                var sessionProcessor = clientProvider.CreateQueueSessionProcessor(
+                    consumerQueueName, sessionProcessorOptions);
+                
+                sessionProcessor.ProcessMessageAsync +=
+                    args => HandleSessionMessageAsync(descriptor, args);
+                sessionProcessor.ProcessErrorAsync +=
+                    args => HandleErrorAsync(descriptor, args);
 
-            processor.ProcessMessageAsync += args => HandleMessageAsync(descriptor, args);
-            processor.ProcessErrorAsync += args => HandleErrorAsync(descriptor, args);
+                await sessionProcessor.StartProcessingAsync(cancellationToken);
+                _sessionProcessors.Add(sessionProcessor);
 
-            await processor.StartProcessingAsync(cancellationToken);
-            _processors.Add(processor);
+                logger.LogDebug(
+                    "InterBus AzureServiceBus: started session processor for consumer {ConsumerType} on queue {QueueName}",
+                    descriptor.ConsumerType.Name,
+                    consumerQueueName);
+            }
+            else
+            {
+                var processorOptions = new ServiceBusProcessorOptions
+                {
+                    MaxConcurrentCalls = concurrency,
+                    AutoCompleteMessages = false,
+                    ReceiveMode = ServiceBusReceiveMode.PeekLock,
+                    MaxAutoLockRenewalDuration = TimeSpan.FromHours(12), // TODO: configurable by consumer
+                };
 
-            logger.LogDebug(
-                "InterBus AzureServiceBus: started processor for consumer {ConsumerType} on queue {QueueName}",
-                descriptor.ConsumerType.Name,
-                consumerQueueName);
+                var processor = clientProvider.CreateQueueProcessor(consumerQueueName, processorOptions);
+
+                processor.ProcessMessageAsync += args => HandleMessageAsync(descriptor, args);
+                processor.ProcessErrorAsync += args => HandleErrorAsync(descriptor, args);
+
+                await processor.StartProcessingAsync(cancellationToken);
+                _processors.Add(processor);
+
+                logger.LogDebug(
+                    "InterBus AzureServiceBus: started processor for consumer {ConsumerType} on queue {QueueName}",
+                    descriptor.ConsumerType.Name,
+                    consumerQueueName);
+            }
         }
     }
 
@@ -180,6 +225,70 @@ internal sealed class AzureServiceBusMessagePump(
             args.ErrorSource);
 
         return Task.CompletedTask;
+    }
+
+    private async Task HandleSessionMessageAsync(ConsumerDescriptor descriptor, ProcessSessionMessageEventArgs args)
+    {
+        if (args.CancellationToken.IsCancellationRequested)
+        {
+            await args.AbandonMessageAsync(args.Message);
+            return;
+        }
+
+        try
+        {
+            var result = await DispatchAsync(descriptor, args.Message, args.CancellationToken);
+            switch (result.Kind)
+            {
+                case DispatchResultKind.Success:
+                    await args.CompleteMessageAsync(args.Message);
+                    break;
+                case DispatchResultKind.DeadLetter:
+                    await args.DeadLetterMessageAsync(
+                        args.Message,
+                        deadLetterReason: result.DeadLetterReason,
+                        deadLetterErrorDescription: result.DeadLetterError,
+                        propertiesToModify: new Dictionary<string, object>
+                        {
+                            [InterBusHeaders.DeadLetterReason] = result.DeadLetterReason,
+                            [InterBusHeaders.DeadLetterError] = result.DeadLetterError,
+                            [InterBusHeaders.DeadLetterTime] = result.DeadLetteredAtUtc!.Value.ToString("O"),
+                        },
+                        cancellationToken: CancellationToken.None);
+
+                    logger.LogWarning(
+                        result.Exception,
+                        "InterBus AzureServiceBus: consumer {ConsumerType} failed for queue {QueueName}; message moved to dead-letter queue",
+                        descriptor.ConsumerType.Name,
+                        descriptor.Queue);
+                    break;
+                case DispatchResultKind.Release:
+                    logger.LogWarning(
+                        result.Exception,
+                        "InterBus AzureServiceBus: consumer {ConsumerType} failed for queue {QueueName}; abandoning message for redelivery",
+                        descriptor.ConsumerType.Name,
+                        descriptor.Queue);
+
+                    await args.AbandonMessageAsync(args.Message, cancellationToken: CancellationToken.None);
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException();
+            }
+        }
+        catch (OperationCanceledException) when (args.CancellationToken.IsCancellationRequested)
+        {
+            await args.AbandonMessageAsync(args.Message, cancellationToken: CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(
+                ex,
+                "InterBus AzureServiceBus: consumer {ConsumerType} failed for queue {QueueName}; abandoning message for redelivery",
+                descriptor.ConsumerType.Name,
+                descriptor.Queue);
+
+            await args.AbandonMessageAsync(args.Message, cancellationToken: CancellationToken.None);
+        }
     }
 
     private async Task<DispatchResult> DispatchAsync(

@@ -59,6 +59,54 @@ internal sealed class AzureServiceBusTopologyBuilder(
         return topicName;
     }
 
+    /// <summary>
+    /// Creates a session-enabled Azure Service Bus queue with short retention for request/reply
+    /// exchanges. Returns a tuple of (rawQueueName, sanitizedFullName). Idempotent — silently
+    /// succeeds if the queue already exists.
+    /// </summary>
+    public async Task<(string RawName, string FullName)> EnsureSessionQueueAsync(
+        string rawQueueName,
+        CancellationToken cancellationToken)
+    {
+        var queueName = BuildQueueName(rawQueueName);
+        await EnsureWithCacheAsync(
+            Queues,
+            queueName,
+            async ct =>
+            {
+                var admin = clientProvider.AdminClient;
+
+                try
+                {
+                    await admin.CreateQueueAsync(new CreateQueueOptions(queueName)
+                    {
+                        LockDuration = QueueLockDuration,
+                        RequiresSession = true,
+                        // Short retention: replies are consumed exactly once and discarded.
+                        // If the requestor times out or is restarted before receiving the reply,
+                        // the message is automatically cleaned up.
+                        DefaultMessageTimeToLive = TimeSpan.FromMinutes(10),
+                        // One delivery attempt only: replies are idempotent from the sender's
+                        // perspective but only consumed once, so dead-lettering after the first
+                        // failure avoids unbounded redeliveries.
+                        MaxDeliveryCount = 1,
+                    }, ct);
+
+                    logger.LogDebug(
+                        "InterBus AzureServiceBus: created session reply queue {QueueName}",
+                        queueName);
+                }
+                catch (ServiceBusException ex)
+                    when (ex.Reason == ServiceBusFailureReason.MessagingEntityAlreadyExists)
+                {
+                    // Queue already exists — fine.
+                }
+            },
+            cancellationToken);
+
+        return (rawQueueName, queueName);
+    }
+
     private Task EnsureQueueExistsAsync(
         ConsumerDescriptor descriptor,
         string queueName,
@@ -76,6 +124,7 @@ internal sealed class AzureServiceBusTopologyBuilder(
                     {
                         LockDuration = QueueLockDuration,
                         MaxDeliveryCount = Math.Max(1, descriptor.MaxDeliveryCount),
+                        RequiresSession = descriptor.IsFifo,
                     }, ct);
 
                     logger.LogDebug("InterBus AzureServiceBus: created queue {QueueName}", queueName);

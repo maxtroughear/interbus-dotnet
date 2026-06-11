@@ -48,4 +48,16 @@ public sealed class AzureServiceBusTransportOptions
         RetryCount = int.MaxValue,
         DelayProvider = RetryDelays.Exponential(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(30)),
     };
+
+    /// <summary>
+    /// Maximum number of concurrent reply sessions. Effectively limits the number of concurrent replies that
+    /// can be handled.
+    /// </summary>
+    public int ReplyMaxConcurrentSessions { get; set; } = 50;
+    
+    /// <summary>
+    /// The maximum amount of time to wait for a message to be received for the currently active session.
+    /// After this time has elapsed, the processor will close the session and attempt to process another session.
+    /// </summary>
+    public TimeSpan ReplySessionIdleTimeout { get; set; } = TimeSpan.FromSeconds(5);
 }

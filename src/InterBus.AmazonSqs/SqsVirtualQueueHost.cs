@@ -30,6 +30,7 @@ internal sealed class SqsVirtualQueueHost(
     internal const string VirtualQueueIdHeader = "interbus-sqs-vq-id";
 
     private readonly SemaphoreSlim _initLock = new(1, 1);
+
     private readonly ConcurrentDictionary<string, Channel<(byte[] Payload, MessageHeaders Headers)>> _channels =
         new(StringComparer.Ordinal);
 
@@ -42,7 +43,8 @@ internal sealed class SqsVirtualQueueHost(
     /// Lazily creates the shared host queue (once) then allocates a new virtual queue
     /// and returns its ID together with the address of the host queue.
     /// </summary>
-    public async Task<(string HostQueueName, string VqId, ChannelReader<(byte[] Payload, MessageHeaders Headers)> Reader)>
+    public async Task<(string HostQueueName, string VqId, ChannelReader<(byte[] Payload, MessageHeaders Headers)> Reader
+            )>
         RegisterAsync(CancellationToken cancellationToken = default)
     {
         await EnsureHostQueueAsync(cancellationToken);
@@ -108,11 +110,18 @@ internal sealed class SqsVirtualQueueHost(
 
     private async Task PollLoopAsync(CancellationToken ct)
     {
+        var delay = false;
         while (!ct.IsCancellationRequested)
         {
             List<Message> messages;
             try
             {
+                if (delay)
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(5), ct);
+                    delay = false;
+                }
+
                 var response = await sqsClient.ReceiveMessageAsync(
                     new ReceiveMessageRequest
                     {
@@ -122,7 +131,11 @@ internal sealed class SqsVirtualQueueHost(
                         MessageAttributeNames = ["All"],
                     },
                     ct);
-                messages = response.Messages ?? [];
+
+                if (response?.Messages is null || response.Messages.Count == 0)
+                    continue;
+
+                messages = response.Messages;
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
@@ -134,7 +147,8 @@ internal sealed class SqsVirtualQueueHost(
                     ex,
                     "InterBus AmazonSqs: error polling virtual queue host {QueueName}; retrying",
                     _hostQueueName);
-                try { await Task.Delay(TimeSpan.FromSeconds(5), ct); } catch { }
+
+                delay = true;
                 continue;
             }
 

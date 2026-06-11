@@ -2,6 +2,8 @@
 
 Interoperable asynchronous messaging framework for .NET
 
+[Documentation](https://interbus.maxtroughear.dev)
+
 ## Architecture at a glance
 
 InterBus separates concerns into three layers:
@@ -37,9 +39,3 @@ At runtime, applications publish or send messages through `IPublisher`; transpor
 - Saga state orchestration (including completion and deletion semantics)
 - Message scheduling abstractions and providers
 - Outbox integration (EF Core)
-
-## More details
-
-- `docs/docs/index.md`
-- `docs/docs/tutorials/getting-started.md`
-- `docs/docs/explanation/architecture.md`

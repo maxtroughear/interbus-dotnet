@@ -15,10 +15,10 @@ const config: Config = {
   },
 
   // Set the production url of your site here
-  url: 'https://maxtroughear.github.io',
+  url: 'https://interbus.maxtroughear.dev',
   // Set the /<baseUrl>/ pathname under which your site is served
   // For GitHub pages deployment, it is often '/<projectName>/'
-  baseUrl: '/interbus-dotnet/',
+  baseUrl: '/',
 
   // GitHub pages deployment config.
   organizationName: 'maxtroughear',

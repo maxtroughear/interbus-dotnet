@@ -1,5 +1,5 @@
 ---
-sidebar_position: 1
+sidebar_position: 2
 ---
 
 # Getting Started with InterBus
@@ -98,5 +98,5 @@ await publisher.SendAsync<AuditConsumer, OrderPlaced>(new OrderPlaced(...));
 
 ## Next steps
 
-- For a deeper architectural overview, see [Architecture](./architecture)
+- For a deeper architectural overview, see [Architecture](../explanation/architecture)
 - For runnable examples, see the projects under [`samples/`](https://github.com/maxtroughear/interbus-dotnet/tree/main/samples)

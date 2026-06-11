@@ -84,12 +84,16 @@ const config: Config = {
           title: 'Docs',
           items: [
             {
-              label: 'Getting Started',
-              to: '/docs/getting-started',
+              label: 'Documentation',
+              to: '/docs',
             },
             {
-              label: 'Architecture',
-              to: '/docs/architecture',
+              label: 'Tutorials',
+              to: '/docs/tutorials/overview',
+            },
+            {
+              label: 'Explanation',
+              to: '/docs/explanation/overview',
             },
           ],
         },

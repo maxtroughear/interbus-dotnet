@@ -40,5 +40,6 @@ At runtime, applications publish or send messages through `IPublisher`; transpor
 
 ## More details
 
-- `docs/architecture.md`
-- `docs/getting-started.md`
+- `docs/docs/index.md`
+- `docs/docs/tutorials/getting-started.md`
+- `docs/docs/explanation/architecture.md`

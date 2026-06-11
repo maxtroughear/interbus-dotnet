@@ -12,11 +12,11 @@ Learning-oriented guides that help you build familiarity with InterBus step by s
 
 ## How-to guides
 
-Task-oriented guides for solving specific implementation problems. This section is a starter placeholder and will grow as focused guides are added.
+Task-oriented guides for solving specific implementation problems, including practical guidance.
 
 ## Reference
 
-Fact-focused material for packages, options, and APIs. This section is a starter placeholder and will grow as reference content is added.
+Fact-focused material for packages, options, and APIs.
 
 ## Explanation
 

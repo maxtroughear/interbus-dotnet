@@ -178,6 +178,18 @@ internal sealed class AzureServiceBusSessionQueueHost(
             }
         }
 
+        if (_queueName is not null)
+        {
+            try
+            {
+                await clientProvider.AdminClient.DeleteQueueAsync(_queueName!, CancellationToken.None);
+            }
+            catch
+            {
+                logger.LogWarning("InterBus AzureServiceBus: failed to delete session reply queue {QueueName}", _queueName);
+            }
+        }
+        
         foreach (var channel in _channels.Values)
             channel.Writer.TryComplete();
         _channels.Clear();

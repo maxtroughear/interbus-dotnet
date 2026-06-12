@@ -241,9 +241,9 @@ public class OutboxSqlServerIntegrationTests(string imageTag)
     [Category("Performance")]
     public async Task OutboxProcessor_Throughput_Baseline()
     {
-        const int messageCount = 2_000;
+        const int messageCount = 20_000;
         const int groupCount = 128;
-        const double minMessagesPerSecond = 120;
+        const double minMessagesPerSecond = 1000;
 
         await using (var scope = _provider.CreateAsyncScope())
         {

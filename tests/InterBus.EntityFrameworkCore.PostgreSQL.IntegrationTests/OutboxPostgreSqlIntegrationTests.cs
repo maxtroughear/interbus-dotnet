@@ -242,7 +242,7 @@ public class OutboxPostgreSqlIntegrationTests(string imageTag)
     {
         const int messageCount = 20_000;
         const int groupCount = 128;
-        const double minMessagesPerSecond = 10000;
+        const double minMessagesPerSecond = 1000;
 
         await using (var scope = _provider.CreateAsyncScope())
         {

@@ -14,7 +14,8 @@ internal sealed class EfCoreOutboxLockProvider<TDbContext> : IOutboxLockProvider
 {
     public async Task<(int Shard, OutboxGroup Group)?> TryClaimAndFetchGroupAsync(
         TDbContext context,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        int preferredStartShard = 0)
     {
         var group = await context.Set<OutboxGroup>()
             .OrderBy(g => g.Id)

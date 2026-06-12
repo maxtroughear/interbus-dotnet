@@ -37,10 +37,15 @@ public interface IOutboxLockProvider<in TDbContext> where TDbContext : DbContext
     /// </summary>
     /// <param name="context">The DbContext with an active transaction.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
+    /// <param name="preferredStartShard">
+    /// Preferred shard index to start round-robin selection from. Implementations should treat
+    /// this as a fairness hint only.
+    /// </param>
     /// <returns>
     /// The claimed shard index and oldest pending group, or <c>null</c> when no work is available.
     /// </returns>
     Task<(int Shard, OutboxGroup Group)?> TryClaimAndFetchGroupAsync(
         TDbContext context,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken,
+        int preferredStartShard = 0);
 }

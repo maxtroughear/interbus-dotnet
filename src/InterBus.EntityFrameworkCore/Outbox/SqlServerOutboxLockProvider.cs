@@ -16,16 +16,9 @@ namespace InterBus.EntityFrameworkCore.Outbox;
 public sealed class SqlServerOutboxLockProvider<TDbContext> : IOutboxLockProvider<TDbContext>
     where TDbContext : DbContext
 {
-    // Tracks where round-robin shard selection should start. Updated after each successful claim
-    // so successive iterations prefer the next shard, distributing work across processors.
-    // Written via Interlocked.Exchange; plain int reads are atomic on all supported architectures.
-    private int _nextShard;
-    private int _shardCount = 1;
-
     /// <inheritdoc/>
     public async Task EnsureShardLocksAsync(TDbContext context, int shardCount, CancellationToken cancellationToken)
     {
-        _shardCount = Math.Max(1, shardCount);
         var (locksFqn, shardCol) = GetTableInfo(context.Set<OutboxLock>().EntityType, nameof(OutboxLock.Shard));
 
         for (var i = 0; i < shardCount; i++)
@@ -44,15 +37,15 @@ public sealed class SqlServerOutboxLockProvider<TDbContext> : IOutboxLockProvide
     /// <inheritdoc/>
     public async Task<(int Shard, OutboxGroup Group)?> TryClaimAndFetchGroupAsync(
         TDbContext context,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        int preferredStartShard = 0)
     {
         var (locksFqn, locksShardCol) = GetTableInfo(context.Set<OutboxLock>().EntityType, nameof(OutboxLock.Shard));
         var (groupsFqn, groupsShardCol) = GetTableInfo(context.Set<OutboxGroup>().EntityType, nameof(OutboxGroup.Shard));
 
-        // Round-robin: prefer shards >= _nextShard so we rotate evenly instead of always
-        // grabbing the lowest numbered shard. UPDLOCK, READPAST ensures concurrent processors
-        // claim different shards.
-        var startShard = _nextShard;
+        // Round-robin: prefer shards >= preferredStartShard so workers can rotate shard preference.
+        // UPDLOCK, READPAST ensures concurrent processors claim different shards.
+        var startShard = Math.Max(0, preferredStartShard);
         var lockSql = $"""
                        SELECT TOP (1) l.*
                        FROM {locksFqn} l WITH (UPDLOCK, READPAST)
@@ -66,9 +59,6 @@ public sealed class SqlServerOutboxLockProvider<TDbContext> : IOutboxLockProvide
 
         if (claimedLock is null)
             return null;
-
-        // Advance past the claimed shard for the next call; mod wraps back to 0 after the last shard.
-        Interlocked.Exchange(ref _nextShard, (claimedLock.Shard + 1) % _shardCount);
 
         // Fetch the oldest group in the claimed shard (FIFO within the shard).
         var group = await context.Set<OutboxGroup>()

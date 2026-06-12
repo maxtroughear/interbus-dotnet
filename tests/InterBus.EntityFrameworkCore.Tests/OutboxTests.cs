@@ -257,7 +257,7 @@ public class OutboxTests
             bus.AddEfCore<TestDbContext>();
             bus.AddConsumer<OrderPlacedConsumer>();
             // Long poll interval so the processor does not run during assertions.
-            bus.UseEfCoreOutbox<TestDbContext>(o => o.WithPollInterval(TimeSpan.FromHours(1)));
+            bus.UseEfCoreOutbox<TestDbContext>(o => o.WithEmptyPollDelay(TimeSpan.FromHours(1)));
         }, services => services.AddSingleton(tracker));
 
         try
@@ -295,6 +295,45 @@ public class OutboxTests
     }
 
     /// <summary>
+    /// Messages published in one scope with different message-group-id values are split into
+    /// separate outbox groups.
+    /// </summary>
+    [Fact]
+    public async Task Publish_WithOutbox_SplitsGroups_ByMessageGroupId()
+    {
+        var (provider, cts, conn) = await StartAsync(bus =>
+        {
+            bus.AddInMemoryTransport();
+            bus.AddEfCore<TestDbContext>();
+            bus.UseEfCoreOutbox<TestDbContext>(o => o.WithEmptyPollDelay(TimeSpan.FromHours(1)));
+        });
+
+        try
+        {
+            await using var scope = provider.CreateAsyncScope();
+            var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
+            var dbContext = scope.ServiceProvider.GetRequiredService<TestDbContext>();
+
+            await publisher.PublishAsync(
+                new OrderPlaced(Guid.NewGuid(), "g1@example.com", 10m),
+                ctx => ctx.Headers[InterBusHeaders.MessageGroupId] = "group-1",
+                TestContext.Current.CancellationToken);
+
+            await publisher.PublishAsync(
+                new OrderPlaced(Guid.NewGuid(), "g2@example.com", 20m),
+                ctx => ctx.Headers[InterBusHeaders.MessageGroupId] = "group-2",
+                TestContext.Current.CancellationToken);
+
+            Assert.Equal(2, dbContext.OutboxGroups.Local.Count);
+            Assert.Equal(2, dbContext.OutboxMessages.Local.Select(x => x.GroupId).Distinct().Count());
+        }
+        finally
+        {
+            await StopAsync(provider, cts, conn);
+        }
+    }
+
+    /// <summary>
     /// The outbox processor must forward stored messages to the transport and delete them.
     /// </summary>
     [Fact]
@@ -307,7 +346,7 @@ public class OutboxTests
             bus.AddInMemoryTransport();
             bus.AddEfCore<TestDbContext>();
             bus.AddConsumer<OrderPlacedConsumer>();
-            bus.UseEfCoreOutbox<TestDbContext>(o => o.WithPollInterval(TimeSpan.FromMilliseconds(50)));
+            bus.UseEfCoreOutbox<TestDbContext>(o => o.WithEmptyPollDelay(TimeSpan.FromMilliseconds(50)));
         }, services => services.AddSingleton(tracker));
 
         try
@@ -336,7 +375,7 @@ public class OutboxTests
     }
 
     /// <summary>
-    /// Multiple messages published in the same scope share a GroupId and are all forwarded.
+    /// Multiple messages with the same message-group-id share an outbox group and are all forwarded.
     /// </summary>
     [Fact]
     public async Task OutboxProcessor_ForwardsMultipleMessages_FromSameGroup()
@@ -348,7 +387,7 @@ public class OutboxTests
             bus.AddInMemoryTransport();
             bus.AddEfCore<TestDbContext>();
             bus.AddConsumer<OrderPlacedConsumer>();
-            bus.UseEfCoreOutbox<TestDbContext>(o => o.WithPollInterval(TimeSpan.FromMilliseconds(50)));
+            bus.UseEfCoreOutbox<TestDbContext>(o => o.WithEmptyPollDelay(TimeSpan.FromMilliseconds(50)));
         }, services => services.AddSingleton(tracker));
 
         try
@@ -363,9 +402,10 @@ public class OutboxTests
                 for (var i = 0; i < count; i++)
                     await publisher.PublishAsync(
                         new OrderPlaced(Guid.NewGuid(), $"user{i}@example.com", i * 10m),
+                        ctx => ctx.Headers[InterBusHeaders.MessageGroupId] = "order-group",
                         TestContext.Current.CancellationToken);
 
-                // All messages share the same GroupId (same middleware scope).
+                // All messages share the same GroupId because they use the same message-group-id.
                 var groupIds = dbContext.OutboxMessages.Local.Select(m => m.GroupId).Distinct().ToList();
                 Assert.Single(groupIds);
 
@@ -397,7 +437,7 @@ public class OutboxTests
             bus.AddInMemoryTransport();
             bus.AddEfCore<TestDbContext>();
             bus.AddConsumer<OrderPlacedConsumer>();
-            bus.UseEfCoreOutbox<TestDbContext>(o => o.WithPollInterval(TimeSpan.FromMilliseconds(50)));
+            bus.UseEfCoreOutbox<TestDbContext>(o => o.WithEmptyPollDelay(TimeSpan.FromMilliseconds(50)));
         }, services => services.AddSingleton(tracker));
 
         try
@@ -450,7 +490,7 @@ public class OutboxTests
             bus.AddInMemoryTransport();
             bus.AddEfCore<TestDbContext>();
             // Long poll interval — we only want to inspect the stored row, not forward.
-            bus.UseEfCoreOutbox<TestDbContext>(o => o.WithPollInterval(TimeSpan.FromHours(1)));
+            bus.UseEfCoreOutbox<TestDbContext>(o => o.WithEmptyPollDelay(TimeSpan.FromHours(1)));
         });
 
         try
@@ -486,7 +526,7 @@ public class OutboxTests
         {
             bus.AddInMemoryTransport();
             bus.AddEfCore<TestDbContext>();
-            bus.UseEfCoreOutbox<TestDbContext>(o => o.WithPollInterval(TimeSpan.FromMilliseconds(50)));
+            bus.UseEfCoreOutbox<TestDbContext>(o => o.WithEmptyPollDelay(TimeSpan.FromMilliseconds(50)));
         });
 
         try
@@ -496,7 +536,11 @@ public class OutboxTests
             await using (var scope = provider.CreateAsyncScope())
             {
                 var dbContext = scope.ServiceProvider.GetRequiredService<TestDbContext>();
-                dbContext.OutboxGroups.Add(new OutboxGroup { Id = groupId });
+                dbContext.OutboxGroups.Add(new OutboxGroup
+                {
+                    Id = groupId,
+                    Shard = 0,
+                });
                 await dbContext.SaveChangesAsync(TestContext.Current.CancellationToken);
             }
 
@@ -549,7 +593,7 @@ public class OutboxTests
             bus.AddConsumer<OrderPlacedPublishingConsumer>(c => c.UseEfCoreInboxOutbox<TestDbContext>());
             bus.AddConsumer<OrderShippedConsumer>();
             // Long poll interval so the outbox processor does not run during assertions.
-            bus.UseEfCoreOutbox<TestDbContext>(o => o.WithPollInterval(TimeSpan.FromHours(1)));
+            bus.UseEfCoreOutbox<TestDbContext>(o => o.WithEmptyPollDelay(TimeSpan.FromHours(1)));
         }, services => services.AddSingleton(shippedTracker));
 
         try
@@ -736,7 +780,7 @@ public class OutboxTests
             bus.AddEfCore<TestDbContext>();
             bus.AddConsumer<OrderPlacedPublishingConsumer>(c => c.UseEfCoreInboxOutbox<TestDbContext>());
             // Use the default ConsumerVisibilityTimeout (5 s); just suppress the background processor.
-            bus.UseEfCoreOutbox<TestDbContext>(o => o.WithPollInterval(TimeSpan.FromHours(1)));
+            bus.UseEfCoreOutbox<TestDbContext>(o => o.WithEmptyPollDelay(TimeSpan.FromHours(1)));
         });
 
         try
@@ -797,7 +841,7 @@ public class OutboxTests
             // Long poll interval effectively disables the background processor so it does not
             // interfere with the assertions.
             bus.AddEfCore<TestDbContext>();
-            bus.UseEfCoreOutbox<TestDbContext>(o => o.WithPollInterval(TimeSpan.FromHours(1)));
+            bus.UseEfCoreOutbox<TestDbContext>(o => o.WithEmptyPollDelay(TimeSpan.FromHours(1)));
         }, services => services.AddSingleton(deadLetterTracker));
 
         try
@@ -867,7 +911,7 @@ public class OutboxTests
             bus.AddEfCore<TestDbContext>();
             bus.AddConsumer<FifoOrderPlacedConsumer>();
             // Long poll interval — we publish all groups first, then start the processor.
-            bus.UseEfCoreOutbox<TestDbContext>(o => o.WithPollInterval(TimeSpan.FromHours(1)));
+            bus.UseEfCoreOutbox<TestDbContext>(o => o.WithEmptyPollDelay(TimeSpan.FromHours(1)));
         }, services => services.AddSingleton(tracker));
 
         try

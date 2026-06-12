@@ -1,9 +1,12 @@
+// ReSharper disable EntityFramework.ModelValidation.UnlimitedStringLength - set in ModelBuilder
+
 namespace InterBus.EntityFrameworkCore.Outbox;
 
 /// <summary>
 /// Header row for a logical outbox group. Processors claim the group's shard (via
 /// <see cref="OutboxLock"/>) and then forward/delete all child <see cref="OutboxMessage"/> rows
-/// in creation order, guaranteeing FIFO delivery within each shard.
+/// in creation order, guaranteeing FIFO delivery for the same
+/// <see cref="Shard"/>.
 /// </summary>
 public sealed class OutboxGroup
 {

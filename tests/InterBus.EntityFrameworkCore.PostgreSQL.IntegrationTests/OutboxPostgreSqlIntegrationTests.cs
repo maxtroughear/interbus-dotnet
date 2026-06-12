@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using InterBus.EntityFrameworkCore.Extensions;
 using InterBus.EntityFrameworkCore.Outbox;
 using InterBus.Extensions;
@@ -50,10 +51,13 @@ public class OutboxPostgreSqlIntegrationTests(string imageTag)
 
         services.AddInterBus(bus =>
         {
+            var isThroughputTest = TestContext.CurrentContext.Test.Name.Contains("Throughput", StringComparison.Ordinal);
             bus.AddInMemoryTransport();
             bus.AddConsumer<OrderPlacedConsumer>();
             bus.UseEfCoreOutbox<TestDbContext>(outbox => outbox
-                .WithPollInterval(TimeSpan.FromMilliseconds(100))
+                .WithShardCount(128)
+                .WithMaxConcurrentWorkers(isThroughputTest ? 8 : 1)
+                .WithEmptyPollDelay(isThroughputTest ? TimeSpan.FromMilliseconds(5) : TimeSpan.FromMilliseconds(100))
                 .UsePostgreSql());
         });
 
@@ -160,8 +164,8 @@ public class OutboxPostgreSqlIntegrationTests(string imageTag)
     }
 
     /// <summary>
-    /// Multiple messages published in the same scope share a single <see cref="OutboxGroup"/>
-    /// and are all forwarded atomically by the processor.
+    /// Multiple messages published with the same message-group-id share a single
+    /// <see cref="OutboxGroup"/> and are all forwarded atomically by the processor.
     /// </summary>
     [Test]
     public async Task OutboxProcessor_ForwardsMultipleMessagesInGroup()
@@ -176,6 +180,7 @@ public class OutboxPostgreSqlIntegrationTests(string imageTag)
             for (var i = 0; i < count; i++)
                 await publisher.PublishAsync(
                     new OrderPlaced(Guid.NewGuid(), $"pg-user{i}@example.com", i * 10m),
+                    ctx => ctx.Headers[InterBusHeaders.MessageGroupId] = "order-group",
                     TestContext.CurrentContext.CancellationToken);
 
             // All messages must share the same group.
@@ -229,5 +234,45 @@ public class OutboxPostgreSqlIntegrationTests(string imageTag)
             Assert.That(_tracker.Messages.Select(m => m.CustomerEmail),
                 Is.EquivalentTo(["pg-group1@example.com", "pg-group2@example.com"]));
         }
+    }
+
+    [Test]
+    [Category("Performance")]
+    public async Task OutboxProcessor_Throughput_Baseline()
+    {
+        const int messageCount = 20_000;
+        const int groupCount = 128;
+        const double minMessagesPerSecond = 10000;
+
+        await using (var scope = _provider.CreateAsyncScope())
+        {
+            var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
+            var dbContext = scope.ServiceProvider.GetRequiredService<TestDbContext>();
+
+            for (var i = 0; i < messageCount; i++)
+            {
+                var groupId = $"pg-perf-group-{i % groupCount}";
+                await publisher.PublishAsync(
+                    new OrderPlaced(Guid.NewGuid(), $"pg-perf-{i}@example.com", i),
+                    ctx => ctx.Headers[InterBusHeaders.MessageGroupId] = groupId,
+                    TestContext.CurrentContext.CancellationToken);
+            }
+
+            await dbContext.SaveChangesAsync(TestContext.CurrentContext.CancellationToken);
+        }
+
+        var stopwatch = Stopwatch.StartNew();
+        await TestHelpers.WaitUntilAsync(() => _tracker.Messages.Count == messageCount, timeoutMs: 30_000, intervalMs: 10);
+        stopwatch.Stop();
+
+        Assert.That(_tracker.Messages, Has.Count.EqualTo(messageCount));
+
+        var throughput = messageCount / Math.Max(0.001, stopwatch.Elapsed.TotalSeconds);
+        await TestContext.Progress.WriteLineAsync(
+            $"[PG throughput] messages={messageCount}, groups={groupCount}, elapsed={stopwatch.Elapsed.TotalSeconds:F3}s, throughput={throughput:F2} msg/s");
+        Assert.That(
+            throughput,
+            Is.GreaterThanOrEqualTo(minMessagesPerSecond),
+            $"Throughput below baseline. Measured {throughput:F2} msg/s, expected >= {minMessagesPerSecond:F2} msg/s");
     }
 }

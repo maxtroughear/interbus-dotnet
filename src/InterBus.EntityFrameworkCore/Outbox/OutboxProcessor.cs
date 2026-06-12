@@ -17,8 +17,8 @@ namespace InterBus.EntityFrameworkCore.Outbox;
 /// transport — guaranteeing FIFO delivery within each shard.
 /// </para>
 /// <para>
-/// The poll delay (<see cref="OutboxOptions.PollInterval"/>) is only applied when the outbox
-/// is empty. While messages are available, the processor loops immediately.
+/// The empty poll delay (<see cref="OutboxOptions.EmptyPollDelay"/>) is only applied when no
+/// claimable groups are available. While messages are available, workers loop immediately.
 /// </para>
 /// <para>
 /// Delivery is at-least-once: if the process crashes after forwarding but before committing,
@@ -37,12 +37,38 @@ internal sealed partial class OutboxProcessor<TDbContext>(
     {
         await InitializeShardLocksAsync(stoppingToken);
 
+        var workerCount = options.MaxConcurrentWorkers;
+        if (workerCount < 1)
+        {
+            logger.LogWarning("InterBus outbox: MaxConcurrentWorkers must be >= 1; defaulting to 1");
+            workerCount = 1;
+        }
+
+        if (lockProvider is EfCoreOutboxLockProvider<TDbContext> && workerCount > 1)
+        {
+            logger.LogWarning(
+                "InterBus outbox: MaxConcurrentWorkers={WorkerCount} requested with default EF lock provider; forcing 1 worker because this provider is single-instance only",
+                workerCount);
+            workerCount = 1;
+        }
+
+        var workers = Enumerable.Range(0, workerCount)
+            .Select(workerId => RunWorkerLoopAsync(workerId, stoppingToken));
+        await Task.WhenAll(workers);
+    }
+
+    private async Task RunWorkerLoopAsync(int workerId, CancellationToken stoppingToken)
+    {
+        using var _ = logger.BeginScope(new Dictionary<string, object> { ["WorkerId"] = workerId });
+        var shardCount = Math.Max(1, options.ShardCount);
+        var preferredShard = workerId % shardCount;
+
         while (!stoppingToken.IsCancellationRequested)
         {
-            bool hadMessages;
+            (bool HadMessages, int? ClaimedShard) result;
             try
             {
-                hadMessages = await ProcessGroupAsync(stoppingToken);
+                result = await ProcessGroupAsync(preferredShard, stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -51,15 +77,18 @@ internal sealed partial class OutboxProcessor<TDbContext>(
             catch (Exception ex)
             {
                 logger.LogError(ex, "InterBus outbox: unexpected error during group processing");
-                hadMessages = false;
+                result = (false, null);
             }
 
+            if (result.ClaimedShard is int claimedShard)
+                preferredShard = (claimedShard + 1) % shardCount;
+
             // Only wait when the outbox was empty; otherwise loop immediately.
-            if (!hadMessages)
+            if (!result.HadMessages)
             {
                 try
                 {
-                    await Task.Delay(options.PollInterval, stoppingToken);
+                    await Task.Delay(options.EmptyPollDelay, stoppingToken);
                 }
                 catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
                 {
@@ -99,7 +128,9 @@ internal sealed partial class OutboxProcessor<TDbContext>(
     /// Processes one group of messages. Returns <c>true</c> if a group was found and
     /// forwarded (successfully or not); <c>false</c> if the outbox was empty.
     /// </summary>
-    private async Task<bool> ProcessGroupAsync(CancellationToken cancellationToken)
+    private async Task<(bool HadMessages, int? ClaimedShard)> ProcessGroupAsync(
+        int preferredStartShard,
+        CancellationToken cancellationToken)
     {
         await using var scope = scopeFactory.CreateAsyncScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<TDbContext>();
@@ -110,12 +141,15 @@ internal sealed partial class OutboxProcessor<TDbContext>(
 
         try
         {
-            var claimed = await lockProvider.TryClaimAndFetchGroupAsync(dbContext, cancellationToken);
+            var claimed = await lockProvider.TryClaimAndFetchGroupAsync(
+                dbContext,
+                cancellationToken,
+                preferredStartShard);
 
             if (claimed is null)
             {
                 await tx.RollbackAsync(cancellationToken);
-                return false;
+                return (false, null);
             }
 
             var (shard, outboxGroup) = claimed.Value;
@@ -149,7 +183,7 @@ internal sealed partial class OutboxProcessor<TDbContext>(
                         "InterBus outbox: failed to forward message {MessageId} to {Destination}",
                         msg.Id, msg.Destination);
                     await tx.RollbackAsync(cancellationToken);
-                    return true;
+                    return (true, shard);
                 }
             }
 
@@ -157,7 +191,7 @@ internal sealed partial class OutboxProcessor<TDbContext>(
             await dbContext.SaveChangesAsync(cancellationToken);
             await tx.CommitAsync(cancellationToken);
 
-            return true;
+            return (true, shard);
         }
         catch (OperationCanceledException)
         {
@@ -168,7 +202,7 @@ internal sealed partial class OutboxProcessor<TDbContext>(
         {
             logger.LogError(ex, "InterBus outbox: unexpected error during group processing");
             await tx.RollbackAsync(cancellationToken);
-            return true; // group existed; caller should not wait before retrying
+            return (true, null); // group likely existed; caller should not wait before retrying
         }
     }
 

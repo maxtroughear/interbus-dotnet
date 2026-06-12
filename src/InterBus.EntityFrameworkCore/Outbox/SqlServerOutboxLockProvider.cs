@@ -44,11 +44,12 @@ public sealed class SqlServerOutboxLockProvider<TDbContext> : IOutboxLockProvide
         var (groupsFqn, groupsShardCol) = GetTableInfo(context.Set<OutboxGroup>().EntityType, nameof(OutboxGroup.Shard));
 
         // Round-robin: prefer shards >= preferredStartShard so workers can rotate shard preference.
-        // UPDLOCK, READPAST ensures concurrent processors claim different shards.
+        // UPDLOCK + READPAST + ROWLOCK keeps claiming at row granularity so a locked shard row
+        // is skipped and alternate shards remain claimable under contention.
         var startShard = Math.Max(0, preferredStartShard);
         var lockSql = $"""
                        SELECT TOP (1) l.*
-                       FROM {locksFqn} l WITH (UPDLOCK, READPAST)
+                       FROM {locksFqn} l WITH (UPDLOCK, READPAST, ROWLOCK)
                        WHERE EXISTS (SELECT 1 FROM {groupsFqn} g WHERE g.{groupsShardCol} = l.{locksShardCol})
                        ORDER BY CASE WHEN l.{locksShardCol} >= {startShard} THEN 0 ELSE 1 END, l.{locksShardCol}
                        """;

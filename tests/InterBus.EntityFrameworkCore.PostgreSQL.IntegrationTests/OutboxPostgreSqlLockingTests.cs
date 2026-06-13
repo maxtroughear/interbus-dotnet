@@ -148,4 +148,80 @@ public class OutboxPostgreSqlLockingTests(string imageTag)
         await txB.RollbackAsync();
         await txA.RollbackAsync();
     }
+
+    [Test]
+    public async Task LockProvider_ReclaimsShard_AfterRollback()
+    {
+        await using (var scope = _provider.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<TestDbContext>();
+            db.OutboxLocks.Add(new OutboxLock { Shard = 0 });
+            db.OutboxGroups.Add(new OutboxGroup { Id = GroupAId, Shard = 0 });
+            await db.SaveChangesAsync();
+        }
+
+        var lockProvider = new PostgreSqlOutboxLockProvider<TestDbContext>();
+
+        await using var scopeA = _provider.CreateAsyncScope();
+        var dbA = scopeA.ServiceProvider.GetRequiredService<TestDbContext>();
+        await using var txA = await dbA.Database.BeginTransactionAsync();
+
+        var claimedA = await lockProvider.TryClaimAndFetchGroupAsync(dbA, CancellationToken.None);
+        Assert.That(claimedA, Is.Not.Null);
+        Assert.That(claimedA!.Value.Group?.Id, Is.EqualTo(GroupAId));
+
+        // Simulate crash/failure before commit.
+        await txA.RollbackAsync();
+
+        await using var scopeB = _provider.CreateAsyncScope();
+        var dbB = scopeB.ServiceProvider.GetRequiredService<TestDbContext>();
+        await using var txB = await dbB.Database.BeginTransactionAsync();
+
+        var claimedB = await lockProvider.TryClaimAndFetchGroupAsync(dbB, CancellationToken.None);
+        Assert.That(claimedB, Is.Not.Null, "Another worker should reclaim the shard after rollback");
+        Assert.That(claimedB!.Value.Group?.Id, Is.EqualTo(GroupAId));
+
+        await txB.RollbackAsync();
+    }
+
+    [Test]
+    public async Task LockProvider_DoesNotDoubleClaim_WhenTwoConnectionsRace()
+    {
+        await using (var scope = _provider.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<TestDbContext>();
+            db.OutboxLocks.Add(new OutboxLock { Shard = 0 });
+            db.OutboxGroups.Add(new OutboxGroup { Id = GroupAId, Shard = 0 });
+            await db.SaveChangesAsync();
+        }
+
+        var lockProvider = new PostgreSqlOutboxLockProvider<TestDbContext>();
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        await using var scopeA = _provider.CreateAsyncScope();
+        await using var scopeB = _provider.CreateAsyncScope();
+        var dbA = scopeA.ServiceProvider.GetRequiredService<TestDbContext>();
+        var dbB = scopeB.ServiceProvider.GetRequiredService<TestDbContext>();
+        await using var txA = await dbA.Database.BeginTransactionAsync();
+        await using var txB = await dbB.Database.BeginTransactionAsync();
+
+        async Task<(int Shard, OutboxGroup? Group)?> ClaimAsync(TestDbContext db)
+        {
+            await gate.Task;
+            return await lockProvider.TryClaimAndFetchGroupAsync(db, CancellationToken.None);
+        }
+
+        var claimTaskA = ClaimAsync(dbA);
+        var claimTaskB = ClaimAsync(dbB);
+        gate.SetResult();
+
+        await Task.WhenAll(claimTaskA, claimTaskB);
+
+        var successfulClaimCount = new[] { claimTaskA.Result, claimTaskB.Result }
+            .Count(c => c?.Group != null);
+        Assert.That(successfulClaimCount, Is.EqualTo(1), "Only one connection may claim a given shard at a time");
+
+        await txB.RollbackAsync();
+        await txA.RollbackAsync();
+    }
 }

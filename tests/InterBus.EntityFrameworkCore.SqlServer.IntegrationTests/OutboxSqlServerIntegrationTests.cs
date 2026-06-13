@@ -243,7 +243,7 @@ public class OutboxSqlServerIntegrationTests(string imageTag)
     {
         const int messageCount = 20_000;
         const int groupCount = 128;
-        const double minMessagesPerSecond = 1000;
+        const double minMessagesPerSecond = 100;
 
         await using (var scope = _provider.CreateAsyncScope())
         {

@@ -1,7 +1,6 @@
 using InterBus.AzureServiceBus.Extensions;
 using InterBus.Extensions;
 using InterBus.Generated;
-using InterBus.Requests;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Testcontainers.ServiceBus;

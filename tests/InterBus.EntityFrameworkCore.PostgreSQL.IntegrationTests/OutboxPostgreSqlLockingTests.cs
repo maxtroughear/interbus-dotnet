@@ -86,7 +86,7 @@ public class OutboxPostgreSqlLockingTests(string imageTag)
 
         var claimedA = await lockProvider.TryClaimAndFetchGroupAsync(dbA, CancellationToken.None);
         Assert.That(claimedA, Is.Not.Null, "Connection A should claim the only available shard");
-        Assert.That(claimedA!.Value.Group.Id, Is.EqualTo(GroupAId));
+        Assert.That(claimedA!.Value.Group?.Id, Is.EqualTo(GroupAId));
 
         // Connection B: while A holds the lock on shard 0, no shards are available.
         await using var scopeB = _provider.CreateAsyncScope();
@@ -130,7 +130,7 @@ public class OutboxPostgreSqlLockingTests(string imageTag)
         var claimedA = await lockProvider.TryClaimAndFetchGroupAsync(dbA, CancellationToken.None);
         Assert.That(claimedA, Is.Not.Null, "Connection A should claim shard 0 first");
         Assert.That(claimedA!.Value.Shard, Is.EqualTo(0), "Shard 0 (lower number) should be claimed by connection A");
-        Assert.That(claimedA!.Value.Group.Id, Is.EqualTo(GroupAId));
+        Assert.That(claimedA.Value.Group?.Id, Is.EqualTo(GroupAId));
 
         // Connection B: shard 0 is locked, so it should skip to shard 1.
         await using var scopeB = _provider.CreateAsyncScope();
@@ -143,7 +143,7 @@ public class OutboxPostgreSqlLockingTests(string imageTag)
             "Connection B should find shard 1 even though shard 0 is locked");
         Assert.That(claimedB!.Value.Shard, Is.EqualTo(1),
             "Connection B must skip the locked shard 0 and claim shard 1 (FOR UPDATE SKIP LOCKED)");
-        Assert.That(claimedB!.Value.Group.Id, Is.EqualTo(GroupBId));
+        Assert.That(claimedB.Value.Group?.Id, Is.EqualTo(GroupBId));
 
         await txB.RollbackAsync();
         await txA.RollbackAsync();

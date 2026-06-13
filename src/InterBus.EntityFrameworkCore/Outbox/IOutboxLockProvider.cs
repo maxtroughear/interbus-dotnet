@@ -44,7 +44,7 @@ public interface IOutboxLockProvider<in TDbContext> where TDbContext : DbContext
     /// <returns>
     /// The claimed shard index and oldest pending group, or <c>null</c> when no work is available.
     /// </returns>
-    Task<(int Shard, OutboxGroup Group)?> TryClaimAndFetchGroupAsync(
+    Task<(int Shard, OutboxGroup? Group)?> TryClaimAndFetchGroupAsync(
         TDbContext context,
         CancellationToken cancellationToken,
         int preferredStartShard = 0);

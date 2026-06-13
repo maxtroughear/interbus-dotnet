@@ -1,6 +1,5 @@
 using InterBus.EntityFrameworkCore.Outbox;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Storage;
 
 namespace InterBus.EntityFrameworkCore.Extensions;
 

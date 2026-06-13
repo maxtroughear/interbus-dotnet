@@ -25,49 +25,39 @@ public sealed class SqlServerOutboxLockProvider<TDbContext> : IOutboxLockProvide
         {
             // UPDLOCK + HOLDLOCK on the NOT EXISTS check prevent the TOCTOU race where two
             // concurrent instances both see "not exists" and both attempt the INSERT.
-            await context.Database.ExecuteSqlRawAsync(
-                $"""
-                 IF NOT EXISTS (SELECT 1 FROM {locksFqn} WITH (UPDLOCK, HOLDLOCK) WHERE {shardCol} = {i})
-                     INSERT INTO {locksFqn} ({shardCol}) VALUES ({i})
-                 """,
-                cancellationToken);
+            var insertLockSql = $"""
+                                 IF NOT EXISTS (SELECT 1 FROM {locksFqn} WITH (UPDLOCK, HOLDLOCK) WHERE {shardCol} = {i})
+                                     INSERT INTO {locksFqn} ({shardCol}) VALUES ({i})
+                                 """;
+
+            await context.Database.ExecuteSqlRawAsync(insertLockSql, cancellationToken);
         }
     }
 
     /// <inheritdoc/>
-    public async Task<(int Shard, OutboxGroup Group)?> TryClaimAndFetchGroupAsync(
+    public async Task<(int Shard, OutboxGroup? Group)?> TryClaimAndFetchGroupAsync(
         TDbContext context,
         CancellationToken cancellationToken,
         int preferredStartShard = 0)
     {
         var (locksFqn, locksShardCol) = GetTableInfo(context.Set<OutboxLock>().EntityType, nameof(OutboxLock.Shard));
-        var (groupsFqn, groupsShardCol) = GetTableInfo(context.Set<OutboxGroup>().EntityType, nameof(OutboxGroup.Shard));
-        
+
         var startShard = Math.Max(0, preferredStartShard);
-        // Use a recursive CTE to generate candidate shards in preference order (starting from preferredStartShard,
-        // wrapping around). This avoids the ORDER BY + TOP causing SQL Server to lock multiple rows before READPAST filters them.
-        // The CTE generates the candidate list without locks, then we join and lock only the row we actually try to claim.
-        var lockSql = $$"""
-                        WITH candidate_shards AS (
-                            SELECT {{startShard}} as shard_num, 0 as depth
-                            UNION ALL
-                            SELECT (shard_num + 1) % (SELECT COUNT(*) FROM {{locksFqn}}) as shard_num, depth + 1
-                            FROM candidate_shards
-                            WHERE depth < (SELECT COUNT(*) FROM {{locksFqn}})
-                        )
-                        SELECT TOP (1) l.*
-                        FROM candidate_shards cs
-                        INNER JOIN {{locksFqn}} l WITH (ROWLOCK, UPDLOCK, READPAST) ON l.{{locksShardCol}} = cs.shard_num
-                        WHERE EXISTS (SELECT 1 FROM {{groupsFqn}} g WHERE g.{{groupsShardCol}} = l.{{locksShardCol}})
-                        ORDER BY cs.depth
-                        """;
+
+        var simpleLock = $$"""
+                           SELECT TOP (1) l.*
+                           FROM {{locksFqn}} l WITH (ROWLOCK, UPDLOCK, READPAST)
+                           WHERE l.{{locksShardCol}} = {{startShard}}
+                           """;
 
         var claimedLock = await context.Set<OutboxLock>()
-            .FromSqlRaw(lockSql)
+            .FromSqlRaw(simpleLock)
             .FirstOrDefaultAsync(cancellationToken);
 
+        // Return the shard here to tell the processor to loop back around immediately.
+        // Locking the next shard will be done by the processor.
         if (claimedLock is null)
-            return null;
+            return (preferredStartShard, null);
 
         // Fetch the oldest group in the claimed shard (FIFO within the shard).
         var group = await context.Set<OutboxGroup>()
@@ -76,7 +66,7 @@ public sealed class SqlServerOutboxLockProvider<TDbContext> : IOutboxLockProvide
             .Include(g => g.Messages.OrderBy(m => m.Id))
             .FirstOrDefaultAsync(cancellationToken);
 
-        return group is null ? null : (claimedLock.Shard, group);
+        return (claimedLock.Shard, group);
     }
 
     private static (string fqn, string col) GetTableInfo(IEntityType entityType, string colProperty)

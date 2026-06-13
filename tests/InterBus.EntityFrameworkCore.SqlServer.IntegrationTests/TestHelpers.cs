@@ -4,7 +4,7 @@ public static class TestHelpers
 {
     internal static async Task WaitUntilAsync(
         Func<bool> condition,
-        int timeoutMs = 100_000,
+        int timeoutMs = 10_000,
         int intervalMs = 50)
     {
         var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);

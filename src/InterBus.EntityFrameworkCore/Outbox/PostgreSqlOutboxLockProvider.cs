@@ -23,14 +23,14 @@ public sealed class PostgreSqlOutboxLockProvider<TDbContext> : IOutboxLockProvid
 
         for (var i = 0; i < shardCount; i++)
         {
-            await context.Database.ExecuteSqlRawAsync(
-                $"INSERT INTO {locksFqn} ({shardCol}) VALUES ({i}) ON CONFLICT ({shardCol}) DO NOTHING",
-                cancellationToken);
+            var insertLockSql = $"INSERT INTO {locksFqn} ({shardCol}) VALUES ({i}) ON CONFLICT ({shardCol}) DO NOTHING";
+            
+            await context.Database.ExecuteSqlRawAsync(insertLockSql, cancellationToken);
         }
     }
 
     /// <inheritdoc/>
-    public async Task<(int Shard, OutboxGroup Group)?> TryClaimAndFetchGroupAsync(
+    public async Task<(int Shard, OutboxGroup? Group)?> TryClaimAndFetchGroupAsync(
         TDbContext context,
         CancellationToken cancellationToken,
         int preferredStartShard = 0)
@@ -67,7 +67,7 @@ public sealed class PostgreSqlOutboxLockProvider<TDbContext> : IOutboxLockProvid
             .Include(g => g.Messages.OrderBy(m => m.Id))
             .FirstOrDefaultAsync(cancellationToken);
 
-        return group is null ? null : (claimedLock.Shard, group);
+        return (claimedLock.Shard, group);
     }
 
     private static (string fqn, string col) GetTableInfo(IEntityType entityType, string colProperty)

@@ -12,7 +12,7 @@ namespace InterBus.EntityFrameworkCore.Outbox;
 internal sealed class EfCoreOutboxLockProvider<TDbContext> : IOutboxLockProvider<TDbContext>
     where TDbContext : DbContext
 {
-    public async Task<(int Shard, OutboxGroup Group)?> TryClaimAndFetchGroupAsync(
+    public async Task<(int Shard, OutboxGroup? Group)?> TryClaimAndFetchGroupAsync(
         TDbContext context,
         CancellationToken cancellationToken,
         int preferredStartShard = 0)

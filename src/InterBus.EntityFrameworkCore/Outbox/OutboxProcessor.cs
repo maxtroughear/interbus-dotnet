@@ -65,37 +65,51 @@ internal sealed partial class OutboxProcessor<TDbContext>(
 
         while (!stoppingToken.IsCancellationRequested)
         {
-            (bool HadMessages, int? ClaimedShard) result;
             try
             {
-                result = await ProcessGroupAsync(preferredShard, stoppingToken);
+                preferredShard = await WorkerLoopAsync(preferredShard, shardCount, stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
                 break;
             }
-            catch (Exception ex)
+        }
+    }
+    
+    private async Task<int> WorkerLoopAsync(int preferredShard, int shardCount, CancellationToken stoppingToken)
+    {
+        (bool HadMessages, int? ClaimedShard) result;
+        try
+        {
+            result = await ProcessGroupAsync(preferredShard, stoppingToken);
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "InterBus outbox: unexpected error during group processing");
+            result = (false, null);
+        }
+
+        if (result.ClaimedShard is { } claimedShard)
+            preferredShard = (claimedShard + 1) % shardCount;
+
+        // Only wait when the outbox was empty; otherwise loop immediately.
+        if (!result.HadMessages)
+        {
+            try
             {
-                logger.LogError(ex, "InterBus outbox: unexpected error during group processing");
-                result = (false, null);
+                await Task.Delay(options.EmptyPollDelay, stoppingToken);
             }
-
-            if (result.ClaimedShard is int claimedShard)
-                preferredShard = (claimedShard + 1) % shardCount;
-
-            // Only wait when the outbox was empty; otherwise loop immediately.
-            if (!result.HadMessages)
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
-                try
-                {
-                    await Task.Delay(options.EmptyPollDelay, stoppingToken);
-                }
-                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-                {
-                    break;
-                }
+                throw;
             }
         }
+
+        return preferredShard;
     }
 
     /// <summary>
@@ -154,6 +168,12 @@ internal sealed partial class OutboxProcessor<TDbContext>(
 
             var (shard, outboxGroup) = claimed.Value;
 
+            if (outboxGroup is null)
+            {
+                await tx.RollbackAsync(cancellationToken);
+                return (true, shard);
+            }
+            
             using var _ = logger.BeginScope(new Dictionary<string, object>
             {
                 ["GroupId"] = outboxGroup.Id,

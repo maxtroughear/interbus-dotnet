@@ -9,6 +9,7 @@ public sealed class TestDbContext(DbContextOptions<TestDbContext> options)
 {
     public DbSet<OutboxGroup> OutboxGroups => Set<OutboxGroup>();
     public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
+    public DbSet<OutboxLock> OutboxLocks => Set<OutboxLock>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder) =>
         modelBuilder.AddInterBusOutbox();

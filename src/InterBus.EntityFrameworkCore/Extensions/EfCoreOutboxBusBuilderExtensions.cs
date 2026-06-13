@@ -41,6 +41,10 @@ public static class EfCoreOutboxBusBuilderExtensions
             builder.Services.AddSingleton<IOutboxLockProvider<TDbContext>, EfCoreOutboxLockProvider<TDbContext>>();
             builder.Services.AddSingleton<ILockProvider, InMemoryLockProvider>();
 
+            // Register default OutboxOptions so OutboxPublishMiddleware can always resolve it.
+            // UseEfCoreOutbox replaces this with the user-configured instance.
+            builder.Services.TryAddSingleton<OutboxOptions>();
+
             configure?.Invoke(new EfCoreBuilder<TDbContext>(builder.Services));
 
             return builder;
@@ -60,8 +64,8 @@ public static class EfCoreOutboxBusBuilderExtensions
         /// <para>
         /// A background <see cref="Microsoft.Extensions.Hosting.IHostedService"/> continuously
         /// polls the outbox table and forwards pending groups to the configured transport. The
-        /// poll delay (<see cref="OutboxOptions.PollInterval"/>) is only applied when the outbox
-        /// is empty.
+        /// empty poll delay (<see cref="OutboxOptions.EmptyPollDelay"/>) is only applied when no
+        /// claimable groups are available.
         /// </para>
         /// <para>
         /// <typeparamref name="TDbContext"/> must call <c>modelBuilder.AddInterBusOutbox()</c>
@@ -72,7 +76,7 @@ public static class EfCoreOutboxBusBuilderExtensions
         /// a database-specific locking strategy for multi-instance deployments:
         /// <code>
         /// bus.UseOutbox&lt;AppDbContext&gt;(outbox => outbox
-        ///     .WithPollInterval(TimeSpan.FromSeconds(2))
+        ///     .WithEmptyPollDelay(TimeSpan.FromSeconds(2))
         ///     .UsePostgreSql());
         /// </code>
         /// </para>

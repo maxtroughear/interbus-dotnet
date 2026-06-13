@@ -11,14 +11,14 @@ namespace InterBus.EntityFrameworkCore.Outbox;
 /// Background service that continuously reads pending groups of messages from the transactional
 /// outbox and forwards them to the configured transport via <see cref="ITransportFactory"/>.
 /// <para>
-/// Each iteration fetches one complete group (all messages sharing the same
-/// <see cref="OutboxMessage.GroupId"/>) within a database transaction, forwards each message
-/// to the transport, deletes the rows, and commits. If any message in the group fails to
-/// forward, the transaction is rolled back and the entire group is retried on the next poll.
+/// On startup, ensures one <see cref="OutboxLock"/> row exists per configured shard. Each
+/// processing iteration claims the oldest available shard, fetches the oldest pending
+/// <see cref="OutboxGroup"/> within it, and forwards every message in that group to the
+/// transport — guaranteeing FIFO delivery within each shard.
 /// </para>
 /// <para>
-/// The poll delay (<see cref="OutboxOptions.PollInterval"/>) is only applied when the outbox
-/// is empty. While messages are available, the processor loops immediately.
+/// The empty poll delay (<see cref="OutboxOptions.EmptyPollDelay"/>) is only applied when no
+/// claimable groups are available. While messages are available, workers loop immediately.
 /// </para>
 /// <para>
 /// Delivery is at-least-once: if the process crashes after forwarding but before committing,
@@ -35,35 +35,106 @@ internal sealed partial class OutboxProcessor<TDbContext>(
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        await InitializeShardLocksAsync(stoppingToken);
+
+        var workerCount = options.MaxConcurrentWorkers;
+        if (workerCount < 1)
+        {
+            logger.LogWarning("InterBus outbox: MaxConcurrentWorkers must be >= 1; defaulting to 1");
+            workerCount = 1;
+        }
+
+        if (lockProvider is EfCoreOutboxLockProvider<TDbContext> && workerCount > 1)
+        {
+            logger.LogWarning(
+                "InterBus outbox: MaxConcurrentWorkers={WorkerCount} requested with default EF lock provider; forcing 1 worker because this provider is single-instance only",
+                workerCount);
+            workerCount = 1;
+        }
+
+        var workers = Enumerable.Range(0, workerCount)
+            .Select(workerId => RunWorkerLoopAsync(workerId, stoppingToken));
+        await Task.WhenAll(workers);
+    }
+
+    private async Task RunWorkerLoopAsync(int workerId, CancellationToken stoppingToken)
+    {
+        using var _ = logger.BeginScope(new Dictionary<string, object> { ["WorkerId"] = workerId });
+        var shardCount = Math.Max(1, options.ShardCount);
+        var preferredShard = workerId % shardCount;
+
         while (!stoppingToken.IsCancellationRequested)
         {
-            bool hadMessages;
             try
             {
-                hadMessages = await ProcessGroupAsync(stoppingToken);
+                preferredShard = await WorkerLoopAsync(preferredShard, shardCount, stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
                 break;
             }
-            catch (Exception ex)
-            {
-                logger.LogError(ex, "InterBus outbox: unexpected error during group processing");
-                hadMessages = false;
-            }
+        }
+    }
+    
+    private async Task<int> WorkerLoopAsync(int preferredShard, int shardCount, CancellationToken stoppingToken)
+    {
+        (bool HadMessages, int? ClaimedShard) result;
+        try
+        {
+            result = await ProcessGroupAsync(preferredShard, stoppingToken);
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "InterBus outbox: unexpected error during group processing");
+            result = (false, null);
+        }
 
-            // Only wait when the outbox was empty; otherwise loop immediately.
-            if (!hadMessages)
+        if (result.ClaimedShard is { } claimedShard)
+            preferredShard = (claimedShard + 1) % shardCount;
+
+        // Only wait when the outbox was empty; otherwise loop immediately.
+        if (!result.HadMessages)
+        {
+            try
             {
-                try
-                {
-                    await Task.Delay(options.PollInterval, stoppingToken);
-                }
-                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-                {
-                    break;
-                }
+                await Task.Delay(options.EmptyPollDelay, stoppingToken);
             }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                throw;
+            }
+        }
+
+        return preferredShard;
+    }
+
+    /// <summary>
+    /// Initialises <see cref="OutboxLock"/> rows (one per shard) so that DB-level lock
+    /// providers can claim shards via row-level locking.
+    /// </summary>
+    private async Task InitializeShardLocksAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await using var scope = scopeFactory.CreateAsyncScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<TDbContext>();
+            await lockProvider.EnsureShardLocksAsync(dbContext, options.ShardCount, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // Shutting down before the loop even starts — that's fine.
+        }
+        catch (Exception ex)
+        {
+            // Non-fatal: processing continues without shard rows; the default EfCore provider
+            // does not require them, but DB-specific providers (PostgreSQL, SQL Server) rely on
+            // their existence for multi-instance FIFO locking. Missing rows may allow duplicate
+            // processing across concurrent instances.
+            logger.LogWarning(ex, "InterBus outbox: failed to initialize shard lock rows; concurrent instances may process the same shard simultaneously");
         }
     }
 
@@ -71,7 +142,9 @@ internal sealed partial class OutboxProcessor<TDbContext>(
     /// Processes one group of messages. Returns <c>true</c> if a group was found and
     /// forwarded (successfully or not); <c>false</c> if the outbox was empty.
     /// </summary>
-    private async Task<bool> ProcessGroupAsync(CancellationToken cancellationToken)
+    private async Task<(bool HadMessages, int? ClaimedShard)> ProcessGroupAsync(
+        int preferredStartShard,
+        CancellationToken cancellationToken)
     {
         await using var scope = scopeFactory.CreateAsyncScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<TDbContext>();
@@ -82,15 +155,30 @@ internal sealed partial class OutboxProcessor<TDbContext>(
 
         try
         {
-            var outboxGroup = await lockProvider.TryFetchGroupAsync(dbContext, cancellationToken);
+            var claimed = await lockProvider.TryClaimAndFetchGroupAsync(
+                dbContext,
+                cancellationToken,
+                preferredStartShard);
+
+            if (claimed is null)
+            {
+                await tx.RollbackAsync(cancellationToken);
+                return (false, null);
+            }
+
+            var (shard, outboxGroup) = claimed.Value;
 
             if (outboxGroup is null)
             {
                 await tx.RollbackAsync(cancellationToken);
-                return false;
+                return (true, shard);
             }
-
-            using var _ = logger.BeginScope(new Dictionary<string, object> { ["GroupId"] = outboxGroup.Id });
+            
+            using var _ = logger.BeginScope(new Dictionary<string, object>
+            {
+                ["GroupId"] = outboxGroup.Id,
+                ["Shard"] = shard,
+            });
 
             LogOutboxForwardingGroupCount(outboxGroup.Id, outboxGroup.Messages.Count);
 
@@ -115,7 +203,7 @@ internal sealed partial class OutboxProcessor<TDbContext>(
                         "InterBus outbox: failed to forward message {MessageId} to {Destination}",
                         msg.Id, msg.Destination);
                     await tx.RollbackAsync(cancellationToken);
-                    return true;
+                    return (true, shard);
                 }
             }
 
@@ -123,7 +211,7 @@ internal sealed partial class OutboxProcessor<TDbContext>(
             await dbContext.SaveChangesAsync(cancellationToken);
             await tx.CommitAsync(cancellationToken);
 
-            return true;
+            return (true, shard);
         }
         catch (OperationCanceledException)
         {
@@ -134,7 +222,7 @@ internal sealed partial class OutboxProcessor<TDbContext>(
         {
             logger.LogError(ex, "InterBus outbox: unexpected error during group processing");
             await tx.RollbackAsync(cancellationToken);
-            return true; // group existed; caller should not wait before retrying
+            return (true, null); // group likely existed; caller should not wait before retrying
         }
     }
 

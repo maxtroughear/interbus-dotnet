@@ -12,7 +12,8 @@ namespace InterBus.EntityFrameworkCore.Outbox;
 /// and configure polling behaviour:
 /// <code>
 /// bus.UseOutbox&lt;AppDbContext&gt;(outbox => outbox
-///     .WithPollInterval(TimeSpan.FromSeconds(2))
+///     .WithEmptyPollDelay(TimeSpan.FromSeconds(2))
+///     .WithMaxConcurrentWorkers(8)
 ///     .UsePostgreSql());
 /// </code>
 /// </para>
@@ -34,13 +35,48 @@ public sealed class OutboxBuilder<TDbContext>
     }
 
     /// <summary>
-    /// Overrides how often the background processor polls the outbox table when there are no
-    /// pending messages. Defaults to 5 seconds. Lower values reduce end-to-end latency at the
-    /// cost of more frequent database queries when the outbox is empty.
+    /// Overrides how long outbox workers wait before polling again when no claimable groups are
+    /// found. Defaults to 5 seconds. Lower values reduce end-to-end latency at the cost of more
+    /// frequent database queries when the outbox is empty.
     /// </summary>
-    public OutboxBuilder<TDbContext> WithPollInterval(TimeSpan interval)
+    public OutboxBuilder<TDbContext> WithEmptyPollDelay(TimeSpan delay)
     {
-        Options.PollInterval = interval;
+        Options.EmptyPollDelay = delay;
+        return this;
+    }
+
+    /// <summary>
+    /// Sets the number of independent FIFO processing shards. Defaults to <c>128</c>.
+    /// <para>
+    /// With a single shard all outbox groups are delivered in strict global FIFO order.
+    /// Increasing the shard count allows multiple processor instances to run in parallel
+    /// (higher throughput) at the expense of global ordering — ordering is only guaranteed
+    /// within each shard.
+    /// </para>
+    /// <para>
+    /// Effective only when combined with a database-level lock provider
+    /// (<c>UsePostgreSql()</c> or <c>UseSqlServer()</c>).
+    /// </para>
+    /// </summary>
+    public OutboxBuilder<TDbContext> WithShardCount(int shardCount)
+    {
+        if (shardCount < 1)
+            throw new ArgumentOutOfRangeException(nameof(shardCount), "Shard count must be >= 1");
+
+        Options.ShardCount = shardCount;
+        return this;
+    }
+
+    /// <summary>
+    /// Sets the number of concurrent outbox workers this process runs.
+    /// Each worker claims and processes one group at a time in its own transaction.
+    /// </summary>
+    public OutboxBuilder<TDbContext> WithMaxConcurrentWorkers(int workerCount)
+    {
+        if (workerCount < 1)
+            throw new ArgumentOutOfRangeException(nameof(workerCount), "Worker count must be >= 1");
+
+        Options.MaxConcurrentWorkers = workerCount;
         return this;
     }
 

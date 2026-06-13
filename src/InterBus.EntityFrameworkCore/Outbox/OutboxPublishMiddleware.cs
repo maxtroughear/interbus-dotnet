@@ -1,3 +1,5 @@
+using System.IO.Hashing;
+using System.Text;
 using System.Text.Json;
 using InterBus.DeadLettering;
 using InterBus.Publishing;
@@ -10,16 +12,19 @@ namespace InterBus.EntityFrameworkCore.Outbox;
 /// forwarding it to the transport directly. The message is only sent once the caller commits its
 /// database transaction, guaranteeing atomicity with any surrounding business-logic writes.
 /// <para>
-/// All messages published within the same DI scope share the same
-/// <see cref="OutboxMessage.GroupId"/>, allowing the processor to fetch and forward them as a
-/// single atomic group.
+/// Messages are partitioned by <see cref="InterBusHeaders.MessageGroupId"/> within a scope:
+/// each group ID gets its own <see cref="OutboxGroup"/>. This allows one transaction to enqueue
+/// multiple independent FIFO groups while still committing atomically.
 /// </para>
 /// </summary>
-internal sealed class OutboxPublishMiddleware<TDbContext>(TDbContext dbContext, IMessageSerializer serializer)
+internal sealed class OutboxPublishMiddleware<TDbContext>(
+    TDbContext dbContext,
+    IMessageSerializer serializer,
+    OutboxOptions options)
     : IPublishMiddleware
     where TDbContext : DbContext
 {
-    private OutboxGroup? _outboxGroup;
+    private readonly Dictionary<string, OutboxGroup> _outboxGroups = new(StringComparer.Ordinal);
 
     public Task InvokeAsync<T>(PublishContext<T> context, Func<PublishContext<T>, CancellationToken, Task> next,
         CancellationToken cancellationToken = default) where T : class
@@ -32,10 +37,12 @@ internal sealed class OutboxPublishMiddleware<TDbContext>(TDbContext dbContext, 
 
         var payload = serializer.Serialize(context.Message);
         var headersJson = SerializeHeaders(context.Headers);
+        var messageGroupId = ResolveMessageGroupId(context.Headers);
+        var outboxGroup = EnsureGroupExists(messageGroupId);
 
-        EnsureGroupExists().Messages.Add(new OutboxMessage
+        outboxGroup.Messages.Add(new OutboxMessage
         {
-            GroupId = _outboxGroup!.Id,
+            GroupId = outboxGroup.Id,
             Destination = context.Destination.ToString(),
             Payload = payload,
             HeadersJson = headersJson,
@@ -47,17 +54,45 @@ internal sealed class OutboxPublishMiddleware<TDbContext>(TDbContext dbContext, 
         return Task.CompletedTask;
     }
 
-    private OutboxGroup EnsureGroupExists()
+    private OutboxGroup EnsureGroupExists(string messageGroupId)
     {
-        if (_outboxGroup is not null)
-            return _outboxGroup;
+        if (_outboxGroups.TryGetValue(messageGroupId, out var existing))
+            return existing;
 
-        _outboxGroup = new OutboxGroup { Id = Guid.CreateVersion7() };
-        dbContext.Add(_outboxGroup);
+        // Deterministically assign shard by message group ID so all messages for the same group
+        // always route to the same shard across processes/instances.
+        var groupId = Guid.CreateVersion7();
+        var shard = options.ShardCount > 1
+            ? (int)(ComputeStableHash(messageGroupId) % (ulong)options.ShardCount)
+            : 0;
 
-        return _outboxGroup;
+        var outboxGroup = new OutboxGroup
+        {
+            Id = groupId,
+            Shard = shard,
+        };
+
+        _outboxGroups[messageGroupId] = outboxGroup;
+        dbContext.Add(outboxGroup);
+
+        return outboxGroup;
+    }
+
+    private static string ResolveMessageGroupId(MessageHeaders headers)
+    {
+        if (!headers.TryGetValue(InterBusHeaders.MessageGroupId, out var messageGroupId)
+            || string.IsNullOrWhiteSpace(messageGroupId))
+        {
+            throw new InvalidOperationException(
+                $"Missing required '{InterBusHeaders.MessageGroupId}' header for EF Core outbox grouping");
+        }
+
+        return messageGroupId;
     }
 
     private static string SerializeHeaders(MessageHeaders headers) =>
         JsonSerializer.Serialize(headers, OutboxJsonContext.Default.DictionaryStringString);
+
+    private static ulong ComputeStableHash(string value) =>
+        XxHash3.HashToUInt64(Encoding.UTF8.GetBytes(value));
 }

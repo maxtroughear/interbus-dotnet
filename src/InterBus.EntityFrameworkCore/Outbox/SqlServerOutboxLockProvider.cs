@@ -4,33 +4,72 @@ using Microsoft.EntityFrameworkCore.Metadata;
 namespace InterBus.EntityFrameworkCore.Outbox;
 
 /// <summary>
-/// <see cref="IOutboxLockProvider{TDbContext}"/> for SQL Server databases. Uses
-/// <c>UPDLOCK, READPAST</c> to atomically select and lock one outbox group row,
-/// then reads all messages in that group.
+/// <see cref="IOutboxLockProvider{TDbContext}"/> for SQL Server databases.
+/// <para>
+/// On startup, ensures one <see cref="OutboxLock"/> row exists per shard. At processing time,
+/// uses <c>UPDLOCK, READPAST</c> hints to atomically claim the oldest available shard that has
+/// pending groups, then fetches the oldest <see cref="OutboxGroup"/> in that shard to guarantee
+/// FIFO delivery within each shard. Multiple processor instances can work in parallel on
+/// different shards without blocking one another.
+/// </para>
 /// </summary>
 public sealed class SqlServerOutboxLockProvider<TDbContext> : IOutboxLockProvider<TDbContext>
     where TDbContext : DbContext
 {
-    public async Task<OutboxGroup?> TryFetchGroupAsync(
-        TDbContext context,
-        CancellationToken cancellationToken)
+    /// <inheritdoc/>
+    public async Task EnsureShardLocksAsync(TDbContext context, int shardCount, CancellationToken cancellationToken)
     {
-        var (groupsFqn, idCol) = GetTableInfo(context.Set<OutboxGroup>().EntityType, nameof(OutboxGroup.Id));
+        var (locksFqn, shardCol) = GetTableInfo(context.Set<OutboxLock>().EntityType, nameof(OutboxLock.Shard));
 
-        // Lock one oldest eligible group row; empty groups are still claimable and will be cleaned up.
-        var groupSql = $"""
-                        SELECT TOP (1) g.*
-                        FROM {groupsFqn} g WITH (UPDLOCK, READPAST)
-                        ORDER BY g.{idCol}
-                        """;
+        for (var i = 0; i < shardCount; i++)
+        {
+            // UPDLOCK + HOLDLOCK on the NOT EXISTS check prevent the TOCTOU race where two
+            // concurrent instances both see "not exists" and both attempt the INSERT.
+            var insertLockSql = $"""
+                                 IF NOT EXISTS (SELECT 1 FROM {locksFqn} WITH (UPDLOCK, HOLDLOCK) WHERE {shardCol} = {i})
+                                     INSERT INTO {locksFqn} ({shardCol}) VALUES ({i})
+                                 """;
 
-        return await context.Set<OutboxGroup>()
-            .FromSqlRaw(groupSql)
-            .Include(g => g.Messages.OrderBy(m => m.Id))
-            .FirstOrDefaultAsync(cancellationToken);
+            await context.Database.ExecuteSqlRawAsync(insertLockSql, cancellationToken);
+        }
     }
 
-    private static (string fqn, string col2) GetTableInfo(IEntityType entityType, string colProperty)
+    /// <inheritdoc/>
+    public async Task<(int Shard, OutboxGroup? Group)?> TryClaimAndFetchGroupAsync(
+        TDbContext context,
+        CancellationToken cancellationToken,
+        int preferredStartShard = 0)
+    {
+        var (locksFqn, locksShardCol) = GetTableInfo(context.Set<OutboxLock>().EntityType, nameof(OutboxLock.Shard));
+
+        var startShard = Math.Max(0, preferredStartShard);
+
+        var simpleLock = $$"""
+                           SELECT TOP (1) l.*
+                           FROM {{locksFqn}} l WITH (ROWLOCK, UPDLOCK, READPAST)
+                           WHERE l.{{locksShardCol}} = {{startShard}}
+                           """;
+
+        var claimedLock = await context.Set<OutboxLock>()
+            .FromSqlRaw(simpleLock)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        // Return the shard here to tell the processor to loop back around immediately.
+        // Locking the next shard will be done by the processor.
+        if (claimedLock is null)
+            return (preferredStartShard, null);
+
+        // Fetch the oldest group in the claimed shard (FIFO within the shard).
+        var group = await context.Set<OutboxGroup>()
+            .Where(g => g.Shard == claimedLock.Shard)
+            .OrderBy(g => g.Id)
+            .Include(g => g.Messages.OrderBy(m => m.Id))
+            .FirstOrDefaultAsync(cancellationToken);
+
+        return (claimedLock.Shard, group);
+    }
+
+    private static (string fqn, string col) GetTableInfo(IEntityType entityType, string colProperty)
     {
         var tableName = entityType.GetTableName() ?? entityType.ShortName();
         var schemaName = entityType.GetSchema();

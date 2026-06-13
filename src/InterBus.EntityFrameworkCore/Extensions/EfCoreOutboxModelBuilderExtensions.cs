@@ -7,9 +7,9 @@ namespace InterBus.EntityFrameworkCore.Extensions;
 public static class EfCoreOutboxModelBuilderExtensions
 {
     /// <summary>
-    /// Registers the <see cref="OutboxGroup"/>, <see cref="OutboxMessage"/>, and <see cref="InboxState"/> entity types
-    /// and applies recommended constraints/indexes for efficient outbox polling. Call this inside your
-    /// <c>DbContext.OnModelCreating</c> override:
+    /// Registers the <see cref="OutboxLock"/>, <see cref="OutboxGroup"/>, <see cref="OutboxMessage"/>,
+    /// and <see cref="InboxState"/> entity types and applies recommended constraints/indexes for
+    /// efficient outbox polling. Call this inside your <c>DbContext.OnModelCreating</c> override:
     /// <code>
     /// protected override void OnModelCreating(ModelBuilder modelBuilder)
     /// {
@@ -21,11 +21,22 @@ public static class EfCoreOutboxModelBuilderExtensions
     {
         ArgumentNullException.ThrowIfNull(modelBuilder);
 
+        modelBuilder.Entity<OutboxLock>(b =>
+        {
+            b.HasKey(l => l.Shard)
+                .HasAnnotation("SqlServer:CreatedWithNoPageLocks", true)
+                .HasAnnotation("SqlServer:CreatedWithNoRowLocks", false);
+            b.Property(l => l.Shard).ValueGeneratedNever();
+        });
+
         modelBuilder.Entity<OutboxGroup>(b =>
         {
             b.HasKey(g => g.Id);
             b.Property(g => g.Id).ValueGeneratedNever();
             b.Property(g => g.CreatedAt).IsRequired();
+
+            // Index used by lock providers to find pending groups per shard.
+            b.HasIndex(g => new { g.Shard, g.Id });
 
             b.HasMany<OutboxMessage>()
                 .WithOne(m => m.Group)

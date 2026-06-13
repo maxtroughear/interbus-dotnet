@@ -111,7 +111,8 @@ The default EF lock provider is for single-instance/test use only.
 - Keep `MessageGroupId` stable for workflows that require in-order processing
 - Use database-native lock providers for production throughput and safe multi-processor behavior
 
-:::warning Changing `ShardCount` in production
+:::warning[Changing `ShardCount` in production]
+
 Changing shard count changes hash partitioning immediately. That means the same `MessageGroupId` can map to a different shard after deployment, which can change throughput/fairness characteristics during rollout and may affect ordering expectations if old/new versions are mixed.
 
 Treat shard-count changes as an operational migration:
@@ -119,6 +120,7 @@ Treat shard-count changes as an operational migration:
 1. Prefer a coordinated rollout (avoid long mixed-version windows)
 2. Consider draining or reducing outbox backlog before the change
 3. Monitor throughput, lag, and consumer behavior closely after rollout
+
 :::
 
 ## Related docs

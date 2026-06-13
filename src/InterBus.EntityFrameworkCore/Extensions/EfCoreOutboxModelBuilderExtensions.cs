@@ -1,5 +1,6 @@
 using InterBus.EntityFrameworkCore.Outbox;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 
 namespace InterBus.EntityFrameworkCore.Extensions;
 
@@ -23,7 +24,9 @@ public static class EfCoreOutboxModelBuilderExtensions
 
         modelBuilder.Entity<OutboxLock>(b =>
         {
-            b.HasKey(l => l.Shard);
+            b.HasKey(l => l.Shard)
+                .HasAnnotation("SqlServer:CreatedWithNoPageLocks", true)
+                .HasAnnotation("SqlServer:CreatedWithNoRowLocks", false);
             b.Property(l => l.Shard).ValueGeneratedNever();
         });
 

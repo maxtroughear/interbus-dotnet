@@ -42,17 +42,25 @@ public sealed class SqlServerOutboxLockProvider<TDbContext> : IOutboxLockProvide
     {
         var (locksFqn, locksShardCol) = GetTableInfo(context.Set<OutboxLock>().EntityType, nameof(OutboxLock.Shard));
         var (groupsFqn, groupsShardCol) = GetTableInfo(context.Set<OutboxGroup>().EntityType, nameof(OutboxGroup.Shard));
-
-        // Round-robin: prefer shards >= preferredStartShard so workers can rotate shard preference.
-        // UPDLOCK + READPAST + ROWLOCK keeps claiming at row granularity so a locked shard row
-        // is skipped and alternate shards remain claimable under contention.
+        
         var startShard = Math.Max(0, preferredStartShard);
-        var lockSql = $"""
-                       SELECT TOP (1) l.*
-                       FROM {locksFqn} l WITH (UPDLOCK, READPAST, ROWLOCK)
-                       WHERE EXISTS (SELECT 1 FROM {groupsFqn} g WHERE g.{groupsShardCol} = l.{locksShardCol})
-                       ORDER BY CASE WHEN l.{locksShardCol} >= {startShard} THEN 0 ELSE 1 END, l.{locksShardCol}
-                       """;
+        // Use a recursive CTE to generate candidate shards in preference order (starting from preferredStartShard,
+        // wrapping around). This avoids the ORDER BY + TOP causing SQL Server to lock multiple rows before READPAST filters them.
+        // The CTE generates the candidate list without locks, then we join and lock only the row we actually try to claim.
+        var lockSql = $$"""
+                        WITH candidate_shards AS (
+                            SELECT {{startShard}} as shard_num, 0 as depth
+                            UNION ALL
+                            SELECT (shard_num + 1) % (SELECT COUNT(*) FROM {{locksFqn}}) as shard_num, depth + 1
+                            FROM candidate_shards
+                            WHERE depth < (SELECT COUNT(*) FROM {{locksFqn}})
+                        )
+                        SELECT TOP (1) l.*
+                        FROM candidate_shards cs
+                        INNER JOIN {{locksFqn}} l WITH (ROWLOCK, UPDLOCK, READPAST) ON l.{{locksShardCol}} = cs.shard_num
+                        WHERE EXISTS (SELECT 1 FROM {{groupsFqn}} g WHERE g.{{groupsShardCol}} = l.{{locksShardCol}})
+                        ORDER BY cs.depth
+                        """;
 
         var claimedLock = await context.Set<OutboxLock>()
             .FromSqlRaw(lockSql)

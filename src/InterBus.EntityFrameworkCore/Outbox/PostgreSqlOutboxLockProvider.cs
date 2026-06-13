@@ -41,6 +41,8 @@ public sealed class PostgreSqlOutboxLockProvider<TDbContext> : IOutboxLockProvid
 
         // Round-robin: prefer shards >= preferredStartShard so workers can rotate shard preference.
         // FOR UPDATE SKIP LOCKED ensures concurrent processors claim different shards.
+        // PostgreSQL row locks apply correctly with ORDER BY: SKIP LOCKED skips locked rows before sorting,
+        // so only unlocked rows are ordered, preventing lock escalation on small lock tables.
         var startShard = Math.Max(0, preferredStartShard);
         var lockSql = $"""
                        SELECT l.*

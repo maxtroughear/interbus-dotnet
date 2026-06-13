@@ -383,7 +383,7 @@ public class OutboxPostgreSqlIntegrationTests(string imageTag)
     [Test]
     public async Task OutboxProcessor_ProcessesDifferentGroupsInParallel()
     {
-        const int groupCount = 16;
+        const int groupCount = 32;
         const int delayMs = 150;
         var sequentialMs = groupCount * delayMs;
 

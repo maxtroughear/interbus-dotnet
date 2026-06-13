@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using InterBus.Generated;
 using InterBus.Sending;
 
 namespace InterBus.EntityFrameworkCore.SqlServer.IntegrationTests;

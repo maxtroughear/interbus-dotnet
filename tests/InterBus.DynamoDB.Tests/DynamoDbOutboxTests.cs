@@ -567,8 +567,8 @@ public class DynamoDbOutboxTests
                     new OutboxOrderPlaced(Guid.NewGuid(), "inbox-outbox@example.com"),
                     CancellationToken.None);
             }
-
-            await TestHelpers.WaitUntilAsync(() => shippedTracker.Messages.Count == 1, timeoutMs: 10000);
+            
+            await TestHelpers.WaitUntilAsync(() => shippedTracker.Messages.Count == 1, timeoutMs: 10_000);
 
             Assert.That(executionTracker.Count, Is.EqualTo(1));
             Assert.That(shippedTracker.Messages, Has.Count.EqualTo(1));

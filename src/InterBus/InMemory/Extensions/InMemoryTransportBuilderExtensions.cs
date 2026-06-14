@@ -1,5 +1,4 @@
 using InterBus.Requests;
-using InterBus.Scheduling;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace InterBus.InMemory.Extensions;

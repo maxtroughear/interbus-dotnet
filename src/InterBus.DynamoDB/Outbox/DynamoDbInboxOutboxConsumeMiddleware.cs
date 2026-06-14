@@ -48,8 +48,6 @@ internal sealed partial class DynamoDbInboxOutboxConsumeMiddleware(
         var consumerName = context.Descriptor.ConsumerType.FullName ?? context.Descriptor.ConsumerType.Name;
         var inboxKey = BuildInboxKey(consumerName, messageId);
 
-        consumeState.DeliveryType = DeliveryType.Inbox;
-
         try
         {
             do
@@ -148,7 +146,7 @@ internal sealed partial class DynamoDbInboxOutboxConsumeMiddleware(
 
         var nowEpoch = DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString();
 
-        var groupId = consumeState.GroupId?.ToString("N");
+        var groupId = consumeState.GroupId?.ToString();
 
         if (groupId is null)
         {

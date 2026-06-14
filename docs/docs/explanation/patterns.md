@@ -2,7 +2,7 @@
 sidebar_position: 2
 ---
 
-# InterBus patterns
+# InterBus Concepts
 
 This page defines the core messaging concepts and links to deeper reliability pattern docs.
 

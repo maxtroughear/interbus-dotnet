@@ -53,7 +53,34 @@ public sealed class CheckoutService(IDynamoDbOutboxContext outbox, IPublisher pu
 }
 ```
 
-## 3. Processor model (bus-scoped, shard-parallel)
+## 3. Consumer-scoped inbox + outbox
+
+For consumers that need deduplication and durable retry of follow-up publishes, use `UseDynamoDbInboxOutbox()` on the consumer registration.
+
+```csharp
+services.AddInterBus(bus =>
+{
+    bus.AddInMemoryTransport(); // or your transport
+    bus.AddDynamoDbOutbox(options =>
+    {
+        options.RunOutboxProcessor = false;
+    });
+
+    bus.AddConsumer<OrderPlacedConsumer>(consumer =>
+        consumer.UseDynamoDbInboxOutbox());
+});
+```
+
+What this flow does:
+
+- Persists inbox state per `(consumer, message-id)` in `InboxTableName`
+- Runs consumer code once for a message, then transitions inbox state to `PendingOutbox` when outbox messages exist
+- On redelivery, skips consumer code and retries outbox delivery until completion
+- Marks the inbox row complete after successful outbox delivery
+
+Use this when you want **consumer-scoped** idempotency and retry behavior, especially for consumers that publish follow-up messages.
+
+## 4. Processor model (bus-scoped, shard-parallel)
 
 - Enabling `RunOutboxProcessor` registers a hosted processor for this bus setup
 - The processor runs **one independent loop task per processor shard**

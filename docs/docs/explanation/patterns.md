@@ -2,9 +2,9 @@
 sidebar_position: 2
 ---
 
-# InterBus concepts
+# InterBus patterns
 
-This page defines the core concepts used across InterBus documentation and APIs.
+This page defines the core messaging concepts and links to deeper reliability pattern docs.
 
 ## Core messaging concepts
 
@@ -29,13 +29,18 @@ This page defines the core concepts used across InterBus documentation and APIs.
 | Dead-letter | A terminal destination for messages that cannot be processed successfully |
 | Idempotency | The ability to process duplicate deliveries safely without changing the final outcome |
 
-## Reliability and consistency concepts
+## Reliability patterns and consistency concepts
 
 | Concept | Definition |
 |---|---|
-| Outbox | A persistence pattern that stores pending messages in the same transaction boundary as domain updates, then publishes them reliably |
+| Outbox | A producer-side reliability pattern for atomic domain write + message buffering, then asynchronous delivery |
+| Inbox | A consumer-side reliability pattern for duplicate-detection and safe re-delivery handling |
 | Saga | A long-running workflow that coordinates multiple message exchanges and state transitions |
 | Saga state | Persisted state associated with a saga instance across message boundaries |
 | Scheduler | A service that arranges delayed or time-based message publication/dispatch |
 | Transport | The broker implementation responsible for moving bytes between publishers and consumers (for example in-memory, SQS/SNS, Service Bus, RabbitMQ, PostgreSQL) |
 
+## Pattern deep dives
+
+- [Outbox pattern](./patterns/outbox)
+- [Inbox pattern](./patterns/inbox)

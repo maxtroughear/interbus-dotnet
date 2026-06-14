@@ -11,12 +11,4 @@ internal sealed class DynamoDbOutboxConsumeState
     /// <c>null</c> if no outbox group was committed in this scope.
     /// </summary>
     public Guid? GroupId { get; internal set; }
-
-    public DeliveryType DeliveryType { get; internal set; } = DeliveryType.Background;
-}
-
-internal enum DeliveryType
-{
-    Background,
-    Inbox
 }

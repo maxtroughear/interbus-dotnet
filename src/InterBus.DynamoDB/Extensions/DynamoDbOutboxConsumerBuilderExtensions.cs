@@ -64,7 +64,7 @@ public static class DynamoDbOutboxConsumerBuilderExtensions
             builder.Services.TryAddScoped<IDynamoDbOutboxContext>(sp => sp.GetRequiredService<DynamoDbOutboxContext>());
 
             builder.UseConsumeMiddleware<DynamoDbInboxOutboxConsumeMiddleware>();
-            builder.UsePublishMiddleware<DynamoDbOutboxPublishMiddleware>();
+            builder.UsePublishMiddleware<DynamoDbInboxOutboxPublishMiddleware>();
 
             return builder;
         }

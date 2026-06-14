@@ -1,4 +1,3 @@
-using System.IO.Hashing;
 using System.Text.Json;
 using Amazon.DynamoDBv2;
 using Amazon.DynamoDBv2.Model;
@@ -8,17 +7,8 @@ namespace InterBus.DynamoDB.Outbox;
 /// <summary>
 /// DynamoDB-backed implementation of <see cref="IDynamoDbOutboxContext"/>.
 /// </summary>
-internal sealed class DynamoDbOutboxContext(
-    IAmazonDynamoDB dynamoDb,
-    DynamoDbOutboxOptions options,
-    DynamoDbOutboxConsumeState consumeState)
-    : IDynamoDbOutboxContext
+internal sealed class DynamoDbOutboxContext(IAmazonDynamoDB dynamoDb) : IDynamoDbOutboxContext
 {
-    // -----------------------------------------------------------------------
-    // DynamoDB attribute name constants — exposed internally so that the
-    // processor and inline-delivery middleware can reference the same names.
-    // -----------------------------------------------------------------------
-
     // Delegate to public DynamoDbOutboxTable constants so internal code and tests use the same values.
     internal const string AttrGroupId = DynamoDbOutboxTable.GroupId;
     internal const string AttrEntryId = DynamoDbOutboxTable.EntryId;
@@ -31,112 +21,23 @@ internal sealed class DynamoDbOutboxContext(
     internal const string AttrDelay = DynamoDbOutboxTable.Delay;
     internal const string GroupEntryId = DynamoDbOutboxTable.GroupEntryValue;
 
-    // -----------------------------------------------------------------------
-    // Instance state
-    // -----------------------------------------------------------------------
-
-    private readonly List<TransactWriteItem> _businessItems = [];
-    private readonly List<PendingOutboxMessage> _outboxMessages = [];
-
-    // -----------------------------------------------------------------------
-    // IDynamoDbOutboxContext
-    // -----------------------------------------------------------------------
+    private readonly List<TransactWriteItem> _items = [];
 
     public void AddTransactItem(TransactWriteItem item)
-        => _businessItems.Add(item);
+        => _items.Add(item);
 
     public async Task CommitAsync(CancellationToken cancellationToken = default)
     {
-        if (_outboxMessages.Count == 0 && _businessItems.Count == 0)
+        if (_items.Count == 0)
             return;
-
-        var items = new List<TransactWriteItem>(_businessItems);
-
-        if (_outboxMessages.Count > 0)
-        {
-            var groupIdGuid = consumeState.GroupId!.Value;
-            var groupId = groupIdGuid.ToString("N");
-            var now = DateTimeOffset.UtcNow;
-            var createdAtEpoch = now.ToUnixTimeSeconds().ToString();
-
-            // Group header item
-            var item = new TransactWriteItem
-            {
-                Put = new Put
-                {
-                    TableName = options.TableName,
-                    Item = new Dictionary<string, AttributeValue>
-                    {
-                        [AttrGroupId] = new() { S = groupId },
-                        [AttrEntryId] = new() { S = GroupEntryId },
-                        [AttrCreatedAt] = new() { N = createdAtEpoch }
-                    },
-                },
-            };
-
-            // Assign the group to a shard deterministically by hashing the group ID.
-            // These attributes are part of the GSI that is used for the outbox processor.
-            if (consumeState.DeliveryType is DeliveryType.Background)
-            {
-                var shardBytes = groupIdGuid.ToByteArray();
-                var shardIndex = XxHash3.HashToUInt64(shardBytes) % (ulong)options.ShardCount;
-
-                item.Put.Item[AttrShard] = new AttributeValue { N = shardIndex.ToString() };
-                item.Put.Item[AttrVisibleAt] = new AttributeValue { N = createdAtEpoch };
-            }
-
-            items.Add(item);
-
-            // Message items
-            foreach (var msg in _outboxMessages)
-            {
-                var msgItem = new Dictionary<string, AttributeValue>
-                {
-                    [AttrGroupId] = new() { S = groupId },
-                    [AttrEntryId] = new() { S = msg.Id.ToString("N") },
-                    [AttrDestination] = new() { S = msg.Destination },
-                    [AttrPayload] = new() { B = new MemoryStream(msg.Payload) },
-                    [AttrHeadersJson] = new() { S = msg.HeadersJson },
-                    [AttrCreatedAt] = new() { N = createdAtEpoch },
-                };
-
-                if (msg.Delay.HasValue)
-                    msgItem[AttrDelay] = new AttributeValue
-                        { N = ((long)msg.Delay.Value.TotalSeconds).ToString() };
-
-                items.Add(new TransactWriteItem
-                {
-                    Put = new Put
-                    {
-                        TableName = options.TableName,
-                        Item = msgItem,
-                    },
-                });
-            }
-        }
 
         await dynamoDb.TransactWriteItemsAsync(new TransactWriteItemsRequest
         {
-            TransactItems = items,
+            TransactItems = _items,
         }, cancellationToken);
 
-        _businessItems.Clear();
-        _outboxMessages.Clear();
+        _items.Clear();
     }
-
-    // -----------------------------------------------------------------------
-    // Internal — called by DynamoDbOutboxPublishMiddleware
-    // -----------------------------------------------------------------------
-
-    internal void AddOutboxMessage(PendingOutboxMessage message)
-    {
-        consumeState.GroupId ??= Guid.CreateVersion7();
-        _outboxMessages.Add(message);
-    }
-
-    // -----------------------------------------------------------------------
-    // Helper: header deserialization (used by processor and inline delivery)
-    // -----------------------------------------------------------------------
 
     internal static MessageHeaders DeserializeHeaders(string json)
     {
@@ -148,14 +49,3 @@ internal sealed class DynamoDbOutboxContext(
     internal static string SerializeHeaders(MessageHeaders headers) =>
         JsonSerializer.Serialize(headers, DynamoDbOutboxJsonContext.Default.DictionaryStringString);
 }
-
-/// <summary>
-/// In-memory representation of a publish call that has been captured by
-/// <see cref="DynamoDbOutboxPublishMiddleware"/> but not yet committed.
-/// </summary>
-internal sealed record PendingOutboxMessage(
-    Guid Id,
-    string Destination,
-    byte[] Payload,
-    string HeadersJson,
-    TimeSpan? Delay);

@@ -126,4 +126,4 @@ Treat shard-count changes as an operational migration:
 ## Related docs
 
 - [Writing consumers](./writing-consumers)
-- [InterBus concepts](../explanation/concepts)
+- [InterBus patterns](../explanation/patterns)

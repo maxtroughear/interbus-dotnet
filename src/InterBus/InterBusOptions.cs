@@ -1,5 +1,6 @@
 using System.Diagnostics.CodeAnalysis;
 using InterBus.Consuming;
+using InterBus.Publishing;
 
 namespace InterBus;
 
@@ -10,11 +11,28 @@ namespace InterBus;
 public sealed class InterBusOptions
 {
     private readonly List<ConsumerDescriptor> _consumers = [];
+    private readonly List<PublisherDescriptor> _publishers = [];
     private readonly Dictionary<Type, string> _topicNames = [];
     private readonly HashSet<Type> _fifoMessageTypes = [];
 
     /// <summary>All registered consumer descriptors. One descriptor per consumer class.</summary>
     public IReadOnlyList<ConsumerDescriptor> Consumers => _consumers;
+
+    public IReadOnlyList<PublisherDescriptor> Publishers => _publishers;
+
+    public PublisherDescriptor GetPublisherDescriptor<T>() => GetPublisherDescriptor(typeof(T));
+
+    public PublisherDescriptor GetPublisherDescriptor(Type messageType)
+    {
+        var publisher = _publishers.FirstOrDefault(x => x.MessageType == messageType);
+
+        if (publisher is not null) return publisher;
+
+        publisher = new PublisherDescriptor(messageType, RoutingConventions.TopicUri(TopicUriScheme, messageType));
+        AddPublisher(publisher);
+
+        return publisher;
+    }
 
     /// <summary>
     /// The set of message types declared as FIFO via
@@ -49,7 +67,7 @@ public sealed class InterBusOptions
 
     internal void AddConsumer(ConsumerDescriptor descriptor) => _consumers.Add(descriptor);
 
-    internal void SetTopicName(Type messageType, string topicName) => _topicNames[messageType] = topicName;
+    internal void AddPublisher(PublisherDescriptor descriptor) => _publishers.Add(descriptor);
 
     /// <summary>
     /// Sets the URI schemes used when constructing topic and queue destination URIs.

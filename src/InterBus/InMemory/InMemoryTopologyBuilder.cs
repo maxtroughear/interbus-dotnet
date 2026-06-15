@@ -12,10 +12,9 @@ internal sealed class InMemoryTopologyBuilder(
             var queue = broker.EnsureQueue(descriptor);
             foreach (var type in descriptor.MessageTypes)
             {
-                var topicName = options.TryGetTopicName(type, out var custom)
-                    ? custom
-                    : RoutingConventions.TopicName(type);
-                broker.EnsureTopic(topicName).AddSubscriber(queue);
+                var messageType = options.GetPublisherDescriptor(type);
+
+                broker.EnsureTopic(messageType.TopicName).AddSubscriber(queue);
             }
         }
 

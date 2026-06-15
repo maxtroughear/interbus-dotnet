@@ -12,12 +12,6 @@ namespace InterBus.AmazonSqs;
 /// </summary>
 public sealed class SnsSqsTopology(SnsSqsTransportOptions options, InterBusOptions busOptions)
 {
-    private static readonly Regex InvalidNameChars =
-        new(@"[^A-Za-z0-9\-_]", RegexOptions.Compiled, TimeSpan.FromSeconds(1));
-
-    private static readonly Regex MultipleHyphens =
-        new(@"-{2,}", RegexOptions.Compiled, TimeSpan.FromSeconds(1));
-
     private const int MaxSqsQueueNameLength = 80;
     private const int MaxSnsTopicNameLength = 256;
     private const string FifoSuffix = ".fifo";
@@ -59,6 +53,8 @@ public sealed class SnsSqsTopology(SnsSqsTransportOptions options, InterBusOptio
     /// </summary>
     internal string BuildSnsTopicName(string rawName)
     {
+        var isFifo = busOptions.
+        
         var isFifo = _fifoTopicNames.Contains(rawName);
         var suffix = isFifo ? FifoSuffix : string.Empty;
         var maxSanitizedLength = MaxSnsTopicNameLength
@@ -92,23 +88,12 @@ public sealed class SnsSqsTopology(SnsSqsTransportOptions options, InterBusOptio
 
     private static string SanitizeName(string rawName, int maxLength)
     {
-        // Replace all invalid chars (everything except alphanumerics, hyphens, underscores)
-        // with a hyphen.
-        var sanitized = InvalidNameChars.Replace(rawName, "-");
+        if (rawName.Length <= maxLength)
+            return rawName;
 
-        // Collapse consecutive hyphens.
-        sanitized = MultipleHyphens.Replace(sanitized, "-");
-
-        // Trim leading/trailing hyphens.
-        sanitized = sanitized.Trim('-');
-
-        if (sanitized.Length <= maxLength)
-            return sanitized;
-
-        // Truncate: keep the first (maxLength - 9) chars and append '-' + 8-hex-char hash.
         var hashSuffix = ComputeShortHash(rawName);
         var truncatedLength = Math.Max(0, maxLength - 9);
-        return sanitized[..truncatedLength] + "-" + hashSuffix;
+        return rawName[..truncatedLength] + "-" + hashSuffix;
     }
 
     private static string ComputeShortHash(string input)
@@ -127,6 +112,7 @@ public sealed class SnsSqsTopology(SnsSqsTransportOptions options, InterBusOptio
                 : RoutingConventions.TopicName(type);
             names.Add(rawName);
         }
+
         return names;
     }
 
@@ -138,6 +124,7 @@ public sealed class SnsSqsTopology(SnsSqsTransportOptions options, InterBusOptio
             names.Add(consumer.QueueName);
             names.Add(consumer.QueueName + transportOptions.DeadLetterQueueSuffix);
         }
+
         return names;
     }
 }

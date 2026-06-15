@@ -1,13 +1,13 @@
-namespace InterBus;
+namespace InterBus.Publishing;
 
 /// <summary>
 /// Fluent builder for per-message-type configuration. Obtained via
 /// <c>builder.Configure&lt;T&gt;(c =&gt; { ... })</c> on <see cref="InterBusBuilder"/>.
 /// </summary>
 /// <typeparam name="T">The message type being configured.</typeparam>
-public sealed class MessageTypeBuilder<T>(
-    InterBusOptions options,
-    MessageGroupIdRegistry registry)
+public sealed class PublisherBuilder<T>(
+    PublisherDescriptor descriptor,
+    InterBusOptions options)
     where T : class
 {
     /// <summary>
@@ -15,10 +15,9 @@ public sealed class MessageTypeBuilder<T>(
     /// Equivalent to the now-obsolete <c>ConfigureTopic&lt;T&gt;(string)</c> on
     /// <see cref="InterBusBuilder"/>.
     /// </summary>
-    public MessageTypeBuilder<T> TopicName(string topicName)
+    public PublisherBuilder<T> TopicName(string topicName)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(topicName);
-        options.SetTopicName(typeof(T), topicName);
+        descriptor.Topic = RoutingConventions.TopicUri(options.TopicUriScheme, topicName);
         return this;
     }
 
@@ -41,11 +40,12 @@ public sealed class MessageTypeBuilder<T>(
     /// the same group ID are delivered in order. Common choices: tenant ID, aggregate root ID,
     /// or any other partitioning key.
     /// </param>
-    public MessageTypeBuilder<T> Fifo(Func<T, string>? groupBy = null)
+    public PublisherBuilder<T> Fifo(Func<T, string>? groupBy = null)
     {
-        options.AddFifoMessageType(typeof(T));
+        descriptor.IsFifo = true;
         if (groupBy is not null)
-            registry.Register(groupBy);
+            GroupBy(groupBy);
+
         return this;
     }
 
@@ -57,9 +57,9 @@ public sealed class MessageTypeBuilder<T>(
     /// Use <see cref="Fifo"/> instead when you also want FIFO infrastructure provisioned.
     /// </para>
     /// </summary>
-    public MessageTypeBuilder<T> GroupBy(Func<T, string> selector)
+    public PublisherBuilder<T> GroupBy(Func<T, string> selector)
     {
-        registry.Register(selector);
+        descriptor.GroupBy = msg => selector((T)msg);
         return this;
     }
 }

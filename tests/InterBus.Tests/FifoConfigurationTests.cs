@@ -12,38 +12,7 @@ public record FifoTestOrderShipped(Guid OrderId);
 
 public sealed class FifoConfigurationTests
 {
-
-    // ── MessageGroupIdRegistry ──────────────────────────────────────────────
-
-    [Fact]
-    public void Registry_NoSelector_ReturnsNull()
-    {
-        var registry = new MessageGroupIdRegistry();
-        var result = registry.TryResolve(new FifoTestOrderPlaced(Guid.NewGuid(), "cust-1"));
-        Assert.Null(result);
-    }
-
-    [Fact]
-    public void Registry_WithSelector_ReturnsValue()
-    {
-        var registry = new MessageGroupIdRegistry();
-        registry.Register<FifoTestOrderPlaced>(o => o.CustomerId);
-
-        var result = registry.TryResolve(new FifoTestOrderPlaced(Guid.NewGuid(), "cust-42"));
-        Assert.Equal("cust-42", result);
-    }
-
-    [Fact]
-    public void Registry_Register_ReplacesExistingSelector()
-    {
-        var registry = new MessageGroupIdRegistry();
-        registry.Register<FifoTestOrderPlaced>(_ => "first");
-        registry.Register<FifoTestOrderPlaced>(_ => "second");
-
-        var result = registry.TryResolve(new FifoTestOrderPlaced(Guid.NewGuid(), "x"));
-        Assert.Equal("second", result);
-    }
-
+    
     // ── Configure<T>().Fifo() populates FifoMessageTypes ──────────────────
 
     [Fact]

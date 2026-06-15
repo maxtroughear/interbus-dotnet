@@ -88,9 +88,7 @@ internal abstract class PostgreSqlMessagePumpBase(
             var currentQueueId = queueIds[descriptor.QueueName];
             foreach (var messageType in descriptor.MessageTypes)
             {
-                var topicName = busOptions.TryGetTopicName(messageType, out var custom)
-                    ? custom
-                    : RoutingConventions.TopicName(messageType);
+                var topicName = busOptions.GetPublisherDescriptor(messageType).TopicName;
 
                 pQueueId.TypedValue = currentQueueId;
                 pTopicName.TypedValue = topicName;

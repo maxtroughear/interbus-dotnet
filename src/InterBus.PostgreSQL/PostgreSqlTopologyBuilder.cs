@@ -23,9 +23,7 @@ internal sealed class PostgreSqlTopologyBuilder(
 
             foreach (var messageType in descriptor.MessageTypes)
             {
-                var topicName = busOptions.TryGetTopicName(messageType, out var custom)
-                    ? custom
-                    : RoutingConventions.TopicName(messageType);
+                var topicName = busOptions.GetPublisherDescriptor(messageType).TopicName;
 
                 await EnsureSubscriptionAsync(queueId, topicName, cancellationToken);
             }

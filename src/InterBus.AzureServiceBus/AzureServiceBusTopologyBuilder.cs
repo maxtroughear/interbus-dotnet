@@ -35,9 +35,7 @@ internal sealed class AzureServiceBusTopologyBuilder(
 
             foreach (var messageType in descriptor.MessageTypes)
             {
-                var rawTopicName = busOptions.TryGetTopicName(messageType, out var custom)
-                    ? custom
-                    : RoutingConventions.TopicName(messageType);
+                var rawTopicName = busOptions.GetPublisherDescriptor(messageType).TopicName;
 
                 var topicName = BuildTopicName(rawTopicName);
                 await EnsureTopicExistsAsync(topicName, cancellationToken);

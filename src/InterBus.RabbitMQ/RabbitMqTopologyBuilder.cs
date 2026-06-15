@@ -40,9 +40,7 @@ internal sealed class RabbitMqTopologyBuilder(
 
             foreach (var messageType in descriptor.MessageTypes)
             {
-                var topicName = busOptions.TryGetTopicName(messageType, out var custom)
-                    ? custom
-                    : RoutingConventions.TopicName(messageType);
+                var topicName = busOptions.GetPublisherDescriptor(messageType).TopicName;
 
                 var exchangeName = await EnsureTopicDeclaredOnChannelAsync(channel, topicName, cancellationToken);
                 await EnsureQueueBindingAsync(channel, queueName, exchangeName, cancellationToken);

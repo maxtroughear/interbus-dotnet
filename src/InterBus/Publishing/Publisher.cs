@@ -19,10 +19,7 @@ internal class Publisher(
         CancellationToken cancellationToken = default)
         where T : class
     {
-        var topicName = options.TryGetTopicName(typeof(T), out var customName)
-            ? customName
-            : RoutingConventions.TopicName(typeof(T));
-        var destination = RoutingConventions.TopicUri(options.TopicUriScheme, topicName);
+        var destination = options.GetPublisherDescriptor<T>().Topic;
         var context = new PublishContext<T>(destination, message, Stamp(message));
         configure(context);
 

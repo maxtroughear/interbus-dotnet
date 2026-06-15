@@ -114,12 +114,8 @@ public sealed partial class SnsSqsTopologyBuilder(
 
             foreach (var messageType in descriptor.MessageTypes)
             {
-                var rawTopicName = busOptions.TryGetTopicName(messageType, out var custom)
-                    ? custom
-                    : RoutingConventions.TopicName(messageType);
-
+                var rawTopicName = busOptions.GetPublisherDescriptor(messageType).TopicName;
                 var topicName = topology.BuildSnsTopicName(rawTopicName);
-
                 var topicArn = await CreateTopicAsync(topicName, cancellationToken);
 
                 logger.LogDebug(
@@ -161,9 +157,7 @@ public sealed partial class SnsSqsTopologyBuilder(
     {
         var topicArns = descriptor.MessageTypes.Select(t =>
         {
-            var rawName = busOptions.TryGetTopicName(t, out var custom)
-                ? custom
-                : RoutingConventions.TopicName(t);
+            var rawName = busOptions.GetPublisherDescriptor(t).TopicName;
 
             return topology.TopicArns.GetValueOrDefault(
                 topology.BuildSnsTopicName(rawName));

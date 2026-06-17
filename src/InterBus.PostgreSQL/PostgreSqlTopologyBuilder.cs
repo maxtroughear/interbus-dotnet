@@ -30,10 +30,10 @@ internal sealed class PostgreSqlTopologyBuilder(
         }
     }
 
-    public async Task<string> EnsureTopicAsync(string rawTopicName, CancellationToken cancellationToken)
+    public async Task<string> EnsureTopicAsync(Uri topic, CancellationToken cancellationToken)
     {
-        await EnsureTopicIdAsync(rawTopicName, cancellationToken);
-        return rawTopicName;
+        await EnsureTopicIdAsync(topic, cancellationToken);
+        return topic;
     }
 
     private Task<long> EnsureQueueIdAsync(string queueName, CancellationToken cancellationToken) =>

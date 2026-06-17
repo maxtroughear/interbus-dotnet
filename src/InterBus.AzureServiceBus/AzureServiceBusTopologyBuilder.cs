@@ -50,11 +50,12 @@ internal sealed class AzureServiceBusTopologyBuilder(
         }
     }
 
-    public async Task<string> EnsureTopicAsync(string rawTopicName, CancellationToken cancellationToken)
+    public async Task<string> EnsureTopicAsync(Uri topic, CancellationToken cancellationToken)
     {
-        var topicName = BuildTopicName(rawTopicName);
-        await EnsureTopicExistsAsync(topicName, cancellationToken);
-        return topicName;
+        var topicName = RoutingConventions.GetDestinationName(topic);
+        var azureTopicName = BuildTopicName(topicName);
+        await EnsureTopicExistsAsync(azureTopicName, cancellationToken);
+        return azureTopicName;
     }
 
     /// <summary>
@@ -135,18 +136,18 @@ internal sealed class AzureServiceBusTopologyBuilder(
             },
             cancellationToken);
 
-    private Task EnsureTopicExistsAsync(string topicName, CancellationToken cancellationToken) =>
+    private Task EnsureTopicExistsAsync(string azureTopicName, CancellationToken cancellationToken) =>
         EnsureWithCacheAsync(
             Topics,
-            topicName,
+            azureTopicName,
             async ct =>
             {
                 var admin = clientProvider.AdminClient;
 
                 try
                 {
-                    await admin.CreateTopicAsync(topicName, ct);
-                    logger.LogDebug("InterBus AzureServiceBus: created topic {TopicName}", topicName);
+                    await admin.CreateTopicAsync(azureTopicName, ct);
+                    logger.LogDebug("InterBus AzureServiceBus: created topic {TopicName}", azureTopicName);
                 }
                 catch (ServiceBusException ex)
                     when (ex.Reason == ServiceBusFailureReason.MessagingEntityAlreadyExists)

@@ -30,6 +30,7 @@ internal sealed class AzureServiceBusQueueTransport(
 
         // A ?session= query parameter encodes the target session ID (used by reply endpoints
         // to route replies into the correct ASB session without a per-request queue).
+        // TODO: Parse query params properly
         string? sessionIdOverride = null;
         var query = context.Destination.Query;
         if (query.StartsWith("?session=", StringComparison.Ordinal) && query.Length > 9)

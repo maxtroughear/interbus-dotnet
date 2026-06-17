@@ -18,7 +18,7 @@ public sealed class EventBridgeSchedulerTests
     private static readonly LocalStackContainer? Container = TestHelpers.CreateLocalStackContainer();
 
     private ServiceProvider _serviceProvider;
-    private SnsSqsTopology _topology;
+    private SnsSqsNaming _naming;
     private SnsSqsTopologyBuilder _topologyBuilder;
     private string _queuePrefix;
     private string _topicPrefix;
@@ -72,12 +72,12 @@ public sealed class EventBridgeSchedulerTests
         _serviceProvider = services.BuildServiceProvider();
 
         var transportOptions = new SnsSqsTransportOptions { QueuePrefix = _queuePrefix, TopicPrefix = _topicPrefix };
-        _topology = new SnsSqsTopology(transportOptions, new InterBusOptions());
+        _naming = new SnsSqsNaming(transportOptions);
         var logger = _serviceProvider.GetRequiredService<ILogger<SnsSqsTopologyBuilder>>();
         _topologyBuilder = new SnsSqsTopologyBuilder(
             SnsClient, SqsClient,
             _serviceProvider.GetRequiredService<IAmazonSecurityTokenService>(),
-            _topology,
+            _naming,
             transportOptions,
             new InterBusOptions(),
             logger);
@@ -285,7 +285,7 @@ public sealed class EventBridgeSchedulerTests
     private EventBridgeSchedulingProvider BuildProvider(
         string? roleArn = null,
         string groupName = "default") =>
-        new(SchedulerClient, _topology, _topologyBuilder, new SnsSqsMessageEnvelope(),
+        new(SchedulerClient, _naming, _topologyBuilder, new SnsSqsMessageEnvelope(),
             new EventBridgeSchedulerOptions
             {
                 TargetRoleArn = roleArn ?? TargetRoleArn,

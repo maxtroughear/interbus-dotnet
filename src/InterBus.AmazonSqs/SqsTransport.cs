@@ -1,3 +1,4 @@
+using System.Web;
 using Amazon.SQS;
 using Amazon.SQS.Model;
 using InterBus.Transporting;
@@ -9,7 +10,8 @@ namespace InterBus.AmazonSqs;
 /// </summary>
 public sealed class SqsTransport(
     IAmazonSQS sqsClient,
-    SnsSqsTopology topology,
+    SnsSqsNaming naming,
+    SnsSqsTopologyBuilder topology,
     SnsSqsMessageEnvelope rawEnvelope) : ITransport
 {
     /// <summary>URI scheme for SQS queue (point-to-point) destinations.</summary>
@@ -32,23 +34,32 @@ public sealed class SqsTransport(
                 $"Expected '{QueueScheme}'",
                 nameof(context));
 
-        var rawQueueName = RoutingConventions.GetDestinationName(context.Destination);
+        // amazonsqs://interbus/my-consumer?fifo=true&vq=abc123
+
+        var queueName = naming.BuildSqsQueueName(context.Destination);
+        
+        // my-consumer.fifo
 
         // If the destination URI carries a virtual queue ID (e.g. ?vq=abc123), inject it as
         // a header so SqsVirtualQueueHost can route the reply to the right in-memory channel.
-        var query = context.Destination.Query;
-        if (query.StartsWith("?vq=", StringComparison.Ordinal) && query.Length > 4)
-            context.Headers[SqsVirtualQueueHost.VirtualQueueIdHeader] = query[4..];
+        var query = HttpUtility.ParseQueryString(context.Destination.Query);
+        var virtualQueue = query["vq"];
+        if (virtualQueue is not null)
+            context.Headers[SqsVirtualQueueHost.VirtualQueueIdHeader] = virtualQueue;
 
-        await SendToQueueAsync(rawQueueName, context, cancellationToken);
+        await SendToQueueAsync(queueName, context, cancellationToken);
     }
 
     private async Task SendToQueueAsync(
-        string rawQueueName,
+        string sqsQueueName,
         TransportSendContext context,
         CancellationToken ct)
     {
-        var queueUrl = await ResolveQueueUrlAsync(rawQueueName, ct);
+        // my-consumer.fifo
+        
+        var queueUrl = await topology.ResolveQueueAsync(sqsQueueName, ct);
+        
+        // https://sqs.us-east-1.amazonaws.com/123456789012/my-consumer.fifo
 
         // Serialise the full payload + headers into the envelope body so that any
         // serialisation format (JSON, MessagePack, gzip, etc.) round-trips without
@@ -76,35 +87,6 @@ public sealed class SqsTransport(
                 MessageGroupId = messageGroupId,
             },
             ct);
-    }
-
-    private async Task<string> ResolveQueueUrlAsync(string rawQueueName, CancellationToken ct)
-    {
-        // If this is a direct send to an exact queue name, reuse the resolved URL cache.
-        if (topology.QueueUrls.TryGetValue(rawQueueName, out var cachedLiteralQueueUrl))
-            return cachedLiteralQueueUrl;
-
-        // For InterBus-declared queues, the destination is convention-based and must be normalized.
-        var declaredQueueName = topology.BuildSqsQueueName(rawQueueName);
-        if (topology.QueueUrls.TryGetValue(declaredQueueName, out var declaredQueueUrl))
-            return declaredQueueUrl;
-
-        // Otherwise treat the provided name as an exact SQS queue name (including optional .fifo).
-        // Do not create queues here (see #165); resolve URL only.
-        try
-        {
-            var literal = await sqsClient.GetQueueUrlAsync(
-                new GetQueueUrlRequest { QueueName = rawQueueName },
-                ct);
-            topology.QueueUrls.TryAdd(rawQueueName, literal.QueueUrl);
-            return literal.QueueUrl;
-        }
-        catch (QueueDoesNotExistException)
-        {
-            throw new InvalidOperationException(
-                $"Queue '{rawQueueName}' was not found in SQS. InterBus does not create queues on send; " +
-                "declare/provision the queue first and pass its exact SQS queue name.");
-        }
     }
 
     private static Dictionary<string, MessageAttributeValue> BuildSqsMessageAttributes(

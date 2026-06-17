@@ -29,7 +29,8 @@ namespace InterBus.AmazonSqs;
 /// </summary>
 internal sealed class SqsMessagePump(
     IAmazonSQS sqsClient,
-    SnsSqsTopology topology,
+    SnsSqsNaming naming,
+    SnsSqsTopologyBuilder topology,
     SnsSqsTransportOptions options,
     InterBusOptions busOptions,
     IServiceScopeFactory scopeFactory,
@@ -62,7 +63,7 @@ internal sealed class SqsMessagePump(
 
     private async Task ConsumeQueueAsync(ConsumerDescriptor descriptor, CancellationToken stoppingToken)
     {
-        var queueName = topology.BuildSqsQueueName(descriptor.QueueName);
+        var queueName = naming.BuildSqsQueueName(descriptor.Queue);
 
         if (!topology.QueueUrls.TryGetValue(queueName, out var queueUrl))
         {
@@ -247,7 +248,7 @@ internal sealed class SqsMessagePump(
 
     private async Task<bool> TryDeadLetterAsync(ConsumerDescriptor descriptor, Message message, DispatchResult result)
     {
-        var deadLetterQueueName = topology.BuildDeadLetterQueueName(descriptor.QueueName);
+        var deadLetterQueueName = naming.BuildDeadLetterQueueName(descriptor.Queue);
         if (!topology.QueueUrls.TryGetValue(deadLetterQueueName, out var deadLetterQueueUrl))
         {
             logger.LogWarning(

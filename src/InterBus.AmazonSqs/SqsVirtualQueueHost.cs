@@ -20,7 +20,8 @@ namespace InterBus.AmazonSqs;
 /// </summary>
 internal sealed class SqsVirtualQueueHost(
     IAmazonSQS sqsClient,
-    SnsSqsTopology topology,
+    SnsSqsNaming naming,
+    SnsSqsTopologyBuilder topology,
     SnsSqsTransportOptions options,
     ISnsSqsMessageEnvelope envelope,
     ILogger<SqsVirtualQueueHost> logger)
@@ -82,18 +83,7 @@ internal sealed class SqsVirtualQueueHost(
                 ["MessageRetentionPeriod"] = "300",
             };
 
-            if (options.EnableSqsEncryption)
-                attributes["SqsManagedSseEnabled"] = "true";
-
-            var response = await sqsClient.CreateQueueAsync(
-                new CreateQueueRequest { QueueName = queueName, Attributes = attributes },
-                cancellationToken);
-
-            _hostQueueName = queueName;
-            _hostQueueUrl = response.QueueUrl;
-
-            // Register in topology so SqsTransport.ResolveQueueUrlAsync finds this queue.
-            topology.QueueUrls.TryAdd(queueName, _hostQueueUrl);
+            await topology.CreateQueueAsync(queueName, cancellationToken, attributes);
 
             _pollingCts = new CancellationTokenSource();
             _pollingTask = Task.Run(() => PollLoopAsync(_pollingCts.Token), CancellationToken.None);

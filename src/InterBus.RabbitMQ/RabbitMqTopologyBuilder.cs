@@ -48,9 +48,10 @@ internal sealed class RabbitMqTopologyBuilder(
         }
     }
 
-    public async Task<string> EnsureTopicAsync(string rawTopicName, CancellationToken cancellationToken)
+    public async Task<string> EnsureTopicAsync(Uri topic, CancellationToken cancellationToken)
     {
-        var exchangeName = options.ExchangePrefix + rawTopicName;
+        // TODO: Check and fix
+        var exchangeName = options.ExchangePrefix + topic;
         await EnsureTopicDeclaredAsync(exchangeName, cancellationToken);
         return exchangeName;
     }

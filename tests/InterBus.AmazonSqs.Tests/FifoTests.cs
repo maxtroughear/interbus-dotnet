@@ -186,6 +186,7 @@ public class FifoTests
 
         var sqsClient = _provider.GetRequiredService<IAmazonSQS>();
         var externalQueueName = $"{_queuePrefix}external-target.fifo";
+        var interbusQueue = new Uri("sqsqueue://interbus/external-target?fifo=true");
         var createResponse = await sqsClient.CreateQueueAsync(
             new CreateQueueRequest
             {
@@ -201,7 +202,7 @@ public class FifoTests
         using var scope = _provider.CreateScope();
         var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
         var msg = new FifoOrderDirect(Guid.NewGuid(), "cust-external-42");
-        await publisher.SendAsync(externalQueueName, msg, TestContext.CurrentContext.CancellationToken);
+        await publisher.SendAsync(interbusQueue, msg, TestContext.CurrentContext.CancellationToken);
 
         ReceiveMessageResponse? receive = null;
         var deadline = DateTime.UtcNow.AddSeconds(15);

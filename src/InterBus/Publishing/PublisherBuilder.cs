@@ -1,3 +1,5 @@
+using System.Web;
+
 namespace InterBus.Publishing;
 
 /// <summary>
@@ -45,6 +47,14 @@ public sealed class PublisherBuilder<T>(
         descriptor.IsFifo = true;
         if (groupBy is not null)
             GroupBy(groupBy);
+
+        var uriBuilder = new UriBuilder(descriptor.Topic);
+
+        var queryMap = HttpUtility.ParseQueryString(uriBuilder.Query);
+        queryMap["fifo"] = "true";
+        uriBuilder.Query = queryMap.ToString();
+
+        descriptor.Topic = uriBuilder.Uri;
 
         return this;
     }

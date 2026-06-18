@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Web;
 
 namespace InterBus.AmazonSqs;
@@ -11,6 +12,12 @@ namespace InterBus.AmazonSqs;
 /// </summary>
 public sealed class SnsSqsNaming(SnsSqsTransportOptions options)
 {
+    private static readonly Regex InvalidNameChars =
+        new(@"[^A-Za-z0-9\-_]", RegexOptions.Compiled, TimeSpan.FromSeconds(1));
+
+    private static readonly Regex MultipleHyphens =
+        new(@"-{2,}", RegexOptions.Compiled, TimeSpan.FromSeconds(1));
+    
     private const int MaxSqsQueueNameLength = 80;
     private const int MaxSnsTopicNameLength = 256;
     private const string FifoSuffix = ".fifo";
@@ -20,7 +27,7 @@ public sealed class SnsSqsNaming(SnsSqsTransportOptions options)
     /// valid SNS topic name, replacing dots and other invalid characters with hyphens and
     /// trimming to the 256-character limit. Appends <c>.fifo</c> for FIFO message types.
     /// </summary>
-    internal string BuildSnsTopicName(Uri topic)
+    public string BuildSnsTopicName(Uri topic)
     {
         var topicName = RoutingConventions.GetDestinationName(topic);
         var isFifo = HttpUtility.ParseQueryString(topic.Query)["fifo"] == "true";
@@ -40,7 +47,7 @@ public sealed class SnsSqsNaming(SnsSqsTransportOptions options)
     /// result would exceed 80 characters, appending an 8-character hex hash to ensure
     /// uniqueness. Appends <c>.fifo</c> for FIFO consumers.
     /// </summary>
-    internal string BuildSqsQueueName(Uri queue)
+    public string BuildSqsQueueName(Uri queue)
     {
         var queueName = RoutingConventions.GetDestinationName(queue);
         var isFifo = HttpUtility.ParseQueryString(queue.Query)["fifo"] == "true";
@@ -54,7 +61,7 @@ public sealed class SnsSqsNaming(SnsSqsTransportOptions options)
         return options.QueuePrefix + sanitized + options.QueueSuffix + suffix;
     }
 
-    internal string BuildDeadLetterQueueName(Uri queue)
+    public string BuildDeadLetterQueueName(Uri queue)
     {
         var deadLetterQueue = new UriBuilder(queue)
         {
@@ -65,9 +72,9 @@ public sealed class SnsSqsNaming(SnsSqsTransportOptions options)
 
     private static string SanitizeName(string rawName, int maxLength)
     {
-        rawName = rawName.Replace(".", "-");
-        rawName = rawName.Replace("<", "-");
-        rawName = rawName.Replace(">", "-");
+        rawName = InvalidNameChars.Replace(rawName, "-");
+        rawName = MultipleHyphens.Replace(rawName, "-");
+        rawName = rawName.Trim('-');
         
         if (rawName.Length <= maxLength)
             return rawName;

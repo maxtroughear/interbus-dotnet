@@ -1,4 +1,5 @@
 using System.Diagnostics.CodeAnalysis;
+using System.Web;
 using InterBus.Dispatching;
 using InterBus.InMemory.Outbox;
 using InterBus.Publishing;
@@ -174,6 +175,14 @@ public class ConsumerBuilder(ConsumerDescriptor descriptor, IServiceCollection s
     public ConsumerBuilder WithFifo()
     {
         descriptor.IsFifo = true;
+
+        var uriBuilder = new UriBuilder(descriptor.Queue);
+        var queryMap = HttpUtility.ParseQueryString(uriBuilder.Query);
+        queryMap["fifo"] = "true";
+        uriBuilder.Query = queryMap.ToString();
+
+        descriptor.Queue = uriBuilder.Uri;
+
         return this;
     }
 }

@@ -107,7 +107,7 @@ public sealed partial class SnsSqsTopologyBuilder(
             var queueName = naming.BuildSqsQueueName(descriptor.Queue);
             var deadLetterQueueName = naming.BuildDeadLetterQueueName(descriptor.Queue);
 
-            var deadLetterQueueUrl = await CreateQueueAsync(deadLetterQueueName, cancellationToken);
+            await CreateQueueAsync(deadLetterQueueName, cancellationToken);
             var deadLetterQueueArn = QueueArns[deadLetterQueueName];
 
             var queueUrl = await CreateQueueAsync(
@@ -305,7 +305,7 @@ public sealed partial class SnsSqsTopologyBuilder(
         }
     }
 
-    internal async Task<string> ResolveQueueAsync(string sqsQueueName, CancellationToken cancellationToken)
+    public async Task<string> ResolveQueueAsync(string sqsQueueName, CancellationToken cancellationToken)
     {
         var (accountId, partition) = await ResolveCallerIdentityAsync(cancellationToken);
 
@@ -320,7 +320,7 @@ public sealed partial class SnsSqsTopologyBuilder(
         return url;
     }
 
-    private async Task<string> ResolveTopicAsync(string snsTopicName, CancellationToken cancellationToken)
+    public async Task<string> ResolveTopicAsync(string snsTopicName, CancellationToken cancellationToken)
     {
         var (accountId, partition) = await ResolveCallerIdentityAsync(cancellationToken);
 

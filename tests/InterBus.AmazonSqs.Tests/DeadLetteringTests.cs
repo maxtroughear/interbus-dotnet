@@ -106,10 +106,16 @@ public class DeadLetteringTests
             new OrderPlaced(Guid.NewGuid(), "deadletter@test.com", 1m),
             TestContext.CurrentContext.CancellationToken);
 
+        var consumerDescriptor = scope.ServiceProvider.GetRequiredService<InterBusOptions>().Consumers
+            .First(cd => cd.ConsumerType == typeof(DeadLetterOrderPlacedConsumer));
+        var deadLetterQueueName = scope.ServiceProvider.GetRequiredService<SnsSqsNaming>()
+            .BuildDeadLetterQueueName(consumerDescriptor.Queue);
+        var deadLetterQueueUrl = await scope.ServiceProvider.GetRequiredService<SnsSqsTopologyBuilder>()
+            .ResolveQueueAsync(deadLetterQueueName, TestContext.CurrentContext.CancellationToken);
+
         var sqsClient = _provider.GetRequiredService<IAmazonSQS>();
         Message? deadLetterMessage = null;
         var deadline = DateTime.UtcNow.AddSeconds(30);
-        var deadLetterQueueUrl = await FindDeadLetterQueueUrlAsync(sqsClient);
         while (deadLetterMessage is null && DateTime.UtcNow < deadline)
         {
             if (deadLetterQueueUrl is not null)
@@ -136,47 +142,6 @@ public class DeadLetteringTests
         Assert.That(deadLetterMessage.MessageAttributes.ContainsKey(InterBusHeaders.DeadLetterError), Is.True);
         Assert.That(deadLetterMessage.MessageAttributes.ContainsKey(InterBusHeaders.DeadLetterTime), Is.True);
         Assert.That(_receiveTracker.Count, Is.EqualTo(1));
-    }
-
-    // ReSharper disable once CognitiveComplexity
-    private async Task<string?> FindDeadLetterQueueUrlAsync(IAmazonSQS sqsClient)
-    {
-        var listResponse = await sqsClient.ListQueuesAsync(new ListQueuesRequest { QueueNamePrefix = _queuePrefix });
-        string? deadLetterTargetArn = null;
-        var queueArnsByUrl = new Dictionary<string, string>(StringComparer.Ordinal);
-
-        foreach (var queueUrl in listResponse.QueueUrls ?? [])
-        {
-            var attrs = await sqsClient.GetQueueAttributesAsync(
-                new GetQueueAttributesRequest
-                {
-                    QueueUrl = queueUrl,
-                    AttributeNames = ["QueueArn", "RedrivePolicy"],
-                });
-
-            if (attrs.Attributes is null)
-                continue;
-
-            if (attrs.Attributes.TryGetValue("QueueArn", out var queueArn) && !string.IsNullOrWhiteSpace(queueArn))
-                queueArnsByUrl[queueUrl] = queueArn;
-
-            if (attrs.Attributes.TryGetValue("RedrivePolicy", out var redrivePolicy) &&
-                !string.IsNullOrWhiteSpace(redrivePolicy))
-            {
-                using var doc = JsonDocument.Parse(redrivePolicy);
-                if (doc.RootElement.TryGetProperty("deadLetterTargetArn", out var arnElement))
-                    deadLetterTargetArn = arnElement.GetString();
-            }
-        }
-
-        if (!string.IsNullOrWhiteSpace(deadLetterTargetArn))
-        {
-            return queueArnsByUrl
-                .FirstOrDefault(kv => string.Equals(kv.Value, deadLetterTargetArn, StringComparison.Ordinal))
-                .Key;
-        }
-
-        return queueArnsByUrl.Keys.FirstOrDefault();
     }
 
     public sealed class ReceiveTracker

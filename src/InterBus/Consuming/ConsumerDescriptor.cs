@@ -28,7 +28,7 @@ public sealed class ConsumerDescriptor(Type consumerType, Uri queue)
     /// The queue for this consumer (derived from the consumer type by convention).
     /// Each consumer class has exactly one queue.
     /// </summary>
-    public Uri Queue { get; } = queue;
+    public Uri Queue { get; internal set; } = queue;
 
     public string QueueName => RoutingConventions.GetDestinationName(Queue);
 

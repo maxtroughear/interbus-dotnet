@@ -8,7 +8,6 @@ namespace InterBus.Publishing;
 /// </summary>
 internal class Publisher(
     InterBusOptions options,
-    MessageGroupIdRegistry groupIdRegistry,
     ConsumeContextAccessor contextAccessor,
     PublishPipelineExecutor pipelineExecutor) : IPublisher
 {
@@ -89,9 +88,8 @@ internal class Publisher(
         if (consumeHeaders?.TryGetValue(InterBusHeaders.MessageId, out var messageId) == true)
             headers[InterBusHeaders.CausationId] = messageId;
 
-        // Resolve the message group ID: use the registered selector for T or fall back to CorrelationId.
         headers[InterBusHeaders.MessageGroupId] =
-            groupIdRegistry.TryResolve(message)
+            options.GetPublisherDescriptor<T>().GroupBy?.Invoke(message)
             ?? headers[InterBusHeaders.CorrelationId];
 
         return headers;

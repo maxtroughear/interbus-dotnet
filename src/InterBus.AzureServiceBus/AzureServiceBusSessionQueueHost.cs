@@ -30,11 +30,12 @@ internal sealed class AzureServiceBusSessionQueueHost(
     : IAsyncDisposable
 {
     private readonly SemaphoreSlim _initLock = new(1, 1);
+
     private readonly ConcurrentDictionary<string, Channel<(byte[] Payload, MessageHeaders Headers)>>
         _channels = new(StringComparer.Ordinal);
 
     private string? _rawQueueName;
-    private string? _queueName;
+    private string? _azureQueueName;
     private ServiceBusSessionProcessor? _processor;
 
     /// <summary>
@@ -45,7 +46,8 @@ internal sealed class AzureServiceBusSessionQueueHost(
     /// The raw reply queue name (no prefix, for use in URIs), the new session ID, and a reader
     /// end of the channel that will receive exactly one reply payload.
     /// </returns>
-    public async Task<(string RawQueueName, string SessionId, ChannelReader<(byte[] Payload, MessageHeaders Headers)> Reader)>
+    public async
+        Task<(string QueueName, string SessionId, ChannelReader<(byte[] Payload, MessageHeaders Headers)> Reader)>
         RegisterAsync(CancellationToken cancellationToken = default)
     {
         await EnsureHostQueueAsync(cancellationToken);
@@ -67,19 +69,19 @@ internal sealed class AzureServiceBusSessionQueueHost(
 
     private async Task EnsureHostQueueAsync(CancellationToken cancellationToken)
     {
-        if (_queueName is not null)
+        if (_azureQueueName is not null)
             return;
 
         await _initLock.WaitAsync(cancellationToken);
         try
         {
-            if (_queueName is not null)
+            if (_azureQueueName is not null)
                 return;
 
             var rawName = $"InterBus.Reply.{Guid.CreateVersion7():N}";
-            var (rawQueueName, queueName) = await topology.EnsureSessionQueueAsync(rawName, cancellationToken);
-            _rawQueueName = rawQueueName;
-            _queueName = queueName;
+            var azureQueueName = await topology.EnsureSessionQueueAsync(rawName, cancellationToken);
+            _rawQueueName = rawName;
+            _azureQueueName = azureQueueName;
 
             var processorOptions = new ServiceBusSessionProcessorOptions
             {
@@ -90,14 +92,14 @@ internal sealed class AzureServiceBusSessionQueueHost(
                 ReceiveMode = ServiceBusReceiveMode.PeekLock,
             };
 
-            _processor = clientProvider.CreateQueueSessionProcessor(queueName, processorOptions);
+            _processor = clientProvider.CreateQueueSessionProcessor(azureQueueName, processorOptions);
             _processor.ProcessMessageAsync += HandleReplyAsync;
             _processor.ProcessErrorAsync += HandleErrorAsync;
             await _processor.StartProcessingAsync(CancellationToken.None);
 
             logger.LogDebug(
                 "InterBus AzureServiceBus: created session reply queue host {QueueName}",
-                queueName);
+                azureQueueName);
         }
         finally
         {
@@ -178,18 +180,19 @@ internal sealed class AzureServiceBusSessionQueueHost(
             }
         }
 
-        if (_queueName is not null)
+        if (_azureQueueName is not null)
         {
             try
             {
-                await clientProvider.AdminClient.DeleteQueueAsync(_queueName!, CancellationToken.None);
+                await clientProvider.AdminClient.DeleteQueueAsync(_azureQueueName!, CancellationToken.None);
             }
             catch
             {
-                logger.LogWarning("InterBus AzureServiceBus: failed to delete session reply queue {QueueName}", _queueName);
+                logger.LogWarning("InterBus AzureServiceBus: failed to delete session reply queue {QueueName}",
+                    _azureQueueName);
             }
         }
-        
+
         foreach (var channel in _channels.Values)
             channel.Writer.TryComplete();
         _channels.Clear();

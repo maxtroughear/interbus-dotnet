@@ -9,7 +9,7 @@ public interface ITopologyBuilder
     /// <summary>
     /// Build or verify transport topology for registered consumers.
     /// </summary>
-    Task BuildTopologyAsync(CancellationToken cancellationToken);
+    Task BuildConsumerTopologyAsync(CancellationToken cancellationToken);
 
     /// <summary>
     /// Ensure a publish topic exists (or is verified) and return its transport-specific identifier.

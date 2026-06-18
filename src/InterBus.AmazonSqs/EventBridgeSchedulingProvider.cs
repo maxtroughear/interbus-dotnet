@@ -109,7 +109,7 @@ public sealed class EventBridgeSchedulingProvider(
             //         "is registered so that its queue is created during startup topology setup, or schedule " +
             //         "messages to an SNS topic instead.");
 
-            if (!topology.QueueArns.TryGetValue(queueUrl, out var queueArn))
+            if (!topology.QueueArns.TryGetValue(queueName, out var queueArn))
                 throw new InvalidOperationException(
                     $"Queue ARN for '{queueName}' (resolved URL: '{queueUrl}') is not available " +
                     "in the SNS/SQS topology. Ensure the Amazon SQS transport has been configured " +

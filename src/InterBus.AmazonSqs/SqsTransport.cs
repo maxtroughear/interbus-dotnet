@@ -34,11 +34,7 @@ public sealed class SqsTransport(
                 $"Expected '{QueueScheme}'",
                 nameof(context));
 
-        // amazonsqs://interbus/my-consumer?fifo=true&vq=abc123
-
         var queueName = naming.BuildSqsQueueName(context.Destination);
-        
-        // my-consumer.fifo
 
         // If the destination URI carries a virtual queue ID (e.g. ?vq=abc123), inject it as
         // a header so SqsVirtualQueueHost can route the reply to the right in-memory channel.
@@ -55,11 +51,7 @@ public sealed class SqsTransport(
         TransportSendContext context,
         CancellationToken ct)
     {
-        // my-consumer.fifo
-        
         var queueUrl = await topology.ResolveQueueAsync(sqsQueueName, ct);
-        
-        // https://sqs.us-east-1.amazonaws.com/123456789012/my-consumer.fifo
 
         // Serialise the full payload + headers into the envelope body so that any
         // serialisation format (JSON, MessagePack, gzip, etc.) round-trips without

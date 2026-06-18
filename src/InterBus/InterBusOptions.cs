@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using InterBus.Consuming;
 using InterBus.Publishing;
 
@@ -12,8 +11,6 @@ public sealed class InterBusOptions
 {
     private readonly List<ConsumerDescriptor> _consumers = [];
     private readonly List<PublisherDescriptor> _publishers = [];
-    private readonly Dictionary<Type, string> _topicNames = [];
-    private readonly HashSet<Type> _fifoMessageTypes = [];
 
     /// <summary>All registered consumer descriptors. One descriptor per consumer class.</summary>
     public IReadOnlyList<ConsumerDescriptor> Consumers => _consumers;
@@ -33,23 +30,6 @@ public sealed class InterBusOptions
 
         return publisher;
     }
-
-    /// <summary>
-    /// The set of message types declared as FIFO via
-    /// <c>builder.Configure&lt;T&gt;(c =&gt; c.Fifo(...))</c>.
-    /// Transport implementations use this to create FIFO-capable infrastructure (e.g.
-    /// SQS/SNS FIFO queues and topics).
-    /// </summary>
-    public IReadOnlySet<Type> FifoMessageTypes => _fifoMessageTypes;
-
-    /// <summary>
-    /// Marks <paramref name="messageType"/> as a FIFO message type.
-    /// Idempotent — calling it multiple times for the same type has no effect.
-    /// </summary>
-    public void AddFifoMessageType(Type messageType) => _fifoMessageTypes.Add(messageType);
-
-    /// <summary>Returns <c>true</c> if <paramref name="messageType"/> has been declared as FIFO.</summary>
-    public bool IsFifoMessageType(Type messageType) => _fifoMessageTypes.Contains(messageType);
 
     /// <summary>
     /// The URI scheme used when constructing topic destination URIs.
@@ -78,7 +58,4 @@ public sealed class InterBusOptions
         TopicUriScheme = topicScheme;
         QueueUriScheme = queueScheme;
     }
-
-    public bool TryGetTopicName(Type messageType, [NotNullWhen(true)] out string? topicName) =>
-        _topicNames.TryGetValue(messageType, out topicName);
 }

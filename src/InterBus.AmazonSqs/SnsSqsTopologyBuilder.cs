@@ -43,7 +43,7 @@ public sealed partial class SnsSqsTopologyBuilder(
         new(StringComparer.Ordinal);
 
     /// <summary>
-    /// Application-level cache: SQS Queue URL → SQS Queue ARN
+    /// Application-level cache: sanitised queue name → SQS Queue ARN
     /// </summary>
     internal ConcurrentDictionary<string, string> QueueArns { get; } =
         new(StringComparer.Ordinal);
@@ -60,7 +60,7 @@ public sealed partial class SnsSqsTopologyBuilder(
     /// until the first publish via <see cref="EnsureTopicAsync"/>.
     /// </para>
     /// </summary>
-    public async Task BuildTopologyAsync(CancellationToken cancellationToken)
+    public async Task BuildConsumerTopologyAsync(CancellationToken cancellationToken)
     {
         if (transportOptions.TopologyMode == TopologyMode.ResolveOnly)
             await ResolveConsumerTopologyAsync(cancellationToken);
@@ -70,33 +70,33 @@ public sealed partial class SnsSqsTopologyBuilder(
 
     public async Task<string> EnsureTopicAsync(Uri topic, CancellationToken cancellationToken)
     {
-        var topicName = naming.BuildSnsTopicName(topic);
+        var snsTopicName = naming.BuildSnsTopicName(topic);
 
-        if (TopicArns.TryGetValue(topicName, out var cachedArn))
+        if (TopicArns.TryGetValue(snsTopicName, out var cachedArn))
             return cachedArn;
 
         return await EnsureWithCacheAsync(
             EnsuredTopics,
-            topicName,
+            snsTopicName,
             ct => transportOptions.TopologyMode == TopologyMode.ResolveOnly
-                ? ResolveTopicAsync(topicName, ct)
-                : CreateTopicAsync(topicName, ct),
+                ? ResolveTopicAsync(snsTopicName, ct)
+                : CreateTopicAsync(snsTopicName, ct),
             cancellationToken);
     }
 
     public async Task<string> EnsureQueueAsync(Uri queue, CancellationToken cancellationToken)
     {
-        var queueName = naming.BuildSqsQueueName(queue);
+        var sqsQueueName = naming.BuildSqsQueueName(queue);
 
-        if (QueueUrls.TryGetValue(queueName, out var cachedUrl))
+        if (QueueUrls.TryGetValue(sqsQueueName, out var cachedUrl))
             return cachedUrl;
 
         return await EnsureWithCacheAsync(
             EnsuredQueues,
-            queueName,
+            sqsQueueName,
             ct => transportOptions.TopologyMode == TopologyMode.ResolveOnly
-                ? ResolveQueueAsync(queueName, ct)
-                : CreateQueueAsync(queueName, ct),
+                ? ResolveQueueAsync(sqsQueueName, ct)
+                : CreateQueueAsync(sqsQueueName, ct),
             cancellationToken);
     }
 
@@ -108,7 +108,7 @@ public sealed partial class SnsSqsTopologyBuilder(
             var deadLetterQueueName = naming.BuildDeadLetterQueueName(descriptor.Queue);
 
             var deadLetterQueueUrl = await CreateQueueAsync(deadLetterQueueName, cancellationToken);
-            var deadLetterQueueArn = QueueArns[deadLetterQueueUrl];
+            var deadLetterQueueArn = QueueArns[deadLetterQueueName];
 
             var queueUrl = await CreateQueueAsync(
                 queueName,
@@ -122,7 +122,7 @@ public sealed partial class SnsSqsTopologyBuilder(
                     }),
                 });
 
-            var queueArn = QueueArns[queueUrl];
+            var queueArn = QueueArns[queueName];
 
             logger.LogDebug(
                 "InterBus AmazonSqs: declared queue {QueueName} for consumer {ConsumerType}, URL {QueueUrl}",
@@ -301,7 +301,7 @@ public sealed partial class SnsSqsTopologyBuilder(
             var queueArn = $"arn:{partition}:sqs:{sqsRegion}:{accountId}:{queueName}";
 
             QueueUrls.TryAdd(queueName, url);
-            QueueArns.TryAdd(url, queueArn);
+            QueueArns.TryAdd(queueName, queueArn);
         }
     }
 
@@ -309,15 +309,13 @@ public sealed partial class SnsSqsTopologyBuilder(
     {
         var (accountId, partition) = await ResolveCallerIdentityAsync(cancellationToken);
 
-        var sqsRegion = sqsClient.Config.RegionEndpoint?.SystemName
-                        ?? throw new InvalidOperationException(
-                            "Cannot determine the AWS region from the IAmazonSQS client configuration. Ensure a region has been configured on the AWS client (e.g. via environment variable AWS_DEFAULT_REGION or AWSOptions.Region)");
+        var sqsRegion = sqsClient.Config.RegionEndpoint?.SystemName ?? "";
 
         var url = $"{sqsClient.Config.ServiceURL}/{accountId}/{sqsQueueName}";
         var queueArn = $"arn:{partition}:sqs:{sqsRegion}:{accountId}:{sqsQueueName}";
 
         QueueUrls.TryAdd(sqsQueueName, url);
-        QueueArns.TryAdd(url, queueArn);
+        QueueArns.TryAdd(sqsQueueName, queueArn);
 
         return url;
     }

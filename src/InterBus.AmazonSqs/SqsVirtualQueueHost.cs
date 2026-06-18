@@ -20,9 +20,7 @@ namespace InterBus.AmazonSqs;
 /// </summary>
 internal sealed class SqsVirtualQueueHost(
     IAmazonSQS sqsClient,
-    SnsSqsNaming naming,
     SnsSqsTopologyBuilder topology,
-    SnsSqsTransportOptions options,
     ISnsSqsMessageEnvelope envelope,
     ILogger<SqsVirtualQueueHost> logger)
     : IAsyncDisposable
@@ -80,17 +78,16 @@ internal sealed class SqsVirtualQueueHost(
 
             var attributes = new Dictionary<string, string>(StringComparer.Ordinal)
             {
-                ["MessageRetentionPeriod"] = "300",
+                ["MessageRetentionPeriod"] = "900",
             };
 
-            await topology.CreateQueueAsync(queueName, cancellationToken, attributes);
+            _hostQueueUrl = await topology.CreateQueueAsync(queueName, cancellationToken, attributes);
+            _hostQueueName = queueName;
 
             _pollingCts = new CancellationTokenSource();
             _pollingTask = Task.Run(() => PollLoopAsync(_pollingCts.Token), CancellationToken.None);
 
-            logger.LogDebug(
-                "InterBus AmazonSqs: created virtual queue host {QueueName}",
-                queueName);
+            logger.LogDebug("InterBus AmazonSqs: created virtual queue host {QueueName}", queueName);
         }
         finally
         {
@@ -212,7 +209,7 @@ internal sealed class SqsVirtualQueueHost(
             topology.QueueUrls.TryRemove(_hostQueueName!, out _);
             try
             {
-                await sqsClient.DeleteQueueAsync(_hostQueueUrl!, CancellationToken.None);
+                await sqsClient.DeleteQueueAsync(_hostQueueUrl, CancellationToken.None);
             }
             catch (Exception ex)
             {

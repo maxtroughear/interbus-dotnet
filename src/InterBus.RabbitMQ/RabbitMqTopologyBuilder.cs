@@ -16,7 +16,7 @@ internal sealed class RabbitMqTopologyBuilder(
     private ConcurrentDictionary<string, Task> DeclaredQueues { get; } = new(StringComparer.Ordinal);
     private ConcurrentDictionary<string, Task> DeclaredBindings { get; } = new(StringComparer.Ordinal);
 
-    public async Task BuildTopologyAsync(CancellationToken cancellationToken)
+    public async Task BuildConsumerTopologyAsync(CancellationToken cancellationToken)
     {
         await using var connection = await ConnectWithRetryAsync(cancellationToken);
         await using var channel = await connection.CreateChannelAsync(cancellationToken: cancellationToken);
@@ -50,8 +50,8 @@ internal sealed class RabbitMqTopologyBuilder(
 
     public async Task<string> EnsureTopicAsync(Uri topic, CancellationToken cancellationToken)
     {
-        // TODO: Check and fix
-        var exchangeName = options.ExchangePrefix + topic;
+        var topicName = RoutingConventions.GetDestinationName(topic);
+        var exchangeName = options.ExchangePrefix + topicName;
         await EnsureTopicDeclaredAsync(exchangeName, cancellationToken);
         return exchangeName;
     }
@@ -90,10 +90,10 @@ internal sealed class RabbitMqTopologyBuilder(
 
     private async Task<string> EnsureTopicDeclaredOnChannelAsync(
         IChannel channel,
-        string rawTopicName,
+        string topicName,
         CancellationToken cancellationToken)
     {
-        var exchangeName = options.ExchangePrefix + rawTopicName;
+        var exchangeName = options.ExchangePrefix + topicName;
         await EnsureWithCacheAsync(
             DeclaredTopics,
             exchangeName,

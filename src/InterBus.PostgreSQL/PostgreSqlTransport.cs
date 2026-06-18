@@ -43,7 +43,7 @@ public sealed class PostgreSqlTransport(
             : null;
 
         if (context.Destination.Scheme == TopicScheme)
-            await topologyBuilder.EnsureTopicAsync(name, cancellationToken);
+            await topologyBuilder.EnsureTopicAsync(context.Destination, cancellationToken);
 
         await using var cmd = dataSource.CreateCommand();
 

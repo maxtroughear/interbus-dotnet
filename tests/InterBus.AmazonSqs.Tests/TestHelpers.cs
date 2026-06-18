@@ -34,7 +34,7 @@ public static class TestHelpers
         {
             Credentials = new BasicAWSCredentials("test", "test"),
             Region = RegionEndpoint.USEast1,
-            DefaultClientConfig = { ServiceURL = container.GetConnectionString() }
+            DefaultClientConfig = { ServiceURL = container.GetConnectionString(), AuthenticationRegion = "us-east-1" }
         };
     }
 

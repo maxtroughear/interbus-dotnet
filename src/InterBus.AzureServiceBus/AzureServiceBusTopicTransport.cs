@@ -43,8 +43,7 @@ internal sealed class AzureServiceBusTopicTransport(
                 nameof(context));
         }
 
-        var rawTopicName = RoutingConventions.GetDestinationName(context.Destination);
-        var entityPath = await topology.EnsureTopicAsync(rawTopicName, cancellationToken);
+        var entityPath = await topology.EnsureTopicAsync(context.Destination, cancellationToken);
 
         var sender = clientProvider.GetOrCreateSender(entityPath);
         var message = BuildMessage(context);

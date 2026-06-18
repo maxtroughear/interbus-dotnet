@@ -11,7 +11,6 @@ namespace InterBus.Scheduling;
 /// </summary>
 internal class Scheduler(
     InterBusOptions options,
-    MessageGroupIdRegistry groupIdRegistry,
     IMessageScheduler messageScheduler,
     ConsumeContextAccessor contextAccessor)
     : IScheduler
@@ -91,9 +90,8 @@ internal class Scheduler(
         if (consumeHeaders?.TryGetValue(InterBusHeaders.MessageId, out var messageId) == true)
             headers[InterBusHeaders.CausationId] = messageId;
         
-        // Resolve the message group ID: use the registered selector for T or fall back to CorrelationId.
         headers[InterBusHeaders.MessageGroupId] =
-            groupIdRegistry.TryResolve(message)
+            options.GetPublisherDescriptor<T>().GroupBy?.Invoke(message)
             ?? headers[InterBusHeaders.CorrelationId];
 
         return headers;

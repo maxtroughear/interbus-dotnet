@@ -15,15 +15,13 @@ internal sealed class AzureServiceBusReplyEndpointFactory(
 {
     public async Task<IReplyEndpoint> CreateAsync(CancellationToken cancellationToken = default)
     {
-        var (rawQueueName, sessionId, reader) = await host.RegisterAsync(cancellationToken);
+        var (queueName, sessionId, reader) = await host.RegisterAsync(cancellationToken);
 
-        // Encode the session ID as a URI query parameter so AzureServiceBusQueueTransport
-        // can extract and set ServiceBusMessage.SessionId without consumers needing to know
-        // about session mechanics.
-        var address = new Uri(
-            $"{AzureServiceBusQueueTransport.QueueScheme}://{RoutingConventions.BusHost}" +
-            $"/{Uri.EscapeDataString(rawQueueName)}" +
-            $"?session={Uri.EscapeDataString(sessionId)}");
+        var address =
+            new UriBuilder(RoutingConventions.QueueUri(AzureServiceBusQueueTransport.QueueScheme, queueName))
+            {
+                Query = $"session={Uri.EscapeDataString(sessionId)}"
+            }.Uri;
 
         return new AzureServiceBusReplyEndpoint(host, scopeFactory, address, sessionId, reader);
     }

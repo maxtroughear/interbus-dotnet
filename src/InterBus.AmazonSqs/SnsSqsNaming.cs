@@ -65,6 +65,10 @@ public sealed class SnsSqsNaming(SnsSqsTransportOptions options)
 
     private static string SanitizeName(string rawName, int maxLength)
     {
+        rawName = rawName.Replace(".", "-");
+        rawName = rawName.Replace("<", "-");
+        rawName = rawName.Replace(">", "-");
+        
         if (rawName.Length <= maxLength)
             return rawName;
 

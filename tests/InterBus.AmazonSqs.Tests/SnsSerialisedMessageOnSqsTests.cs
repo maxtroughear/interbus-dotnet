@@ -108,7 +108,7 @@ public class SnsSerialisedMessageOnSqsTests
         var cancellationToken = TestContext.CurrentContext.CancellationToken;
 
         var queueUrl = await topologyBuilder.EnsureQueueAsync(
-            RoutingConventions.QueueName(typeof(SnsSerialisedOrderPlacedConsumer)),
+            RoutingConventions.QueueUri(SqsTransport.QueueScheme, typeof(SnsSerialisedOrderPlacedConsumer)),
             cancellationToken);
 
         var queueArn = (await sqs.GetQueueAttributesAsync(
@@ -117,7 +117,7 @@ public class SnsSerialisedMessageOnSqsTests
                        ?? throw new InvalidOperationException($"Queue ARN not returned for queue URL '{queueUrl}'.");
 
         var topicArn = await topologyBuilder.EnsureTopicAsync(
-            RoutingConventions.TopicName(typeof(OrderPlaced)),
+            RoutingConventions.TopicUri(SnsTransport.TopicScheme, typeof(OrderPlaced)),
             cancellationToken);
 
         var policy = JsonSerializer.Serialize(new

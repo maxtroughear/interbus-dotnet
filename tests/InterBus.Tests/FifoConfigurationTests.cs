@@ -8,64 +8,41 @@ namespace InterBus.Tests;
 // Types used only by FifoConfigurationTests, defined at namespace level to avoid
 // source-generator accessibility issues with nested private types.
 public record FifoTestOrderPlaced(Guid OrderId, string CustomerId);
+
 public record FifoTestOrderShipped(Guid OrderId);
 
 public sealed class FifoConfigurationTests
 {
-    
-    // ── Configure<T>().Fifo() populates FifoMessageTypes ──────────────────
-
     [Fact]
     public void ConfigureFifo_AddsTypeToFifoMessageTypes()
     {
         var services = new ServiceCollection();
-        services.AddInterBus(bus =>
-        {
-            bus.Configure<FifoTestOrderPlaced>(c => c.Fifo(o => o.CustomerId));
-        });
+        services.AddInterBus(bus => { bus.Configure<FifoTestOrderPlaced>(c => c.Fifo(o => o.CustomerId)); });
 
         var sp = services.BuildServiceProvider();
         var options = sp.GetRequiredService<InterBusOptions>();
 
-        Assert.True(options.IsFifoMessageType(typeof(FifoTestOrderPlaced)));
-        Assert.False(options.IsFifoMessageType(typeof(FifoTestOrderShipped)));
-    }
+        var orderPlacedDescriptor = options.GetPublisherDescriptor<FifoTestOrderPlaced>();
+        var orderShippedDescriptor = options.GetPublisherDescriptor<FifoTestOrderShipped>();
 
-    [Fact]
-    public void ConfigureFifo_WithoutSelector_MarksFifoWithoutRegistryEntry()
-    {
-        var services = new ServiceCollection();
-        services.AddInterBus(bus =>
-        {
-            bus.Configure<FifoTestOrderPlaced>(c => c.Fifo());
-        });
-
-        var sp = services.BuildServiceProvider();
-        var options = sp.GetRequiredService<InterBusOptions>();
-        var registry = sp.GetRequiredService<MessageGroupIdRegistry>();
-
-        Assert.True(options.IsFifoMessageType(typeof(FifoTestOrderPlaced)));
-        // No selector registered → TryResolve returns null (falls back to CorrelationId at runtime)
-        Assert.Null(registry.TryResolve(new FifoTestOrderPlaced(Guid.NewGuid(), "c1")));
+        Assert.True(orderPlacedDescriptor.IsFifo);
+        Assert.False(orderShippedDescriptor.IsFifo);
     }
 
     [Fact]
     public void ConfigureGroupBy_DoesNotMarkFifo()
     {
         var services = new ServiceCollection();
-        services.AddInterBus(bus =>
-        {
-            bus.Configure<FifoTestOrderPlaced>(c => c.GroupBy(o => o.CustomerId));
-        });
+        services.AddInterBus(bus => { bus.Configure<FifoTestOrderPlaced>(c => c.GroupBy(o => o.CustomerId)); });
 
         var sp = services.BuildServiceProvider();
         var options = sp.GetRequiredService<InterBusOptions>();
 
-        Assert.False(options.IsFifoMessageType(typeof(FifoTestOrderPlaced)));
+        var orderPlacedDescriptor = options.GetPublisherDescriptor<FifoTestOrderPlaced>();
+
+        Assert.False(orderPlacedDescriptor.IsFifo);
     }
-
-    // ── WithFifo() does not implicitly mark message types as FIFO ──────────
-
+    
     [Fact]
     public void WithFifo_ConsumerMessageTypesRemainNonFifoWithoutConfigureFifo()
     {
@@ -79,8 +56,10 @@ public sealed class FifoConfigurationTests
 
         var sp = services.BuildServiceProvider();
         var options = sp.GetRequiredService<InterBusOptions>();
+        
+        var orderPlacedDescriptor = options.GetPublisherDescriptor<FifoTestOrderPlaced>();
 
-        Assert.False(options.IsFifoMessageType(typeof(FifoTestOrderPlaced)));
+        Assert.False(orderPlacedDescriptor.IsFifo);
     }
 
     [Fact]
@@ -95,12 +74,12 @@ public sealed class FifoConfigurationTests
 
         var sp = services.BuildServiceProvider();
         var options = sp.GetRequiredService<InterBusOptions>();
+        
+        var orderPlacedDescriptor = options.GetPublisherDescriptor<FifoTestOrderPlaced>();
 
-        Assert.False(options.IsFifoMessageType(typeof(FifoTestOrderPlaced)));
+        Assert.False(orderPlacedDescriptor.IsFifo);
     }
-
-    // ── Publisher stamps MessageGroupId header ──────────────────────────────
-
+    
     [Fact]
     public async Task Publish_WithGroupBySelector_StampsMessageGroupIdHeader()
     {
@@ -145,24 +124,6 @@ public sealed class FifoConfigurationTests
         Assert.NotNull(headers[InterBusHeaders.MessageGroupId]);
         Assert.Equal(headers[InterBusHeaders.CorrelationId],
             headers[InterBusHeaders.MessageGroupId]);
-    }
-
-    // ── Configure<T>().TopicName() ─────────────────────────────────────────
-
-    [Fact]
-    public void Configure_TopicName_SetsTopicName()
-    {
-        var services = new ServiceCollection();
-        services.AddInterBus(bus =>
-        {
-            bus.Configure<FifoTestOrderPlaced>(c => c.TopicName("orders"));
-        });
-
-        var sp = services.BuildServiceProvider();
-        var options = sp.GetRequiredService<InterBusOptions>();
-
-        Assert.True(options.TryGetTopicName(typeof(FifoTestOrderPlaced), out var name));
-        Assert.Equal("orders", name);
     }
 
     // ── Helpers ─────────────────────────────────────────────────────────────

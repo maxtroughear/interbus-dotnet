@@ -5,7 +5,7 @@ internal sealed class InMemoryTopologyBuilder(
     InterBusOptions options)
     : ITopologyBuilder
 {
-    public Task BuildTopologyAsync(CancellationToken cancellationToken)
+    public Task BuildConsumerTopologyAsync(CancellationToken cancellationToken)
     {
         foreach (var descriptor in options.Consumers)
         {
@@ -23,7 +23,8 @@ internal sealed class InMemoryTopologyBuilder(
 
     public Task<string> EnsureTopicAsync(Uri topic, CancellationToken cancellationToken)
     {
-        broker.EnsureTopic(topic);
-        return Task.FromResult(topic);
+        var topicName = RoutingConventions.GetDestinationName(topic);
+        broker.EnsureTopic(topicName);
+        return Task.FromResult(topicName);
     }
 }

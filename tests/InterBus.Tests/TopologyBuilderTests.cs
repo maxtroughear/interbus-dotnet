@@ -55,7 +55,7 @@ public sealed class TopologyBuilderTests
     {
         public int CallCount { get; private set; }
 
-        public Task BuildTopologyAsync(CancellationToken cancellationToken)
+        public Task BuildConsumerTopologyAsync(CancellationToken cancellationToken)
         {
             CallCount++;
             return Task.CompletedTask;

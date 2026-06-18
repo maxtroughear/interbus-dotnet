@@ -42,12 +42,12 @@ internal sealed class InMemoryTransport(
 
     private async Task DeliverCoreAsync(TransportSendContext context, CancellationToken cancellationToken)
     {
-        var name = RoutingConventions.GetDestinationName(context.Destination);
         var envelope = new InMemoryEnvelope(context.Payload, context.Headers);
+        var name = RoutingConventions.GetDestinationName(context.Destination);
 
         if (context.Destination.Scheme == InMemoryBroker.TopicScheme)
         {
-            await topologyBuilder.EnsureTopicAsync(name, cancellationToken);
+            await topologyBuilder.EnsureTopicAsync(context.Destination, cancellationToken);
             await broker.PublishToTopicAsync(name, envelope, cancellationToken);
             return;
         }

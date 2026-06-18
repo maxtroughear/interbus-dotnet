@@ -1,3 +1,4 @@
+using System.Web;
 using Azure.Messaging.ServiceBus;
 using InterBus.Transporting;
 
@@ -25,23 +26,20 @@ internal sealed class AzureServiceBusQueueTransport(
                 nameof(context));
         }
 
-        var rawQueueName = RoutingConventions.GetDestinationName(context.Destination);
-        var entityPath = AzureServiceBusNaming.SanitizeEntityName(options.QueuePrefix + rawQueueName);
+        var queueName = RoutingConventions.GetDestinationName(context.Destination);
+        var azureQueueName = AzureServiceBusNaming.SanitizeEntityName(options.QueuePrefix + queueName);
 
         // A ?session= query parameter encodes the target session ID (used by reply endpoints
         // to route replies into the correct ASB session without a per-request queue).
-        // TODO: Parse query params properly
-        string? sessionIdOverride = null;
-        var query = context.Destination.Query;
-        if (query.StartsWith("?session=", StringComparison.Ordinal) && query.Length > 9)
-            sessionIdOverride = Uri.UnescapeDataString(query[9..]);
+        var query = HttpUtility.ParseQueryString(context.Destination.Query);
+        var sessionId = query["session"];
 
-        var sender = clientProvider.GetOrCreateSender(entityPath);
-        var message = BuildMessage(context, sessionIdOverride);
+        var sender = clientProvider.GetOrCreateSender(azureQueueName);
+        var message = BuildMessage(context, sessionId);
         await sender.SendMessageAsync(message, cancellationToken);
     }
 
-    private static ServiceBusMessage BuildMessage(TransportSendContext context, string? sessionIdOverride = null)
+    private static ServiceBusMessage BuildMessage(TransportSendContext context, string? sessionId = null)
     {
         var message = new ServiceBusMessage(context.Payload);
 
@@ -54,8 +52,8 @@ internal sealed class AzureServiceBusQueueTransport(
         // Set SessionId for session-enabled queues (FIFO ordering and request/reply sessions).
         // The MessageGroupId header is always stamped by Publisher (defaults to CorrelationId),
         // so setting it here is safe even on non-session queues — ASB ignores it.
-        if (sessionIdOverride is not null)
-            message.SessionId = sessionIdOverride;
+        if (sessionId is not null)
+            message.SessionId = sessionId;
         else if (context.Headers.TryGetValue(InterBusHeaders.MessageGroupId, out var groupId))
             message.SessionId = groupId;
 

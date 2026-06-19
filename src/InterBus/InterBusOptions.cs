@@ -31,6 +31,20 @@ public sealed class InterBusOptions
         return publisher;
     }
 
+    public ConsumerDescriptor GetConsumerDescriptor<T>() => GetConsumerDescriptor(typeof(T));
+
+    public ConsumerDescriptor GetConsumerDescriptor(Type consumerType)
+    {
+        var descriptor = _consumers.FirstOrDefault(x => x.ConsumerType == consumerType);
+
+        if (descriptor is not null) return descriptor;
+
+        descriptor = new ConsumerDescriptor(consumerType, RoutingConventions.QueueUri(QueueUriScheme, consumerType));
+        AddConsumer(descriptor);
+
+        return descriptor;
+    }
+
     /// <summary>
     /// The URI scheme used when constructing topic destination URIs.
     /// Set by the transport registration extension (e.g. <c>AddInMemoryTransport()</c>).

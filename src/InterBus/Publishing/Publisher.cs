@@ -35,7 +35,7 @@ internal class Publisher(
         where TConsumer : IConsume<T>
         where T : class
     {
-        var destination = RoutingConventions.QueueUri(options.QueueUriScheme, typeof(TConsumer));
+        var destination = options.GetConsumerDescriptor<TConsumer>().Queue;
         var context = new PublishContext<T>(destination, message, Stamp(message));
         configure(context);
 

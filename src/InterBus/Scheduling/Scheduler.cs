@@ -39,9 +39,13 @@ internal class Scheduler(
         Action<PublishContext<T>> configure,
         CancellationToken cancellationToken = default)
         where TConsumer : IConsume<T>
-        where T : class =>
-        ScheduleSendAsync(RoutingConventions.QueueUri(options.QueueUriScheme, typeof(TConsumer)), message, scheduledAt,
+        where T : class
+    {
+        var destination = options.GetConsumerDescriptor<TConsumer>().Queue;
+        return ScheduleSendAsync(destination, message,
+            scheduledAt,
             configure, cancellationToken);
+    }
 
     public Task<Guid> ScheduleSendAsync<T>(string queueName, T message, DateTimeOffset scheduledAt,
         CancellationToken cancellationToken = default) where T : class =>

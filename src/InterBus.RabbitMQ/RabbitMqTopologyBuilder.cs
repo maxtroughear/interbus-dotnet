@@ -16,7 +16,7 @@ internal sealed class RabbitMqTopologyBuilder(
     private ConcurrentDictionary<string, Task> DeclaredQueues { get; } = new(StringComparer.Ordinal);
     private ConcurrentDictionary<string, Task> DeclaredBindings { get; } = new(StringComparer.Ordinal);
 
-    public async Task BuildTopologyAsync(CancellationToken cancellationToken)
+    public async Task BuildConsumerTopologyAsync(CancellationToken cancellationToken)
     {
         await using var connection = await ConnectWithRetryAsync(cancellationToken);
         await using var channel = await connection.CreateChannelAsync(cancellationToken: cancellationToken);
@@ -40,9 +40,7 @@ internal sealed class RabbitMqTopologyBuilder(
 
             foreach (var messageType in descriptor.MessageTypes)
             {
-                var topicName = busOptions.TryGetTopicName(messageType, out var custom)
-                    ? custom
-                    : RoutingConventions.TopicName(messageType);
+                var topicName = busOptions.GetPublisherDescriptor(messageType).TopicName;
 
                 var exchangeName = await EnsureTopicDeclaredOnChannelAsync(channel, topicName, cancellationToken);
                 await EnsureQueueBindingAsync(channel, queueName, exchangeName, cancellationToken);
@@ -50,9 +48,10 @@ internal sealed class RabbitMqTopologyBuilder(
         }
     }
 
-    public async Task<string> EnsureTopicAsync(string rawTopicName, CancellationToken cancellationToken)
+    public async Task<string> EnsureTopicAsync(Uri topic, CancellationToken cancellationToken)
     {
-        var exchangeName = options.ExchangePrefix + rawTopicName;
+        var topicName = RoutingConventions.GetDestinationName(topic);
+        var exchangeName = options.ExchangePrefix + topicName;
         await EnsureTopicDeclaredAsync(exchangeName, cancellationToken);
         return exchangeName;
     }
@@ -91,10 +90,10 @@ internal sealed class RabbitMqTopologyBuilder(
 
     private async Task<string> EnsureTopicDeclaredOnChannelAsync(
         IChannel channel,
-        string rawTopicName,
+        string topicName,
         CancellationToken cancellationToken)
     {
-        var exchangeName = options.ExchangePrefix + rawTopicName;
+        var exchangeName = options.ExchangePrefix + topicName;
         await EnsureWithCacheAsync(
             DeclaredTopics,
             exchangeName,

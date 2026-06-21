@@ -113,6 +113,7 @@ public class RequestReplyTests
     }
 
     [Test]
+    [CancelAfter(30_000)]
     public async Task RequestAsync_ConsumerReplies_ReturnsReply()
     {
         using var scope = _provider.CreateScope();

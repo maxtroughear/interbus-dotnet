@@ -18,7 +18,7 @@ public sealed class EventBridgeSchedulerTests
     private static readonly LocalStackContainer? Container = TestHelpers.CreateLocalStackContainer();
 
     private ServiceProvider _serviceProvider;
-    private SnsSqsTopology _topology;
+    private SnsSqsNaming _naming;
     private SnsSqsTopologyBuilder _topologyBuilder;
     private string _queuePrefix;
     private string _topicPrefix;
@@ -72,12 +72,12 @@ public sealed class EventBridgeSchedulerTests
         _serviceProvider = services.BuildServiceProvider();
 
         var transportOptions = new SnsSqsTransportOptions { QueuePrefix = _queuePrefix, TopicPrefix = _topicPrefix };
-        _topology = new SnsSqsTopology(transportOptions, new InterBusOptions());
+        _naming = new SnsSqsNaming(transportOptions);
         var logger = _serviceProvider.GetRequiredService<ILogger<SnsSqsTopologyBuilder>>();
         _topologyBuilder = new SnsSqsTopologyBuilder(
             SnsClient, SqsClient,
             _serviceProvider.GetRequiredService<IAmazonSecurityTokenService>(),
-            _topology,
+            _naming,
             transportOptions,
             new InterBusOptions(),
             logger);
@@ -127,12 +127,13 @@ public sealed class EventBridgeSchedulerTests
     public async Task ScheduleAsync_WithQueueUri_CreatesSchedule_WithSqsTargetArn()
     {
         var ct = TestContext.CurrentContext.CancellationToken;
-        await _topologyBuilder.EnsureQueueAsync("my-queue", ct);
+        var queue = RoutingConventions.QueueUri(SqsTransport.QueueScheme, "my-queue");
+        await _topologyBuilder.EnsureQueueAsync(queue, ct);
 
         var scheduleId = Guid.CreateVersion7();
         _createdSchedules.Add((scheduleId, "default"));
         await BuildProvider().ScheduleAsync(
-            scheduleId, new Uri("sqsqueue://interbus/my-queue"),
+            scheduleId, queue,
             [1, 2, 3], new MessageHeaders { [InterBusHeaders.MessageType] = "MyEvent" },
             DateTimeOffset.UtcNow.AddHours(1), ct);
 
@@ -153,12 +154,13 @@ public sealed class EventBridgeSchedulerTests
     public async Task ScheduleAsync_WithTopicUri_CreatesSchedule_WithSnsTargetArn()
     {
         var ct = TestContext.CurrentContext.CancellationToken;
-        var topicArn = await _topologyBuilder.EnsureTopicAsync("my-topic", ct);
+        var topic = RoutingConventions.TopicUri(SnsTransport.TopicScheme, "my-topic");
+        var topicArn = await _topologyBuilder.EnsureTopicAsync(topic, ct);
 
         var scheduleId = Guid.CreateVersion7();
         _createdSchedules.Add((scheduleId, "default"));
         await BuildProvider().ScheduleAsync(
-            scheduleId, new Uri("snstopic://interbus/my-topic"),
+            scheduleId, topic,
             [], new MessageHeaders(), DateTimeOffset.UtcNow.AddHours(1), ct);
 
         var schedule = await SchedulerClient.GetScheduleAsync(
@@ -171,14 +173,15 @@ public sealed class EventBridgeSchedulerTests
     public async Task ScheduleAsync_InputIsSnsSqsMessageEnvelope_ContainsPayloadAndHeaders()
     {
         var ct = TestContext.CurrentContext.CancellationToken;
-        await _topologyBuilder.EnsureQueueAsync("test-queue", ct);
+        var queue = RoutingConventions.QueueUri(SqsTransport.QueueScheme, "test-queue");
+        await _topologyBuilder.EnsureQueueAsync(queue, ct);
 
         var payload = new byte[] { 10, 20, 30 };
         var headers = new MessageHeaders { [InterBusHeaders.MessageType] = "TestEvent" };
         var scheduleId = Guid.CreateVersion7();
         _createdSchedules.Add((scheduleId, "default"));
         await BuildProvider().ScheduleAsync(
-            scheduleId, new Uri("sqsqueue://interbus/test-queue"),
+            scheduleId, queue,
             payload, headers, DateTimeOffset.UtcNow.AddMinutes(5), ct);
 
         var schedule = await SchedulerClient.GetScheduleAsync(
@@ -195,13 +198,14 @@ public sealed class EventBridgeSchedulerTests
     public async Task ScheduleAsync_ScheduleExpression_UsesAtFormatWithUtcTime()
     {
         var ct = TestContext.CurrentContext.CancellationToken;
-        await _topologyBuilder.EnsureQueueAsync("test", ct);
+        var queue = RoutingConventions.QueueUri(SqsTransport.QueueScheme, "test");
+        await _topologyBuilder.EnsureQueueAsync(queue, ct);
 
         var scheduledAt = new DateTimeOffset(2030, 6, 15, 10, 30, 0, TimeSpan.Zero);
         var scheduleId = Guid.CreateVersion7();
         _createdSchedules.Add((scheduleId, "default"));
         await BuildProvider().ScheduleAsync(
-            scheduleId, new Uri("sqsqueue://interbus/test"),
+            scheduleId, queue,
             [], new MessageHeaders(), scheduledAt, ct);
 
         var schedule = await SchedulerClient.GetScheduleAsync(
@@ -215,7 +219,8 @@ public sealed class EventBridgeSchedulerTests
     {
         const string groupName = "my-custom-group";
         var ct = TestContext.CurrentContext.CancellationToken;
-        await _topologyBuilder.EnsureQueueAsync("test", ct);
+        var queue = RoutingConventions.QueueUri(SqsTransport.QueueScheme, "test");
+        await _topologyBuilder.EnsureQueueAsync(queue, ct);
         await SchedulerClient.CreateScheduleGroupAsync(
             new CreateScheduleGroupRequest { Name = groupName }, ct);
         _createdGroups.Add(groupName);
@@ -223,7 +228,7 @@ public sealed class EventBridgeSchedulerTests
         var scheduleId = Guid.CreateVersion7();
         _createdSchedules.Add((scheduleId, groupName));
         await BuildProvider(groupName: groupName).ScheduleAsync(
-            scheduleId, new Uri("sqsqueue://interbus/test"),
+            scheduleId, queue,
             [], new MessageHeaders(), DateTimeOffset.UtcNow.AddHours(1), ct);
 
         var schedule = await SchedulerClient.GetScheduleAsync(
@@ -240,12 +245,13 @@ public sealed class EventBridgeSchedulerTests
     public async Task CancelAsync_DeletesSchedule()
     {
         var ct = TestContext.CurrentContext.CancellationToken;
-        await _topologyBuilder.EnsureQueueAsync("test", ct);
+        var queue = RoutingConventions.QueueUri(SqsTransport.QueueScheme, "test");
+        await _topologyBuilder.EnsureQueueAsync(queue, ct);
         var provider = BuildProvider();
 
         var scheduleId = Guid.CreateVersion7();
         await provider.ScheduleAsync(
-            scheduleId, new Uri("sqsqueue://interbus/test"),
+            scheduleId, queue,
             [], new MessageHeaders(), DateTimeOffset.UtcNow.AddHours(1), ct);
 
         await provider.CancelAsync(scheduleId, ct);
@@ -260,7 +266,8 @@ public sealed class EventBridgeSchedulerTests
     {
         const string groupName = "my-group";
         var ct = TestContext.CurrentContext.CancellationToken;
-        await _topologyBuilder.EnsureQueueAsync("test", ct);
+        var queue = RoutingConventions.QueueUri(SqsTransport.QueueScheme, "test");
+        await _topologyBuilder.EnsureQueueAsync(queue, ct);
         await SchedulerClient.CreateScheduleGroupAsync(
             new CreateScheduleGroupRequest { Name = groupName }, ct);
         _createdGroups.Add(groupName);
@@ -268,7 +275,7 @@ public sealed class EventBridgeSchedulerTests
         var provider = BuildProvider(groupName: groupName);
         var scheduleId = Guid.CreateVersion7();
         await provider.ScheduleAsync(
-            scheduleId, new Uri("sqsqueue://interbus/test"),
+            scheduleId, queue,
             [], new MessageHeaders(), DateTimeOffset.UtcNow.AddHours(1), ct);
 
         await provider.CancelAsync(scheduleId, ct);
@@ -285,7 +292,7 @@ public sealed class EventBridgeSchedulerTests
     private EventBridgeSchedulingProvider BuildProvider(
         string? roleArn = null,
         string groupName = "default") =>
-        new(SchedulerClient, _topology, _topologyBuilder, new SnsSqsMessageEnvelope(),
+        new(SchedulerClient, _naming, _topologyBuilder, new SnsSqsMessageEnvelope(),
             new EventBridgeSchedulerOptions
             {
                 TargetRoleArn = roleArn ?? TargetRoleArn,

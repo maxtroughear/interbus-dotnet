@@ -20,5 +20,5 @@ public enum TopologyMode
     /// resource policies are created. Use this when the runtime role does not have
     /// <c>sqs:CreateQueue</c>, <c>sns:CreateTopic</c>, or <c>sns:Subscribe</c> permissions.
     /// </summary>
-    VerifyOnly,
+    ResolveOnly,
 }

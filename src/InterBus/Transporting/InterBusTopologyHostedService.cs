@@ -16,7 +16,7 @@ public sealed class InterBusTopologyHostedService(
             return;
 
         foreach (var topologyBuilder in topologyBuilders)
-            await topologyBuilder.BuildTopologyAsync(cancellationToken);
+            await topologyBuilder.BuildConsumerTopologyAsync(cancellationToken);
     }
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;

@@ -45,12 +45,11 @@ public sealed class SnsTransport(
                 $"Expected '{TopicScheme}'",
                 nameof(context));
 
-        var rawTopicName = RoutingConventions.GetDestinationName(context.Destination);
-        await PublishToTopicAsync(rawTopicName, context, cancellationToken);
+        await PublishToTopicAsync(context.Destination, context, cancellationToken);
     }
 
     private async Task PublishToTopicAsync(
-        string rawTopicName,
+        Uri rawTopicName,
         TransportSendContext context,
         CancellationToken ct)
     {

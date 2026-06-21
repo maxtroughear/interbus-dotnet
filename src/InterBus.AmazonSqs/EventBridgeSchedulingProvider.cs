@@ -22,8 +22,8 @@ namespace InterBus.AmazonSqs;
 /// </remarks>
 public sealed class EventBridgeSchedulingProvider(
     IAmazonScheduler schedulerClient,
-    SnsSqsTopology topology,
-    ITopologyBuilder topologyBuilder,
+    SnsSqsNaming naming,
+    SnsSqsTopologyBuilder topology,
     ISnsSqsMessageEnvelope rawEnvelope,
     EventBridgeSchedulerOptions options)
     : IMessageSchedulingProvider
@@ -94,25 +94,24 @@ public sealed class EventBridgeSchedulingProvider(
     {
         if (destination.Scheme == SnsTransport.TopicScheme)
         {
-            var rawTopicName = RoutingConventions.GetDestinationName(destination);
-            return await topologyBuilder.EnsureTopicAsync(rawTopicName, cancellationToken);
+            return await topology.EnsureTopicAsync(destination, cancellationToken);
         }
 
         if (destination.Scheme == SqsTransport.QueueScheme)
         {
-            var rawQueueName = RoutingConventions.GetDestinationName(destination);
-            var queueName = topology.BuildSqsQueueName(rawQueueName);
+            var queueName = naming.BuildSqsQueueName(destination);
+            
+            var queueUrl = await topology.ResolveQueueAsync(queueName, cancellationToken);
+            
+            // if (!topology.QueueUrls.TryGetValue(queueName, out var queueUrl))
+            //     throw new InvalidOperationException(
+            //         $"Queue '{queueName}' has not been declared. Ensure the consumer for this queue " +
+            //         "is registered so that its queue is created during startup topology setup, or schedule " +
+            //         "messages to an SNS topic instead.");
 
-            // Queue URL and ARN must already be cached from startup topology setup.
-            if (!topology.QueueUrls.TryGetValue(queueName, out var queueUrl))
+            if (!topology.QueueArns.TryGetValue(queueName, out var queueArn))
                 throw new InvalidOperationException(
-                    $"Queue '{rawQueueName}' has not been declared. Ensure the consumer for this queue " +
-                    "is registered so that its queue is created during startup topology setup, or schedule " +
-                    "messages to an SNS topic instead.");
-
-            if (!topology.QueueArns.TryGetValue(queueUrl, out var queueArn))
-                throw new InvalidOperationException(
-                    $"Queue ARN for '{rawQueueName}' (resolved URL: '{queueUrl}') is not available " +
+                    $"Queue ARN for '{queueName}' (resolved URL: '{queueUrl}') is not available " +
                     "in the SNS/SQS topology. Ensure the Amazon SQS transport has been configured " +
                     "and initialized before scheduling messages.");
 

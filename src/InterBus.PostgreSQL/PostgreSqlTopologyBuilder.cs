@@ -15,7 +15,7 @@ internal sealed class PostgreSqlTopologyBuilder(
     private readonly ConcurrentDictionary<string, Task<long>> _topicIds = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, Task> _subscriptions = new(StringComparer.Ordinal);
 
-    public async Task BuildTopologyAsync(CancellationToken cancellationToken)
+    public async Task BuildConsumerTopologyAsync(CancellationToken cancellationToken)
     {
         foreach (var descriptor in busOptions.Consumers)
         {
@@ -23,19 +23,19 @@ internal sealed class PostgreSqlTopologyBuilder(
 
             foreach (var messageType in descriptor.MessageTypes)
             {
-                var topicName = busOptions.TryGetTopicName(messageType, out var custom)
-                    ? custom
-                    : RoutingConventions.TopicName(messageType);
+                var topicName = busOptions.GetPublisherDescriptor(messageType).TopicName;
 
                 await EnsureSubscriptionAsync(queueId, topicName, cancellationToken);
             }
         }
     }
 
-    public async Task<string> EnsureTopicAsync(string rawTopicName, CancellationToken cancellationToken)
+    public async Task<string> EnsureTopicAsync(Uri topic, CancellationToken cancellationToken)
     {
-        await EnsureTopicIdAsync(rawTopicName, cancellationToken);
-        return rawTopicName;
+        var topicName = RoutingConventions.GetDestinationName(topic);
+        
+        await EnsureTopicIdAsync(topicName, cancellationToken);
+        return topicName;
     }
 
     private Task<long> EnsureQueueIdAsync(string queueName, CancellationToken cancellationToken) =>

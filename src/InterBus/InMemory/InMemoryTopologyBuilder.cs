@@ -5,26 +5,26 @@ internal sealed class InMemoryTopologyBuilder(
     InterBusOptions options)
     : ITopologyBuilder
 {
-    public Task BuildTopologyAsync(CancellationToken cancellationToken)
+    public Task BuildConsumerTopologyAsync(CancellationToken cancellationToken)
     {
         foreach (var descriptor in options.Consumers)
         {
             var queue = broker.EnsureQueue(descriptor);
             foreach (var type in descriptor.MessageTypes)
             {
-                var topicName = options.TryGetTopicName(type, out var custom)
-                    ? custom
-                    : RoutingConventions.TopicName(type);
-                broker.EnsureTopic(topicName).AddSubscriber(queue);
+                var messageType = options.GetPublisherDescriptor(type);
+
+                broker.EnsureTopic(messageType.TopicName).AddSubscriber(queue);
             }
         }
 
         return Task.CompletedTask;
     }
 
-    public Task<string> EnsureTopicAsync(string rawTopicName, CancellationToken cancellationToken)
+    public Task<string> EnsureTopicAsync(Uri topic, CancellationToken cancellationToken)
     {
-        broker.EnsureTopic(rawTopicName);
-        return Task.FromResult(rawTopicName);
+        var topicName = RoutingConventions.GetDestinationName(topic);
+        broker.EnsureTopic(topicName);
+        return Task.FromResult(topicName);
     }
 }

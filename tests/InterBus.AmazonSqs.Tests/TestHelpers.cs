@@ -23,7 +23,7 @@ public static class TestHelpers
             StringComparison.OrdinalIgnoreCase);
 
     internal static LocalStackContainer? CreateLocalStackContainer() =>
-        UseRealAws ? null : new LocalStackBuilder("localstack/localstack:4").Build();
+        UseRealAws ? null : new LocalStackBuilder("ministackorg/ministack:full").Build();
 
     internal static AWSOptions? CreateAwsOptions(LocalStackContainer? container)
     {
@@ -34,7 +34,7 @@ public static class TestHelpers
         {
             Credentials = new BasicAWSCredentials("test", "test"),
             Region = RegionEndpoint.USEast1,
-            DefaultClientConfig = { ServiceURL = container.GetConnectionString() }
+            DefaultClientConfig = { ServiceURL = container.GetConnectionString(), AuthenticationRegion = "us-east-1" }
         };
     }
 

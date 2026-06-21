@@ -20,7 +20,7 @@ public sealed partial class SnsSqsTopologyBuilder(
     IAmazonSimpleNotificationService snsClient,
     IAmazonSQS sqsClient,
     IAmazonSecurityTokenService stsClient,
-    SnsSqsTopology topology,
+    SnsSqsNaming naming,
     SnsSqsTransportOptions transportOptions,
     InterBusOptions busOptions,
     ILogger<SnsSqsTopologyBuilder> logger)
@@ -31,54 +31,72 @@ public sealed partial class SnsSqsTopologyBuilder(
     private ConcurrentDictionary<string, Task<string>> EnsuredQueues { get; } = new(StringComparer.Ordinal);
 
     /// <summary>
+    /// Application-level cache: sanitised topic name → SNS Topic ARN
+    /// </summary>
+    internal ConcurrentDictionary<string, string> TopicArns { get; } =
+        new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Application-level cache: sanitised queue name → SQS Queue URL
+    /// </summary>
+    internal ConcurrentDictionary<string, string> QueueUrls { get; } =
+        new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Application-level cache: sanitised queue name → SQS Queue ARN
+    /// </summary>
+    internal ConcurrentDictionary<string, string> QueueArns { get; } =
+        new(StringComparer.Ordinal);
+
+    /// <summary>
     /// Declares (or verifies) the consumer topology for every registered consumer, populating the
-    /// <see cref="SnsSqsTopology"/> caches.
+    /// <see cref="SnsSqsNaming"/> caches.
     /// <para>
     /// In <see cref="TopologyMode.CreateOrVerify"/> mode this creates SQS queues, SNS topics,
     /// subscriptions (raw or SNS-serialised), and queue resource policies (idempotent).
     /// </para>
     /// <para>
-    /// In <see cref="TopologyMode.VerifyOnly"/> mode only the queue URL is resolved. Topic verification is deferred
+    /// In <see cref="TopologyMode.ResolveOnly"/> mode only the queue URL is resolved. Topic verification is deferred
     /// until the first publish via <see cref="EnsureTopicAsync"/>.
     /// </para>
     /// </summary>
-    public async Task BuildTopologyAsync(CancellationToken cancellationToken)
+    public async Task BuildConsumerTopologyAsync(CancellationToken cancellationToken)
     {
-        if (transportOptions.TopologyMode == TopologyMode.VerifyOnly)
-            await VerifyConsumerTopologyAsync(cancellationToken);
+        if (transportOptions.TopologyMode == TopologyMode.ResolveOnly)
+            await ResolveConsumerTopologyAsync(cancellationToken);
         else
             await CreateConsumerTopologyAsync(cancellationToken);
     }
 
-    public async Task<string> EnsureTopicAsync(string rawTopicName, CancellationToken cancellationToken)
+    public async Task<string> EnsureTopicAsync(Uri topic, CancellationToken cancellationToken)
     {
-        var topicName = topology.BuildSnsTopicName(rawTopicName);
+        var snsTopicName = naming.BuildSnsTopicName(topic);
 
-        if (topology.TopicArns.TryGetValue(topicName, out var cachedArn))
+        if (TopicArns.TryGetValue(snsTopicName, out var cachedArn))
             return cachedArn;
 
         return await EnsureWithCacheAsync(
             EnsuredTopics,
-            topicName,
-            ct => transportOptions.TopologyMode == TopologyMode.VerifyOnly
-                ? VerifyTopicAsync(topicName, ct)
-                : CreateTopicAsync(topicName, ct),
+            snsTopicName,
+            ct => transportOptions.TopologyMode == TopologyMode.ResolveOnly
+                ? ResolveTopicAsync(snsTopicName, ct)
+                : CreateTopicAsync(snsTopicName, ct),
             cancellationToken);
     }
 
-    public async Task<string> EnsureQueueAsync(string rawQueueName, CancellationToken cancellationToken)
+    public async Task<string> EnsureQueueAsync(Uri queue, CancellationToken cancellationToken)
     {
-        var queueName = topology.BuildSqsQueueName(rawQueueName);
+        var sqsQueueName = naming.BuildSqsQueueName(queue);
 
-        if (topology.QueueUrls.TryGetValue(queueName, out var cachedUrl))
+        if (QueueUrls.TryGetValue(sqsQueueName, out var cachedUrl))
             return cachedUrl;
 
         return await EnsureWithCacheAsync(
             EnsuredQueues,
-            queueName,
-            ct => transportOptions.TopologyMode == TopologyMode.VerifyOnly
-                ? VerifyQueueAsync(queueName, ct)
-                : CreateQueueAsync(queueName, ct),
+            sqsQueueName,
+            ct => transportOptions.TopologyMode == TopologyMode.ResolveOnly
+                ? ResolveQueueAsync(sqsQueueName, ct)
+                : CreateQueueAsync(sqsQueueName, ct),
             cancellationToken);
     }
 
@@ -86,11 +104,11 @@ public sealed partial class SnsSqsTopologyBuilder(
     {
         foreach (var descriptor in busOptions.Consumers)
         {
-            var queueName = topology.BuildSqsQueueName(descriptor.QueueName);
-            var deadLetterQueueName = topology.BuildDeadLetterQueueName(descriptor.QueueName);
+            var queueName = naming.BuildSqsQueueName(descriptor.Queue);
+            var deadLetterQueueName = naming.BuildDeadLetterQueueName(descriptor.Queue);
 
-            var deadLetterQueueUrl = await CreateQueueAsync(deadLetterQueueName, cancellationToken);
-            var deadLetterQueueArn = topology.QueueArns[deadLetterQueueUrl];
+            await CreateQueueAsync(deadLetterQueueName, cancellationToken);
+            var deadLetterQueueArn = QueueArns[deadLetterQueueName];
 
             var queueUrl = await CreateQueueAsync(
                 queueName,
@@ -104,7 +122,7 @@ public sealed partial class SnsSqsTopologyBuilder(
                     }),
                 });
 
-            var queueArn = topology.QueueArns[queueUrl];
+            var queueArn = QueueArns[queueName];
 
             logger.LogDebug(
                 "InterBus AmazonSqs: declared queue {QueueName} for consumer {ConsumerType}, URL {QueueUrl}",
@@ -114,12 +132,8 @@ public sealed partial class SnsSqsTopologyBuilder(
 
             foreach (var messageType in descriptor.MessageTypes)
             {
-                var rawTopicName = busOptions.TryGetTopicName(messageType, out var custom)
-                    ? custom
-                    : RoutingConventions.TopicName(messageType);
-
-                var topicName = topology.BuildSnsTopicName(rawTopicName);
-
+                var topic = busOptions.GetPublisherDescriptor(messageType).Topic;
+                var topicName = naming.BuildSnsTopicName(topic);
                 var topicArn = await CreateTopicAsync(topicName, cancellationToken);
 
                 logger.LogDebug(
@@ -161,12 +175,9 @@ public sealed partial class SnsSqsTopologyBuilder(
     {
         var topicArns = descriptor.MessageTypes.Select(t =>
         {
-            var rawName = busOptions.TryGetTopicName(t, out var custom)
-                ? custom
-                : RoutingConventions.TopicName(t);
+            var topic = busOptions.GetPublisherDescriptor(t).Topic;
 
-            return topology.TopicArns.GetValueOrDefault(
-                topology.BuildSnsTopicName(rawName));
+            return TopicArns.GetValueOrDefault(naming.BuildSnsTopicName(topic));
         }).OfType<string>().Distinct().ToList();
 
         if (topicArns.Count == 0)
@@ -202,12 +213,12 @@ public sealed partial class SnsSqsTopologyBuilder(
             cancellationToken);
     }
 
-    private async Task<string> CreateQueueAsync(
-        string queueName,
+    internal async Task<string> CreateQueueAsync(
+        string sqsQueueName,
         CancellationToken cancellationToken,
         IDictionary<string, string>? additionalAttributes = null)
     {
-        var isFifo = queueName.EndsWith(".fifo", StringComparison.Ordinal);
+        var isFifo = sqsQueueName.EndsWith(".fifo", StringComparison.Ordinal);
 
         var attributes = new Dictionary<string, string>
         {
@@ -236,25 +247,20 @@ public sealed partial class SnsSqsTopologyBuilder(
         }
 
         var response = await sqsClient.CreateQueueAsync(
-            new CreateQueueRequest { QueueName = queueName, Attributes = attributes },
+            new CreateQueueRequest { QueueName = sqsQueueName, Attributes = attributes },
             cancellationToken);
 
         var url = response.QueueUrl;
-        topology.QueueUrls.TryAdd(queueName, url);
+        QueueUrls.TryAdd(sqsQueueName, url);
 
-        // Resolve and cache the queue ARN so it is available to EventBridge Scheduler targeting
-        // and subscription setup without a separate API call.
-        var attrs = await sqsClient.GetQueueAttributesAsync(
-            new GetQueueAttributesRequest { QueueUrl = url, AttributeNames = ["QueueArn"] },
-            cancellationToken);
-        topology.QueueArns.TryAdd(url, attrs.QueueARN);
+        await ResolveQueueAsync(sqsQueueName, cancellationToken);
 
         return url;
     }
 
-    private async Task<string> CreateTopicAsync(string topicName, CancellationToken cancellationToken)
+    private async Task<string> CreateTopicAsync(string snsTopicName, CancellationToken cancellationToken)
     {
-        var isFifo = topicName.EndsWith(".fifo", StringComparison.Ordinal);
+        var isFifo = snsTopicName.EndsWith(".fifo", StringComparison.Ordinal);
         var topicAttributes = new Dictionary<string, string>();
 
         if (isFifo)
@@ -262,27 +268,28 @@ public sealed partial class SnsSqsTopologyBuilder(
             topicAttributes["FifoTopic"] = "true";
             topicAttributes["ContentBasedDeduplication"] = "true";
         }
+
         if (transportOptions.EnableSnsEncryption)
         {
             topicAttributes["KmsMasterKeyId"] = "alias/aws/sns";
         }
 
         var response = await snsClient.CreateTopicAsync(
-            new CreateTopicRequest { Name = topicName, Attributes = topicAttributes },
+            new CreateTopicRequest { Name = snsTopicName, Attributes = topicAttributes },
             cancellationToken);
 
         var arn = response.TopicArn;
-        topology.TopicArns.TryAdd(topicName, arn);
+        TopicArns.TryAdd(snsTopicName, arn);
         return arn;
     }
 
-    private async Task VerifyConsumerTopologyAsync(CancellationToken cancellationToken)
+    private async Task ResolveConsumerTopologyAsync(CancellationToken cancellationToken)
     {
         var (accountId, partition) = await ResolveCallerIdentityAsync(cancellationToken);
 
         foreach (var descriptor in busOptions.Consumers)
         {
-            var queueName = topology.BuildSqsQueueName(descriptor.QueueName);
+            var queueName = naming.BuildSqsQueueName(descriptor.Queue);
 
             LogDebugVerifyingSqsQueue(queueName);
 
@@ -293,29 +300,27 @@ public sealed partial class SnsSqsTopologyBuilder(
             var url = $"{sqsClient.Config.ServiceURL}/{accountId}/{queueName}";
             var queueArn = $"arn:{partition}:sqs:{sqsRegion}:{accountId}:{queueName}";
 
-            topology.QueueUrls.TryAdd(queueName, url);
-            topology.QueueArns.TryAdd(url, queueArn);
+            QueueUrls.TryAdd(queueName, url);
+            QueueArns.TryAdd(queueName, queueArn);
         }
     }
 
-    private async Task<string> VerifyQueueAsync(string queueName, CancellationToken cancellationToken)
+    public async Task<string> ResolveQueueAsync(string sqsQueueName, CancellationToken cancellationToken)
     {
         var (accountId, partition) = await ResolveCallerIdentityAsync(cancellationToken);
 
-        var sqsRegion = sqsClient.Config.RegionEndpoint?.SystemName
-                        ?? throw new InvalidOperationException(
-                            "Cannot determine the AWS region from the IAmazonSQS client configuration. Ensure a region has been configured on the AWS client (e.g. via environment variable AWS_DEFAULT_REGION or AWSOptions.Region)");
+        var sqsRegion = sqsClient.Config.RegionEndpoint?.SystemName ?? "";
 
-        var url = $"{sqsClient.Config.ServiceURL}/{accountId}/{queueName}";
-        var queueArn = $"arn:{partition}:sqs:{sqsRegion}:{accountId}:{queueName}";
+        var url = $"{sqsClient.Config.ServiceURL}/{accountId}/{sqsQueueName}";
+        var queueArn = $"arn:{partition}:sqs:{sqsRegion}:{accountId}:{sqsQueueName}";
 
-        topology.QueueUrls.TryAdd(queueName, url);
-        topology.QueueArns.TryAdd(url, queueArn);
+        QueueUrls.TryAdd(sqsQueueName, url);
+        QueueArns.TryAdd(sqsQueueName, queueArn);
 
         return url;
     }
 
-    private async Task<string> VerifyTopicAsync(string topicName, CancellationToken cancellationToken)
+    public async Task<string> ResolveTopicAsync(string snsTopicName, CancellationToken cancellationToken)
     {
         var (accountId, partition) = await ResolveCallerIdentityAsync(cancellationToken);
 
@@ -323,8 +328,8 @@ public sealed partial class SnsSqsTopologyBuilder(
                      ?? throw new InvalidOperationException(
                          "Cannot determine the AWS region from the IAmazonSimpleNotificationService client configuration. Ensure a region has been configured on the AWS client (e.g. via environment variable AWS_DEFAULT_REGION or AWSOptions.Region)");
 
-        var topicArn = $"arn:{partition}:sns:{region}:{accountId}:{topicName}";
-        topology.TopicArns.TryAdd(topicName, topicArn);
+        var topicArn = $"arn:{partition}:sns:{region}:{accountId}:{snsTopicName}";
+        TopicArns.TryAdd(snsTopicName, topicArn);
         return topicArn;
     }
 

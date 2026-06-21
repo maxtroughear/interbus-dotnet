@@ -1,5 +1,5 @@
-using System.Diagnostics.CodeAnalysis;
 using InterBus.Consuming;
+using InterBus.Publishing;
 
 namespace InterBus;
 
@@ -10,28 +10,40 @@ namespace InterBus;
 public sealed class InterBusOptions
 {
     private readonly List<ConsumerDescriptor> _consumers = [];
-    private readonly Dictionary<Type, string> _topicNames = [];
-    private readonly HashSet<Type> _fifoMessageTypes = [];
+    private readonly List<PublisherDescriptor> _publishers = [];
 
     /// <summary>All registered consumer descriptors. One descriptor per consumer class.</summary>
     public IReadOnlyList<ConsumerDescriptor> Consumers => _consumers;
 
-    /// <summary>
-    /// The set of message types declared as FIFO via
-    /// <c>builder.Configure&lt;T&gt;(c =&gt; c.Fifo(...))</c>.
-    /// Transport implementations use this to create FIFO-capable infrastructure (e.g.
-    /// SQS/SNS FIFO queues and topics).
-    /// </summary>
-    public IReadOnlySet<Type> FifoMessageTypes => _fifoMessageTypes;
+    public IReadOnlyList<PublisherDescriptor> Publishers => _publishers;
 
-    /// <summary>
-    /// Marks <paramref name="messageType"/> as a FIFO message type.
-    /// Idempotent — calling it multiple times for the same type has no effect.
-    /// </summary>
-    public void AddFifoMessageType(Type messageType) => _fifoMessageTypes.Add(messageType);
+    public PublisherDescriptor GetPublisherDescriptor<T>() => GetPublisherDescriptor(typeof(T));
 
-    /// <summary>Returns <c>true</c> if <paramref name="messageType"/> has been declared as FIFO.</summary>
-    public bool IsFifoMessageType(Type messageType) => _fifoMessageTypes.Contains(messageType);
+    public PublisherDescriptor GetPublisherDescriptor(Type messageType)
+    {
+        var publisher = _publishers.FirstOrDefault(x => x.MessageType == messageType);
+
+        if (publisher is not null) return publisher;
+
+        publisher = new PublisherDescriptor(messageType, RoutingConventions.TopicUri(TopicUriScheme, messageType));
+        AddPublisher(publisher);
+
+        return publisher;
+    }
+
+    public ConsumerDescriptor GetConsumerDescriptor<T>() => GetConsumerDescriptor(typeof(T));
+
+    public ConsumerDescriptor GetConsumerDescriptor(Type consumerType)
+    {
+        var descriptor = _consumers.FirstOrDefault(x => x.ConsumerType == consumerType);
+
+        if (descriptor is not null) return descriptor;
+
+        descriptor = new ConsumerDescriptor(consumerType, RoutingConventions.QueueUri(QueueUriScheme, consumerType));
+        AddConsumer(descriptor);
+
+        return descriptor;
+    }
 
     /// <summary>
     /// The URI scheme used when constructing topic destination URIs.
@@ -49,7 +61,7 @@ public sealed class InterBusOptions
 
     internal void AddConsumer(ConsumerDescriptor descriptor) => _consumers.Add(descriptor);
 
-    internal void SetTopicName(Type messageType, string topicName) => _topicNames[messageType] = topicName;
+    internal void AddPublisher(PublisherDescriptor descriptor) => _publishers.Add(descriptor);
 
     /// <summary>
     /// Sets the URI schemes used when constructing topic and queue destination URIs.
@@ -60,7 +72,4 @@ public sealed class InterBusOptions
         TopicUriScheme = topicScheme;
         QueueUriScheme = queueScheme;
     }
-
-    public bool TryGetTopicName(Type messageType, [NotNullWhen(true)] out string? topicName) =>
-        _topicNames.TryGetValue(messageType, out topicName);
 }

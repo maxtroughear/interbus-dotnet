@@ -8,7 +8,6 @@ namespace InterBus.Publishing;
 /// </summary>
 internal class Publisher(
     InterBusOptions options,
-    MessageGroupIdRegistry groupIdRegistry,
     ConsumeContextAccessor contextAccessor,
     PublishPipelineExecutor pipelineExecutor) : IPublisher
 {
@@ -19,10 +18,7 @@ internal class Publisher(
         CancellationToken cancellationToken = default)
         where T : class
     {
-        var topicName = options.TryGetTopicName(typeof(T), out var customName)
-            ? customName
-            : RoutingConventions.TopicName(typeof(T));
-        var destination = RoutingConventions.TopicUri(options.TopicUriScheme, topicName);
+        var destination = options.GetPublisherDescriptor<T>().Topic;
         var context = new PublishContext<T>(destination, message, Stamp(message));
         configure(context);
 
@@ -39,7 +35,7 @@ internal class Publisher(
         where TConsumer : IConsume<T>
         where T : class
     {
-        var destination = RoutingConventions.QueueUri(options.QueueUriScheme, typeof(TConsumer));
+        var destination = options.GetConsumerDescriptor<TConsumer>().Queue;
         var context = new PublishContext<T>(destination, message, Stamp(message));
         configure(context);
 
@@ -92,9 +88,8 @@ internal class Publisher(
         if (consumeHeaders?.TryGetValue(InterBusHeaders.MessageId, out var messageId) == true)
             headers[InterBusHeaders.CausationId] = messageId;
 
-        // Resolve the message group ID: use the registered selector for T or fall back to CorrelationId.
         headers[InterBusHeaders.MessageGroupId] =
-            groupIdRegistry.TryResolve(message)
+            options.GetPublisherDescriptor<T>().GroupBy?.Invoke(message)
             ?? headers[InterBusHeaders.CorrelationId];
 
         return headers;

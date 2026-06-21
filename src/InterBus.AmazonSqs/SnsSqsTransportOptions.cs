@@ -79,7 +79,7 @@ public sealed class SnsSqsTransportOptions
     /// Controls whether the topology (SQS queues, SNS topics, subscriptions, and resource
     /// policies) is created at startup or only verified against pre-existing resources.
     /// <para>
-    /// Use <see cref="TopologyMode.VerifyOnly"/> when the runtime role does not have
+    /// Use <see cref="AmazonSqs.TopologyMode.ResolveOnly"/> when the runtime role does not have
     /// create/subscribe permissions and the infrastructure is managed out-of-band (Terraform,
     /// CloudFormation, AWS CDK, etc.) or by a separate initialization step.
     /// </para>
@@ -95,7 +95,7 @@ public sealed class SnsSqsTransportOptions
     /// server-side encryption, or when encryption is managed out-of-band (Terraform,
     /// CloudFormation, AWS CDK, etc.).
     /// <para>
-    /// Has no effect when <see cref="TopologyMode"/> is <see cref="TopologyMode.VerifyOnly"/>.
+    /// Has no effect when <see cref="TopologyMode"/> is <see cref="AmazonSqs.TopologyMode.ResolveOnly"/>.
     /// </para>
     /// </summary>
     public bool EnableSqsEncryption { get; set; } = true;
@@ -106,7 +106,7 @@ public sealed class SnsSqsTransportOptions
     /// out of server-side encryption, or when encryption is managed out-of-band (Terraform,
     /// CloudFormation, AWS CDK, etc.).
     /// <para>
-    /// Has no effect when <see cref="TopologyMode"/> is <see cref="TopologyMode.VerifyOnly"/>.
+    /// Has no effect when <see cref="TopologyMode"/> is <see cref="AmazonSqs.TopologyMode.ResolveOnly"/>.
     /// </para>
     /// </summary>
     public bool EnableSnsEncryption { get; set; } = true;

@@ -16,7 +16,6 @@ internal sealed class RabbitMqTopicTransport(
 
     public async Task SendAsync(TransportSendContext context, CancellationToken cancellationToken)
     {
-        var topicName = RoutingConventions.GetDestinationName(context.Destination);
         var headers = RabbitMqHeaders.BuildAmqpHeaders(context.Headers);
         var props = new BasicProperties
         {
@@ -26,7 +25,7 @@ internal sealed class RabbitMqTopicTransport(
 
         for (var i = 0; i < 2; i++)
         {
-            var exchangeName = await topologyBuilder.EnsureTopicAsync(topicName, cancellationToken);
+            var exchangeName = await topologyBuilder.EnsureTopicAsync(context.Destination, cancellationToken);
 
             var channel = await EnsureChannelAsync(cancellationToken);
 

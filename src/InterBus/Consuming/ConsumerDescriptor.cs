@@ -18,8 +18,8 @@ public sealed class ConsumerDescriptor(Type consumerType, Uri queue)
     private static readonly Func<DispatchContext, ConsumePipelineExecutor, IServiceProvider, CancellationToken, Task>
         MissingDispatchDelegate = MissingDispatch;
 
-    private Dictionary<string, Func<DispatchContext, ConsumePipelineExecutor, CancellationToken, Task>> _routes =
-        new(StringComparer.Ordinal);
+    private readonly Dictionary<string, Func<DispatchContext, ConsumePipelineExecutor, CancellationToken, Task>>
+        _routes = new(StringComparer.Ordinal);
 
     /// <summary>The concrete consumer type.</summary>
     public Type ConsumerType { get; } = consumerType;
@@ -28,7 +28,7 @@ public sealed class ConsumerDescriptor(Type consumerType, Uri queue)
     /// The queue for this consumer (derived from the consumer type by convention).
     /// Each consumer class has exactly one queue.
     /// </summary>
-    public Uri Queue { get; } = queue;
+    public Uri Queue { get; internal set; } = queue;
 
     public string QueueName => RoutingConventions.GetDestinationName(Queue);
 

@@ -11,7 +11,6 @@ namespace InterBus.Scheduling;
 /// </summary>
 internal class Scheduler(
     InterBusOptions options,
-    MessageGroupIdRegistry groupIdRegistry,
     IMessageScheduler messageScheduler,
     ConsumeContextAccessor contextAccessor)
     : IScheduler
@@ -24,10 +23,7 @@ internal class Scheduler(
         Action<PublishContext<T>> configure,
         CancellationToken cancellationToken = default) where T : class
     {
-        var topicName = options.TryGetTopicName(typeof(T), out var customName)
-            ? customName
-            : RoutingConventions.TopicName(typeof(T));
-        var destination = RoutingConventions.TopicUri(options.TopicUriScheme, topicName);
+        var destination = options.GetPublisherDescriptor<T>().Topic;
         var context = new PublishContext<T>(destination, message, Stamp(message, scheduledAt));
         configure(context);
         return messageScheduler.ScheduleInternalAsync(context, scheduledAt, cancellationToken);
@@ -43,9 +39,13 @@ internal class Scheduler(
         Action<PublishContext<T>> configure,
         CancellationToken cancellationToken = default)
         where TConsumer : IConsume<T>
-        where T : class =>
-        ScheduleSendAsync(RoutingConventions.QueueUri(options.QueueUriScheme, typeof(TConsumer)), message, scheduledAt,
+        where T : class
+    {
+        var destination = options.GetConsumerDescriptor<TConsumer>().Queue;
+        return ScheduleSendAsync(destination, message,
+            scheduledAt,
             configure, cancellationToken);
+    }
 
     public Task<Guid> ScheduleSendAsync<T>(string queueName, T message, DateTimeOffset scheduledAt,
         CancellationToken cancellationToken = default) where T : class =>
@@ -94,9 +94,8 @@ internal class Scheduler(
         if (consumeHeaders?.TryGetValue(InterBusHeaders.MessageId, out var messageId) == true)
             headers[InterBusHeaders.CausationId] = messageId;
         
-        // Resolve the message group ID: use the registered selector for T or fall back to CorrelationId.
         headers[InterBusHeaders.MessageGroupId] =
-            groupIdRegistry.TryResolve(message)
+            options.GetPublisherDescriptor<T>().GroupBy?.Invoke(message)
             ?? headers[InterBusHeaders.CorrelationId];
 
         return headers;

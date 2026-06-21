@@ -24,14 +24,11 @@ public sealed class InterBusBuilder
     public IServiceCollection Services { get; }
 
     public InterBusOptions Options { get; }
-
-    private readonly MessageGroupIdRegistry _registry;
-
-    internal InterBusBuilder(IServiceCollection services, InterBusOptions options, MessageGroupIdRegistry registry)
+    
+    internal InterBusBuilder(IServiceCollection services, InterBusOptions options)
     {
         Services = services;
         Options = options;
-        _registry = registry;
     }
 
     /// <summary>
@@ -48,9 +45,17 @@ public sealed class InterBusBuilder
     /// </code>
     /// </example>
     /// </summary>
-    public InterBusBuilder Configure<T>(Action<MessageTypeBuilder<T>> configure) where T : class
+    public InterBusBuilder Configure<T>(Action<PublisherBuilder<T>> configure) where T : class
     {
-        configure(new MessageTypeBuilder<T>(Options, _registry));
+        var topic = RoutingConventions.TopicUri(Options.TopicUriScheme, typeof(T));
+        
+        var descriptor = new PublisherDescriptor(typeof(T), topic);
+        var publisherBuilder = new PublisherBuilder<T>(descriptor, Options);
+        
+        configure(publisherBuilder);
+        
+        Options.AddPublisher(descriptor);
+        
         return this;
     }
 

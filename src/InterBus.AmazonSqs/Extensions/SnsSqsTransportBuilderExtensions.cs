@@ -46,7 +46,7 @@ public static class SnsSqsTransportBuilderExtensions
         /// </para>
         /// <para>
         /// When <see cref="SnsSqsTransportOptions.TopologyMode"/> is set to
-        /// <see cref="TopologyMode.VerifyOnly"/>, also register
+        /// <see cref="TopologyMode.ResolveOnly"/>, also register
         /// <see cref="Amazon.SecurityToken.IAmazonSecurityTokenService"/>. It is used to
         /// resolve the topic ARN deterministically via <c>STS GetCallerIdentity</c> without
         /// requiring <c>sns:ListTopics</c> or any write permissions.
@@ -64,8 +64,9 @@ public static class SnsSqsTransportBuilderExtensions
 
             builder.Options.SetTransportUriSchemes(SnsTransport.TopicScheme, SqsTransport.QueueScheme);
             builder.Services.AddSingleton(options);
-            builder.Services.AddSingleton<SnsSqsTopology>();
-            builder.Services.AddSingleton<ITopologyBuilder, SnsSqsTopologyBuilder>();
+            builder.Services.AddSingleton<SnsSqsNaming>();
+            builder.Services.AddSingleton<SnsSqsTopologyBuilder>();
+            builder.Services.AddSingleton<ITopologyBuilder>(sp => sp.GetRequiredService<SnsSqsTopologyBuilder>());
             builder.Services.TryAddSingleton<SnsSqsMessageEnvelope>();
             builder.Services.TryAddSingleton<SnsSerialisedMessageEnvelope>();
             builder.Services.TryAddSingleton<ISnsSqsMessageEnvelope, SnsSqsMessageEnvelope>();

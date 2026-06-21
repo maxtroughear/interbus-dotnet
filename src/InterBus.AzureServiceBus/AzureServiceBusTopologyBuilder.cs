@@ -24,39 +24,38 @@ internal sealed class AzureServiceBusTopologyBuilder(
     private ConcurrentDictionary<string, Task> Queues { get; } = new(StringComparer.Ordinal);
     private ConcurrentDictionary<string, Task> Subscriptions { get; } = new(StringComparer.Ordinal);
 
-    public async Task BuildTopologyAsync(CancellationToken cancellationToken)
+    public async Task BuildConsumerTopologyAsync(CancellationToken cancellationToken)
     {
         foreach (var descriptor in busOptions.Consumers)
         {
-            var rawQueueName = descriptor.QueueName;
+            var queueName = descriptor.QueueName;
 
-            var queueName = BuildQueueName(rawQueueName);
-            await EnsureQueueExistsAsync(descriptor, queueName, cancellationToken);
+            var azureQueueName = BuildQueueName(queueName);
+            await EnsureQueueExistsAsync(descriptor, azureQueueName, cancellationToken);
 
             foreach (var messageType in descriptor.MessageTypes)
             {
-                var rawTopicName = busOptions.TryGetTopicName(messageType, out var custom)
-                    ? custom
-                    : RoutingConventions.TopicName(messageType);
+                var topicName = busOptions.GetPublisherDescriptor(messageType).TopicName;
 
-                var topicName = BuildTopicName(rawTopicName);
-                await EnsureTopicExistsAsync(topicName, cancellationToken);
+                var azureTopicName = BuildTopicName(topicName);
+                await EnsureTopicExistsAsync(azureTopicName, cancellationToken);
 
-                var subscriptionName = BuildSubscriptionName(rawQueueName);
+                var subscriptionName = BuildSubscriptionName(azureQueueName);
                 await EnsureForwardingSubscriptionExistsAsync(
-                    topicName,
+                    azureTopicName,
                     subscriptionName,
-                    queueName,
+                    azureQueueName,
                     cancellationToken);
             }
         }
     }
 
-    public async Task<string> EnsureTopicAsync(string rawTopicName, CancellationToken cancellationToken)
+    public async Task<string> EnsureTopicAsync(Uri topic, CancellationToken cancellationToken)
     {
-        var topicName = BuildTopicName(rawTopicName);
-        await EnsureTopicExistsAsync(topicName, cancellationToken);
-        return topicName;
+        var topicName = RoutingConventions.GetDestinationName(topic);
+        var azureTopicName = BuildTopicName(topicName);
+        await EnsureTopicExistsAsync(azureTopicName, cancellationToken);
+        return azureTopicName;
     }
 
     /// <summary>
@@ -64,21 +63,21 @@ internal sealed class AzureServiceBusTopologyBuilder(
     /// exchanges. Returns a tuple of (rawQueueName, sanitizedFullName). Idempotent — silently
     /// succeeds if the queue already exists.
     /// </summary>
-    public async Task<(string RawName, string FullName)> EnsureSessionQueueAsync(
-        string rawQueueName,
+    public async Task<string> EnsureSessionQueueAsync(
+        string queueName,
         CancellationToken cancellationToken)
     {
-        var queueName = BuildQueueName(rawQueueName);
+        var azureQueueName = BuildQueueName(queueName);
         await EnsureWithCacheAsync(
             Queues,
-            queueName,
+            azureQueueName,
             async ct =>
             {
                 var admin = clientProvider.AdminClient;
 
                 try
                 {
-                    await admin.CreateQueueAsync(new CreateQueueOptions(queueName)
+                    await admin.CreateQueueAsync(new CreateQueueOptions(azureQueueName)
                     {
                         LockDuration = QueueLockDuration,
                         RequiresSession = true,
@@ -94,7 +93,7 @@ internal sealed class AzureServiceBusTopologyBuilder(
 
                     logger.LogDebug(
                         "InterBus AzureServiceBus: created session reply queue {QueueName}",
-                        queueName);
+                        azureQueueName);
                 }
                 catch (ServiceBusException ex)
                     when (ex.Reason == ServiceBusFailureReason.MessagingEntityAlreadyExists)
@@ -104,7 +103,7 @@ internal sealed class AzureServiceBusTopologyBuilder(
             },
             cancellationToken);
 
-        return (rawQueueName, queueName);
+        return azureQueueName;
     }
 
     private Task EnsureQueueExistsAsync(
@@ -137,18 +136,18 @@ internal sealed class AzureServiceBusTopologyBuilder(
             },
             cancellationToken);
 
-    private Task EnsureTopicExistsAsync(string topicName, CancellationToken cancellationToken) =>
+    private Task EnsureTopicExistsAsync(string azureTopicName, CancellationToken cancellationToken) =>
         EnsureWithCacheAsync(
             Topics,
-            topicName,
+            azureTopicName,
             async ct =>
             {
                 var admin = clientProvider.AdminClient;
 
                 try
                 {
-                    await admin.CreateTopicAsync(topicName, ct);
-                    logger.LogDebug("InterBus AzureServiceBus: created topic {TopicName}", topicName);
+                    await admin.CreateTopicAsync(azureTopicName, ct);
+                    logger.LogDebug("InterBus AzureServiceBus: created topic {TopicName}", azureTopicName);
                 }
                 catch (ServiceBusException ex)
                     when (ex.Reason == ServiceBusFailureReason.MessagingEntityAlreadyExists)
@@ -159,12 +158,12 @@ internal sealed class AzureServiceBusTopologyBuilder(
             cancellationToken);
 
     private Task EnsureForwardingSubscriptionExistsAsync(
-        string topicName,
+        string azureTopicName,
         string subscriptionName,
         string forwardToQueue,
         CancellationToken cancellationToken)
     {
-        var key = topicName + "|" + subscriptionName;
+        var key = azureTopicName + "|" + subscriptionName;
         return EnsureWithCacheAsync(
             Subscriptions,
             key,
@@ -174,7 +173,7 @@ internal sealed class AzureServiceBusTopologyBuilder(
 
                 try
                 {
-                    var subscriptionOptions = new CreateSubscriptionOptions(topicName, subscriptionName)
+                    var subscriptionOptions = new CreateSubscriptionOptions(azureTopicName, subscriptionName)
                     {
                         ForwardTo = forwardToQueue,
                     };
@@ -184,7 +183,7 @@ internal sealed class AzureServiceBusTopologyBuilder(
                     logger.LogDebug(
                         "InterBus AzureServiceBus: created subscription {SubscriptionName} on topic {TopicName} forwarding to queue {QueueName}",
                         subscriptionName,
-                        topicName,
+                        azureTopicName,
                         forwardToQueue);
                 }
                 catch (ServiceBusException ex)
@@ -217,12 +216,12 @@ internal sealed class AzureServiceBusTopologyBuilder(
         }
     }
 
-    private string BuildTopicName(string rawTopicName) =>
-        AzureServiceBusNaming.SanitizeEntityName(options.TopicPrefix + rawTopicName);
+    private string BuildTopicName(string topicName) =>
+        AzureServiceBusNaming.SanitizeEntityName(options.TopicPrefix + topicName);
 
-    private string BuildQueueName(string rawQueueName) =>
-        AzureServiceBusNaming.SanitizeEntityName(options.QueuePrefix + rawQueueName);
+    private string BuildQueueName(string queueName) =>
+        AzureServiceBusNaming.SanitizeEntityName(options.QueuePrefix + queueName);
 
-    private string BuildSubscriptionName(string rawQueueName) =>
-        AzureServiceBusNaming.SanitizeSubscriptionName(options.QueuePrefix + rawQueueName);
+    private string BuildSubscriptionName(string queueName) =>
+        AzureServiceBusNaming.SanitizeSubscriptionName(options.QueuePrefix + queueName);
 }

@@ -269,6 +269,7 @@ public class DynamoDbOutboxTests
             var scanResponse = await _dynamoDb.ScanAsync(new ScanRequest
             {
                 TableName = _tableName,
+                ConsistentRead = true,
             }, CancellationToken.None);
 
             // Expect 2 items: 1 group header + 1 message item.
@@ -330,6 +331,7 @@ public class DynamoDbOutboxTests
             var scanResponse = await _dynamoDb.ScanAsync(new ScanRequest
             {
                 TableName = _tableName,
+                ConsistentRead = true,
             }, CancellationToken.None);
             Assert.That(scanResponse.Count, Is.EqualTo(0));
         }
@@ -501,6 +503,7 @@ public class DynamoDbOutboxTests
             var scanResponse = await _dynamoDb.ScanAsync(new ScanRequest
             {
                 TableName = _tableName,
+                ConsistentRead = true,
             }, CancellationToken.None);
             Assert.That(scanResponse.Count, Is.EqualTo(2)); // group header + message
         }
@@ -576,12 +579,14 @@ public class DynamoDbOutboxTests
             var outboxScan = await _dynamoDb.ScanAsync(new ScanRequest
             {
                 TableName = _tableName,
+                ConsistentRead = true,
             }, CancellationToken.None);
             Assert.That(outboxScan.Count, Is.EqualTo(0));
 
             var inboxScan = await _dynamoDb.ScanAsync(new ScanRequest
             {
                 TableName = _inboxTableName,
+                ConsistentRead = true,
             }, CancellationToken.None);
             Assert.That(inboxScan.Count, Is.EqualTo(1));
             Assert.That(inboxScan.Items.Single()[DynamoDbInboxTable.State].N,
@@ -637,6 +642,7 @@ public class DynamoDbOutboxTests
             var inboxScan = await _dynamoDb.ScanAsync(new ScanRequest
             {
                 TableName = _inboxTableName,
+                ConsistentRead = true,
             }, CancellationToken.None);
             Assert.That(inboxScan.Count, Is.EqualTo(0));
         }
@@ -711,6 +717,7 @@ public class DynamoDbOutboxTests
             var outboxScan = await _dynamoDb.ScanAsync(new ScanRequest
             {
                 TableName = _tableName,
+                ConsistentRead = true,
             }, CancellationToken.None);
             Assert.That(outboxScan.Count, Is.EqualTo(0));
         }

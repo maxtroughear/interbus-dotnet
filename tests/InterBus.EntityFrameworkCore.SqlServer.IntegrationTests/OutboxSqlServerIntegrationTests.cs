@@ -68,7 +68,9 @@ public class OutboxSqlServerIntegrationTests(string imageTag)
             bus.UseEfCoreOutbox<TestDbContext>(outbox => outbox
                 .WithShardCount(128)
                 .WithMaxConcurrentWorkers(isHighConcurrencyTest ? 8 : 1)
-                .WithEmptyPollDelay(isHighConcurrencyTest ? TimeSpan.FromMilliseconds(5) : TimeSpan.FromMilliseconds(100))
+                .WithEmptyPollDelay(isHighConcurrencyTest
+                    ? TimeSpan.FromMilliseconds(5)
+                    : TimeSpan.FromMilliseconds(100))
                 .UseSqlServer());
         });
 
@@ -84,7 +86,6 @@ public class OutboxSqlServerIntegrationTests(string imageTag)
             // Clear any leftover rows from previous tests so each test starts clean.
             await db.OutboxGroups.ExecuteDeleteAsync();
         }
-
     }
 
     [TearDown]
@@ -291,7 +292,8 @@ public class OutboxSqlServerIntegrationTests(string imageTag)
         }
 
         var stopwatch = Stopwatch.StartNew();
-        await TestHelpers.WaitUntilAsync(() => _tracker.Messages.Count == messageCount, timeoutMs: 30_000, intervalMs: 10);
+        await TestHelpers.WaitUntilAsync(() => _tracker.Messages.Count == messageCount,
+            timeoutMs: messageCount * Convert.ToInt32(minMessagesPerSecond), intervalMs: 10);
         stopwatch.Stop();
 
         Assert.That(_tracker.Messages, Has.Count.EqualTo(messageCount));

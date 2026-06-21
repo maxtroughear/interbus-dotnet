@@ -7,7 +7,6 @@ using InterBus.Generated;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using System.Text.Json;
 using Testcontainers.LocalStack;
 
 namespace InterBus.AmazonSqs.Tests;

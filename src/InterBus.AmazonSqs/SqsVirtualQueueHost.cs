@@ -22,6 +22,7 @@ internal sealed class SqsVirtualQueueHost(
     IAmazonSQS sqsClient,
     SnsSqsTopologyBuilder topology,
     ISnsSqsMessageEnvelope envelope,
+    SnsSqsNaming naming,
     ILogger<SqsVirtualQueueHost> logger)
     : IAsyncDisposable
 {
@@ -35,6 +36,7 @@ internal sealed class SqsVirtualQueueHost(
 
     private string? _hostQueueName;
     private string? _hostQueueUrl;
+    private Uri? _hostQueueUri;
     private CancellationTokenSource? _pollingCts;
     private Task? _pollingTask;
 
@@ -42,8 +44,7 @@ internal sealed class SqsVirtualQueueHost(
     /// Lazily creates the shared host queue (once) then allocates a new virtual queue
     /// and returns its ID together with the address of the host queue.
     /// </summary>
-    public async Task<(string HostQueueName, string VqId, ChannelReader<(byte[] Payload, MessageHeaders Headers)> Reader
-            )>
+    public async Task<(Uri HostQueue, string VqId, ChannelReader<(byte[] Payload, MessageHeaders Headers)> Reader)>
         RegisterAsync(CancellationToken cancellationToken = default)
     {
         await EnsureHostQueueAsync(cancellationToken);
@@ -53,7 +54,7 @@ internal sealed class SqsVirtualQueueHost(
             new UnboundedChannelOptions { SingleReader = true });
         _channels[vqId] = channel;
 
-        return (_hostQueueName!, vqId, channel.Reader);
+        return (_hostQueueUri!, vqId, channel.Reader);
     }
 
     /// <summary>Completes and removes the channel for <paramref name="vqId"/>.</summary>
@@ -74,7 +75,9 @@ internal sealed class SqsVirtualQueueHost(
             if (_hostQueueUrl is not null)
                 return;
 
-            var queueName = $"interbus-reply-{Guid.CreateVersion7():N}";
+            _hostQueueUri =
+                RoutingConventions.QueueUri(SqsTransport.QueueScheme, $"interbus-reply-{Guid.CreateVersion7():N}");
+            var queueName = naming.BuildSqsQueueName(_hostQueueUri);
 
             var attributes = new Dictionary<string, string>(StringComparer.Ordinal)
             {

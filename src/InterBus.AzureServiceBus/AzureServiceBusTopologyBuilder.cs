@@ -15,6 +15,7 @@ internal sealed class AzureServiceBusTopologyBuilder(
     AzureServiceBusTransportOptions options,
     AzureServiceBusClientProvider clientProvider,
     InterBusOptions busOptions,
+    AzureServiceBusFilterOptions filterOptions,
     ILogger<AzureServiceBusTopologyBuilder> logger)
     : ITopologyBuilder
 {

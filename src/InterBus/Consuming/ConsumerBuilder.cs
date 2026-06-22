@@ -1,4 +1,5 @@
 using System.Diagnostics.CodeAnalysis;
+using System.Linq.Expressions;
 using System.Web;
 using InterBus.Dispatching;
 using InterBus.InMemory.Outbox;
@@ -18,17 +19,41 @@ public class ConsumerBuilder<TConsumer>(ConsumerDescriptor descriptor, IServiceC
         where TMessage : class => Consumes<TMessageConsumer, TMessage>
         (RoutingConventions.MessageTypeString(typeof(TMessage)));
 
+    /// <summary>
+    /// Registers a message handler for <typeparamref name="TMessage"/> and an optional
+    /// body predicate used to filter messages before dispatch.
+    /// </summary>
     public ConsumerBuilder<TConsumer> Consumes<TMessageConsumer, TMessage>(string messageTypeName)
         where TMessageConsumer : class, TConsumer, IConsumer<TMessage>
         where TMessage : class
     {
-        Descriptor.MessageTypes.Add(typeof(TMessage));
+        Descriptor.AddMessageType(typeof(TMessage));
         Descriptor.SetRoute(messageTypeName,
             static (context, pipeline, ct) => pipeline.ExecuteAsync<TMessageConsumer, TMessage>(context, ct));
 
         Services.TryAddScoped<IConsumerExecutor<TMessageConsumer, TMessage>,
             ConsumerExecutor<TMessageConsumer, TMessage>>();
 
+        return this;
+    }
+
+    public ConsumerBuilder<TConsumer> FilterOnSubscription<TMessage>(Expression<Func<TMessage, bool>> filter)
+        where TMessage : class
+    {
+        Descriptor.SetSubscriptionFilterExpression(filter);
+        return this;
+    }
+
+    public ConsumerBuilder<TConsumer> FilterOnSubscription<TMessage>(Func<MessageHeaders, bool> filter)
+    {
+
+        return this;
+    }
+
+    public ConsumerBuilder<TConsumer> Filter<TMessage>(Func<TMessage, bool> filter)
+        where TMessage : class
+    {
+        Descriptor.SetSubscriptionFilter(filter);
         return this;
     }
 

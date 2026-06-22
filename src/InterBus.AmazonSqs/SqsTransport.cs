@@ -12,7 +12,7 @@ public sealed class SqsTransport(
     IAmazonSQS sqsClient,
     SnsSqsNaming naming,
     SnsSqsTopologyBuilder topology,
-    SnsSqsMessageEnvelope rawEnvelope) : ITransport
+    ISnsSqsMessageEnvelope envelope) : ITransport
 {
     /// <summary>URI scheme for SQS queue (point-to-point) destinations.</summary>
     public const string QueueScheme = "sqsqueue";
@@ -56,7 +56,7 @@ public sealed class SqsTransport(
         // Serialise the full payload + headers into the envelope body so that any
         // serialisation format (JSON, MessagePack, gzip, etc.) round-trips without
         // data loss, and header count is never limited by SQS's 10-attribute cap.
-        var body = rawEnvelope.SerializeForSnsPublish(context.Payload, context.Headers);
+        var body = envelope.SerializeForSqsPublish(context.Payload, context.Headers);
 
         // Promote a small subset of core headers to SQS message attributes so they are
         // visible without parsing the envelope body.

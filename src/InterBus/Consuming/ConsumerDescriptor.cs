@@ -1,5 +1,6 @@
 using InterBus.Dispatching;
 using Microsoft.Extensions.DependencyInjection;
+using System.Linq.Expressions;
 
 namespace InterBus.Consuming;
 
@@ -21,6 +22,12 @@ public sealed class ConsumerDescriptor(Type consumerType, Uri queue)
     private readonly Dictionary<string, Func<DispatchContext, ConsumePipelineExecutor, CancellationToken, Task>>
         _routes = new(StringComparer.Ordinal);
 
+    private readonly HashSet<Type> _messageTypes = [];
+
+    private readonly Dictionary<Type, Func<object, bool>> _subscriptionFilters = new();
+    
+    private readonly Dictionary<Type, LambdaExpression> _subscriptionFilterExpressions = new();
+
     /// <summary>The concrete consumer type.</summary>
     public Type ConsumerType { get; } = consumerType;
 
@@ -35,9 +42,14 @@ public sealed class ConsumerDescriptor(Type consumerType, Uri queue)
     /// <summary>
     /// The message types this consumer handles
     /// </summary>
-    public HashSet<Type> MessageTypes { get; } = [];
+    public IReadOnlySet<Type> MessageTypes => _messageTypes;
 
     public string MessageTypeHeader { get; internal set; } = InterBusHeaders.MessageType;
+
+    public IReadOnlyDictionary<Type, Func<object, bool>> SubscriptionFilters => _subscriptionFilters;
+    
+    public IReadOnlyDictionary<Type, LambdaExpression> SubscriptionFilterExpressions =>
+        _subscriptionFilterExpressions;
 
     internal Func<DispatchContext, ConsumePipelineExecutor, IServiceProvider, CancellationToken, Task> Dispatch
     {
@@ -72,6 +84,20 @@ public sealed class ConsumerDescriptor(Type consumerType, Uri queue)
         Func<DispatchContext, ConsumePipelineExecutor, CancellationToken, Task> route)
     {
         _routes[messageType] = route;
+    }
+
+    internal void AddMessageType(Type messageType) => _messageTypes.Add(messageType);
+
+    internal void SetSubscriptionFilterExpression<TMessage>(Expression<Func<TMessage, bool>> bodyPredicate)
+        where TMessage : class
+    {
+        _subscriptionFilterExpressions[typeof(TMessage)] = bodyPredicate;
+    }
+
+    internal void SetSubscriptionFilter<TMessage>(Func<TMessage, bool> filter)
+        where TMessage : class
+    {
+        _subscriptionFilters[typeof(TMessage)] = o => filter((TMessage)o);
     }
 
     internal void BuildDispatchFromRoutesIfMissing()

@@ -67,9 +67,9 @@ public static class SnsSqsTransportBuilderExtensions
             builder.Services.AddSingleton<SnsSqsNaming>();
             builder.Services.AddSingleton<SnsSqsTopologyBuilder>();
             builder.Services.AddSingleton<ITopologyBuilder>(sp => sp.GetRequiredService<SnsSqsTopologyBuilder>());
-            builder.Services.TryAddSingleton<SnsSqsMessageEnvelope>();
             builder.Services.TryAddSingleton<SnsSerialisedMessageEnvelope>();
-            builder.Services.TryAddSingleton<ISnsSqsMessageEnvelope, SnsSqsMessageEnvelope>();
+
+            builder.Services.TryAddSingleton<ISnsSqsMessageEnvelope, SnsSerialisedMessageEnvelope>();
 
             builder.Services.AddKeyedScoped<ITransport, SnsTransport>(SnsTransport.TopicScheme);
             builder.Services.AddKeyedScoped<ITransport, SqsTransport>(SqsTransport.QueueScheme);

@@ -14,6 +14,25 @@ public sealed class SnsSerialisedMessageEnvelope : ISnsSqsMessageEnvelope
     public string SerializeForSnsPublish(byte[] payload, MessageHeaders headers) =>
         Encoding.UTF8.GetString(payload);
 
+    /// <summary>
+    /// Serialises the payload and headers into a JSON string suitable for SQS delivery, following the SNS notification
+    /// format. So that consumers can process messages from SNS and SQS interchangeably.
+    /// Removes the need for raw delivery and supports any number of attributes.
+    /// </summary>
+    /// <remarks>May not be compatible with other SQS implementations that expect a full SNS format.</remarks>
+    public string SerializeForSqsPublish(byte[] payload, MessageHeaders headers)
+    {
+        var attributes = new Dictionary<string, SnsNotificationAttributeBody?>(headers.Count, StringComparer.Ordinal);
+        foreach (var (headerName, headerValue) in headers)
+        {
+            attributes[headerName] = new SnsNotificationAttributeBody("String", headerValue);
+        }
+
+        var envelope = new SnsNotificationEnvelopeBody(Encoding.UTF8.GetString(payload), attributes);
+
+        return JsonSerializer.Serialize(envelope, SnsSqsJsonContext.Default.SnsNotificationEnvelopeBody);
+    }
+
     public (byte[] Payload, MessageHeaders Headers) DeserializeFromSqs(string messageBody)
     {
         var envelope = JsonSerializer.Deserialize(

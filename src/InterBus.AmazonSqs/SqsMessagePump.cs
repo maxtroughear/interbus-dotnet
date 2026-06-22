@@ -16,12 +16,6 @@ namespace InterBus.AmazonSqs;
 /// startup by <see cref="SnsSqsTopologyBuilder"/> before polling begins.
 /// </para>
 /// <para>
-/// Messages delivered via SNS can use either raw message delivery
-/// (<see cref="SnsSqsMessageEnvelope"/>) or SNS-serialised notifications on SQS
-/// (<c>RawMessageDelivery=false</c>) based on transport/consumer configuration.
-/// Direct sends (<c>sqsqueue://</c>) always use the InterBus envelope format.
-/// </para>
-/// <para>
 /// Successful dispatch deletes the SQS message (ACK). Unhandled consumer failures are copied to
 /// the configured dead-letter queue with diagnostic message attributes and the original message is
 /// acknowledged; other failures let visibility timeout expire for redelivery.

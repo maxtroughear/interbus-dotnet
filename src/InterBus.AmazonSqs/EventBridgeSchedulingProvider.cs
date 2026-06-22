@@ -24,7 +24,7 @@ public sealed class EventBridgeSchedulingProvider(
     IAmazonScheduler schedulerClient,
     SnsSqsNaming naming,
     SnsSqsTopologyBuilder topology,
-    ISnsSqsMessageEnvelope rawEnvelope,
+    ISnsSqsMessageEnvelope envelope,
     EventBridgeSchedulerOptions options)
     : IMessageSchedulingProvider
 {
@@ -37,8 +37,16 @@ public sealed class EventBridgeSchedulingProvider(
         DateTimeOffset scheduledAt,
         CancellationToken cancellationToken)
     {
-        var input = rawEnvelope.SerializeForSnsPublish(payload, headers);
         var targetArn = await ResolveTargetArnAsync(destination, cancellationToken);
+
+        var input = destination.Scheme switch
+        {
+            SqsTransport.QueueScheme => envelope.SerializeForSqsPublish(payload, headers),
+            SnsTransport.TopicScheme => envelope.SerializeForSnsPublish(payload, headers),
+            _ => throw new ArgumentException(
+                $"Unsupported destination URI scheme '{destination.Scheme}' for EventBridge Scheduler. " +
+                $"Expected '{SnsTransport.TopicScheme}' or '{SqsTransport.QueueScheme}'.", nameof(destination))
+        };
 
         headers.TryGetValue(InterBusHeaders.MessageGroupId, out var messageGroupId);
         var isFifoSqsTarget =
@@ -100,9 +108,9 @@ public sealed class EventBridgeSchedulingProvider(
         if (destination.Scheme == SqsTransport.QueueScheme)
         {
             var queueName = naming.BuildSqsQueueName(destination);
-            
+
             var queueUrl = await topology.ResolveQueueAsync(queueName, cancellationToken);
-            
+
             // if (!topology.QueueUrls.TryGetValue(queueName, out var queueUrl))
             //     throw new InvalidOperationException(
             //         $"Queue '{queueName}' has not been declared. Ensure the consumer for this queue " +

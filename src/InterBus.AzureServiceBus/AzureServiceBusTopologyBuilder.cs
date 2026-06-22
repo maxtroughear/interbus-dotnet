@@ -45,6 +45,7 @@ internal sealed class AzureServiceBusTopologyBuilder(
                     azureTopicName,
                     subscriptionName,
                     azureQueueName,
+                    RoutingConventions.MessageTypeString(messageType),
                     cancellationToken);
             }
         }
@@ -161,6 +162,7 @@ internal sealed class AzureServiceBusTopologyBuilder(
         string azureTopicName,
         string subscriptionName,
         string forwardToQueue,
+        string messageTypeName,
         CancellationToken cancellationToken)
     {
         var key = azureTopicName + "|" + subscriptionName;
@@ -179,6 +181,12 @@ internal sealed class AzureServiceBusTopologyBuilder(
                     };
 
                     await admin.CreateSubscriptionAsync(subscriptionOptions, ct);
+                    await EnsureSubscriptionRuleAsync(
+                        admin,
+                        azureTopicName,
+                        subscriptionName,
+                        messageTypeName,
+                        ct);
 
                     logger.LogDebug(
                         "InterBus AzureServiceBus: created subscription {SubscriptionName} on topic {TopicName} forwarding to queue {QueueName}",
@@ -189,10 +197,55 @@ internal sealed class AzureServiceBusTopologyBuilder(
                 catch (ServiceBusException ex)
                     when (ex.Reason == ServiceBusFailureReason.MessagingEntityAlreadyExists)
                 {
-                    // Subscription already exists.
+                    await EnsureSubscriptionRuleAsync(
+                        admin,
+                        azureTopicName,
+                        subscriptionName,
+                        messageTypeName,
+                        ct);
                 }
             },
             cancellationToken);
+    }
+
+    private static async Task EnsureSubscriptionRuleAsync(
+        ServiceBusAdministrationClient admin,
+        string topicName,
+        string subscriptionName,
+        string messageTypeName,
+        CancellationToken cancellationToken)
+    {
+        const string ruleName = "interbus-filter";
+        var sqlFilter = new SqlRuleFilter(
+            $"userProperties['{InterBusHeaders.MessageType}'] = '{EscapeSqlLiteral(messageTypeName)}'");
+
+        try
+        {
+            var rule = await admin.GetRuleAsync(topicName, subscriptionName, ruleName, cancellationToken);
+
+            rule.Value.Filter = sqlFilter;
+
+            await admin.UpdateRuleAsync(topicName, subscriptionName, rule.Value, cancellationToken);
+        }
+        catch (ServiceBusException ex)
+            when (ex.Reason == ServiceBusFailureReason.MessagingEntityNotFound)
+        {
+            await admin.CreateRuleAsync(
+                topicName,
+                subscriptionName,
+                new CreateRuleOptions(ruleName, sqlFilter),
+                cancellationToken);
+        }
+
+        try
+        {
+            await admin.DeleteRuleAsync(topicName, subscriptionName, "$Default", cancellationToken);
+        }
+        catch (ServiceBusException ex)
+            when (ex.Reason == ServiceBusFailureReason.MessagingEntityNotFound)
+        {
+            // Default rule already removed.
+        }
     }
 
     private static async Task EnsureWithCacheAsync(
@@ -224,4 +277,7 @@ internal sealed class AzureServiceBusTopologyBuilder(
 
     private string BuildSubscriptionName(string queueName) =>
         AzureServiceBusNaming.SanitizeSubscriptionName(options.QueuePrefix + queueName);
+
+    private static string EscapeSqlLiteral(string value) =>
+        value.Replace("'", "''", StringComparison.Ordinal);
 }

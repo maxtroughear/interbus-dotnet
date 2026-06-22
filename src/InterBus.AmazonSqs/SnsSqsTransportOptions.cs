@@ -112,6 +112,18 @@ public sealed class SnsSqsTransportOptions
     public bool EnableSnsEncryption { get; set; } = true;
 
     /// <summary>
+    /// When <c>true</c>, InterBus publishes SNS topics using the SNS-serialised envelope and
+    /// configures subscription filtering to inspect the message body.
+    /// <para>
+    /// This opt-in changes the SNS wire format from the default InterBus envelope to the raw
+    /// serialised payload + SNS notification envelope, so consumers must deserialize using
+    /// <see cref="SnsSerialisedMessageEnvelope"/> (either by using the default transport
+    /// registration when this option is enabled or by opting in per consumer).
+    /// </para>
+    /// </summary>
+    public bool EnableSnsMessageBodyFiltering { get; set; }
+
+    /// <summary>
     /// Suffix appended to the source queue name for the dead-letter queue created by InterBus.
     /// </summary>
     public string DeadLetterQueueSuffix { get; set; } = "-dlq";

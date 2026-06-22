@@ -39,7 +39,7 @@ public sealed class SagaBuilder<TSaga, TState>(
         where TSagaConsumer : class, TSaga, ISagaConsumer<TState, TMessage>
         where TMessage : class
     {
-        Descriptor.MessageTypes.Add(typeof(TMessage));
+        Descriptor.AddMessageType(typeof(TMessage));
         Descriptor.SetRoute(messageTypeName,
             static (context, pipeline, ct) => pipeline.ExecuteAsync<TSagaConsumer, TMessage>(context, ct));
 

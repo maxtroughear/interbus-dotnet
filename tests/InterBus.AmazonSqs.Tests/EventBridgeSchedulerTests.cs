@@ -1,3 +1,4 @@
+using System.Text;
 using Amazon.Scheduler;
 using Amazon.Scheduler.Model;
 using Amazon.SecurityToken;
@@ -161,37 +162,12 @@ public sealed class EventBridgeSchedulerTests
         _createdSchedules.Add((scheduleId, "default"));
         await BuildProvider().ScheduleAsync(
             scheduleId, topic,
-            [], new MessageHeaders(), DateTimeOffset.UtcNow.AddHours(1), ct);
+            "test"u8.ToArray(), new MessageHeaders(), DateTimeOffset.UtcNow.AddHours(1), ct);
 
         var schedule = await SchedulerClient.GetScheduleAsync(
             new GetScheduleRequest { Name = scheduleId.ToString(), GroupName = "default" }, ct);
 
         Assert.That(schedule.Target.Arn, Is.EqualTo(topicArn));
-    }
-
-    [Test]
-    public async Task ScheduleAsync_InputIsSnsSqsMessageEnvelope_ContainsPayloadAndHeaders()
-    {
-        var ct = TestContext.CurrentContext.CancellationToken;
-        var queue = RoutingConventions.QueueUri(SqsTransport.QueueScheme, "test-queue");
-        await _topologyBuilder.EnsureQueueAsync(queue, ct);
-
-        var payload = new byte[] { 10, 20, 30 };
-        var headers = new MessageHeaders { [InterBusHeaders.MessageType] = "TestEvent" };
-        var scheduleId = Guid.CreateVersion7();
-        _createdSchedules.Add((scheduleId, "default"));
-        await BuildProvider().ScheduleAsync(
-            scheduleId, queue,
-            payload, headers, DateTimeOffset.UtcNow.AddMinutes(5), ct);
-
-        var schedule = await SchedulerClient.GetScheduleAsync(
-            new GetScheduleRequest { Name = scheduleId.ToString(), GroupName = "default" }, ct);
-
-        Assert.Multiple(() =>
-        {
-            Assert.That(schedule.Target.Input, Does.Contain(Convert.ToBase64String(payload)));
-            Assert.That(schedule.Target.Input, Does.Contain("TestEvent"));
-        });
     }
 
     [Test]
@@ -292,7 +268,7 @@ public sealed class EventBridgeSchedulerTests
     private EventBridgeSchedulingProvider BuildProvider(
         string? roleArn = null,
         string groupName = "default") =>
-        new(SchedulerClient, _naming, _topologyBuilder, new SnsSqsMessageEnvelope(),
+        new(SchedulerClient, _naming, _topologyBuilder, new SnsSerialisedMessageEnvelope(),
             new EventBridgeSchedulerOptions
             {
                 TargetRoleArn = roleArn ?? TargetRoleArn,

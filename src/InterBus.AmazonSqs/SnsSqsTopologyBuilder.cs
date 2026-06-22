@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Linq.Expressions;
 using System.Text.Json;
 using Amazon.SecurityToken;
 using Amazon.SecurityToken.Model;
@@ -115,11 +116,11 @@ public sealed partial class SnsSqsTopologyBuilder(
                 cancellationToken,
                 new Dictionary<string, string>(StringComparer.Ordinal)
                 {
-                    ["RedrivePolicy"] = JsonSerializer.Serialize(new
+                    ["RedrivePolicy"] = JsonSerializer.Serialize(new Dictionary<string, string>
                     {
-                        deadLetterTargetArn = deadLetterQueueArn,
-                        maxReceiveCount = Math.Max(1, descriptor.MaxDeliveryCount).ToString()
-                    }),
+                        ["deadLetterTargetArn"] = deadLetterQueueArn,
+                        ["maxReceiveCount"] = Math.Max(1, descriptor.MaxDeliveryCount).ToString()
+                    }, SnsSqsJsonContext.Default.DictionaryStringString),
                 });
 
             var queueArn = QueueArns[queueName];
@@ -135,11 +136,18 @@ public sealed partial class SnsSqsTopologyBuilder(
                 var topic = busOptions.GetPublisherDescriptor(messageType).Topic;
                 var topicName = naming.BuildSnsTopicName(topic);
                 var topicArn = await CreateTopicAsync(topicName, cancellationToken);
+                var messageTypeName = RoutingConventions.MessageTypeString(messageType);
+                var subscriptionFilter = descriptor.SubscriptionFilterExpressions.GetValueOrDefault(messageType);
 
                 logger.LogDebug(
                     "InterBus AmazonSqs: declared SNS topic {TopicName}, ARN {TopicArn}",
                     topicName,
                     topicArn);
+
+                var subscriptionAttributes = BuildSubscriptionAttributes(
+                    messageTypeName,
+                    subscriptionFilter,
+                    transportOptions);
 
                 var subscribeResponse = await snsClient.SubscribeAsync(
                     new SubscribeRequest
@@ -147,10 +155,7 @@ public sealed partial class SnsSqsTopologyBuilder(
                         TopicArn = topicArn,
                         Protocol = "sqs",
                         Endpoint = queueArn,
-                        Attributes = new Dictionary<string, string>
-                        {
-                            ["RawMessageDelivery"] = "true"
-                        }
+                        Attributes = subscriptionAttributes
                     },
                     cancellationToken);
 
@@ -165,6 +170,38 @@ public sealed partial class SnsSqsTopologyBuilder(
 
             logger.LogDebug("InterBus AmazonSqs: queue {QueueName} policy set", queueName);
         }
+    }
+
+    private static Dictionary<string, string> BuildSubscriptionAttributes(
+        string messageTypeName,
+        LambdaExpression? filterExpression,
+        SnsSqsTransportOptions transportOptions)
+    {
+        var attributes = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["RawMessageDelivery"] = "false"
+        };
+
+        if (filterExpression is not null &&
+            transportOptions.EnableSnsMessageBodyFiltering &&
+            SnsSqsSubscriptionFilterTranslator.TryBuildMessageBodyFilterPolicy(
+                filterExpression,
+                out var bodyFilterPolicy))
+        {
+            attributes["FilterPolicyScope"] = "MessageBody";
+            attributes["FilterPolicy"] =
+                JsonSerializer.Serialize(bodyFilterPolicy, SnsSqsJsonContext.Default.DictionaryStringStringArray);
+            return attributes;
+        }
+
+        // TODO: If keeping this, use descriptor defined message type header location
+        // attributes["FilterPolicy"] = JsonSerializer.Serialize(new Dictionary<string, string[]>(
+        //     StringComparer.Ordinal)
+        // {
+        //     [InterBusHeaders.MessageType] = [messageTypeName],
+        // }, SnsSqsJsonContext.Default.DictionaryStringStringArray);
+
+        return attributes;
     }
 
     private async Task SetQueuePolicyAsync(

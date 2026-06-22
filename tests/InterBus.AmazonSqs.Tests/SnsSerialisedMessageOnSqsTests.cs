@@ -71,7 +71,7 @@ public class SnsSerialisedMessageOnSqsTests
                 o.QueuePrefix = _queuePrefix;
                 o.TopicPrefix = _topicPrefix;
             });
-            bus.AddConsumer<SnsSerialisedOrderPlacedConsumer>(c => c.UseSnsSerialisedMessageOnSqs());
+            bus.AddConsumer<SnsSerialisedOrderPlacedConsumer>();
         });
 
         _provider = services.BuildServiceProvider();

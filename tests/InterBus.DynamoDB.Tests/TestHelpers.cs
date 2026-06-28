@@ -14,7 +14,7 @@ public static class TestHelpers
             StringComparison.OrdinalIgnoreCase);
 
     internal static LocalStackContainer? CreateLocalStackContainer() =>
-        UseRealAws ? null : new LocalStackBuilder("localstack/localstack:4").Build();
+        UseRealAws ? null : new LocalStackBuilder("ministackorg/ministack:full").Build();
 
     internal static AWSOptions? CreateAwsOptions(LocalStackContainer? container)
     {

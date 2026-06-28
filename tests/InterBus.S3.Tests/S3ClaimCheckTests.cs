@@ -48,7 +48,7 @@ public sealed class LargePayloadConsumer(LargePayloadTracker tracker) : IConsume
 [TestFixture]
 public sealed class S3ClaimCheckTests
 {
-    private static readonly LocalStackContainer? Container = new LocalStackBuilder("localstack/localstack:4").Build();
+    private static readonly LocalStackContainer? Container = new LocalStackBuilder("ministackorg/ministack:full").Build();
 
     private IAmazonS3 _s3Client = null!;
     private string _bucketName = string.Empty;

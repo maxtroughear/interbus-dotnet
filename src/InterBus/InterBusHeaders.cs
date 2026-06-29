@@ -111,4 +111,10 @@ public static class InterBusHeaders
     /// </para>
     /// </summary>
     public const string MessageGroupId = "interbus-message-group-id";
+
+    /// <summary>
+    /// Header key describing the payload encoding applied by send middleware.
+    /// When set to <c>gzip</c>, dispatch middleware may decompress the payload before deserialization.
+    /// </summary>
+    public const string PayloadEncoding = "interbus-payload-encoding";
 }

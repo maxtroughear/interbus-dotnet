@@ -1,3 +1,4 @@
+using System.Web;
 using InterBus.Transporting;
 using Microsoft.Extensions.Logging;
 using RabbitMQ.Client;
@@ -16,6 +17,14 @@ internal sealed class RabbitMqQueueTransport(
     public async Task SendAsync(TransportSendContext context, CancellationToken cancellationToken)
     {
         var queueName = RoutingConventions.GetDestinationName(context.Destination);
+
+        // If the destination URI carries a virtual queue ID (e.g. ?vq=abc123), inject it as
+        // a header so RabbitMqVirtualQueueHost can route the reply to the right in-memory channel.
+        var query = HttpUtility.ParseQueryString(context.Destination.Query);
+        var virtualQueue = query["vq"];
+        if (virtualQueue is not null)
+            context.Headers[RabbitMqVirtualQueueHost.VirtualQueueIdHeader] = virtualQueue;
+
         var headers = RabbitMqHeaders.BuildAmqpHeaders(context.Headers);
         var props = new BasicProperties
         {

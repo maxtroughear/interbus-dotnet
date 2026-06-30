@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Web;
 using InterBus.Transporting;
 using Npgsql;
 using NpgsqlTypes;
@@ -37,6 +38,14 @@ public sealed class PostgreSqlTransport(
     public async Task SendAsync(TransportSendContext context, CancellationToken cancellationToken)
     {
         var name = RoutingConventions.GetDestinationName(context.Destination);
+
+        // If the destination URI carries a virtual queue ID (e.g. ?vq=abc123), inject it as
+        // a header so PostgreSqlVirtualQueueHost can route the reply to the right in-memory channel.
+        var query = HttpUtility.ParseQueryString(context.Destination.Query);
+        var virtualQueue = query["vq"];
+        if (virtualQueue is not null)
+            context.Headers[PostgreSqlVirtualQueueHost.VirtualQueueIdHeader] = virtualQueue;
+
         var headersJson = SerializeHeaders(context.Headers);
         var visibleAt = context.Delay.HasValue
             ? (DateTimeOffset?)DateTimeOffset.UtcNow.Add(context.Delay.Value)

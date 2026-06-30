@@ -1,3 +1,4 @@
+using InterBus.Requests;
 using InterBus.Transporting;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -116,6 +117,9 @@ public static class PostgreSqlTransportBuilderExtensions
             (sp, _) => sp.GetRequiredService<PostgreSqlTransport>());
         builder.Services.AddKeyedSingleton<ITransport>(PostgreSqlTransport.QueueScheme,
             (sp, _) => sp.GetRequiredService<PostgreSqlTransport>());
+
+        builder.Services.AddSingleton<PostgreSqlVirtualQueueHost>();
+        builder.Services.AddSingleton<IReplyEndpointFactory, PostgreSqlReplyEndpointFactory>();
     }
 
     /// <summary>

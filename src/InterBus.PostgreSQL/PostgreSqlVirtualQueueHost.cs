@@ -20,6 +20,7 @@ namespace InterBus.PostgreSQL;
 internal sealed class PostgreSqlVirtualQueueHost(
     NpgsqlDataSource dataSource,
     PostgreSqlTransportOptions options,
+    PostgreSqlTopologyBuilder topologyBuilder,
     ILogger<PostgreSqlVirtualQueueHost> logger)
     : IAsyncDisposable
 {
@@ -77,11 +78,7 @@ internal sealed class PostgreSqlVirtualQueueHost(
 
             var rawName = $"interbus.reply.{Guid.CreateVersion7():N}";
 
-            await using var cmd = dataSource.CreateCommand();
-            cmd.CommandText =
-                $"SELECT \"{EscapeIdentifier(options.SchemaName)}\".ensure_queue($1)";
-            cmd.Parameters.Add(new NpgsqlParameter<string> { TypedValue = rawName });
-            _queueId = (long)(await cmd.ExecuteScalarAsync(cancellationToken))!;
+            _queueId = await topologyBuilder.EnsureQueueAsync(rawName, cancellationToken);
             _queueName = rawName;
             _hostQueueUri = RoutingConventions.QueueUri(PostgreSqlTransport.QueueScheme, rawName);
 

@@ -107,7 +107,8 @@ public static class PostgreSqlTransportBuilderExtensions
     /// </summary>
     private static void RegisterTransportServices(InterBusBuilder builder)
     {
-        builder.Services.AddSingleton<ITopologyBuilder, PostgreSqlTopologyBuilder>();
+        builder.Services.AddSingleton<PostgreSqlTopologyBuilder>();
+        builder.Services.AddSingleton<ITopologyBuilder>(sp => sp.GetRequiredService<PostgreSqlTopologyBuilder>());
 
         // Register the concrete type so keyed registrations can share the same singleton.
         builder.Services.AddSingleton<PostgreSqlTransport>();

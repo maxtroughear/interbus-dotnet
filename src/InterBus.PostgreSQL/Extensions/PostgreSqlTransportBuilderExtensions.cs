@@ -1,3 +1,4 @@
+using InterBus.Requests;
 using InterBus.Transporting;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -106,7 +107,8 @@ public static class PostgreSqlTransportBuilderExtensions
     /// </summary>
     private static void RegisterTransportServices(InterBusBuilder builder)
     {
-        builder.Services.AddSingleton<ITopologyBuilder, PostgreSqlTopologyBuilder>();
+        builder.Services.AddSingleton<PostgreSqlTopologyBuilder>();
+        builder.Services.AddSingleton<ITopologyBuilder>(sp => sp.GetRequiredService<PostgreSqlTopologyBuilder>());
 
         // Register the concrete type so keyed registrations can share the same singleton.
         builder.Services.AddSingleton<PostgreSqlTransport>();
@@ -116,6 +118,9 @@ public static class PostgreSqlTransportBuilderExtensions
             (sp, _) => sp.GetRequiredService<PostgreSqlTransport>());
         builder.Services.AddKeyedSingleton<ITransport>(PostgreSqlTransport.QueueScheme,
             (sp, _) => sp.GetRequiredService<PostgreSqlTransport>());
+
+        builder.Services.AddSingleton<PostgreSqlVirtualQueueHost>();
+        builder.Services.AddSingleton<IReplyEndpointFactory, PostgreSqlReplyEndpointFactory>();
     }
 
     /// <summary>

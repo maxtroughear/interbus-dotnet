@@ -44,3 +44,16 @@ public sealed class OrderShippedConsumer(OrderShippedTracker tracker) : IConsume
         return Task.CompletedTask;
     }
 }
+
+public sealed class GetOrderStatusConsumer(IPublisher publisher) : IConsumer<GetOrderStatusRequest>
+{
+    public async Task Consume(GetOrderStatusRequest message, IConsumeContext context,
+        CancellationToken cancellationToken = default)
+    {
+        if (context.ReplyTo is null) return;
+        await publisher.SendAsync(
+            context.ReplyTo,
+            new GetOrderStatusReply(message.OrderId, "Shipped"),
+            cancellationToken);
+    }
+}

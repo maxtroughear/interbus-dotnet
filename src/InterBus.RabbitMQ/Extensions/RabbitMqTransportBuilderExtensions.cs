@@ -1,3 +1,4 @@
+using InterBus.Requests;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace InterBus.RabbitMQ.Extensions;
@@ -28,6 +29,12 @@ public static class RabbitMqTransportBuilderExtensions
     /// Delayed delivery is not natively supported; the delay value is ignored and messages
     /// are delivered immediately.
     /// </para>
+    /// <para>
+    /// Request/reply is supported via a shared exclusive reply queue managed by
+    /// <see cref="RabbitMqVirtualQueueHost"/>. Each request/reply exchange uses a unique virtual
+    /// queue ID routed via the <c>interbus-rabbitmq-vq-id</c> header, avoiding per-request queue
+    /// creation overhead.
+    /// </para>
     /// </summary>
     /// <param name="builder">The InterBus builder.</param>
     /// <param name="configure">
@@ -56,6 +63,10 @@ public static class RabbitMqTransportBuilderExtensions
 
         // Message pump runs as a background service.
         builder.Services.AddHostedService<RabbitMqMessagePump>();
+
+        // Request/reply support via virtual queue host.
+        builder.Services.AddSingleton<RabbitMqVirtualQueueHost>();
+        builder.Services.AddSingleton<IReplyEndpointFactory, RabbitMqReplyEndpointFactory>();
 
         return builder;
     }

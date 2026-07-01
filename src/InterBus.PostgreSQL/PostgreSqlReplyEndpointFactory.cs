@@ -15,8 +15,13 @@ internal sealed class PostgreSqlReplyEndpointFactory(
 {
     public async Task<IReplyEndpoint> CreateAsync(CancellationToken cancellationToken = default)
     {
-        var (queueUri, vqId, reader) = await host.RegisterAsync(cancellationToken);
+        var (hostQueueUri, vqId, reader) = await host.RegisterAsync(cancellationToken);
 
-        return new PostgreSqlReplyEndpoint(host, scopeFactory, queueUri, vqId, reader);
+        var uri = new UriBuilder(hostQueueUri)
+        {
+            Query = $"vq={vqId}"
+        }.Uri;
+
+        return new PostgreSqlReplyEndpoint(host, scopeFactory, uri, vqId, reader);
     }
 }

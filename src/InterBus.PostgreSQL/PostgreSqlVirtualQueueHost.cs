@@ -35,14 +35,16 @@ internal sealed class PostgreSqlVirtualQueueHost(
 
     private string? _queueName;
     private long _queueId;
+    private Uri? _hostQueueUri;
     private CancellationTokenSource? _cts;
     private Task? _listenTask;
 
     /// <summary>
     /// Lazily creates the shared host queue (once) then allocates a new virtual queue
-    /// and returns its URI, ID and a reader end of the channel that will receive the reply.
+    /// and returns the host queue URI, the virtual queue ID, and a reader end of the
+    /// channel that will receive the reply.
     /// </summary>
-    public async Task<(Uri QueueUri, string VqId, ChannelReader<(byte[] Payload, MessageHeaders Headers)> Reader)>
+    public async Task<(Uri HostQueueUri, string VqId, ChannelReader<(byte[] Payload, MessageHeaders Headers)> Reader)>
         RegisterAsync(CancellationToken cancellationToken = default)
     {
         await EnsureHostQueueAsync(cancellationToken);
@@ -52,12 +54,7 @@ internal sealed class PostgreSqlVirtualQueueHost(
             new UnboundedChannelOptions { SingleReader = true });
         _channels[vqId] = channel;
 
-        var uri = new UriBuilder(RoutingConventions.QueueUri(PostgreSqlTransport.QueueScheme, _queueName!))
-        {
-            Query = $"vq={vqId}"
-        }.Uri;
-
-        return (uri, vqId, channel.Reader);
+        return (_hostQueueUri!, vqId, channel.Reader);
     }
 
     /// <summary>Completes and removes the channel for <paramref name="vqId"/>.</summary>
@@ -86,6 +83,7 @@ internal sealed class PostgreSqlVirtualQueueHost(
             cmd.Parameters.Add(new NpgsqlParameter<string> { TypedValue = rawName });
             _queueId = (long)(await cmd.ExecuteScalarAsync(cancellationToken))!;
             _queueName = rawName;
+            _hostQueueUri = RoutingConventions.QueueUri(PostgreSqlTransport.QueueScheme, rawName);
 
             _cts = new CancellationTokenSource();
             _listenTask = Task.Run(() => PollLoopAsync(_cts.Token), CancellationToken.None);

@@ -78,7 +78,7 @@ internal sealed class PostgreSqlVirtualQueueHost(
 
             var rawName = $"interbus.reply.{Guid.CreateVersion7():N}";
 
-            _queueId = await topologyBuilder.EnsureQueueAsync(rawName, cancellationToken);
+            _queueId = await topologyBuilder.EnsureQueueIdAsync(rawName, cancellationToken);
             _queueName = rawName;
             _hostQueueUri = RoutingConventions.QueueUri(PostgreSqlTransport.QueueScheme, rawName);
 

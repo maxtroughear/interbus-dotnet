@@ -46,8 +46,7 @@ internal sealed class AzureServiceBusVirtualQueueHost(
     /// The raw reply queue name (no prefix, for use in URIs), the new virtual queue ID, and a reader
     /// end of the channel that will receive exactly one reply payload.
     /// </returns>
-    public async
-        Task<VirtualQueueRegistration> RegisterAsync(CancellationToken cancellationToken = default)
+    public async Task<VirtualQueueRegistration> RegisterAsync(CancellationToken cancellationToken = default)
     {
         await EnsureHostQueueAsync(cancellationToken);
 
@@ -180,7 +179,7 @@ internal sealed class AzureServiceBusVirtualQueueHost(
         {
             try
             {
-                await clientProvider.AdminClient.DeleteQueueAsync(_azureQueueName!, CancellationToken.None);
+                await clientProvider.AdminClient.DeleteQueueAsync(_azureQueueName, CancellationToken.None);
             }
             catch
             {

@@ -81,7 +81,7 @@ public static class SnsSqsTransportBuilderExtensions
             builder.Services.AddSingleton<SqsVirtualQueueHost>();
 
             // Reply endpoint factory enables IRequestClient<,> without additional registration.
-            builder.Services.AddSingleton<IReplyEndpointFactory, SqsReplyEndpointFactory>();
+            builder.Services.AddSingleton<IReplyEndpointFactory, VirtualQueueReplyEndpointFactory<SqsVirtualQueueHost>>();
 
             return builder;
         }

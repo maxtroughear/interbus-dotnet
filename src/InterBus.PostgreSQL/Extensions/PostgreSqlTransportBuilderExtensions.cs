@@ -120,7 +120,7 @@ public static class PostgreSqlTransportBuilderExtensions
             (sp, _) => sp.GetRequiredService<PostgreSqlTransport>());
 
         builder.Services.AddSingleton<PostgreSqlVirtualQueueHost>();
-        builder.Services.AddSingleton<IReplyEndpointFactory, PostgreSqlReplyEndpointFactory>();
+        builder.Services.AddSingleton<IReplyEndpointFactory, VirtualQueueReplyEndpointFactory<PostgreSqlVirtualQueueHost>>();
     }
 
     /// <summary>

@@ -17,7 +17,6 @@ public static class ReplyEndpointDispatcher
         Uri address,
         IServiceScopeFactory scopeFactory,
         IAsyncEnumerable<(byte[] Payload, MessageHeaders Headers)> messages,
-        string channelClosedError,
         CancellationToken cancellationToken = default)
         where TReply : class
     {
@@ -54,6 +53,7 @@ public static class ReplyEndpointDispatcher
         }
 
         cancellationToken.ThrowIfCancellationRequested();
-        throw new InvalidOperationException(channelClosedError);
+        throw new InvalidOperationException(
+            $"InterBus: reply channel closed without receiving a {typeof(TReply).Name}");
     }
 }

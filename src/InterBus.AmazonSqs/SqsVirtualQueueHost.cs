@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Threading.Channels;
 using Amazon.SQS;
 using Amazon.SQS.Model;
+using InterBus.Requests;
 using Microsoft.Extensions.Logging;
 
 namespace InterBus.AmazonSqs;
@@ -24,7 +25,7 @@ internal sealed class SqsVirtualQueueHost(
     ISnsSqsMessageEnvelope envelope,
     SnsSqsNaming naming,
     ILogger<SqsVirtualQueueHost> logger)
-    : IAsyncDisposable
+    : IVirtualQueueHost, IAsyncDisposable
 {
     /// <summary>Header key used to route a reply to the correct virtual queue.</summary>
     internal const string VirtualQueueIdHeader = "interbus-sqs-vq-id";
@@ -35,17 +36,16 @@ internal sealed class SqsVirtualQueueHost(
         new(StringComparer.Ordinal);
 
     private string? _hostQueueName;
+    private string? _hostSqsQueueName;
     private string? _hostQueueUrl;
-    private Uri? _hostQueueUri;
     private CancellationTokenSource? _pollingCts;
     private Task? _pollingTask;
 
     /// <summary>
     /// Lazily creates the shared host queue (once) then allocates a new virtual queue
-    /// and returns its ID together with the address of the host queue.
+    /// and returns its ID together with the raw name of the host queue.
     /// </summary>
-    public async Task<(Uri HostQueue, string VqId, ChannelReader<(byte[] Payload, MessageHeaders Headers)> Reader)>
-        RegisterAsync(CancellationToken cancellationToken = default)
+    public async Task<VirtualQueueRegistration> RegisterAsync(CancellationToken cancellationToken = default)
     {
         await EnsureHostQueueAsync(cancellationToken);
 
@@ -54,7 +54,7 @@ internal sealed class SqsVirtualQueueHost(
             new UnboundedChannelOptions { SingleReader = true });
         _channels[vqId] = channel;
 
-        return (_hostQueueUri!, vqId, channel.Reader);
+        return new VirtualQueueRegistration(_hostQueueName!, vqId, channel.Reader);
     }
 
     /// <summary>Completes and removes the channel for <paramref name="vqId"/>.</summary>
@@ -75,9 +75,8 @@ internal sealed class SqsVirtualQueueHost(
             if (_hostQueueUrl is not null)
                 return;
 
-            _hostQueueUri =
-                RoutingConventions.QueueUri(SqsTransport.QueueScheme, $"interbus-reply-{Guid.CreateVersion7():N}");
-            var queueName = naming.BuildSqsQueueName(_hostQueueUri);
+            var rawQueueName = $"interbus-reply-{Guid.CreateVersion7():N}";
+            var queueName = naming.BuildSqsQueueName(RoutingConventions.QueueUri(SqsTransport.QueueScheme, rawQueueName));
 
             var attributes = new Dictionary<string, string>(StringComparer.Ordinal)
             {
@@ -85,7 +84,8 @@ internal sealed class SqsVirtualQueueHost(
             };
 
             _hostQueueUrl = await topology.CreateQueueAsync(queueName, cancellationToken, attributes);
-            _hostQueueName = queueName;
+            _hostQueueName = rawQueueName;
+            _hostSqsQueueName = queueName;
 
             _pollingCts = new CancellationTokenSource();
             _pollingTask = Task.Run(() => PollLoopAsync(_pollingCts.Token), CancellationToken.None);
@@ -136,7 +136,7 @@ internal sealed class SqsVirtualQueueHost(
                 logger.LogWarning(
                     ex,
                     "InterBus AmazonSqs: error polling virtual queue host {QueueName}; retrying",
-                    _hostQueueName);
+                    _hostSqsQueueName);
 
                 delay = true;
                 continue;
@@ -209,7 +209,7 @@ internal sealed class SqsVirtualQueueHost(
 
         if (_hostQueueUrl is not null)
         {
-            topology.QueueUrls.TryRemove(_hostQueueName!, out _);
+            topology.QueueUrls.TryRemove(_hostSqsQueueName!, out _);
             try
             {
                 await sqsClient.DeleteQueueAsync(_hostQueueUrl, CancellationToken.None);
@@ -219,7 +219,7 @@ internal sealed class SqsVirtualQueueHost(
                 logger.LogWarning(
                     ex,
                     "InterBus AmazonSqs: failed to delete virtual queue host {QueueName}",
-                    _hostQueueName);
+                    _hostSqsQueueName);
             }
         }
 

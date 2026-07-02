@@ -28,7 +28,6 @@ internal sealed class InMemoryReplyEndpoint(
             Address,
             scopeFactory,
             ReadMessages(cancellationToken),
-            $"InterBus InMemory: reply channel closed without receiving a {typeof(TReply).Name}",
             cancellationToken);
 
     private async IAsyncEnumerable<(byte[] Payload, MessageHeaders Headers)> ReadMessages(

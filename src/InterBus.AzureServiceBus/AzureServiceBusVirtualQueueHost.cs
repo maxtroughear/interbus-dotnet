@@ -1,8 +1,8 @@
 using System.Collections.Concurrent;
 using System.Threading.Channels;
 using Azure.Messaging.ServiceBus;
-using Microsoft.Extensions.Logging;
 using InterBus.Requests;
+using Microsoft.Extensions.Logging;
 
 namespace InterBus.AzureServiceBus;
 
@@ -27,7 +27,7 @@ internal sealed class AzureServiceBusVirtualQueueHost(
     AzureServiceBusTopologyBuilder topology,
     AzureServiceBusTransportOptions options,
     ILogger<AzureServiceBusVirtualQueueHost> logger)
-    : IAsyncDisposable
+    : IVirtualQueueHost, IAsyncDisposable
 {
     private readonly SemaphoreSlim _initLock = new(1, 1);
 
@@ -39,7 +39,7 @@ internal sealed class AzureServiceBusVirtualQueueHost(
     private ServiceBusSessionProcessor? _processor;
 
     /// <summary>
-    /// Lazily creates the shared session reply queue (once) then allocates a new in-memory
+    /// Lazily creates the shared virtual queue host (once) then allocates a new in-memory
     /// channel keyed by a freshly generated virtual queue ID.
     /// </summary>
     /// <returns>
@@ -47,8 +47,7 @@ internal sealed class AzureServiceBusVirtualQueueHost(
     /// end of the channel that will receive exactly one reply payload.
     /// </returns>
     public async
-        Task<(string QueueName, string VirtualQueueId, ChannelReader<(byte[] Payload, MessageHeaders Headers)> Reader)>
-        RegisterAsync(CancellationToken cancellationToken = default)
+        Task<VirtualQueueRegistration> RegisterAsync(CancellationToken cancellationToken = default)
     {
         await EnsureHostQueueAsync(cancellationToken);
 
@@ -57,13 +56,13 @@ internal sealed class AzureServiceBusVirtualQueueHost(
             new UnboundedChannelOptions { SingleReader = true });
         _channels[virtualQueueId] = channel;
 
-        return (_rawQueueName!, virtualQueueId, channel.Reader);
+        return new VirtualQueueRegistration(_rawQueueName!, virtualQueueId, channel.Reader);
     }
 
-    /// <summary>Completes and removes the channel for <paramref name="sessionId"/>.</summary>
-    public void Unregister(string sessionId)
+    /// <summary>Completes and removes the channel for <paramref name="virtualQueueId"/>.</summary>
+    public void Unregister(string virtualQueueId)
     {
-        if (_channels.TryRemove(sessionId, out var channel))
+        if (_channels.TryRemove(virtualQueueId, out var channel))
             channel.Writer.TryComplete();
     }
 

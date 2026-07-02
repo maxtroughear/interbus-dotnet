@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Threading.Channels;
+using InterBus.Requests;
 using Microsoft.Extensions.Logging;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
@@ -24,7 +25,7 @@ namespace InterBus.RabbitMQ;
 internal sealed class RabbitMqVirtualQueueHost(
     RabbitMqConnectionProvider connectionProvider,
     ILogger<RabbitMqVirtualQueueHost> logger)
-    : IAsyncDisposable
+    : IVirtualQueueHost, IAsyncDisposable
 {
     /// <summary>Header key used to route a reply to the correct virtual queue.</summary>
     internal const string VirtualQueueIdHeader = "interbus-rabbitmq-vq-id";
@@ -45,8 +46,7 @@ internal sealed class RabbitMqVirtualQueueHost(
     /// The raw reply queue name, the new virtual queue ID, and a reader end of the channel that
     /// will receive exactly one reply payload.
     /// </returns>
-    public async Task<(string QueueName, string VqId, ChannelReader<(byte[] Payload, MessageHeaders Headers)> Reader)>
-        RegisterAsync(CancellationToken cancellationToken = default)
+    public async Task<VirtualQueueRegistration> RegisterAsync(CancellationToken cancellationToken = default)
     {
         await EnsureHostQueueAsync(cancellationToken);
 
@@ -55,7 +55,7 @@ internal sealed class RabbitMqVirtualQueueHost(
             new UnboundedChannelOptions { SingleReader = true });
         _channels[vqId] = channel;
 
-        return (_queueName!, vqId, channel.Reader);
+        return new VirtualQueueRegistration(_queueName!, vqId, channel.Reader);
     }
 
     /// <summary>Completes and removes the channel for <paramref name="vqId"/>.</summary>

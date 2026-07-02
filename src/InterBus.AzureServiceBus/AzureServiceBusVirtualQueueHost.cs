@@ -1,8 +1,8 @@
 using System.Collections.Concurrent;
 using System.Threading.Channels;
 using Azure.Messaging.ServiceBus;
-using Microsoft.Extensions.Logging;
 using InterBus.Requests;
+using Microsoft.Extensions.Logging;
 
 namespace InterBus.AzureServiceBus;
 
@@ -10,24 +10,24 @@ namespace InterBus.AzureServiceBus;
 /// Singleton that manages a single shared, session-enabled Azure Service Bus queue used for
 /// all request/reply exchanges in the current application instance.
 /// <para>
-/// Each call to <see cref="RegisterAsync"/> generates a unique session ID and allocates an
+/// Each call to <see cref="RegisterAsync"/> generates a unique virtual queue ID and allocates an
 /// in-memory <see cref="Channel{T}"/> for that session.  A background
 /// <see cref="ServiceBusSessionProcessor"/> polls the host queue and routes incoming reply
 /// messages to the correct channel by their <see cref="ServiceBusReceivedMessage.SessionId"/>.
 /// </para>
 /// <para>
 /// This avoids per-request queue creation/deletion latency while preserving strict reply
-/// isolation — the session ID is encoded in the <c>?session=</c> query parameter of the
+/// isolation — the virtual queue ID is encoded in the <c>?vq=</c> query parameter of the
 /// <see cref="IReplyEndpoint.Address"/> URI so that the sending transport sets
 /// <see cref="ServiceBusMessage.SessionId"/> on the outgoing reply.
 /// </para>
 /// </summary>
-internal sealed class AzureServiceBusSessionQueueHost(
+internal sealed class AzureServiceBusVirtualQueueHost(
     AzureServiceBusClientProvider clientProvider,
     AzureServiceBusTopologyBuilder topology,
     AzureServiceBusTransportOptions options,
-    ILogger<AzureServiceBusSessionQueueHost> logger)
-    : IAsyncDisposable
+    ILogger<AzureServiceBusVirtualQueueHost> logger)
+    : IVirtualQueueHost, IAsyncDisposable
 {
     private readonly SemaphoreSlim _initLock = new(1, 1);
 
@@ -39,31 +39,29 @@ internal sealed class AzureServiceBusSessionQueueHost(
     private ServiceBusSessionProcessor? _processor;
 
     /// <summary>
-    /// Lazily creates the shared session reply queue (once) then allocates a new in-memory
-    /// channel keyed by a freshly generated session ID.
+    /// Lazily creates the shared virtual queue host (once) then allocates a new in-memory
+    /// channel keyed by a freshly generated virtual queue ID.
     /// </summary>
     /// <returns>
-    /// The raw reply queue name (no prefix, for use in URIs), the new session ID, and a reader
+    /// The raw reply queue name (no prefix, for use in URIs), the new virtual queue ID, and a reader
     /// end of the channel that will receive exactly one reply payload.
     /// </returns>
-    public async
-        Task<(string QueueName, string SessionId, ChannelReader<(byte[] Payload, MessageHeaders Headers)> Reader)>
-        RegisterAsync(CancellationToken cancellationToken = default)
+    public async Task<VirtualQueueRegistration> RegisterAsync(CancellationToken cancellationToken = default)
     {
         await EnsureHostQueueAsync(cancellationToken);
 
-        var sessionId = Guid.CreateVersion7().ToString("N");
+        var virtualQueueId = Guid.CreateVersion7().ToString("N");
         var channel = Channel.CreateUnbounded<(byte[], MessageHeaders)>(
             new UnboundedChannelOptions { SingleReader = true });
-        _channels[sessionId] = channel;
+        _channels[virtualQueueId] = channel;
 
-        return (_rawQueueName!, sessionId, channel.Reader);
+        return new VirtualQueueRegistration(_rawQueueName!, virtualQueueId, channel.Reader);
     }
 
-    /// <summary>Completes and removes the channel for <paramref name="sessionId"/>.</summary>
-    public void Unregister(string sessionId)
+    /// <summary>Completes and removes the channel for <paramref name="virtualQueueId"/>.</summary>
+    public void Unregister(string virtualQueueId)
     {
-        if (_channels.TryRemove(sessionId, out var channel))
+        if (_channels.TryRemove(virtualQueueId, out var channel))
             channel.Writer.TryComplete();
     }
 
@@ -97,9 +95,7 @@ internal sealed class AzureServiceBusSessionQueueHost(
             _processor.ProcessErrorAsync += HandleErrorAsync;
             await _processor.StartProcessingAsync(CancellationToken.None);
 
-            logger.LogDebug(
-                "InterBus AzureServiceBus: created session reply queue host {QueueName}",
-                azureQueueName);
+            logger.LogDebug("InterBus AzureServiceBus: created virtual queue host {QueueName}", azureQueueName);
         }
         finally
         {
@@ -139,9 +135,8 @@ internal sealed class AzureServiceBusSessionQueueHost(
 
     private Task HandleErrorAsync(ProcessErrorEventArgs args)
     {
-        logger.LogError(
-            args.Exception,
-            "InterBus AzureServiceBus: error on session reply queue processor; source={ErrorSource}",
+        logger.LogError(args.Exception,
+            "InterBus AzureServiceBus: error on virtual queue host processor; source={ErrorSource}",
             args.ErrorSource);
         return Task.CompletedTask;
     }
@@ -184,11 +179,11 @@ internal sealed class AzureServiceBusSessionQueueHost(
         {
             try
             {
-                await clientProvider.AdminClient.DeleteQueueAsync(_azureQueueName!, CancellationToken.None);
+                await clientProvider.AdminClient.DeleteQueueAsync(_azureQueueName, CancellationToken.None);
             }
             catch
             {
-                logger.LogWarning("InterBus AzureServiceBus: failed to delete session reply queue {QueueName}",
+                logger.LogWarning("InterBus AzureServiceBus: failed to delete virtual queue host {QueueName}",
                     _azureQueueName);
             }
         }

@@ -65,8 +65,8 @@ public static class RabbitMqTransportBuilderExtensions
         builder.Services.AddHostedService<RabbitMqMessagePump>();
 
         // Request/reply support via virtual queue host.
-        builder.Services.AddSingleton<RabbitMqVirtualQueueHost>();
-        builder.Services.AddSingleton<IReplyEndpointFactory, RabbitMqReplyEndpointFactory>();
+        builder.Services.AddSingleton<IVirtualQueueHost, RabbitMqVirtualQueueHost>();
+        builder.Services.AddSingleton<IReplyEndpointFactory, VirtualQueueReplyEndpointFactory>();
 
         return builder;
     }

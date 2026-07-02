@@ -78,10 +78,10 @@ public static class SnsSqsTransportBuilderExtensions
             builder.Services.AddHostedService<SqsMessagePump>();
 
             // Virtual queue host manages one real SQS queue shared across all reply exchanges.
-            builder.Services.AddSingleton<SqsVirtualQueueHost>();
+            builder.Services.AddSingleton<IVirtualQueueHost, SqsVirtualQueueHost>();
 
             // Reply endpoint factory enables IRequestClient<,> without additional registration.
-            builder.Services.AddSingleton<IReplyEndpointFactory, VirtualQueueReplyEndpointFactory<SqsVirtualQueueHost>>();
+            builder.Services.AddSingleton<IReplyEndpointFactory, VirtualQueueReplyEndpointFactory>();
 
             return builder;
         }

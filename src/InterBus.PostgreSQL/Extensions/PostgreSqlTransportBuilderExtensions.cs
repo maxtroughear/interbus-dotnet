@@ -119,8 +119,8 @@ public static class PostgreSqlTransportBuilderExtensions
         builder.Services.AddKeyedSingleton<ITransport>(PostgreSqlTransport.QueueScheme,
             (sp, _) => sp.GetRequiredService<PostgreSqlTransport>());
 
-        builder.Services.AddSingleton<PostgreSqlVirtualQueueHost>();
-        builder.Services.AddSingleton<IReplyEndpointFactory, VirtualQueueReplyEndpointFactory<PostgreSqlVirtualQueueHost>>();
+        builder.Services.AddSingleton<IVirtualQueueHost, PostgreSqlVirtualQueueHost>();
+        builder.Services.AddSingleton<IReplyEndpointFactory, VirtualQueueReplyEndpointFactory>();
     }
 
     /// <summary>

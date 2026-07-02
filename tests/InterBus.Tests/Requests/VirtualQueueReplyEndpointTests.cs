@@ -15,7 +15,7 @@ public class VirtualQueueReplyEndpointTests
         options.SetTransportUriSchemes("topic-scheme", "queue-scheme");
 
         await using var provider = new ServiceCollection().BuildServiceProvider();
-        var factory = new VirtualQueueReplyEndpointFactory<FakeVirtualQueueHost>(
+        var factory = new VirtualQueueReplyEndpointFactory(
             host,
             options,
             provider.GetRequiredService<IServiceScopeFactory>());
@@ -65,7 +65,7 @@ public class VirtualQueueReplyEndpointTests
         public Task<VirtualQueueRegistration> RegisterAsync(CancellationToken cancellationToken = default)
             => Task.FromResult(new VirtualQueueRegistration(queueName, virtualQueueId, _channel.Reader));
 
-        public void Unregister(string virtualQueueId)
+        public void Unregister(string _)
             => UnregisteredVirtualQueueId = virtualQueueId;
     }
 }

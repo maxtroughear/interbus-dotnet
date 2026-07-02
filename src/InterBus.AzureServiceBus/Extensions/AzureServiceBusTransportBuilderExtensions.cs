@@ -62,8 +62,8 @@ public static class AzureServiceBusTransportBuilderExtensions
 
             builder.Services.AddHostedService<AzureServiceBusMessagePump>();
 
-            builder.Services.AddSingleton<AzureServiceBusVirtualQueueHost>();
-            builder.Services.AddSingleton<IReplyEndpointFactory, VirtualQueueReplyEndpointFactory<AzureServiceBusVirtualQueueHost>>();
+            builder.Services.AddSingleton<IVirtualQueueHost, AzureServiceBusVirtualQueueHost>();
+            builder.Services.AddSingleton<IReplyEndpointFactory, VirtualQueueReplyEndpointFactory>();
 
             return builder;
         }

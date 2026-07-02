@@ -1,5 +1,4 @@
 using System.Runtime.CompilerServices;
-using InterBus.Consuming;
 using InterBus.Requests;
 using Microsoft.Extensions.DependencyInjection;
 

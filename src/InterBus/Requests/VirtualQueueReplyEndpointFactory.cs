@@ -6,12 +6,11 @@ namespace InterBus.Requests;
 /// Shared <see cref="IReplyEndpointFactory"/> for transports that expose replies through a
 /// shared virtual queue host.
 /// </summary>
-public sealed class VirtualQueueReplyEndpointFactory<THost>(
-    THost host,
+public sealed class VirtualQueueReplyEndpointFactory(
+    IVirtualQueueHost host,
     InterBusOptions options,
     IServiceScopeFactory scopeFactory)
     : IReplyEndpointFactory
-    where THost : class, IVirtualQueueHost
 {
     public async Task<IReplyEndpoint> CreateAsync(CancellationToken cancellationToken = default)
     {

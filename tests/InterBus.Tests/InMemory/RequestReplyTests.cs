@@ -1,7 +1,10 @@
+using System.Diagnostics;
+using System.Diagnostics.Metrics;
 using InterBus.Extensions;
 using InterBus.Generated;
 using InterBus.InMemory;
 using InterBus.InMemory.Extensions;
+using InterBus.Telemetry;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Xunit;
@@ -265,4 +268,124 @@ public class RequestReplyTests
             await StopAsync(provider, cts);
         }
     }
+
+    [Fact]
+    public async Task RequestAsync_EmitsRequestAndReplyActivities_WithTelemetryEvents()
+    {
+        var started = new List<Activity>();
+        var stopped = new List<Activity>();
+
+        var (provider, cts) = await StartAsync(
+            _ => { },
+            bus =>
+            {
+                bus.AddInMemoryTransport();
+                bus.AddConsumer<ReplyingOrderStatusConsumer>();
+            });
+
+        using var listener = BuildTelemetryListener(started.Add, stopped.Add);
+
+        try
+        {
+            using var scope = provider.CreateScope();
+            var client = scope.ServiceProvider.GetRequiredService<IRequestClient<GetOrderStatus, OrderStatusReply>>();
+            await client.RequestAsync(new GetOrderStatus(Guid.NewGuid()), TestContext.Current.CancellationToken);
+        }
+        finally
+        {
+            await StopAsync(provider, cts);
+        }
+
+        var stoppedActivities = stopped.ToArray();
+
+        var requestActivity = Assert.Single(stoppedActivities, a =>
+            a.Kind == ActivityKind.Client &&
+            GetTag(a, "messaging.operation.type") == "request");
+
+        var requestEventNames = requestActivity.Events.Select(e => e.Name).ToArray();
+        Assert.Contains("interbus.request.started", requestEventNames);
+        Assert.Contains("interbus.request.published", requestEventNames);
+        Assert.Contains("interbus.request.reply.received", requestEventNames);
+
+        var replyActivity = Assert.Single(stoppedActivities, a =>
+            a.Kind == ActivityKind.Consumer &&
+            a.OperationName == "ReplyEndpointConsumer process");
+        Assert.Contains(replyActivity.Events, e => e.Name == "interbus.reply.received");
+    }
+
+    [Fact]
+    public async Task RequestAsync_RecordsRequestAndReplyMetrics()
+    {
+        var relevantCounters = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "interbus.requests.started",
+            "interbus.requests.completed",
+            "interbus.replies.received",
+        };
+        var relevantHistograms = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "interbus.request.duration",
+            "interbus.reply.receive.duration",
+        };
+
+        var counters = new Dictionary<string, long>(StringComparer.Ordinal);
+        var histogramMeasurements = new Dictionary<string, int>(StringComparer.Ordinal);
+
+        using var meterListener = new MeterListener();
+        meterListener.InstrumentPublished = (instrument, listener) =>
+        {
+            if (instrument.Meter.Name != InterBusTelemetry.MeterName)
+                return;
+            if (relevantCounters.Contains(instrument.Name) || relevantHistograms.Contains(instrument.Name))
+                listener.EnableMeasurementEvents(instrument);
+        };
+        meterListener.SetMeasurementEventCallback<long>((instrument, measurement, _, _) =>
+            counters[instrument.Name] = counters.GetValueOrDefault(instrument.Name) + measurement);
+        meterListener.SetMeasurementEventCallback<double>((instrument, _, _, _) =>
+            histogramMeasurements[instrument.Name] = histogramMeasurements.GetValueOrDefault(instrument.Name) + 1);
+        meterListener.Start();
+
+        var (provider, cts) = await StartAsync(
+            _ => { },
+            bus =>
+            {
+                bus.AddInMemoryTransport();
+                bus.AddConsumer<ReplyingOrderStatusConsumer>();
+            });
+
+        try
+        {
+            using var scope = provider.CreateScope();
+            var client = scope.ServiceProvider.GetRequiredService<IRequestClient<GetOrderStatus, OrderStatusReply>>();
+            await client.RequestAsync(new GetOrderStatus(Guid.NewGuid()), TestContext.Current.CancellationToken);
+        }
+        finally
+        {
+            await StopAsync(provider, cts);
+        }
+
+        Assert.True(counters.GetValueOrDefault("interbus.requests.started") >= 1);
+        Assert.True(counters.GetValueOrDefault("interbus.requests.completed") >= 1);
+        Assert.True(counters.GetValueOrDefault("interbus.replies.received") >= 1);
+        Assert.True(histogramMeasurements.GetValueOrDefault("interbus.request.duration") >= 1);
+        Assert.True(histogramMeasurements.GetValueOrDefault("interbus.reply.receive.duration") >= 1);
+    }
+
+    private static ActivityListener BuildTelemetryListener(
+        Action<Activity>? onStarted = null,
+        Action<Activity>? onStopped = null)
+    {
+        var listener = new ActivityListener
+        {
+            ShouldListenTo = src => src.Name == InterBusTelemetry.ActivitySourceName,
+            Sample = (ref _) => ActivitySamplingResult.AllDataAndRecorded,
+        };
+        if (onStarted is not null) listener.ActivityStarted = onStarted;
+        if (onStopped is not null) listener.ActivityStopped = onStopped;
+        ActivitySource.AddActivityListener(listener);
+        return listener;
+    }
+
+    private static string? GetTag(Activity activity, string key) =>
+        activity.Tags.FirstOrDefault(t => t.Key == key).Value;
 }

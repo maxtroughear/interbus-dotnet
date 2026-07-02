@@ -24,6 +24,7 @@ This page defines the core messaging concepts and links to deeper reliability pa
 |---|---|
 | Publish | `Publish<T>(message)` sends a message to a topic so all subscribers can process it |
 | Send | `Send<TConsumer, T>(message)` sends a message directly to one consumer queue |
+| Request/reply | `IRequestClient<TRequest,TReply>` sends a request and waits for one typed reply via a temporary reply endpoint |
 | Consumer middleware | Ordered processing steps around consumer execution (for cross-cutting concerns like retries, logging, and policies) |
 | Retry | A policy that re-attempts failed message handling before giving up |
 | Dead-letter | A terminal destination for messages that cannot be processed successfully |
@@ -44,3 +45,4 @@ This page defines the core messaging concepts and links to deeper reliability pa
 
 - [Outbox pattern](./patterns/outbox)
 - [Inbox pattern](./patterns/inbox)
+- [Request/reply how-to](../how-to-guides/request-reply)

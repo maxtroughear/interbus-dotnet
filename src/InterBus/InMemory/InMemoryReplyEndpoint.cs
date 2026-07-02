@@ -1,5 +1,5 @@
+using System.Runtime.CompilerServices;
 using InterBus.Consuming;
-using InterBus.Dispatching;
 using InterBus.Requests;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -22,44 +22,20 @@ internal sealed class InMemoryReplyEndpoint(
 
     public Uri Address { get; } = address;
 
-    public async Task<TReply> ReceiveAsync<TReply>(CancellationToken cancellationToken = default)
+    public Task<TReply> ReceiveAsync<TReply>(CancellationToken cancellationToken = default)
         where TReply : class
+        => ReplyEndpointDispatcher.ReceiveAsync<TReply>(
+            Address,
+            scopeFactory,
+            ReadMessages(cancellationToken),
+            $"InterBus InMemory: reply channel closed without receiving a {typeof(TReply).Name}",
+            cancellationToken);
+
+    private async IAsyncEnumerable<(byte[] Payload, MessageHeaders Headers)> ReadMessages(
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         await foreach (var envelope in queue.ReadAllAsync(cancellationToken))
-        {
-            var tcs = new TaskCompletionSource<TReply>(TaskCreationOptions.RunContinuationsAsynchronously);
-
-            var descriptor = ConsumerDescriptor.CreateForReply<TReply>(
-                Address,
-                reply =>
-                {
-                    tcs.TrySetResult(reply);
-                    return Task.CompletedTask;
-                });
-
-            try
-            {
-                await using var scope = scopeFactory.CreateAsyncScope();
-                var executor = scope.ServiceProvider.GetRequiredService<DispatchPipelineExecutor>();
-                var context = new DispatchContext(descriptor, envelope.Payload, envelope.Headers);
-                await executor.ExecuteAsync(context, cancellationToken);
-            }
-            catch (OperationCanceledException)
-            {
-                throw;
-            }
-            catch (Exception ex)
-            {
-                tcs.TrySetException(ex);
-            }
-
-            if (tcs.Task.IsCompleted)
-                return await tcs.Task;
-        }
-
-        cancellationToken.ThrowIfCancellationRequested();
-        throw new InvalidOperationException(
-            $"InterBus InMemory: reply channel closed without receiving a {typeof(TReply).Name}");
+            yield return (envelope.Payload, envelope.Headers);
     }
 
     public ValueTask DisposeAsync()

@@ -1,6 +1,4 @@
 using System.Threading.Channels;
-using InterBus.Consuming;
-using InterBus.Dispatching;
 using InterBus.Requests;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -22,45 +20,14 @@ internal sealed class SqsReplyEndpoint(
 {
     public Uri Address { get; } = address;
 
-    public async Task<TReply> ReceiveAsync<TReply>(CancellationToken cancellationToken = default)
+    public Task<TReply> ReceiveAsync<TReply>(CancellationToken cancellationToken = default)
         where TReply : class
-    {
-        await foreach (var (payload, headers) in reader.ReadAllAsync(cancellationToken))
-        {
-            var tcs = new TaskCompletionSource<TReply>(TaskCreationOptions.RunContinuationsAsynchronously);
-
-            var descriptor = ConsumerDescriptor.CreateForReply<TReply>(
-                Address,
-                reply =>
-                {
-                    tcs.TrySetResult(reply);
-                    return Task.CompletedTask;
-                });
-
-            try
-            {
-                await using var scope = scopeFactory.CreateAsyncScope();
-                var executor = scope.ServiceProvider.GetRequiredService<DispatchPipelineExecutor>();
-                var context = new DispatchContext(descriptor, payload, headers);
-                await executor.ExecuteAsync(context, cancellationToken);
-            }
-            catch (OperationCanceledException)
-            {
-                throw;
-            }
-            catch (Exception ex)
-            {
-                tcs.TrySetException(ex);
-            }
-
-            if (tcs.Task.IsCompleted)
-                return await tcs.Task;
-        }
-
-        cancellationToken.ThrowIfCancellationRequested();
-        throw new InvalidOperationException(
-            $"InterBus AmazonSqs: reply channel closed without receiving a {typeof(TReply).Name}");
-    }
+        => ReplyEndpointDispatcher.ReceiveAsync<TReply>(
+            Address,
+            scopeFactory,
+            reader.ReadAllAsync(cancellationToken),
+            $"InterBus AmazonSqs: reply channel closed without receiving a {typeof(TReply).Name}",
+            cancellationToken);
 
     public ValueTask DisposeAsync()
     {
@@ -68,4 +35,3 @@ internal sealed class SqsReplyEndpoint(
         return ValueTask.CompletedTask;
     }
 }
-

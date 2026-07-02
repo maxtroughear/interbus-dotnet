@@ -9,8 +9,8 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="AWSSDK.Extensions.NETCore.Setup" Version="4.0.4.11" />
-        <PackageReference Include="AWSSDK.Signin" Version="4.0.2.5" />
+        <PackageReference Include="AWSSDK.Extensions.NETCore.Setup" Version="4.0.100.1" />
+        <PackageReference Include="AWSSDK.Signin" Version="4.0.100.1" />
         <PackageReference Include="coverlet.collector" Version="10.0.1">
             <PrivateAssets>all</PrivateAssets>
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>

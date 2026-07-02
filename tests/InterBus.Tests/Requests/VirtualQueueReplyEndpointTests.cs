@@ -18,9 +18,9 @@ public class VirtualQueueReplyEndpointTests
         var factory = new VirtualQueueReplyEndpointFactory<FakeVirtualQueueHost>(
             host,
             options,
-            (IServiceScopeFactory)provider);
+            provider.GetRequiredService<IServiceScopeFactory>());
 
-        var endpoint = await factory.CreateAsync();
+        var endpoint = await factory.CreateAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal("queue-scheme", endpoint.Address.Scheme);
         Assert.Equal("reply-queue", RoutingConventions.GetDestinationName(endpoint.Address));
@@ -40,12 +40,13 @@ public class VirtualQueueReplyEndpointTests
         await using var provider = new ServiceCollection().BuildServiceProvider();
         var endpoint = new VirtualQueueReplyEndpoint(
             new FakeVirtualQueueHost("reply-queue", "vq-123", channel),
-            (IServiceScopeFactory)provider,
+            provider.GetRequiredService<IServiceScopeFactory>(),
             new Uri("queue://reply-queue?vq=vq-123"),
             "vq-123",
             channel.Reader);
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => endpoint.ReceiveAsync<object>());
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            endpoint.ReceiveAsync<object>(TestContext.Current.CancellationToken));
 
         Assert.Equal("InterBus: reply channel closed without receiving a Object", ex.Message);
     }

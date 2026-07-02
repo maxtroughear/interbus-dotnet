@@ -26,7 +26,9 @@ internal sealed class AzureServiceBusReplyEndpoint(
             Address,
             scopeFactory,
             reader.ReadAllAsync(cancellationToken),
-            $"InterBus AzureServiceBus: reply channel for session '{sessionId}' closed without receiving a {typeof(TReply).Name} — the channel was completed without delivering a message (possible causes: reply endpoint was disposed early, or the session queue host was shut down)",
+            $"InterBus AzureServiceBus: reply channel for session '{sessionId}' closed without receiving a {typeof(TReply).Name} — " +
+            "the channel was completed without delivering a message (possible causes: reply endpoint was disposed early, " +
+            "or the session queue host was shut down)",
             cancellationToken);
 
     public ValueTask DisposeAsync()

@@ -5,24 +5,24 @@ namespace InterBus.AzureServiceBus;
 
 /// <summary>
 /// Azure Service Bus implementation of <see cref="IReplyEndpointFactory"/>.
-/// Uses <see cref="AzureServiceBusSessionQueueHost"/> to route replies via ASB sessions so
+/// Uses <see cref="AzureServiceBusVirtualQueueHost"/> to route replies via ASB sessions so
 /// that no per-request queue is created or deleted.
 /// </summary>
 internal sealed class AzureServiceBusReplyEndpointFactory(
-    AzureServiceBusSessionQueueHost host,
+    AzureServiceBusVirtualQueueHost host,
     IServiceScopeFactory scopeFactory)
     : IReplyEndpointFactory
 {
     public async Task<IReplyEndpoint> CreateAsync(CancellationToken cancellationToken = default)
     {
-        var (queueName, sessionId, reader) = await host.RegisterAsync(cancellationToken);
+        var (queueName, vqId, reader) = await host.RegisterAsync(cancellationToken);
 
         var address =
             new UriBuilder(RoutingConventions.QueueUri(AzureServiceBusQueueTransport.QueueScheme, queueName))
             {
-                Query = $"session={Uri.EscapeDataString(sessionId)}"
+                Query = $"vq={Uri.EscapeDataString(vqId)}"
             }.Uri;
 
-        return new AzureServiceBusReplyEndpoint(host, scopeFactory, address, sessionId, reader);
+        return new AzureServiceBusReplyEndpoint(host, scopeFactory, address, vqId, reader);
     }
 }

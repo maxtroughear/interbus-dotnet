@@ -6,15 +6,15 @@ namespace InterBus.AzureServiceBus;
 
 /// <summary>
 /// Azure Service Bus implementation of <see cref="IReplyEndpoint"/>.
-/// Reads from the in-memory channel allocated by <see cref="AzureServiceBusSessionQueueHost"/>
+/// Reads from the in-memory channel allocated by <see cref="AzureServiceBusVirtualQueueHost"/>
 /// for this exchange; no per-request ASB queue is created. On disposal the session channel is
 /// unregistered so its resources are released.
 /// </summary>
 internal sealed class AzureServiceBusReplyEndpoint(
-    AzureServiceBusSessionQueueHost host,
+    AzureServiceBusVirtualQueueHost host,
     IServiceScopeFactory scopeFactory,
     Uri address,
-    string sessionId,
+    string vqId,
     ChannelReader<(byte[] Payload, MessageHeaders Headers)> reader)
     : IReplyEndpoint
 {
@@ -26,14 +26,14 @@ internal sealed class AzureServiceBusReplyEndpoint(
             Address,
             scopeFactory,
             reader.ReadAllAsync(cancellationToken),
-            $"InterBus AzureServiceBus: reply channel for session '{sessionId}' closed without receiving a {typeof(TReply).Name} — " +
+            $"InterBus AzureServiceBus: reply channel for virtual queue '{vqId}' closed without receiving a {typeof(TReply).Name} — " +
             "the channel was completed without delivering a message (possible causes: reply endpoint was disposed early, " +
-            "or the session queue host was shut down)",
+            "or the virtual queue host was shut down)",
             cancellationToken);
 
     public ValueTask DisposeAsync()
     {
-        host.Unregister(sessionId);
+        host.Unregister(vqId);
         return ValueTask.CompletedTask;
     }
 }

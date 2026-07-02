@@ -29,17 +29,17 @@ internal sealed class AzureServiceBusQueueTransport(
         var queueName = RoutingConventions.GetDestinationName(context.Destination);
         var azureQueueName = AzureServiceBusNaming.SanitizeEntityName(options.QueuePrefix + queueName);
 
-        // A ?session= query parameter encodes the target session ID (used by reply endpoints
-        // to route replies into the correct ASB session without a per-request queue).
+        // A ?vq= query parameter encodes the target virtual queue ID (mapped to ASB SessionId
+        // to route replies into the correct session without a per-request queue).
         var query = HttpUtility.ParseQueryString(context.Destination.Query);
-        var sessionId = query["session"];
+        var virtualQueueId = query["vq"];
 
         var sender = clientProvider.GetOrCreateSender(azureQueueName);
-        var message = BuildMessage(context, sessionId);
+        var message = BuildMessage(context, virtualQueueId);
         await sender.SendMessageAsync(message, cancellationToken);
     }
 
-    private static ServiceBusMessage BuildMessage(TransportSendContext context, string? sessionId = null)
+    private static ServiceBusMessage BuildMessage(TransportSendContext context, string? virtualQueueId = null)
     {
         var message = new ServiceBusMessage(context.Payload);
 
@@ -52,8 +52,8 @@ internal sealed class AzureServiceBusQueueTransport(
         // Set SessionId for session-enabled queues (FIFO ordering and request/reply sessions).
         // The MessageGroupId header is always stamped by Publisher (defaults to CorrelationId),
         // so setting it here is safe even on non-session queues — ASB ignores it.
-        if (sessionId is not null)
-            message.SessionId = sessionId;
+        if (virtualQueueId is not null)
+            message.SessionId = virtualQueueId;
         else if (context.Headers.TryGetValue(InterBusHeaders.MessageGroupId, out var groupId))
             message.SessionId = groupId;
 

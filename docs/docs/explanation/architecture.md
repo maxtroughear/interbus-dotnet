@@ -70,6 +70,7 @@ This architecture allows swapping transports or infrastructure integrations with
   - Saga repository via `UseDynamoDbRepository<TSaga, TState>(...)`
 - **Scheduling providers**
   - TickerQ via `AddTickerQScheduler()`
+  - Hangfire via `AddHangfireScheduler()`
   - Amazon EventBridge scheduler via `AddEventBridgeScheduler(...)`
 - **Compile-time registration**
   - Source generator package: `InterBus.SourceGenerator`

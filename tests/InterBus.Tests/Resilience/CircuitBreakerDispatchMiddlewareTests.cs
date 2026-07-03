@@ -15,7 +15,7 @@ public sealed class CircuitBreakerDispatchMiddlewareTests
         await using var provider = BuildProvider(descriptor, options =>
         {
             options.MinimumThroughput = 3;
-            options.FailurePercentageThreshold = 10;
+            options.FailurePercentageThreshold = 0.1;
         });
         await using var scope = provider.CreateAsyncScope();
         var middleware = scope.ServiceProvider.GetRequiredKeyedService<IDispatchMiddleware>(descriptor.ConsumerType);
@@ -57,7 +57,7 @@ public sealed class CircuitBreakerDispatchMiddlewareTests
         await using var provider = BuildProvider(descriptor, options =>
         {
             options.MinimumThroughput = 4;
-            options.FailurePercentageThreshold = 50;
+            options.FailurePercentageThreshold = 0.5;
             options.BreakDuration = TimeSpan.FromMinutes(1);
         });
         await using var scope = provider.CreateAsyncScope();

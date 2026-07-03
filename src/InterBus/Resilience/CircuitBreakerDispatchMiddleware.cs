@@ -62,8 +62,8 @@ internal sealed class CircuitBreakerState(CircuitBreakerOptions options)
             if (totalInWindow < options.MinimumThroughput)
                 return;
 
-            var failurePercentage = _failuresInWindow * 100d / totalInWindow;
-            if (failurePercentage > options.FailurePercentageThreshold)
+            var failureRate = (double)_failuresInWindow / totalInWindow;
+            if (failureRate > options.FailurePercentageThreshold)
             {
                 _openUntilUtc = nowUtc + options.BreakDuration;
                 _outcomes.Clear();

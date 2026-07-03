@@ -305,7 +305,7 @@ public class RequestReplyTests
         var requestEventNames = requestActivity.Events.Select(e => e.Name).ToArray();
         Assert.Contains("interbus.request.started", requestEventNames);
         Assert.Contains("interbus.request.published", requestEventNames);
-        Assert.Contains("interbus.request.reply.received", requestEventNames);
+        Assert.Contains("interbus.reply.received", requestEventNames);
     }
 
     [Fact]

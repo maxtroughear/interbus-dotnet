@@ -22,6 +22,18 @@ public sealed class InterBusMetrics : IDisposable
     /// <summary>Duration of the full consumer dispatch pipeline execution.</summary>
     internal Histogram<double> ConsumerDuration { get; }
 
+    /// <summary>Number of request/reply exchanges started by request clients.</summary>
+    internal Counter<long> RequestsStarted { get; }
+
+    /// <summary>Number of request/reply exchanges that completed with a reply.</summary>
+    internal Counter<long> RequestsCompleted { get; }
+
+    /// <summary>Number of request/reply exchanges that failed.</summary>
+    internal Counter<long> RequestsFailed { get; }
+
+    /// <summary>Duration of a request/reply exchange from publish to reply receive.</summary>
+    internal Histogram<double> RequestDuration { get; }
+
     public InterBusMetrics()
     {
         MessagesPublished = _meter.CreateCounter<long>(
@@ -43,6 +55,26 @@ public sealed class InterBusMetrics : IDisposable
             "interbus.consumer.duration",
             unit: "s",
             description: "Duration of the InterBus consumer dispatch pipeline execution in seconds.");
+
+        RequestsStarted = _meter.CreateCounter<long>(
+            "interbus.requests.started",
+            unit: "{request}",
+            description: "Number of request/reply exchanges started by InterBus request clients.");
+
+        RequestsCompleted = _meter.CreateCounter<long>(
+            "interbus.requests.completed",
+            unit: "{request}",
+            description: "Number of request/reply exchanges completed by InterBus request clients.");
+
+        RequestsFailed = _meter.CreateCounter<long>(
+            "interbus.requests.failed",
+            unit: "{request}",
+            description: "Number of failed request/reply exchanges in InterBus request clients.");
+
+        RequestDuration = _meter.CreateHistogram<double>(
+            "interbus.request.duration",
+            unit: "s",
+            description: "Duration of InterBus request/reply exchanges in seconds.");
     }
 
     /// <summary>
@@ -79,6 +111,46 @@ public sealed class InterBusMetrics : IDisposable
             { "messaging.system", "interbus" },
             { "messaging.consumer.name", consumerName },
             { "messaging.destination.name", queueName },
+        });
+
+    public void RecordRequestStarted(string requestType, string replyType, string destinationName) =>
+        RequestsStarted.Add(1, new TagList
+        {
+            { "messaging.system", "interbus" },
+            { "messaging.operation.type", "request" },
+            { "messaging.destination.name", destinationName },
+            { "messaging.message.type", requestType },
+            { "messaging.message.reply_type", replyType },
+        });
+
+    public void RecordRequestCompleted(string requestType, string replyType, string destinationName) =>
+        RequestsCompleted.Add(1, new TagList
+        {
+            { "messaging.system", "interbus" },
+            { "messaging.operation.type", "request" },
+            { "messaging.destination.name", destinationName },
+            { "messaging.message.type", requestType },
+            { "messaging.message.reply_type", replyType },
+        });
+
+    public void RecordRequestFailed(string requestType, string replyType, string destinationName) =>
+        RequestsFailed.Add(1, new TagList
+        {
+            { "messaging.system", "interbus" },
+            { "messaging.operation.type", "request" },
+            { "messaging.destination.name", destinationName },
+            { "messaging.message.type", requestType },
+            { "messaging.message.reply_type", replyType },
+        });
+
+    public void RecordRequestDuration(double seconds, string requestType, string replyType, string destinationName) =>
+        RequestDuration.Record(seconds, new TagList
+        {
+            { "messaging.system", "interbus" },
+            { "messaging.operation.type", "request" },
+            { "messaging.destination.name", destinationName },
+            { "messaging.message.type", requestType },
+            { "messaging.message.reply_type", replyType },
         });
 
     public void Dispose() => _meter.Dispose();

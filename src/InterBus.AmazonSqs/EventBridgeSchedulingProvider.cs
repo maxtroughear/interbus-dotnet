@@ -29,14 +29,14 @@ public sealed class EventBridgeSchedulingProvider(
     : IMessageSchedulingProvider
 {
     /// <inheritdoc/>
-    public async Task ScheduleAsync(
-        Guid scheduleId,
+    public async Task<string> ScheduleAsync(
         Uri destination,
         byte[] payload,
         MessageHeaders headers,
         DateTimeOffset scheduledAt,
         CancellationToken cancellationToken)
     {
+        var scheduleId = Guid.CreateVersion7().ToString();
         var input = rawEnvelope.SerializeForSnsPublish(payload, headers);
         var targetArn = await ResolveTargetArnAsync(destination, cancellationToken);
 
@@ -48,7 +48,7 @@ public sealed class EventBridgeSchedulingProvider(
         await schedulerClient.CreateScheduleAsync(
             new CreateScheduleRequest
             {
-                Name = scheduleId.ToString(),
+                Name = scheduleId,
                 GroupName = options.ScheduleGroupName,
                 ScheduleExpression = $"at({scheduledAt.UtcDateTime:yyyy-MM-ddTHH:mm:ss})",
                 ScheduleExpressionTimezone = "UTC",
@@ -74,14 +74,16 @@ public sealed class EventBridgeSchedulingProvider(
                 ActionAfterCompletion = ActionAfterCompletion.DELETE,
             },
             cancellationToken);
+
+        return scheduleId;
     }
 
     /// <inheritdoc/>
-    public Task CancelAsync(Guid scheduleId, CancellationToken cancellationToken) =>
+    public Task CancelAsync(string scheduleId, CancellationToken cancellationToken) =>
         schedulerClient.DeleteScheduleAsync(
             new DeleteScheduleRequest
             {
-                Name = scheduleId.ToString(),
+                Name = scheduleId,
                 GroupName = options.ScheduleGroupName,
             },
             cancellationToken);

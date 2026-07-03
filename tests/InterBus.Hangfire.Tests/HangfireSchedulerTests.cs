@@ -21,21 +21,21 @@ public sealed class HangfireSchedulerTests
         var jobs = new StubBackgroundJobClient();
         var scheduler = new HangfireMessageScheduler(jobs);
 
-        var scheduleId = Guid.CreateVersion7();
         var destination = new Uri("memoryqueue://interbus/my-queue");
         var payload = new byte[] { 1, 2, 3 };
         var scheduledAt = DateTimeOffset.UtcNow.AddMinutes(3);
         var headers = new MessageHeaders { [InterBusHeaders.MessageType] = "MyMessage" };
 
-        await scheduler.ScheduleAsync(scheduleId, destination, payload, headers, scheduledAt,
+        var jobId = await scheduler.ScheduleAsync(destination, payload, headers, scheduledAt,
             TestContext.Current.CancellationToken);
 
         var created = Assert.Single(jobs.CreatedJobs);
+        Assert.Equal(jobId, created.JobId);
         Assert.Equal(nameof(HangfireDeliverFunction.InvokeAsync), created.Job.Method.Name);
         var state = Assert.IsType<ScheduledState>(created.State);
         Assert.Equal(scheduledAt.UtcDateTime, state.EnqueueAt);
 
-        var request = Assert.IsType<ScheduledDeliveryRequest>(Assert.Single(created.Job.Args));
+        var request = Assert.IsType<ScheduledDeliveryRequest>(created.Job.Args[0]);
         Assert.Equal(destination.ToString(), request.Destination);
         Assert.Equal(payload, request.Payload);
         Assert.Equal("MyMessage", request.Headers[InterBusHeaders.MessageType]);
@@ -47,9 +47,7 @@ public sealed class HangfireSchedulerTests
         var jobs = new StubBackgroundJobClient();
         var scheduler = new HangfireMessageScheduler(jobs);
 
-        var scheduleId = Guid.CreateVersion7();
-        await scheduler.ScheduleAsync(
-            scheduleId,
+        var jobId = await scheduler.ScheduleAsync(
             new Uri("memorytopic://interbus/orders"),
             [10],
             new MessageHeaders(),
@@ -59,7 +57,7 @@ public sealed class HangfireSchedulerTests
         var created = Assert.Single(jobs.CreatedJobs);
         var deletedBeforeCancel = jobs.DeletedJobIds.Count;
 
-        await scheduler.CancelAsync(scheduleId, TestContext.Current.CancellationToken);
+        await scheduler.CancelAsync(jobId, TestContext.Current.CancellationToken);
 
         var deletedJobId = Assert.Single(jobs.DeletedJobIds.Skip(deletedBeforeCancel));
         Assert.Equal(created.JobId, deletedJobId);

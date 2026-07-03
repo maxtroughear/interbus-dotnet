@@ -120,7 +120,7 @@ public class InMemorySchedulerTests
                 DateTimeOffset.UtcNow.AddMilliseconds(400),
                 TestContext.Current.CancellationToken);
 
-            await scheduler.CancelAsync(scheduleId, TestContext.Current.CancellationToken);
+            await scheduler.CancelAsync(scheduleId!, TestContext.Current.CancellationToken);
 
             await WaitUntilAsync(() => tracker.Messages.Count > 0, timeoutMs: 1600);
             Assert.Empty(tracker.Messages);

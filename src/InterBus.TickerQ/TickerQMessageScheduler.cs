@@ -14,17 +14,21 @@ namespace InterBus.TickerQ;
 public sealed class TickerQMessageScheduler(ITimeTickerManager<TimeTickerEntity> manager) : IMessageSchedulingProvider
 {
     /// <inheritdoc/>
-    public Task ScheduleAsync(Guid scheduleId, Uri destination, byte[] payload, MessageHeaders headers,
-        DateTimeOffset scheduledAt, CancellationToken cancellationToken) =>
-        manager.AddAsync(new TimeTickerEntity
+    public async Task<string> ScheduleAsync(Uri destination, byte[] payload, MessageHeaders headers,
+        DateTimeOffset scheduledAt, CancellationToken cancellationToken)
+    {
+        var scheduleId = Guid.CreateVersion7();
+        await manager.AddAsync(new TimeTickerEntity
         {
             Id = scheduleId,
             Function = TickerQDeliverFunction.FunctionName,
             ExecutionTime = scheduledAt.UtcDateTime,
             Request = TickerHelper.CreateTickerRequest(new ScheduledDeliveryRequest(destination, payload, headers))
         }, cancellationToken);
+        return scheduleId.ToString();
+    }
 
     /// <inheritdoc/>
-    public Task CancelAsync(Guid scheduleId, CancellationToken cancellationToken) =>
-        manager.DeleteAsync(scheduleId, cancellationToken);
+    public Task CancelAsync(string scheduleId, CancellationToken cancellationToken) =>
+        manager.DeleteAsync(Guid.Parse(scheduleId), cancellationToken);
 }

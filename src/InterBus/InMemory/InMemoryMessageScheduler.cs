@@ -9,12 +9,14 @@ public class InMemoryMessageScheduler(IServiceScopeFactory scopeFactory) : Backg
 {
     private readonly SemaphoreSlim _lock = new(1);
     private readonly PriorityQueue<InMemoryScheduledMessage, DateTimeOffset> _scheduledMessages = new();
-    private readonly ConcurrentDictionary<Guid, InMemoryScheduledMessage> _scheduledMessagesById = new();
+    private readonly ConcurrentDictionary<string, InMemoryScheduledMessage> _scheduledMessagesById = new();
 
-    public async Task ScheduleAsync(Guid scheduleId, Uri destination, byte[] payload, MessageHeaders headers,
+    public async Task<string> ScheduleAsync(Uri destination, byte[] payload, MessageHeaders headers,
         DateTimeOffset scheduledAt,
         CancellationToken cancellationToken)
     {
+        var scheduleId = Guid.CreateVersion7().ToString();
+
         await _lock.WaitAsync(cancellationToken);
         try
         {
@@ -26,9 +28,11 @@ public class InMemoryMessageScheduler(IServiceScopeFactory scopeFactory) : Backg
         {
             _lock.Release();
         }
+
+        return scheduleId;
     }
 
-    public async Task CancelAsync(Guid scheduleId, CancellationToken cancellationToken)
+    public async Task CancelAsync(string scheduleId, CancellationToken cancellationToken)
     {
         await _lock.WaitAsync(cancellationToken);
         try

@@ -1,3 +1,4 @@
+using Hangfire;
 using InterBus.Sending;
 
 namespace InterBus.Hangfire;
@@ -8,11 +9,11 @@ namespace InterBus.Hangfire;
 /// </summary>
 public sealed class HangfireDeliverFunction(SendPipelineExecutor sendPipeline)
 {
-    public Task InvokeAsync(ScheduledDeliveryRequest request)
+    public Task InvokeAsync(ScheduledDeliveryRequest request, IJobCancellationToken jobCancellationToken)
     {
         var destination = new Uri(request.Destination);
         var headers = new MessageHeaders(request.Headers);
         var sendContext = new SendContext(destination, request.Payload, headers, delay: null);
-        return sendPipeline.ExecuteAsync(sendContext, cancellationToken: CancellationToken.None);
+        return sendPipeline.ExecuteAsync(sendContext, cancellationToken: jobCancellationToken.ShutdownToken);
     }
 }

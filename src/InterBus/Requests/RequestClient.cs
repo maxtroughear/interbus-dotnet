@@ -58,7 +58,7 @@ internal sealed class RequestClient<TRequest, TReply>(
 
             var reply = await endpoint.ReceiveAsync<TReply>(cancellationToken);
             activity?.SetStatus(ActivityStatusCode.Ok);
-            activity?.AddEvent(new ActivityEvent("interbus.request.reply.received"));
+            activity?.AddEvent(new ActivityEvent("interbus.reply.received"));
             metrics.RecordRequestCompleted(requestType, replyType, destinationName);
             return reply;
         }

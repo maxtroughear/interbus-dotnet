@@ -8,13 +8,30 @@ namespace InterBus;
 /// Requires an <see cref="IMessageSchedulingProvider"/> to be registered in DI
 /// (e.g. via the <c>InterBus.TickerQ</c> package).
 /// </summary>
+/// <remarks>
+/// <para>
+/// <b>Schedule identifier nullability:</b> <c>Schedule*Async</c> returns <c>null</c> when the
+/// scheduler is configured via <c>ViaPublish()</c>, because the schedule command is dispatched
+/// asynchronously and the provider-assigned ID cannot be obtained inline. In that case
+/// <see cref="CancelAsync"/> cannot be used; listen for the <c>ScheduleCreatedEvent</c> published
+/// by <c>SchedulingConsumer</c> to obtain the provider ID after the fact.
+/// </para>
+/// <para>
+/// A non-null ID is returned when scheduling <c>Directly()</c> or via <c>ViaRequest()</c>
+/// (request/reply), and can be passed directly to <see cref="CancelAsync"/> to cancel the job.
+/// </para>
+/// </remarks>
 public interface IScheduler
 {
     /// <summary>
     /// Schedule a message to be published to the topic for <typeparamref name="T"/> at the
     /// absolute UTC time <paramref name="scheduledAt"/>. Fan-out to all registered consumers.
     /// </summary>
-    /// <returns>An opaque schedule identifier that can be passed to <see cref="CancelAsync"/>.</returns>
+    /// <returns>
+    /// The provider-assigned schedule identifier, or <see langword="null"/> when using a
+    /// publish-based scheduler (<c>ViaPublish()</c>) that cannot return the ID inline.
+    /// A non-null value can be passed to <see cref="CancelAsync"/> to cancel the scheduled delivery.
+    /// </returns>
     Task<string?> SchedulePublishAsync<T>(T message, DateTimeOffset scheduledAt,
         CancellationToken cancellationToken = default)
         where T : class;
@@ -25,7 +42,11 @@ public interface IScheduler
     /// <paramref name="configure"/> delegate to the <see cref="PublishContext{T}"/> before scheduling.
     /// Use the delegate to set headers (via <see cref="PublishContext{T}.Headers"/>).
     /// </summary>
-    /// <returns>An opaque schedule identifier that can be passed to <see cref="CancelAsync"/>.</returns>
+    /// <returns>
+    /// The provider-assigned schedule identifier, or <see langword="null"/> when using a
+    /// publish-based scheduler (<c>ViaPublish()</c>) that cannot return the ID inline.
+    /// A non-null value can be passed to <see cref="CancelAsync"/> to cancel the scheduled delivery.
+    /// </returns>
     Task<string?> SchedulePublishAsync<T>(T message, DateTimeOffset scheduledAt, Action<PublishContext<T>> configure,
         CancellationToken cancellationToken = default) where T : class;
 
@@ -33,7 +54,11 @@ public interface IScheduler
     /// Schedule a message to be published to the topic for <typeparamref name="T"/> after
     /// the specified <paramref name="delay"/>.
     /// </summary>
-    /// <returns>An opaque schedule identifier that can be passed to <see cref="CancelAsync"/>.</returns>
+    /// <returns>
+    /// The provider-assigned schedule identifier, or <see langword="null"/> when using a
+    /// publish-based scheduler (<c>ViaPublish()</c>) that cannot return the ID inline.
+    /// A non-null value can be passed to <see cref="CancelAsync"/> to cancel the scheduled delivery.
+    /// </returns>
     Task<string?> SchedulePublishAsync<T>(T message, TimeSpan delay, CancellationToken cancellationToken = default)
         where T : class =>
         SchedulePublishAsync(message, DateTimeOffset.UtcNow + delay, cancellationToken);
@@ -44,7 +69,11 @@ public interface IScheduler
     /// delegate to the <see cref="PublishContext{T}"/> before scheduling.
     /// Use the delegate to set headers (via <see cref="PublishContext{T}.Headers"/>).
     /// </summary>
-    /// <returns>An opaque schedule identifier that can be passed to <see cref="CancelAsync"/>.</returns>
+    /// <returns>
+    /// The provider-assigned schedule identifier, or <see langword="null"/> when using a
+    /// publish-based scheduler (<c>ViaPublish()</c>) that cannot return the ID inline.
+    /// A non-null value can be passed to <see cref="CancelAsync"/> to cancel the scheduled delivery.
+    /// </returns>
     Task<string?> SchedulePublishAsync<T>(T message, TimeSpan delay, Action<PublishContext<T>> configure,
         CancellationToken cancellationToken = default) where T : class =>
         SchedulePublishAsync(message, DateTimeOffset.UtcNow + delay, configure, cancellationToken);
@@ -53,7 +82,11 @@ public interface IScheduler
     /// Schedule a message to be sent directly to the queue of <typeparamref name="TConsumer"/>
     /// at the absolute UTC time <paramref name="scheduledAt"/> (point-to-point).
     /// </summary>
-    /// <returns>An opaque schedule identifier that can be passed to <see cref="CancelAsync"/>.</returns>
+    /// <returns>
+    /// The provider-assigned schedule identifier, or <see langword="null"/> when using a
+    /// publish-based scheduler (<c>ViaPublish()</c>) that cannot return the ID inline.
+    /// A non-null value can be passed to <see cref="CancelAsync"/> to cancel the scheduled delivery.
+    /// </returns>
     Task<string?> ScheduleSendAsync<TConsumer, T>(T message, DateTimeOffset scheduledAt,
         CancellationToken cancellationToken = default)
         where TConsumer : IConsume<T>
@@ -65,7 +98,11 @@ public interface IScheduler
     /// <paramref name="configure"/> delegate to the <see cref="PublishContext{T}"/> before scheduling.
     /// Use the delegate to set headers (via <see cref="PublishContext{T}.Headers"/>).
     /// </summary>
-    /// <returns>An opaque schedule identifier that can be passed to <see cref="CancelAsync"/>.</returns>
+    /// <returns>
+    /// The provider-assigned schedule identifier, or <see langword="null"/> when using a
+    /// publish-based scheduler (<c>ViaPublish()</c>) that cannot return the ID inline.
+    /// A non-null value can be passed to <see cref="CancelAsync"/> to cancel the scheduled delivery.
+    /// </returns>
     Task<string?> ScheduleSendAsync<TConsumer, T>(T message, DateTimeOffset scheduledAt,
         Action<PublishContext<T>> configure,
         CancellationToken cancellationToken = default)
@@ -76,7 +113,11 @@ public interface IScheduler
     /// Schedule a message to be sent directly to the queue of <typeparamref name="TConsumer"/>
     /// after the specified <paramref name="delay"/>.
     /// </summary>
-    /// <returns>An opaque schedule identifier that can be passed to <see cref="CancelAsync"/>.</returns>
+    /// <returns>
+    /// The provider-assigned schedule identifier, or <see langword="null"/> when using a
+    /// publish-based scheduler (<c>ViaPublish()</c>) that cannot return the ID inline.
+    /// A non-null value can be passed to <see cref="CancelAsync"/> to cancel the scheduled delivery.
+    /// </returns>
     Task<string?> ScheduleSendAsync<TConsumer, T>(T message, TimeSpan delay, CancellationToken cancellationToken = default)
         where TConsumer : IConsume<T>
         where T : class =>
@@ -88,7 +129,11 @@ public interface IScheduler
     /// delegate to the <see cref="PublishContext{T}"/> before scheduling.
     /// Use the delegate to set headers (via <see cref="PublishContext{T}.Headers"/>).
     /// </summary>
-    /// <returns>An opaque schedule identifier that can be passed to <see cref="CancelAsync"/>.</returns>
+    /// <returns>
+    /// The provider-assigned schedule identifier, or <see langword="null"/> when using a
+    /// publish-based scheduler (<c>ViaPublish()</c>) that cannot return the ID inline.
+    /// A non-null value can be passed to <see cref="CancelAsync"/> to cancel the scheduled delivery.
+    /// </returns>
     Task<string?> ScheduleSendAsync<TConsumer, T>(T message, TimeSpan delay, Action<PublishContext<T>> configure,
         CancellationToken cancellationToken = default)
         where TConsumer : IConsume<T>
@@ -99,7 +144,11 @@ public interface IScheduler
     /// Schedule a message to be sent directly to the named <paramref name="queueName"/> at
     /// the absolute UTC time <paramref name="scheduledAt"/>.
     /// </summary>
-    /// <returns>An opaque schedule identifier that can be passed to <see cref="CancelAsync"/>.</returns>
+    /// <returns>
+    /// The provider-assigned schedule identifier, or <see langword="null"/> when using a
+    /// publish-based scheduler (<c>ViaPublish()</c>) that cannot return the ID inline.
+    /// A non-null value can be passed to <see cref="CancelAsync"/> to cancel the scheduled delivery.
+    /// </returns>
     Task<string?> ScheduleSendAsync<T>(string queueName, T message, DateTimeOffset scheduledAt,
         CancellationToken cancellationToken = default) where T : class;
 
@@ -109,7 +158,11 @@ public interface IScheduler
     /// <paramref name="configure"/> delegate to the <see cref="PublishContext{T}"/> before scheduling.
     /// Use the delegate to set headers (via <see cref="PublishContext{T}.Headers"/>).
     /// </summary>
-    /// <returns>An opaque schedule identifier that can be passed to <see cref="CancelAsync"/>.</returns>
+    /// <returns>
+    /// The provider-assigned schedule identifier, or <see langword="null"/> when using a
+    /// publish-based scheduler (<c>ViaPublish()</c>) that cannot return the ID inline.
+    /// A non-null value can be passed to <see cref="CancelAsync"/> to cancel the scheduled delivery.
+    /// </returns>
     Task<string?> ScheduleSendAsync<T>(string queueName, T message, DateTimeOffset scheduledAt,
         Action<PublishContext<T>> configure,
         CancellationToken cancellationToken = default) where T : class;
@@ -118,7 +171,11 @@ public interface IScheduler
     /// Schedule a message of type <typeparamref name="T"/> to be sent to a queue at the specified
     /// absolute UTC time <paramref name="scheduledAt"/>
     /// </summary>
-    /// <returns>An opaque schedule identifier that can be passed to <see cref="CancelAsync"/>.</returns>
+    /// <returns>
+    /// The provider-assigned schedule identifier, or <see langword="null"/> when using a
+    /// publish-based scheduler (<c>ViaPublish()</c>) that cannot return the ID inline.
+    /// A non-null value can be passed to <see cref="CancelAsync"/> to cancel the scheduled delivery.
+    /// </returns>
     Task<string?> ScheduleSendAsync<T>(Uri queue, T message, DateTimeOffset scheduledAt,
         Action<PublishContext<T>> configure,
         CancellationToken cancellationToken = default) where T : class;
@@ -127,7 +184,11 @@ public interface IScheduler
     /// Schedule a message to be sent directly to the named <paramref name="queueName"/> after
     /// the specified <paramref name="delay"/>.
     /// </summary>
-    /// <returns>An opaque schedule identifier that can be passed to <see cref="CancelAsync"/>.</returns>
+    /// <returns>
+    /// The provider-assigned schedule identifier, or <see langword="null"/> when using a
+    /// publish-based scheduler (<c>ViaPublish()</c>) that cannot return the ID inline.
+    /// A non-null value can be passed to <see cref="CancelAsync"/> to cancel the scheduled delivery.
+    /// </returns>
     Task<string?> ScheduleSendAsync<T>(string queueName, T message, TimeSpan delay,
         CancellationToken cancellationToken = default) where T : class =>
         ScheduleSendAsync(queueName, message, DateTimeOffset.UtcNow + delay, cancellationToken);
@@ -138,7 +199,11 @@ public interface IScheduler
     /// delegate to the <see cref="PublishContext{T}"/> before scheduling.
     /// Use the delegate to set headers (via <see cref="PublishContext{T}.Headers"/>).
     /// </summary>
-    /// <returns>An opaque schedule identifier that can be passed to <see cref="CancelAsync"/>.</returns>
+    /// <returns>
+    /// The provider-assigned schedule identifier, or <see langword="null"/> when using a
+    /// publish-based scheduler (<c>ViaPublish()</c>) that cannot return the ID inline.
+    /// A non-null value can be passed to <see cref="CancelAsync"/> to cancel the scheduled delivery.
+    /// </returns>
     Task<string?> ScheduleSendAsync<T>(string queueName, T message, TimeSpan delay, Action<PublishContext<T>> configure,
         CancellationToken cancellationToken = default) where T : class =>
         ScheduleSendAsync(queueName, message, DateTimeOffset.UtcNow + delay, configure, cancellationToken);
@@ -149,7 +214,11 @@ public interface IScheduler
     /// delegate to the <see cref="PublishContext{T}"/> before scheduling.
     /// Use the delegate to set headers (via <see cref="PublishContext{T}.Headers"/>).
     /// </summary>
-    /// <returns>An opaque schedule identifier that can be passed to <see cref="CancelAsync"/>.</returns>
+    /// <returns>
+    /// The provider-assigned schedule identifier, or <see langword="null"/> when using a
+    /// publish-based scheduler (<c>ViaPublish()</c>) that cannot return the ID inline.
+    /// A non-null value can be passed to <see cref="CancelAsync"/> to cancel the scheduled delivery.
+    /// </returns>
     Task<string?> ScheduleSendAsync<T>(Uri queue, T message, TimeSpan delay, Action<PublishContext<T>> configure,
         CancellationToken cancellationToken = default) where T : class =>
         ScheduleSendAsync(queue, message, DateTimeOffset.UtcNow + delay, configure, cancellationToken);
@@ -158,7 +227,10 @@ public interface IScheduler
     /// Cancels a previously scheduled delivery identified by <paramref name="scheduleId"/>.
     /// </summary>
     /// <param name="scheduleId">
-    /// The identifier returned by a <c>Schedule*Async</c> overload when the schedule was created.
+    /// The non-null identifier returned by a <c>Schedule*Async</c> overload when the schedule was
+    /// created. Only available when scheduling <c>Directly()</c> or via <c>ViaRequest()</c>;
+    /// publish-based schedulers (<c>ViaPublish()</c>) return <see langword="null"/> and do not
+    /// support inline cancellation.
     /// </param>
     /// <param name="cancellationToken">Cancellation token.</param>
     Task CancelAsync(string scheduleId, CancellationToken cancellationToken = default);

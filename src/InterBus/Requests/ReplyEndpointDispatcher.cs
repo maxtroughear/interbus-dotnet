@@ -37,7 +37,6 @@ public static class ReplyEndpointDispatcher
                 await using var scope = scopeFactory.CreateAsyncScope();
                 var executor = scope.ServiceProvider.GetRequiredService<DispatchPipelineExecutor>();
                 var context = new DispatchContext(descriptor, payload, headers);
-
                 await executor.ExecuteAsync(context, cancellationToken);
             }
             catch (OperationCanceledException)

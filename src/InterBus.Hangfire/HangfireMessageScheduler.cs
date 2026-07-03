@@ -7,7 +7,8 @@ namespace InterBus.Hangfire;
 /// <see cref="IMessageSchedulingProvider"/> implementation that uses Hangfire for deferred
 /// delivery of InterBus messages at their specified schedule time.
 /// <para>
-/// Register via <c>builder.AddHangfireScheduler()</c> on the <see cref="InterBusBuilder"/>.
+/// Register via <c>AddHangfireScheduler()</c> on <see cref="SchedulerBuilder"/> within
+/// <c>bus.AddScheduling(...)</c>.
 /// </para>
 /// </summary>
 public sealed class HangfireMessageScheduler(IBackgroundJobClient backgroundJobClient) : IMessageSchedulingProvider

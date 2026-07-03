@@ -30,9 +30,10 @@ public class SchedulerBuilder(InterBusBuilder bus, IServiceCollection services)
     /// <see cref="ScheduleDeliveryCommand"/> and awaiting a <see cref="ScheduleCreatedEvent"/> reply,
     /// returning the provider-generated schedule ID from <c>Schedule*Async</c>.
     /// <para>
-    /// Requires the transport to support request/reply (i.e. an <c>IReplyEndpointFactory</c> must
-    /// be registered). Use <see cref="AddSchedulingConsumer"/> in the same application or in a
-    /// dedicated consumer service to process the scheduling commands.
+    /// Requires the transport to register an <see cref="IRequestClient{TRequest,TReply}"/>
+    /// implementation (done automatically when configuring a transport that supports request/reply).
+    /// Use <see cref="AddSchedulingConsumer"/> in the same application or in a dedicated
+    /// consumer service to process the scheduling commands.
     /// </para>
     /// </summary>
     public SchedulerBuilder ViaRequest()

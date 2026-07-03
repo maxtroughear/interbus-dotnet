@@ -34,15 +34,6 @@ public sealed class InterBusMetrics : IDisposable
     /// <summary>Duration of a request/reply exchange from publish to reply receive.</summary>
     internal Histogram<double> RequestDuration { get; }
 
-    /// <summary>Number of replies consumed on temporary reply endpoints.</summary>
-    internal Counter<long> RepliesReceived { get; }
-
-    /// <summary>Number of reply dispatch attempts that failed.</summary>
-    internal Counter<long> ReplyReceiveFailures { get; }
-
-    /// <summary>Duration of reply receive dispatch on temporary reply endpoints.</summary>
-    internal Histogram<double> ReplyReceiveDuration { get; }
-
     public InterBusMetrics()
     {
         MessagesPublished = _meter.CreateCounter<long>(
@@ -84,21 +75,6 @@ public sealed class InterBusMetrics : IDisposable
             "interbus.request.duration",
             unit: "s",
             description: "Duration of InterBus request/reply exchanges in seconds.");
-
-        RepliesReceived = _meter.CreateCounter<long>(
-            "interbus.replies.received",
-            unit: "{reply}",
-            description: "Number of replies consumed on InterBus temporary reply endpoints.");
-
-        ReplyReceiveFailures = _meter.CreateCounter<long>(
-            "interbus.replies.failed",
-            unit: "{reply}",
-            description: "Number of failed reply dispatch attempts on InterBus temporary reply endpoints.");
-
-        ReplyReceiveDuration = _meter.CreateHistogram<double>(
-            "interbus.reply.receive.duration",
-            unit: "s",
-            description: "Duration of InterBus reply dispatch on temporary reply endpoints in seconds.");
     }
 
     /// <summary>
@@ -175,33 +151,6 @@ public sealed class InterBusMetrics : IDisposable
             { "messaging.destination.name", destinationName },
             { "messaging.message.type", requestType },
             { "messaging.message.reply_type", replyType },
-        });
-
-    public void RecordReplyReceived(string replyType, string destinationName) =>
-        RepliesReceived.Add(1, new TagList
-        {
-            { "messaging.system", "interbus" },
-            { "messaging.operation.type", "process" },
-            { "messaging.destination.name", destinationName },
-            { "messaging.message.type", replyType },
-        });
-
-    public void RecordReplyFailed(string replyType, string destinationName) =>
-        ReplyReceiveFailures.Add(1, new TagList
-        {
-            { "messaging.system", "interbus" },
-            { "messaging.operation.type", "process" },
-            { "messaging.destination.name", destinationName },
-            { "messaging.message.type", replyType },
-        });
-
-    public void RecordReplyReceiveDuration(double seconds, string replyType, string destinationName) =>
-        ReplyReceiveDuration.Record(seconds, new TagList
-        {
-            { "messaging.system", "interbus" },
-            { "messaging.operation.type", "process" },
-            { "messaging.destination.name", destinationName },
-            { "messaging.message.type", replyType },
         });
 
     public void Dispose() => _meter.Dispose();

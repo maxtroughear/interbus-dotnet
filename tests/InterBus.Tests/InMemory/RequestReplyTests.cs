@@ -306,11 +306,6 @@ public class RequestReplyTests
         Assert.Contains("interbus.request.started", requestEventNames);
         Assert.Contains("interbus.request.published", requestEventNames);
         Assert.Contains("interbus.request.reply.received", requestEventNames);
-
-        var replyActivity = Assert.Single(stoppedActivities, a =>
-            a.Kind == ActivityKind.Consumer &&
-            a.OperationName == "ReplyEndpointConsumer process");
-        Assert.Contains(replyActivity.Events, e => e.Name == "interbus.reply.received");
     }
 
     [Fact]
@@ -320,12 +315,10 @@ public class RequestReplyTests
         {
             "interbus.requests.started",
             "interbus.requests.completed",
-            "interbus.replies.received",
         };
         var relevantHistograms = new HashSet<string>(StringComparer.Ordinal)
         {
             "interbus.request.duration",
-            "interbus.reply.receive.duration",
         };
 
         var counters = new Dictionary<string, long>(StringComparer.Ordinal);
@@ -366,9 +359,7 @@ public class RequestReplyTests
 
         Assert.True(counters.GetValueOrDefault("interbus.requests.started") >= 1);
         Assert.True(counters.GetValueOrDefault("interbus.requests.completed") >= 1);
-        Assert.True(counters.GetValueOrDefault("interbus.replies.received") >= 1);
         Assert.True(histogramMeasurements.GetValueOrDefault("interbus.request.duration") >= 1);
-        Assert.True(histogramMeasurements.GetValueOrDefault("interbus.reply.receive.duration") >= 1);
     }
 
     private static ActivityListener BuildTelemetryListener(

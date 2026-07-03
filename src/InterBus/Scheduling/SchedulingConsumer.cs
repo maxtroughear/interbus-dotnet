@@ -2,14 +2,14 @@ namespace InterBus.Scheduling;
 
 /// <summary>
 /// Consumer that processes <see cref="ScheduleDeliveryCommand"/> messages published by
-/// <see cref="SendMessageScheduler"/>. Enlists the registered
-/// <see cref="IMessageSchedulingProvider"/> to perform the actual deferred delivery.
+/// <see cref="PublishMessageScheduler"/> or <see cref="RequestMessageScheduler"/>. Enlists the
+/// registered <see cref="IMessageSchedulingProvider"/> to perform the actual deferred delivery.
 /// <para>
 /// After a schedule is created, publishes a <see cref="ScheduleCreatedEvent"/> carrying the
 /// provider-generated schedule identifier. If the incoming command carried a
-/// <see cref="InterBusHeaders.ReplyTo"/> header (i.e. the caller used the optional request/reply
-/// flow), the event is also sent directly to the reply address so the caller can obtain the
-/// schedule identifier synchronously.
+/// <see cref="InterBusHeaders.ReplyTo"/> header (i.e. the caller used the request/reply
+/// flow via <see cref="RequestMessageScheduler"/>), the event is also sent directly to the
+/// reply address so the caller can obtain the schedule identifier synchronously.
 /// </para>
 /// <para>
 /// Register via <c>bus.AddSchedulingConsumer()</c> alongside an

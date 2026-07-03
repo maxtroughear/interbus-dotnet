@@ -19,6 +19,7 @@ public sealed class CircuitBreakerOptions
     /// <summary>
     /// Failure percentage threshold that must be exceeded to trip the breaker.
     /// For example, <c>50</c> means the breaker opens only when failures are above 50%.
+    /// Valid range is greater than 0 and up to 100.
     /// </summary>
     public double FailurePercentageThreshold { get; set; } = 50;
 
@@ -37,9 +38,9 @@ public sealed class CircuitBreakerOptions
             throw new ArgumentOutOfRangeException(nameof(MinimumThroughput),
                 "Minimum throughput must be at least 1");
 
-        if (FailurePercentageThreshold < 0 || FailurePercentageThreshold > 100)
+        if (FailurePercentageThreshold <= 0 || FailurePercentageThreshold > 100)
             throw new ArgumentOutOfRangeException(nameof(FailurePercentageThreshold),
-                "Failure percentage threshold must be between 0 and 100");
+                "Failure percentage threshold must be greater than 0 and at most 100");
 
         if (BreakDuration <= TimeSpan.Zero)
             throw new ArgumentOutOfRangeException(nameof(BreakDuration),

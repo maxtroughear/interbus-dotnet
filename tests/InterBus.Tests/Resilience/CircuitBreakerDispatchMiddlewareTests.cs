@@ -102,7 +102,7 @@ public sealed class CircuitBreakerDispatchMiddlewareTests
         Assert.Equal(7, nextCallCount);
         Assert.Equal(DispatchResultKind.Release, openContext.Result.Kind);
         Assert.IsType<InvalidOperationException>(openContext.Result.Exception);
-        Assert.Contains("Circuit breaker is open", openContext.Result.Exception!.Message);
+        Assert.Contains("temporarily open", openContext.Result.Exception!.Message);
     }
 
     [Fact]

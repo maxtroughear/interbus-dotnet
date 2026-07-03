@@ -25,8 +25,7 @@ public sealed class CircuitBreakerDispatchMiddleware(IServiceProvider servicePro
         var now = DateTimeOffset.UtcNow;
         if (state.IsOpen(now))
         {
-            context.Result = DispatchResult.Release(new InvalidOperationException(
-                $"Circuit breaker is open for consumer {context.Descriptor.ConsumerType.Name}"));
+            context.Result = DispatchResult.Release(state.CreateOpenCircuitException(context.Descriptor.ConsumerType.Name));
             return;
         }
 
@@ -72,6 +71,11 @@ internal sealed class CircuitBreakerState(CircuitBreakerOptions options)
             }
         }
     }
+
+    public InvalidOperationException CreateOpenCircuitException(string consumerName) =>
+        new(
+            $"Circuit breaker is temporarily open for consumer {consumerName}. " +
+            $"Dispatch will resume after {options.BreakDuration}.");
 
     private void PruneWindow(DateTimeOffset nowUtc)
     {

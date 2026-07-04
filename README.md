@@ -29,6 +29,7 @@ At runtime, applications publish or send messages through `IPublisher`; transpor
 - EF Core integration (`InterBus.EntityFrameworkCore`) for outbox and saga persistence
 - DynamoDB saga persistence (`InterBus.DynamoDB`)
 - TickerQ scheduler provider (`InterBus.TickerQ`)
+- Hangfire scheduler provider (`InterBus.Hangfire`)
 - Source generator support (`InterBus.SourceGenerator`) for compile-time registration and reflection-free message dispatch
 
 ### Feature areas

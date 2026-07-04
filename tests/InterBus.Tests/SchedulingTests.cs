@@ -219,14 +219,14 @@ public sealed class SchedulingTests
     {
         public List<SchedulingCall> Calls { get; } = [];
 
-        public Task ScheduleAsync(Guid scheduleId, Uri destination, byte[] payload, MessageHeaders headers,
+        public Task<string> ScheduleAsync(Uri destination, byte[] payload, MessageHeaders headers,
             DateTimeOffset scheduledAt, CancellationToken cancellationToken)
         {
             Calls.Add(new SchedulingCall(destination, headers, scheduledAt));
-            return Task.CompletedTask;
+            return Task.FromResult(Guid.CreateVersion7().ToString());
         }
 
-        public Task CancelAsync(Guid scheduleId, CancellationToken cancellationToken) =>
+        public Task CancelAsync(string scheduleId, CancellationToken cancellationToken) =>
             Task.CompletedTask;
     }
 

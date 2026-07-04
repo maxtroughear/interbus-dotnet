@@ -6,6 +6,6 @@ namespace InterBus.Scheduling;
 /// </summary>
 internal sealed class CancelDeliveryCommand
 {
-    /// <summary>The identifier of the schedule to cancel, as returned by <see cref="ScheduleDeliveryCommand.ScheduleId"/></summary>
-    public required Guid ScheduleId { get; init; }
+    /// <summary>The provider-generated schedule identifier to cancel, as returned by <see cref="IMessageSchedulingProvider.ScheduleAsync"/>.</summary>
+    public required string ScheduleId { get; init; }
 }

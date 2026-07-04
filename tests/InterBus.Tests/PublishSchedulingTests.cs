@@ -19,7 +19,7 @@ public sealed class PublishSchedulingTests
         {
             bus.Services.AddKeyedSingleton<ITransport>("topic", transport);
             bus.Services.AddKeyedSingleton<ITransport>("queue", transport);
-            bus.AddScheduling(builder => builder.ViaSend().AddSchedulingConsumer());
+            bus.AddScheduling(builder => builder.ViaPublish().AddSchedulingConsumer());
             configureBus?.Invoke(bus);
         });
 
@@ -43,7 +43,7 @@ public sealed class PublishSchedulingTests
         await scheduler.SchedulePublishAsync(msg, scheduledAt, TestContext.Current.CancellationToken);
 
         var call = Assert.Single(transport.Sends);
-        Assert.Contains("SchedulingConsumer", call.Destination.AbsolutePath);
+        Assert.Contains("ScheduleDeliveryCommand", Uri.UnescapeDataString(call.Destination.AbsolutePath));
     }
 
     [Fact]
@@ -85,7 +85,7 @@ public sealed class PublishSchedulingTests
             TestContext.Current.CancellationToken);
 
         var call = Assert.Single(transport.Sends);
-        Assert.Contains("SchedulingConsumer", call.Destination.AbsolutePath);
+        Assert.Contains("ScheduleDeliveryCommand", Uri.UnescapeDataString(call.Destination.AbsolutePath));
     }
 
     [Fact]
@@ -97,7 +97,7 @@ public sealed class PublishSchedulingTests
             DateTimeOffset.UtcNow.AddHours(1), TestContext.Current.CancellationToken);
 
         var call = Assert.Single(transport.Sends);
-        Assert.Contains("SchedulingConsumer", call.Destination.AbsolutePath);
+        Assert.Contains("ScheduleDeliveryCommand", Uri.UnescapeDataString(call.Destination.AbsolutePath));
     }
 
     #endregion

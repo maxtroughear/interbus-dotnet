@@ -15,11 +15,11 @@ internal class Scheduler(
     ConsumeContextAccessor contextAccessor)
     : IScheduler
 {
-    public Task<Guid> SchedulePublishAsync<T>(T message, DateTimeOffset scheduledAt,
+    public Task<string?> SchedulePublishAsync<T>(T message, DateTimeOffset scheduledAt,
         CancellationToken cancellationToken = default) where T : class =>
         SchedulePublishAsync(message, scheduledAt, _ => { }, cancellationToken);
 
-    public Task<Guid> SchedulePublishAsync<T>(T message, DateTimeOffset scheduledAt,
+    public Task<string?> SchedulePublishAsync<T>(T message, DateTimeOffset scheduledAt,
         Action<PublishContext<T>> configure,
         CancellationToken cancellationToken = default) where T : class
     {
@@ -29,13 +29,13 @@ internal class Scheduler(
         return messageScheduler.ScheduleInternalAsync(context, scheduledAt, cancellationToken);
     }
 
-    public Task<Guid> ScheduleSendAsync<TConsumer, T>(T message, DateTimeOffset scheduledAt,
+    public Task<string?> ScheduleSendAsync<TConsumer, T>(T message, DateTimeOffset scheduledAt,
         CancellationToken cancellationToken = default)
         where TConsumer : IConsume<T>
         where T : class =>
         ScheduleSendAsync<TConsumer, T>(message, scheduledAt, _ => { }, cancellationToken);
 
-    public Task<Guid> ScheduleSendAsync<TConsumer, T>(T message, DateTimeOffset scheduledAt,
+    public Task<string?> ScheduleSendAsync<TConsumer, T>(T message, DateTimeOffset scheduledAt,
         Action<PublishContext<T>> configure,
         CancellationToken cancellationToken = default)
         where TConsumer : IConsume<T>
@@ -47,17 +47,17 @@ internal class Scheduler(
             configure, cancellationToken);
     }
 
-    public Task<Guid> ScheduleSendAsync<T>(string queueName, T message, DateTimeOffset scheduledAt,
+    public Task<string?> ScheduleSendAsync<T>(string queueName, T message, DateTimeOffset scheduledAt,
         CancellationToken cancellationToken = default) where T : class =>
         ScheduleSendAsync(queueName, message, scheduledAt, _ => { }, cancellationToken);
 
-    public Task<Guid> ScheduleSendAsync<T>(string queueName, T message, DateTimeOffset scheduledAt,
+    public Task<string?> ScheduleSendAsync<T>(string queueName, T message, DateTimeOffset scheduledAt,
         Action<PublishContext<T>> configure,
         CancellationToken cancellationToken = default) where T : class =>
         ScheduleSendAsync(RoutingConventions.QueueUri(options.QueueUriScheme, queueName), message, scheduledAt,
             configure, cancellationToken);
 
-    public Task<Guid> ScheduleSendAsync<T>(Uri queue, T message, DateTimeOffset scheduledAt,
+    public Task<string?> ScheduleSendAsync<T>(Uri queue, T message, DateTimeOffset scheduledAt,
         Action<PublishContext<T>> configure,
         CancellationToken cancellationToken = default) where T : class
     {
@@ -66,7 +66,7 @@ internal class Scheduler(
         return messageScheduler.ScheduleInternalAsync(context, scheduledAt, cancellationToken);
     }
 
-    public Task CancelAsync(Guid scheduleId, CancellationToken cancellationToken = default) =>
+    public Task CancelAsync(string scheduleId, CancellationToken cancellationToken = default) =>
         messageScheduler.CancelInternalAsync(scheduleId, cancellationToken);
 
     /// <summary>

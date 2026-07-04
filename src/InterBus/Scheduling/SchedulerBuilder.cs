@@ -10,25 +10,41 @@ public class SchedulerBuilder(InterBusBuilder bus, IServiceCollection services)
     public IServiceCollection Services => services;
 
     /// <summary>
-    /// Register a publish-based <see cref="IScheduler"/> that schedules messages by
-    /// publishing a concrete command message to the bus. The command is consumed by a
-    /// <see cref="SchedulingConsumer"/> (registered via <see cref="AddSchedulingConsumer"/>),
-    /// which enlists the registered <see cref="IMessageSchedulingProvider"/> to perform the
-    /// actual deferred delivery.
+    /// Register a publish-based <see cref="IScheduler"/> that schedules messages by publishing a
+    /// <see cref="SchedulingConsumer"/> command to the bus (fire-and-forget). Always returns
+    /// <c>null</c> from <c>Schedule*Async</c> because the schedule ID is not available on
+    /// the publish path. Use <see cref="ViaRequest"/> when a schedule ID is required.
     /// <para>
     /// Use <see cref="AddSchedulingConsumer"/> in the same application or in a dedicated
     /// consumer service to process the scheduling commands.
     /// </para>
     /// </summary>
-    public SchedulerBuilder ViaSend()
+    public SchedulerBuilder ViaPublish()
     {
-        services.AddScoped<IMessageScheduler, SendMessageScheduler>();
+        services.AddScoped<IMessageScheduler, PublishMessageScheduler>();
         return this;
     }
 
     /// <summary>
-    /// Register the <see cref="SchedulingConsumer"/> that processes scheduling command messages sent by
-    /// <see cref="SchedulerBuilder.ViaSend"/> and enlist the registered
+    /// Register a request/reply-based <see cref="IScheduler"/> that schedules messages by sending a
+    /// <see cref="ScheduleDeliveryCommand"/> and awaiting a <see cref="ScheduleCreatedEvent"/> reply,
+    /// returning the provider-generated schedule ID from <c>Schedule*Async</c>.
+    /// <para>
+    /// Requires the transport to register an <see cref="IRequestClient{TRequest,TReply}"/>
+    /// implementation (done automatically when configuring a transport that supports request/reply).
+    /// Use <see cref="AddSchedulingConsumer"/> in the same application or in a dedicated
+    /// consumer service to process the scheduling commands.
+    /// </para>
+    /// </summary>
+    public SchedulerBuilder ViaRequest()
+    {
+        services.AddScoped<IMessageScheduler, RequestMessageScheduler>();
+        return this;
+    }
+
+    /// <summary>
+    /// Register the <see cref="SchedulingConsumer"/> that processes scheduling command messages
+    /// published by <see cref="ViaPublish"/> or <see cref="ViaRequest"/> and enlists the registered
     /// <see cref="IMessageSchedulingProvider"/> to perform the actual deferred delivery or
     /// cancellation.
     /// <para>

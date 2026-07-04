@@ -22,7 +22,7 @@ public sealed class EventBridgeSchedulerTests
     private SnsSqsTopologyBuilder _topologyBuilder;
     private string _queuePrefix;
     private string _topicPrefix;
-    private readonly List<(Guid ScheduleId, string GroupName)> _createdSchedules = [];
+    private readonly List<(string ScheduleId, string GroupName)> _createdSchedules = [];
     private readonly List<string> _createdGroups = [];
 
     private IAmazonSQS SqsClient => _serviceProvider.GetRequiredService<IAmazonSQS>();
@@ -92,7 +92,7 @@ public sealed class EventBridgeSchedulerTests
             {
                 await SchedulerClient.DeleteScheduleAsync(new DeleteScheduleRequest
                 {
-                    Name = scheduleId.ToString(),
+                    Name = scheduleId,
                     GroupName = groupName,
                 });
             }
@@ -130,15 +130,14 @@ public sealed class EventBridgeSchedulerTests
         var queue = RoutingConventions.QueueUri(SqsTransport.QueueScheme, "my-queue");
         await _topologyBuilder.EnsureQueueAsync(queue, ct);
 
-        var scheduleId = Guid.CreateVersion7();
-        _createdSchedules.Add((scheduleId, "default"));
-        await BuildProvider().ScheduleAsync(
-            scheduleId, queue,
+        var scheduleId = await BuildProvider().ScheduleAsync(
+            queue,
             [1, 2, 3], new MessageHeaders { [InterBusHeaders.MessageType] = "MyEvent" },
             DateTimeOffset.UtcNow.AddHours(1), ct);
+        _createdSchedules.Add((scheduleId, "default"));
 
         var schedule = await SchedulerClient.GetScheduleAsync(
-            new GetScheduleRequest { Name = scheduleId.ToString(), GroupName = "default" }, ct);
+            new GetScheduleRequest { Name = scheduleId, GroupName = "default" }, ct);
 
         using (Assert.EnterMultipleScope())
         {
@@ -157,14 +156,13 @@ public sealed class EventBridgeSchedulerTests
         var topic = RoutingConventions.TopicUri(SnsTransport.TopicScheme, "my-topic");
         var topicArn = await _topologyBuilder.EnsureTopicAsync(topic, ct);
 
-        var scheduleId = Guid.CreateVersion7();
-        _createdSchedules.Add((scheduleId, "default"));
-        await BuildProvider().ScheduleAsync(
-            scheduleId, topic,
+        var scheduleId = await BuildProvider().ScheduleAsync(
+            topic,
             [], new MessageHeaders(), DateTimeOffset.UtcNow.AddHours(1), ct);
+        _createdSchedules.Add((scheduleId, "default"));
 
         var schedule = await SchedulerClient.GetScheduleAsync(
-            new GetScheduleRequest { Name = scheduleId.ToString(), GroupName = "default" }, ct);
+            new GetScheduleRequest { Name = scheduleId, GroupName = "default" }, ct);
 
         Assert.That(schedule.Target.Arn, Is.EqualTo(topicArn));
     }
@@ -178,14 +176,13 @@ public sealed class EventBridgeSchedulerTests
 
         var payload = new byte[] { 10, 20, 30 };
         var headers = new MessageHeaders { [InterBusHeaders.MessageType] = "TestEvent" };
-        var scheduleId = Guid.CreateVersion7();
-        _createdSchedules.Add((scheduleId, "default"));
-        await BuildProvider().ScheduleAsync(
-            scheduleId, queue,
+        var scheduleId = await BuildProvider().ScheduleAsync(
+            queue,
             payload, headers, DateTimeOffset.UtcNow.AddMinutes(5), ct);
+        _createdSchedules.Add((scheduleId, "default"));
 
         var schedule = await SchedulerClient.GetScheduleAsync(
-            new GetScheduleRequest { Name = scheduleId.ToString(), GroupName = "default" }, ct);
+            new GetScheduleRequest { Name = scheduleId, GroupName = "default" }, ct);
 
         Assert.Multiple(() =>
         {
@@ -202,14 +199,13 @@ public sealed class EventBridgeSchedulerTests
         await _topologyBuilder.EnsureQueueAsync(queue, ct);
 
         var scheduledAt = new DateTimeOffset(2030, 6, 15, 10, 30, 0, TimeSpan.Zero);
-        var scheduleId = Guid.CreateVersion7();
-        _createdSchedules.Add((scheduleId, "default"));
-        await BuildProvider().ScheduleAsync(
-            scheduleId, queue,
+        var scheduleId = await BuildProvider().ScheduleAsync(
+            queue,
             [], new MessageHeaders(), scheduledAt, ct);
+        _createdSchedules.Add((scheduleId, "default"));
 
         var schedule = await SchedulerClient.GetScheduleAsync(
-            new GetScheduleRequest { Name = scheduleId.ToString(), GroupName = "default" }, ct);
+            new GetScheduleRequest { Name = scheduleId, GroupName = "default" }, ct);
 
         Assert.That(schedule.ScheduleExpression, Is.EqualTo("at(2030-06-15T10:30:00)"));
     }
@@ -225,14 +221,13 @@ public sealed class EventBridgeSchedulerTests
             new CreateScheduleGroupRequest { Name = groupName }, ct);
         _createdGroups.Add(groupName);
 
-        var scheduleId = Guid.CreateVersion7();
-        _createdSchedules.Add((scheduleId, groupName));
-        await BuildProvider(groupName: groupName).ScheduleAsync(
-            scheduleId, queue,
+        var scheduleId = await BuildProvider(groupName: groupName).ScheduleAsync(
+            queue,
             [], new MessageHeaders(), DateTimeOffset.UtcNow.AddHours(1), ct);
+        _createdSchedules.Add((scheduleId, groupName));
 
         var schedule = await SchedulerClient.GetScheduleAsync(
-            new GetScheduleRequest { Name = scheduleId.ToString(), GroupName = groupName }, ct);
+            new GetScheduleRequest { Name = scheduleId, GroupName = groupName }, ct);
 
         Assert.That(schedule.GroupName, Is.EqualTo(groupName));
     }
@@ -249,15 +244,14 @@ public sealed class EventBridgeSchedulerTests
         await _topologyBuilder.EnsureQueueAsync(queue, ct);
         var provider = BuildProvider();
 
-        var scheduleId = Guid.CreateVersion7();
-        await provider.ScheduleAsync(
-            scheduleId, queue,
+        var scheduleId = await provider.ScheduleAsync(
+            queue,
             [], new MessageHeaders(), DateTimeOffset.UtcNow.AddHours(1), ct);
 
         await provider.CancelAsync(scheduleId, ct);
 
         Assert.That(() => SchedulerClient.GetScheduleAsync(
-                new GetScheduleRequest { Name = scheduleId.ToString(), GroupName = "default" }, ct),
+                new GetScheduleRequest { Name = scheduleId, GroupName = "default" }, ct),
             Throws.TypeOf<ResourceNotFoundException>());
     }
 
@@ -273,15 +267,14 @@ public sealed class EventBridgeSchedulerTests
         _createdGroups.Add(groupName);
 
         var provider = BuildProvider(groupName: groupName);
-        var scheduleId = Guid.CreateVersion7();
-        await provider.ScheduleAsync(
-            scheduleId, queue,
+        var scheduleId = await provider.ScheduleAsync(
+            queue,
             [], new MessageHeaders(), DateTimeOffset.UtcNow.AddHours(1), ct);
 
         await provider.CancelAsync(scheduleId, ct);
 
         Assert.That(() => SchedulerClient.GetScheduleAsync(
-                new GetScheduleRequest { Name = scheduleId.ToString(), GroupName = groupName }, ct),
+                new GetScheduleRequest { Name = scheduleId, GroupName = groupName }, ct),
             Throws.TypeOf<ResourceNotFoundException>());
     }
 

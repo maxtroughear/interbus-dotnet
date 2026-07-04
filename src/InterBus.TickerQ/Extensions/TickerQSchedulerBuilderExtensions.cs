@@ -52,15 +52,15 @@ public static class TickerQSchedulerBuilderExtensions
                         TickerTaskPriority.Normal,
                         async (ct, sp, ctx) =>
                         {
-                            var typedCtx = (TickerFunctionContext<ScheduledDeliveryRequest>)ctx;
+                            var typedCtx = await TickerRequestProvider.ToGenericContextAsync<ScheduledDeliveryRequest>(ctx, ct);
                             var func = sp.GetRequiredService<TickerQDeliverFunction>();
                             await func.InvokeAsync(typedCtx, ct);
                         },
                         0)
                 });
 
-            // Register request type so TickerQ deserializes the request bytes and populates
-            // the typed TickerFunctionContext<T>.Request before calling the delegate.
+            // Register request type so TickerQ knows the request schema for the interbus-deliver function.
+            // The delegate uses TickerRequestProvider.ToGenericContextAsync<T> to deserialize the request.
             TickerFunctionProvider.RegisterRequestType(
                 new Dictionary<string, (string, Type)>
                 {

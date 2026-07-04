@@ -1,11 +1,14 @@
+using System.Collections.Concurrent;
 using System.Linq.Expressions;
 using Hangfire;
 using Hangfire.Common;
+using Hangfire.InMemory;
 using Hangfire.States;
 using InterBus.Extensions;
 using InterBus.Hangfire.Extensions;
 using InterBus.InMemory.Extensions;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Xunit;
 
 namespace InterBus.Hangfire.Tests;
@@ -97,6 +100,109 @@ public sealed class HangfireSchedulerTests
         var scheduler = scope.ServiceProvider.GetService<IScheduler>();
 
         Assert.NotNull(scheduler);
+    }
+
+    [Fact]
+    public async Task SchedulePublishAsync_MessageIsConsumed_UsingHangfireInMemoryStorage()
+    {
+        var storage = new InMemoryStorage();
+        var client = new BackgroundJobClient(storage);
+        var tracker = new IntegrationMessageTracker();
+
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddSingleton(tracker);
+        services.AddSingleton<IBackgroundJobClient>(client);
+        services.AddInterBus(bus =>
+        {
+            bus.AddInMemoryTransport();
+            bus.AddScheduling(builder => builder.Directly().AddHangfireScheduler());
+            bus.RegisterConsumer<IntegrationMessageConsumer>(c =>
+                c.Consumes<IntegrationMessageConsumer, IntegrationMessage>());
+        });
+
+        var provider = services.BuildServiceProvider();
+        var cts = new CancellationTokenSource();
+
+        foreach (var svc in provider.GetServices<IHostedService>())
+            await svc.StartAsync(cts.Token);
+
+        var serverOptions = new BackgroundJobServerOptions
+        {
+            Activator = new ServiceProviderJobActivator(provider),
+            SchedulePollingInterval = TimeSpan.FromMilliseconds(100),
+            WorkerCount = 1
+        };
+        var server = new BackgroundJobServer(serverOptions, storage);
+
+        try
+        {
+            using var scope = provider.CreateScope();
+            var scheduler = scope.ServiceProvider.GetRequiredService<IScheduler>();
+
+            var message = new IntegrationMessage(Guid.NewGuid(), "hello-hangfire");
+            await scheduler.SchedulePublishAsync(
+                message, DateTimeOffset.UtcNow.AddSeconds(-1), cts.Token);
+
+            await WaitUntilAsync(() => tracker.Messages.Count >= 1, timeoutMs: 5000);
+
+            var delivered = Assert.Single(tracker.Messages);
+            Assert.Equal(message.Id, delivered.Id);
+            Assert.Equal(message.Payload, delivered.Payload);
+        }
+        finally
+        {
+            server.Dispose();
+            await cts.CancelAsync();
+            foreach (var svc in provider.GetServices<IHostedService>())
+            {
+                try { await svc.StopAsync(CancellationToken.None); }
+                catch (OperationCanceledException) { }
+            }
+            await provider.DisposeAsync();
+            cts.Dispose();
+        }
+    }
+
+    private static async Task WaitUntilAsync(Func<bool> condition, int timeoutMs = 5000, int intervalMs = 25)
+    {
+        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+        while (!condition() && DateTime.UtcNow < deadline)
+            await Task.Delay(intervalMs);
+    }
+
+    internal record IntegrationMessage(Guid Id, string Payload);
+
+    internal sealed class IntegrationMessageTracker
+    {
+        private readonly ConcurrentBag<IntegrationMessage> _messages = [];
+        public IReadOnlyCollection<IntegrationMessage> Messages => _messages;
+        public void Track(IntegrationMessage msg) => _messages.Add(msg);
+    }
+
+    internal sealed class IntegrationMessageConsumer(IntegrationMessageTracker tracker)
+        : IConsumer<IntegrationMessage>
+    {
+        public Task Consume(IntegrationMessage message, IConsumeContext context,
+            CancellationToken cancellationToken = default)
+        {
+            tracker.Track(message);
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class ServiceProviderJobActivator(IServiceProvider serviceProvider) : JobActivator
+    {
+        public override JobActivatorScope BeginScope(JobActivatorContext context) =>
+            new ServiceScopeActivatorScope(serviceProvider.CreateScope());
+
+        private sealed class ServiceScopeActivatorScope(IServiceScope scope) : JobActivatorScope
+        {
+            public override object Resolve(Type type) =>
+                scope.ServiceProvider.GetRequiredService(type);
+
+            public override void DisposeScope() => scope.Dispose();
+        }
     }
 
     private sealed class StubBackgroundJobClient : IBackgroundJobClient

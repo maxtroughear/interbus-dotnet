@@ -1,8 +1,6 @@
 using InterBus.Scheduling;
 using Microsoft.Extensions.DependencyInjection;
-using TickerQ.Utilities;
-using TickerQ.Utilities.Base;
-using TickerQ.Utilities.Enums;
+using TickerQ.DependencyInjection;
 
 namespace InterBus.TickerQ.Extensions;
 
@@ -39,39 +37,7 @@ public static class TickerQSchedulerBuilderExtensions
         /// </summary>
         public SchedulerBuilder AddTickerQScheduler()
         {
-            ArgumentNullException.ThrowIfNull(builder);
-
-            // Register the interbus-deliver function with TickerQ before the host starts.
-            // TickerFunctionProvider is a static registry; calling RegisterFunctions multiple times
-            // is safe - later registrations with the same key overwrite earlier ones.
-            TickerFunctionProvider.RegisterFunctions(
-                new Dictionary<string, (string, TickerTaskPriority, TickerFunctionDelegate, int)>
-                {
-                    [TickerQDeliverFunction.FunctionName] = (
-                        TickerQDeliverFunction.FunctionName,
-                        TickerTaskPriority.Normal,
-                        async (ct, sp, ctx) =>
-                        {
-                            var typedCtx = (TickerFunctionContext<ScheduledDeliveryRequest>)ctx;
-                            var func = sp.GetRequiredService<TickerQDeliverFunction>();
-                            await func.InvokeAsync(typedCtx, ct);
-                        },
-                        0)
-                });
-
-            // Register request type so TickerQ deserializes the request bytes and populates
-            // the typed TickerFunctionContext<T>.Request before calling the delegate.
-            TickerFunctionProvider.RegisterRequestType(
-                new Dictionary<string, (string, Type)>
-                {
-                    [TickerQDeliverFunction.FunctionName] = (
-                        TickerQDeliverFunction.FunctionName, typeof(ScheduledDeliveryRequest))
-                });
-
-            // Register the function handler class for DI constructor injection.
-            builder.Services.AddTransient<TickerQDeliverFunction>();
-
-            // Register the TickerQ scheduling provider.
+            builder.Services.MapTicker<TickerQDeliverFunction, ScheduledDeliveryRequest>();
             builder.Services.AddSingleton<IMessageSchedulingProvider, TickerQMessageScheduler>();
 
             return builder;

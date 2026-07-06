@@ -1,4 +1,3 @@
-using TickerQ.Utilities;
 using TickerQ.Utilities.Entities;
 using TickerQ.Utilities.Interfaces.Managers;
 
@@ -17,15 +16,24 @@ public sealed class TickerQMessageScheduler(ITimeTickerManager<TimeTickerEntity>
     public async Task<string> ScheduleAsync(Uri destination, byte[] payload, MessageHeaders headers,
         DateTimeOffset scheduledAt, CancellationToken cancellationToken)
     {
-        var scheduleId = Guid.CreateVersion7();
-        await manager.AddAsync(new TimeTickerEntity
-        {
-            Id = scheduleId,
-            Function = TickerQDeliverFunction.FunctionName,
-            ExecutionTime = scheduledAt.UtcDateTime,
-            Request = TickerHelper.CreateTickerRequest(new ScheduledDeliveryRequest(destination, payload, headers))
-        }, cancellationToken);
-        return scheduleId.ToString();
+        var result = await manager.AddAsync<TickerQDeliverFunction, ScheduledDeliveryRequest>(
+            scheduledAt.UtcDateTime,
+            new ScheduledDeliveryRequest(destination, payload, headers),
+            cancellationToken);
+
+        if (result is null)
+            throw new InvalidOperationException("TickerQ returned a null result");
+
+        if (result.Exception is not null)
+            throw result.Exception;
+
+        if (!result.IsSucceeded)
+            throw new InvalidOperationException("Failed to schedule message delivery");
+
+        if (result.Result is null)
+            throw new InvalidOperationException("TickerQ returned a successful result but the result is null");
+
+        return result.Result.Id.ToString();
     }
 
     /// <inheritdoc/>

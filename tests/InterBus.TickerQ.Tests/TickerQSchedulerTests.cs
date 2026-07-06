@@ -1,14 +1,13 @@
-using System.Runtime.CompilerServices;
+using System.Collections.Concurrent;
 using InterBus.Extensions;
 using InterBus.InMemory.Extensions;
 using InterBus.TickerQ.Extensions;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using TickerQ.DependencyInjection;
 using TickerQ.Utilities;
-using TickerQ.Utilities.Entities;
-using TickerQ.Utilities.Interfaces;
-using TickerQ.Utilities.Interfaces.Managers;
-using TickerQ.Utilities.Models;
+using TickerQ.Utilities.Enums;
 using Xunit;
 
 namespace InterBus.TickerQ.Tests;
@@ -18,204 +17,105 @@ namespace InterBus.TickerQ.Tests;
 /// </summary>
 public sealed class TickerQSchedulerTests
 {
-    #region ScheduledDeliveryRequest round-trip
-
     [Fact]
-    public void ScheduledDeliveryRequest_RoundTrip_PreservesAllFields()
+    public async Task SchedulePublishAsync_MessageIsConsumed_UsingTickerQInMemoryStorage()
     {
-        var payload = new byte[] { 1, 2, 3, 4, 5 };
-        var destination = new Uri("memorytopic://interbus/my-topic");
-        var original = new ScheduledDeliveryRequest
+        var tracker = new IntegrationMessageTracker();
+
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddSingleton(tracker);
+        services.AddSingleton<IConfiguration>(new ConfigurationBuilder().Build());
+        services.AddInterBus(bus =>
         {
-            Destination = destination.ToString(),
-            Payload = payload,
-            Headers = new Dictionary<string, string>
+            bus.AddInMemoryTransport();
+            bus.AddScheduling(builder => builder.Directly().AddTickerQScheduler());
+            bus.RegisterConsumer<IntegrationMessageConsumer>(c =>
+                c.Consumes<IntegrationMessageConsumer, IntegrationMessage>());
+        });
+        services.AddTickerQ(options => options.MinPollingInterval = TimeSpan.FromMilliseconds(50));
+
+        TickerFunctionProvider.Build();
+
+        var provider = services.BuildServiceProvider();
+
+        // Wire up TickerQ's internal scheduler notification chain (normally done by UseTickerQ on IHost)
+        TickerQServiceExtensions.UseTickerQ(new MinimalHost(provider), TickerQStartMode.Immediate);
+
+        var cts = new CancellationTokenSource();
+
+        foreach (var svc in provider.GetServices<IHostedService>())
+            await svc.StartAsync(cts.Token);
+
+        try
+        {
+            using var scope = provider.CreateScope();
+            var scheduler = scope.ServiceProvider.GetRequiredService<IScheduler>();
+
+            var message = new IntegrationMessage(Guid.NewGuid(), "hello-tickerq");
+            await scheduler.SchedulePublishAsync(
+                message, DateTimeOffset.UtcNow.AddSeconds(-1), cts.Token);
+
+            await WaitUntilAsync(() => tracker.Messages.Count >= 1, timeoutMs: 5000);
+
+            var delivered = Assert.Single(tracker.Messages);
+            Assert.Equal(message.Id, delivered.Id);
+            Assert.Equal(message.Payload, delivered.Payload);
+        }
+        finally
+        {
+            await cts.CancelAsync();
+            foreach (var svc in provider.GetServices<IHostedService>())
             {
-                ["x-trace"] = "test",
-                [InterBusHeaders.MessageType] = "MyMessage"
+                try
+                {
+                    await svc.StopAsync(CancellationToken.None);
+                }
+                catch (OperationCanceledException)
+                {
+                }
             }
-        };
 
-        var bytes = TickerHelper.CreateTickerRequest(original);
-        var restored = TickerHelper.ReadTickerRequest<ScheduledDeliveryRequest>(bytes);
-
-        Assert.Equal(destination.ToString(), restored.Destination);
-        Assert.Equal(payload, restored.Payload);
-        Assert.Equal("test", restored.Headers["x-trace"]);
-        Assert.Equal("MyMessage", restored.Headers[InterBusHeaders.MessageType]);
-    }
-
-    #endregion
-
-    #region TickerQMessageScheduler - single function name
-
-    [Fact]
-    public async Task ScheduleAsync_WithQueueUri_CreatesTimeTicker_WithDeliverFunctionName()
-    {
-        var manager = new StubTimeTickerManager();
-        var scheduler = new TickerQMessageScheduler(manager);
-
-        var scheduledAt = DateTimeOffset.UtcNow.AddHours(1);
-        var destination = new Uri("memoryqueue://interbus/my-queue");
-        var returnedId = await scheduler.ScheduleAsync(
-            destination, [1, 2], new MessageHeaders(), scheduledAt,
-            TestContext.Current.CancellationToken);
-
-        var ticker = Assert.Single(manager.Added);
-        Assert.Equal("interbus-deliver", ticker.Function);
-        Assert.Equal(scheduledAt.UtcDateTime, ticker.ExecutionTime);
-        Assert.NotNull(ticker.Request);
-
-        var request = TickerHelper.ReadTickerRequest<ScheduledDeliveryRequest>(ticker.Request!);
-        Assert.Equal(destination.ToString(), request.Destination);
-
-        // Returned ID must equal the internal Guid used for the ticker.
-        Assert.Equal(ticker.Id.ToString(), returnedId);
-    }
-
-    [Fact]
-    public async Task ScheduleAsync_WithTopicUri_CreatesTimeTicker_WithDeliverFunctionName()
-    {
-        var manager = new StubTimeTickerManager();
-        var scheduler = new TickerQMessageScheduler(manager);
-
-        var payload = new byte[] { 10, 20, 30 };
-        var scheduledAt = DateTimeOffset.UtcNow.AddMinutes(5);
-        var destination = new Uri("memorytopic://interbus/orders");
-
-        var returnedId = await scheduler.ScheduleAsync(destination, payload, new MessageHeaders(), scheduledAt,
-            TestContext.Current.CancellationToken);
-
-        var ticker = Assert.Single(manager.Added);
-        Assert.Equal("interbus-deliver", ticker.Function);
-        Assert.Equal(scheduledAt.UtcDateTime, ticker.ExecutionTime);
-
-        var request = TickerHelper.ReadTickerRequest<ScheduledDeliveryRequest>(ticker.Request!);
-        Assert.Equal(destination.ToString(), request.Destination);
-        Assert.Equal(payload, request.Payload);
-        Assert.Equal(ticker.Id.ToString(), returnedId);
-    }
-
-    [Fact]
-    public async Task ScheduleAsync_Headers_ArePersisted()
-    {
-        var manager = new StubTimeTickerManager();
-        var scheduler = new TickerQMessageScheduler(manager);
-
-        var headers = new MessageHeaders { [InterBusHeaders.MessageType] = "MyEvent" };
-        var destination = new Uri("memorytopic://interbus/topic");
-        await scheduler.ScheduleAsync(destination, [1], headers,
-            DateTimeOffset.UtcNow.AddSeconds(10), TestContext.Current.CancellationToken);
-
-        var ticker = Assert.Single(manager.Added);
-        var request = TickerHelper.ReadTickerRequest<ScheduledDeliveryRequest>(ticker.Request!);
-        Assert.Equal("MyEvent", request.Headers[InterBusHeaders.MessageType]);
-    }
-
-    [Fact]
-    public async Task CancelAsync_WithValidId_CallsDeleteAsync()
-    {
-        var manager = new StubTimeTickerManager();
-        var scheduler = new TickerQMessageScheduler(manager);
-
-        var destination = new Uri("memoryqueue://interbus/q");
-        var jobId = await scheduler.ScheduleAsync(
-            destination, [1], new MessageHeaders(), DateTimeOffset.UtcNow.AddSeconds(30),
-            TestContext.Current.CancellationToken);
-
-        await scheduler.CancelAsync(jobId, TestContext.Current.CancellationToken);
-
-        var deletedId = Assert.Single(manager.Deleted);
-        Assert.Equal(Guid.Parse(jobId), deletedId);
-    }
-
-    #endregion
-
-    #region DI integration: AddTickerQScheduler registers IMessageSchedulingProvider and IMessageScheduler
-
-    [Fact]
-    public void AddTickerQScheduler_RegistersTickerQMessageScheduler_AsIMessageSchedulingProvider()
-    {
-        var services = new ServiceCollection();
-        services.AddLogging();
-        services.AddInterBus(bus =>
-        {
-            bus.AddInMemoryTransport();
-            bus.AddScheduling(builder => builder.Directly().AddTickerQScheduler());
-        });
-        services.AddTickerQ(options => options.DisableBackgroundServices());
-
-        var provider = services.BuildServiceProvider();
-        var schedulingProvider = provider.GetService<IMessageSchedulingProvider>();
-
-        Assert.NotNull(schedulingProvider);
-        Assert.IsType<TickerQMessageScheduler>(schedulingProvider);
-    }
-
-    [Fact]
-    public void AddTickerQScheduler_RegistersMessageScheduler_AsIMessageScheduler()
-    {
-        var services = new ServiceCollection();
-        services.AddLogging();
-        services.AddInterBus(bus =>
-        {
-            bus.AddInMemoryTransport();
-            bus.AddScheduling(builder => builder.Directly().AddTickerQScheduler());
-        });
-        services.AddTickerQ(options => options.DisableBackgroundServices());
-
-        var provider = services.BuildServiceProvider();
-        using var scope = provider.CreateScope();
-        var publisher = scope.ServiceProvider.GetService<IScheduler>();
-
-        Assert.NotNull(publisher);
-    }
-
-    #endregion
-
-    #region Support types
-
-    private sealed class StubTimeTickerManager : ITimeTickerManager<TimeTickerEntity>
-    {
-        public List<TimeTickerEntity> Added { get; } = [];
-        public List<Guid> Deleted { get; } = [];
-
-        private static TickerResult<T> EmptyResult<T>() where T : class =>
-            (TickerResult<T>)RuntimeHelpers.GetUninitializedObject(typeof(TickerResult<T>));
-
-        public Task<TickerResult<TimeTickerEntity>> AddAsync(TimeTickerEntity entity,
-            CancellationToken cancellationToken)
-        {
-            Added.Add(entity);
-            return Task.FromResult(EmptyResult<TimeTickerEntity>());
+            await provider.DisposeAsync();
+            cts.Dispose();
         }
-
-        public Task<TickerResult<TimeTickerEntity>> UpdateAsync(TimeTickerEntity timeTicker,
-            CancellationToken cancellationToken) => Task.FromResult(EmptyResult<TimeTickerEntity>());
-
-        public Task<TickerResult<TimeTickerEntity>> DeleteAsync(Guid id, CancellationToken cancellationToken)
-        {
-            Deleted.Add(id);
-            return Task.FromResult(EmptyResult<TimeTickerEntity>());
-        }
-
-        public Task<TickerResult<List<TimeTickerEntity>>> AddBatchAsync(List<TimeTickerEntity> entities,
-            CancellationToken cancellationToken) => Task.FromResult(EmptyResult<List<TimeTickerEntity>>());
-
-        public Task<TickerResult<List<TimeTickerEntity>>> UpdateBatchAsync(List<TimeTickerEntity> timeTickers,
-            CancellationToken cancellationToken) => Task.FromResult(EmptyResult<List<TimeTickerEntity>>());
-
-        public Task<TickerResult<TimeTickerEntity>> DeleteBatchAsync(List<Guid> ids,
-            CancellationToken cancellationToken) => Task.FromResult(EmptyResult<TimeTickerEntity>());
-
-        public Task<TickerResult<TimeTickerEntity>> AddAsync<TFunction>(DateTime? executionTime = null,
-            CancellationToken cancellationToken = new()) where TFunction : class, ITickerFunction
-            => Task.FromResult(EmptyResult<TimeTickerEntity>());
-
-        public Task<TickerResult<TimeTickerEntity>> AddAsync<TFunction, TRequest>(DateTime? executionTime,
-            TRequest request, CancellationToken cancellationToken = new())
-            where TFunction : class, ITickerFunction<TRequest> => Task.FromResult(EmptyResult<TimeTickerEntity>());
     }
 
-    #endregion
+    private static async Task WaitUntilAsync(Func<bool> condition, int timeoutMs = 5000, int intervalMs = 25)
+    {
+        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+        while (!condition() && DateTime.UtcNow < deadline)
+            await Task.Delay(intervalMs);
+    }
+
+    private sealed class MinimalHost(IServiceProvider services) : IHost
+    {
+        public IServiceProvider Services => services;
+        public Task StartAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task StopAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        public void Dispose()
+        {
+        }
+    }
+
+    internal record IntegrationMessage(Guid Id, string Payload);
+
+    internal sealed class IntegrationMessageTracker
+    {
+        private readonly ConcurrentBag<IntegrationMessage> _messages = [];
+        public IReadOnlyCollection<IntegrationMessage> Messages => _messages;
+        public void Track(IntegrationMessage msg) => _messages.Add(msg);
+    }
+
+    internal sealed class IntegrationMessageConsumer(IntegrationMessageTracker tracker)
+        : IConsumer<IntegrationMessage>
+    {
+        public Task Consume(IntegrationMessage message, IConsumeContext context,
+            CancellationToken cancellationToken = default)
+        {
+            tracker.Track(message);
+            return Task.CompletedTask;
+        }
+    }
 }

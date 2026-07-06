@@ -45,6 +45,8 @@ jobs:
             --no-build --configuration Release --verbosity normal
           dotnet test tests/InterBus.TickerQ.Tests/InterBus.TickerQ.Tests.csproj \
             --no-build --configuration Release --verbosity normal
+          dotnet test tests/InterBus.Hangfire.Tests/InterBus.Hangfire.Tests.csproj \
+            --no-build --configuration Release --verbosity normal
 
   test-dynamodb-localstack:
     name: Test - DynamoDB (LocalStack)

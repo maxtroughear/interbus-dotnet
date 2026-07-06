@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using InterBus.Dispatching;
 using Microsoft.Extensions.DependencyInjection;
 

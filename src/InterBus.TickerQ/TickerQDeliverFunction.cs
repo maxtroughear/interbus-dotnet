@@ -1,5 +1,6 @@
 using InterBus.Sending;
 using TickerQ.Utilities.Base;
+using TickerQ.Utilities.Interfaces;
 
 namespace InterBus.TickerQ;
 
@@ -9,13 +10,9 @@ namespace InterBus.TickerQ;
 /// when the scheduled job fires.
 /// </summary>
 internal sealed class TickerQDeliverFunction(SendPipelineExecutor sendPipeline)
+    : ITickerFunction<ScheduledDeliveryRequest>
 {
-    /// <summary>
-    /// TickerQ function name registered for all scheduled InterBus message deliveries
-    /// </summary>
-    public const string FunctionName = "interbus-deliver";
-
-    public Task InvokeAsync(TickerFunctionContext<ScheduledDeliveryRequest> context,
+    public Task ExecuteAsync(TickerFunctionContext<ScheduledDeliveryRequest> context,
         CancellationToken cancellationToken)
     {
         var request = context.Request;

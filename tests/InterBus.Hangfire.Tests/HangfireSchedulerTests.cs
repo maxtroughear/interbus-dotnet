@@ -105,14 +105,17 @@ public sealed class HangfireSchedulerTests
     [Fact]
     public async Task SchedulePublishAsync_MessageIsConsumed_UsingHangfireInMemoryStorage()
     {
-        var storage = new InMemoryStorage();
-        var client = new BackgroundJobClient(storage);
         var tracker = new IntegrationMessageTracker();
 
         var services = new ServiceCollection();
         services.AddLogging();
+        services.AddHangfire(c => c.UseInMemoryStorage());
+        services.AddHangfireServer(c =>
+        {
+            c.WorkerCount = 1;
+            c.SchedulePollingInterval = TimeSpan.FromMilliseconds(100);
+        });
         services.AddSingleton(tracker);
-        services.AddSingleton<IBackgroundJobClient>(client);
         services.AddInterBus(bus =>
         {
             bus.AddInMemoryTransport();
@@ -127,14 +130,6 @@ public sealed class HangfireSchedulerTests
         foreach (var svc in provider.GetServices<IHostedService>())
             await svc.StartAsync(cts.Token);
 
-        var serverOptions = new BackgroundJobServerOptions
-        {
-            Activator = new ServiceProviderJobActivator(provider),
-            SchedulePollingInterval = TimeSpan.FromMilliseconds(100),
-            WorkerCount = 1
-        };
-        var server = new BackgroundJobServer(serverOptions, storage);
-
         try
         {
             using var scope = provider.CreateScope();
@@ -142,7 +137,7 @@ public sealed class HangfireSchedulerTests
 
             var message = new IntegrationMessage(Guid.NewGuid(), "hello-hangfire");
             await scheduler.SchedulePublishAsync(
-                message, DateTimeOffset.UtcNow.AddSeconds(-1), cts.Token);
+                message, DateTimeOffset.UtcNow.AddSeconds(1), cts.Token);
 
             await WaitUntilAsync(() => tracker.Messages.Count >= 1, timeoutMs: 5000);
 
@@ -152,13 +147,18 @@ public sealed class HangfireSchedulerTests
         }
         finally
         {
-            server.Dispose();
             await cts.CancelAsync();
             foreach (var svc in provider.GetServices<IHostedService>())
             {
-                try { await svc.StopAsync(CancellationToken.None); }
-                catch (OperationCanceledException) { }
+                try
+                {
+                    await svc.StopAsync(CancellationToken.None);
+                }
+                catch (OperationCanceledException)
+                {
+                }
             }
+
             await provider.DisposeAsync();
             cts.Dispose();
         }
@@ -191,23 +191,9 @@ public sealed class HangfireSchedulerTests
         }
     }
 
-    private sealed class ServiceProviderJobActivator(IServiceProvider serviceProvider) : JobActivator
-    {
-        public override JobActivatorScope BeginScope(JobActivatorContext context) =>
-            new ServiceScopeActivatorScope(serviceProvider.CreateScope());
-
-        private sealed class ServiceScopeActivatorScope(IServiceScope scope) : JobActivatorScope
-        {
-            public override object Resolve(Type type) =>
-                scope.ServiceProvider.GetRequiredService(type);
-
-            public override void DisposeScope() => scope.Dispose();
-        }
-    }
-
     private sealed class StubBackgroundJobClient : IBackgroundJobClient
     {
-        private int _jobId = 0;
+        private int _jobId;
 
         public List<(string JobId, Job Job, IState State)> CreatedJobs { get; } = [];
         public List<string> DeletedJobIds { get; } = [];

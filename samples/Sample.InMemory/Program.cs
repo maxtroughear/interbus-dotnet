@@ -57,7 +57,7 @@ using (var scope = host.Services.CreateScope())
 
     await publisher.PublishAsync(message);
 
-    var greetingResponse = await request.RequestAsync(message);
+    await request.RequestAsync(message);
 }
 
 await Task.Delay(10_000);

@@ -30,8 +30,6 @@ public static class HangfireSchedulerBuilderExtensions
         /// </summary>
         public SchedulerBuilder AddHangfireScheduler()
         {
-            ArgumentNullException.ThrowIfNull(builder);
-
             builder.Services.AddTransient<HangfireDeliverFunction>();
             builder.Services.AddSingleton<IMessageSchedulingProvider, HangfireMessageScheduler>();
 

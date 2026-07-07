@@ -39,8 +39,6 @@ public static class AzureServiceBusTransportBuilderExtensions
         /// </param>
         public InterBusBuilder AddAzureServiceBusTransport(Action<AzureServiceBusTransportOptions>? configure = null)
         {
-            ArgumentNullException.ThrowIfNull(builder);
-
             var options = new AzureServiceBusTransportOptions();
             configure?.Invoke(options);
 

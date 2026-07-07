@@ -26,8 +26,6 @@ public static class DynamoDbOutboxBuilderExtensions
         /// <param name="configure">Optional delegate to configure <see cref="DynamoDbOutboxOptions"/>.</param>
         public InterBusBuilder AddDynamoDbOutbox(Action<DynamoDbOutboxOptions>? configure = null)
         {
-            ArgumentNullException.ThrowIfNull(builder);
-
             var options = new DynamoDbOutboxOptions();
             configure?.Invoke(options);
 
@@ -76,8 +74,6 @@ public static class DynamoDbOutboxBuilderExtensions
         /// <param name="configure">Optional delegate to configure <see cref="DynamoDbOutboxOptions"/>.</param>
         public InterBusBuilder UseDynamoDbOutbox(Action<DynamoDbOutboxOptions>? configure = null)
         {
-            ArgumentNullException.ThrowIfNull(builder);
-
             builder.AddDynamoDbOutbox(configure);
             builder.UsePublishMiddleware<DynamoDbOutboxPublishMiddleware>();
 

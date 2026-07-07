@@ -35,9 +35,6 @@ public static class PostgreSqlTransportBuilderExtensions
         /// </param>
         public InterBusBuilder AddPostgreSqlTransport(Action<PostgreSqlTransportOptions> configure)
         {
-            ArgumentNullException.ThrowIfNull(builder);
-            ArgumentNullException.ThrowIfNull(configure);
-
             var options = new PostgreSqlTransportOptions();
             configure(options);
 
@@ -81,9 +78,6 @@ public static class PostgreSqlTransportBuilderExtensions
         public InterBusBuilder AddPostgreSqlTransport(NpgsqlDataSource dataSource,
             Action<PostgreSqlTransportOptions>? configure = null)
         {
-            ArgumentNullException.ThrowIfNull(builder);
-            ArgumentNullException.ThrowIfNull(dataSource);
-
             var options = new PostgreSqlTransportOptions();
             configure?.Invoke(options);
 

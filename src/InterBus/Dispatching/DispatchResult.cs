@@ -51,7 +51,6 @@ public sealed class DispatchResult
 
     public static DispatchResult Release(Exception exception)
     {
-        ArgumentNullException.ThrowIfNull(exception);
         return new DispatchResult(DispatchResultKind.Release, exception: exception);
     }
 

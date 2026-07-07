@@ -26,8 +26,6 @@ public static class EfCoreSagaBuilderExtensions
         /// <typeparam name="TDbContext">The application's <see cref="DbContext"/></typeparam>
         public SagaBuilder<TSaga, TState> UseEfCoreRepository<TDbContext>() where TDbContext : DbContext
         {
-            ArgumentNullException.ThrowIfNull(builder);
-
             builder.Services.TryAddScoped<InboxLoopConsumeState>();
             builder.UseConsumeMiddleware<TransactionConsumeMiddleware<TDbContext>>();
 

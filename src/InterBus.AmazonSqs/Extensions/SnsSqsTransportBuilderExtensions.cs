@@ -57,8 +57,6 @@ public static class SnsSqsTransportBuilderExtensions
         /// </param>
         public InterBusBuilder AddAmazonSqsTransport(Action<SnsSqsTransportOptions>? configure = null)
         {
-            ArgumentNullException.ThrowIfNull(builder);
-
             var options = new SnsSqsTransportOptions();
             configure?.Invoke(options);
 

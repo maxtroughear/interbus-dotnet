@@ -35,9 +35,6 @@ public static class EfCoreOutboxBusBuilderExtensions
             Action<EfCoreBuilder<TDbContext>>? configure = null)
             where TDbContext : DbContext
         {
-            ArgumentNullException.ThrowIfNull(builder);
-
-            // Register the default lock provider; lock-provider extension methods replace it.
             builder.Services.AddSingleton<IOutboxLockProvider<TDbContext>, EfCoreOutboxLockProvider<TDbContext>>();
             builder.Services.AddSingleton<ILockProvider, InMemoryLockProvider>();
 
@@ -94,8 +91,6 @@ public static class EfCoreOutboxBusBuilderExtensions
             Action<OutboxBuilder<TDbContext>>? configure = null)
             where TDbContext : DbContext
         {
-            ArgumentNullException.ThrowIfNull(builder);
-
             var outboxBuilder = new OutboxBuilder<TDbContext>(builder.Services);
             configure?.Invoke(outboxBuilder);
 

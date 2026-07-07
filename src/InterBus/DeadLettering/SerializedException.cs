@@ -33,8 +33,6 @@ public sealed class SerializedException
     /// </summary>
     public static SerializedException FromException(Exception exception)
     {
-        ArgumentNullException.ThrowIfNull(exception);
-
         return new SerializedException
         {
             ExceptionType = exception.GetType().FullName ?? exception.GetType().Name,

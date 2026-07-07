@@ -37,8 +37,6 @@ public static class EfCoreOutboxConsumerBuilderExtensions
         public ConsumerBuilder UseEfCoreOutbox<TDbContext>()
             where TDbContext : DbContext
         {
-            ArgumentNullException.ThrowIfNull(builder);
-
             builder.Services.TryAddScoped<OutboxConsumeState>();
 
             builder.UsePublishMiddleware<OutboxPublishMiddleware<TDbContext>>();
@@ -70,8 +68,6 @@ public static class EfCoreOutboxConsumerBuilderExtensions
         public ConsumerBuilder UseEfCoreInboxOutbox<TDbContext>()
             where TDbContext : DbContext
         {
-            ArgumentNullException.ThrowIfNull(builder);
-
             builder.Services.TryAddScoped<OutboxConsumeState>();
             builder.Services.TryAddScoped<InboxLoopConsumeState>();
 

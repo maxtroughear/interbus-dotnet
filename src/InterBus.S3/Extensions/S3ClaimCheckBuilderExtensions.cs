@@ -39,7 +39,6 @@ public static class S3ClaimCheckBuilderExtensions
         /// </param>
         public InterBusBuilder AddS3ClaimCheck(string bucketName, Action<S3ClaimCheckOptions>? configure = null)
         {
-            ArgumentNullException.ThrowIfNull(builder);
             ArgumentException.ThrowIfNullOrWhiteSpace(bucketName);
 
             var options = new S3ClaimCheckOptions { BucketName = bucketName };
@@ -71,8 +70,6 @@ public static class S3ClaimCheckBuilderExtensions
         /// </summary>
         public ConsumerBuilder UseS3ClaimCheck()
         {
-            ArgumentNullException.ThrowIfNull(builder);
-
             builder.UseDispatchMiddleware<S3ClaimCheckDispatchMiddleware>();
             builder.UseSendMiddleware<S3ClaimCheckSendMiddleware>();
 

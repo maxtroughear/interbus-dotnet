@@ -35,7 +35,7 @@ internal sealed class SchedulingConsumer(IMessageSchedulingProvider provider, IP
         await publisher.PublishAsync(@event, cancellationToken);
 
         if (context.ReplyTo is { } replyTo)
-            await publisher.SendAsync<ScheduleCreatedEvent>(replyTo, @event, cancellationToken);
+            await publisher.SendAsync(replyTo, @event, cancellationToken);
     }
 
     public Task Consume(CancelDeliveryCommand message, IConsumeContext context,

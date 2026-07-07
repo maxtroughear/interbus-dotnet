@@ -28,8 +28,6 @@ public static class DynamoDbOutboxConsumerBuilderExtensions
         /// </summary>
         public ConsumerBuilder UseDynamoDbOutbox()
         {
-            ArgumentNullException.ThrowIfNull(builder);
-
             builder.Services.TryAddScoped<DynamoDbOutboxConsumeState>();
             builder.Services.TryAddScoped<DynamoDbOutboxContext>();
             builder.Services.TryAddScoped<IDynamoDbOutboxContext>(sp => sp.GetRequiredService<DynamoDbOutboxContext>());
@@ -57,8 +55,6 @@ public static class DynamoDbOutboxConsumerBuilderExtensions
         /// </summary>
         public ConsumerBuilder UseDynamoDbInboxOutbox()
         {
-            ArgumentNullException.ThrowIfNull(builder);
-
             builder.Services.TryAddScoped<DynamoDbOutboxConsumeState>();
             builder.Services.TryAddScoped<DynamoDbOutboxContext>();
             builder.Services.TryAddScoped<IDynamoDbOutboxContext>(sp => sp.GetRequiredService<DynamoDbOutboxContext>());

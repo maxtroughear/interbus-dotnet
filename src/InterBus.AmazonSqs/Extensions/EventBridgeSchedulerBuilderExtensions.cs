@@ -50,8 +50,6 @@ public static class EventBridgeSchedulerBuilderExtensions
         /// </param>
         public SchedulerBuilder AddEventBridgeScheduler(Action<EventBridgeSchedulerOptions>? configure = null)
         {
-            ArgumentNullException.ThrowIfNull(builder);
-
             var options = new EventBridgeSchedulerOptions { TargetRoleArn = string.Empty };
             configure?.Invoke(options);
 

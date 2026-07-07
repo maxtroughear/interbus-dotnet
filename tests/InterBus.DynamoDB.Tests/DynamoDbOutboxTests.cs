@@ -136,22 +136,15 @@ public sealed class FailFirstConsumeState
     public int CallCount;
 }
 
-internal sealed class FailFirstSendMiddleware : ISendMiddleware
+internal sealed class FailFirstSendMiddleware(FailFirstSendState state) : ISendMiddleware
 {
-    private readonly FailFirstSendState _state;
-
-    public FailFirstSendMiddleware(FailFirstSendState state)
-    {
-        _state = state;
-    }
-
     public Task InvokeAsync(SendContext context, Func<SendContext, CancellationToken, Task> next,
         CancellationToken cancellationToken = default)
     {
         if (!context.Destination.ToString().Contains(nameof(OutboxOrderShipped), StringComparison.OrdinalIgnoreCase))
             return next(context, cancellationToken);
 
-        if (Interlocked.Increment(ref _state.CallCount) == 1)
+        if (Interlocked.Increment(ref state.CallCount) == 1)
             throw new Exception("Simulated send failure");
 
         return next(context, cancellationToken);
@@ -570,27 +563,31 @@ public class DynamoDbOutboxTests
                     new OutboxOrderPlaced(Guid.NewGuid(), "inbox-outbox@example.com"),
                     CancellationToken.None);
             }
-            
-            await TestHelpers.WaitUntilAsync(() => shippedTracker.Messages.Count == 1, timeoutMs: 10_000);
 
-            Assert.That(executionTracker.Count, Is.EqualTo(1));
-            Assert.That(shippedTracker.Messages, Has.Count.EqualTo(1));
+            await TestHelpers.WaitUntilAsync(() => shippedTracker.Messages.Count > 0, timeoutMs: 10_000);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(executionTracker.Count, Is.EqualTo(1));
+                Assert.That(shippedTracker.Messages, Has.Count.EqualTo(1));
+            }
 
             var outboxScan = await _dynamoDb.ScanAsync(new ScanRequest
             {
                 TableName = _tableName,
                 ConsistentRead = true,
             }, CancellationToken.None);
-            Assert.That(outboxScan.Count, Is.EqualTo(0));
+
+            Assert.That(outboxScan.Count, Is.Zero);
 
             var inboxScan = await _dynamoDb.ScanAsync(new ScanRequest
             {
                 TableName = _inboxTableName,
                 ConsistentRead = true,
             }, CancellationToken.None);
+
             Assert.That(inboxScan.Count, Is.EqualTo(1));
-            Assert.That(inboxScan.Items.Single()[DynamoDbInboxTable.State].N,
-                Is.EqualTo(completedInboxState));
+            Assert.That(inboxScan.Items.Single()[DynamoDbInboxTable.State].N, Is.EqualTo(completedInboxState));
         }
         finally
         {

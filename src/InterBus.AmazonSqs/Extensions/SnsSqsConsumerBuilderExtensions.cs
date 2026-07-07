@@ -16,8 +16,6 @@ public static class SnsSqsConsumerBuilderExtensions
         /// </summary>
         public ConsumerBuilder UseSnsSerialisedMessageOnSqs()
         {
-            ArgumentNullException.ThrowIfNull(builder);
-
             builder.Services.TryAddKeyedSingleton<ISnsSqsMessageEnvelope, SnsSerialisedMessageEnvelope>(
                 builder.Descriptor.ConsumerType);
 

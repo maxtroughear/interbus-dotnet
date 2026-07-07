@@ -1,5 +1,6 @@
 using Hangfire;
 using Hangfire.States;
+using InterBus.Scheduling;
 
 namespace InterBus.Hangfire;
 

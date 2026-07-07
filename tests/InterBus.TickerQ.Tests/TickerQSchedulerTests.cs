@@ -7,7 +7,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using TickerQ.DependencyInjection;
 using TickerQ.Utilities;
-using TickerQ.Utilities.Enums;
 using Xunit;
 
 namespace InterBus.TickerQ.Tests;
@@ -40,7 +39,7 @@ public sealed class TickerQSchedulerTests
         var provider = services.BuildServiceProvider();
 
         // Wire up TickerQ's internal scheduler notification chain (normally done by UseTickerQ on IHost)
-        TickerQServiceExtensions.UseTickerQ(new MinimalHost(provider), TickerQStartMode.Immediate);
+        new MinimalHost(provider).UseTickerQ();
 
         var cts = new CancellationTokenSource();
 

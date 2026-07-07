@@ -19,8 +19,6 @@ public static class EfCoreOutboxModelBuilderExtensions
     /// </summary>
     public static ModelBuilder AddInterBusOutbox(this ModelBuilder modelBuilder)
     {
-        ArgumentNullException.ThrowIfNull(modelBuilder);
-
         modelBuilder.Entity<OutboxLock>(b =>
         {
             b.HasKey(l => l.Shard)

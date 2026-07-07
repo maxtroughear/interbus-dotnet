@@ -19,8 +19,6 @@ public static class EfCoreSagaModelBuilderExtensions
     /// </summary>
     public static ModelBuilder AddInterBusSagas(this ModelBuilder modelBuilder)
     {
-        ArgumentNullException.ThrowIfNull(modelBuilder);
-
         modelBuilder.Entity<SagaStateEntry>(b =>
         {
             b.HasKey(e => new { e.CorrelationId, e.SagaType });

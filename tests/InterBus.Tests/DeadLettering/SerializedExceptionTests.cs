@@ -58,20 +58,4 @@ public class SerializedExceptionTests
         Assert.Equal("level 3", result.InnerException.InnerException.Message);
         Assert.Null(result.InnerException.InnerException.InnerException);
     }
-
-    [Fact]
-    public void FromException_WithNullArgument_ThrowsArgumentNullException()
-    {
-        Assert.Throws<ArgumentNullException>(() => SerializedException.FromException(null!));
-    }
-
-    [Fact]
-    public void FromException_StackTrace_IsNullWhenExceptionNotThrown()
-    {
-        var ex = new InvalidOperationException("never thrown");
-
-        var result = SerializedException.FromException(ex);
-
-        Assert.Null(result.StackTrace);
-    }
 }

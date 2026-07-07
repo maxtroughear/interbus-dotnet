@@ -129,16 +129,6 @@ public class SagaSqlServerIntegrationTests(string imageTag)
         return await repo.GetAsync(correlationId);
     }
 
-    private static async Task WaitUntilAsync(
-        Func<Task<bool>> condition,
-        int timeoutMs = 10_000,
-        int intervalMs = 50)
-    {
-        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
-        while (!await condition() && DateTime.UtcNow < deadline)
-            await Task.Delay(intervalMs);
-    }
-
     [Test]
     public async Task Saga_SingleMessage_StateIsPersisted()
     {

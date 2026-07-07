@@ -109,7 +109,7 @@ public class PublishSubscribeMultipleConsumersTests
         var msg = new OrderPlaced(Guid.NewGuid(), "fan@example.com", 150.00m);
         await publisher.PublishAsync(msg, TestContext.CurrentContext.CancellationToken);
 
-        await TestHelpers.WaitUntilAsync(() => _orderTracker.Messages.Count >= 1 && _auditTracker.Messages.Count >= 1);
+        await WaitUntilAsync(() => _orderTracker.Messages.Count >= 1 && _auditTracker.Messages.Count >= 1);
 
         using (Assert.EnterMultipleScope())
         {

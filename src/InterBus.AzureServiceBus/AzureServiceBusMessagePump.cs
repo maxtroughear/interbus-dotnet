@@ -112,7 +112,7 @@ internal sealed class AzureServiceBusMessagePump(
 
                 var sessionProcessor = clientProvider.CreateQueueSessionProcessor(
                     consumerQueueName, sessionProcessorOptions);
-                
+
                 sessionProcessor.ProcessMessageAsync +=
                     args => HandleSessionMessageAsync(descriptor, args);
                 sessionProcessor.ProcessErrorAsync +=

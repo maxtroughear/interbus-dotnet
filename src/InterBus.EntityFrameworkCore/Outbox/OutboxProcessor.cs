@@ -75,7 +75,7 @@ internal sealed partial class OutboxProcessor<TDbContext>(
             }
         }
     }
-    
+
     private async Task<int> WorkerLoopAsync(int preferredShard, int shardCount, CancellationToken stoppingToken)
     {
         (bool HadMessages, int? ClaimedShard) result;
@@ -134,7 +134,8 @@ internal sealed partial class OutboxProcessor<TDbContext>(
             // does not require them, but DB-specific providers (PostgreSQL, SQL Server) rely on
             // their existence for multi-instance FIFO locking. Missing rows may allow duplicate
             // processing across concurrent instances.
-            logger.LogWarning(ex, "InterBus outbox: failed to initialize shard lock rows; concurrent instances may process the same shard simultaneously");
+            logger.LogWarning(ex,
+                "InterBus outbox: failed to initialize shard lock rows; concurrent instances may process the same shard simultaneously");
         }
     }
 
@@ -173,7 +174,7 @@ internal sealed partial class OutboxProcessor<TDbContext>(
                 await tx.RollbackAsync(cancellationToken);
                 return (true, shard);
             }
-            
+
             using var _ = logger.BeginScope(new Dictionary<string, object>
             {
                 ["GroupId"] = outboxGroup.Id,

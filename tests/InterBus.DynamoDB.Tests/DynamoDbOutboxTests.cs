@@ -315,7 +315,7 @@ public class DynamoDbOutboxTests
 
             await StartHostedServicesAsync(provider, cts.Token);
 
-            await TestHelpers.WaitUntilAsync(() => tracker.Messages.Count == 1);
+            await WaitUntilAsync(() => tracker.Messages.Count == 1);
 
             Assert.That(tracker.Messages, Has.Count.EqualTo(1));
             Assert.That(tracker.Messages.Single().CustomerEmail, Is.EqualTo("deliver@example.com"));
@@ -372,7 +372,7 @@ public class DynamoDbOutboxTests
 
             await StartHostedServicesAsync(provider, cts.Token);
 
-            await TestHelpers.WaitUntilAsync(() => tracker.Messages.Count == 2);
+            await WaitUntilAsync(() => tracker.Messages.Count == 2);
 
             Assert.That(tracker.Messages, Has.Count.EqualTo(2));
         }
@@ -417,7 +417,7 @@ public class DynamoDbOutboxTests
                     CancellationToken.None);
             }
 
-            await TestHelpers.WaitUntilAsync(() => shippedTracker.Messages.Count == 1);
+            await WaitUntilAsync(() => shippedTracker.Messages.Count == 1);
 
             Assert.That(shippedTracker.Messages, Has.Count.EqualTo(1));
         }
@@ -564,7 +564,7 @@ public class DynamoDbOutboxTests
                     CancellationToken.None);
             }
 
-            await TestHelpers.WaitUntilAsync(() => shippedTracker.Messages.Count > 0, timeoutMs: 10_000);
+            await WaitUntilAsync(() => shippedTracker.Messages.Count > 0, timeoutMs: 10_000);
 
             using (Assert.EnterMultipleScope())
             {
@@ -632,7 +632,7 @@ public class DynamoDbOutboxTests
                     CancellationToken.None);
             }
 
-            await TestHelpers.WaitUntilAsync(() => executionTracker.Count == 2);
+            await WaitUntilAsync(() => executionTracker.Count == 2);
 
             Assert.That(executionTracker.Count, Is.EqualTo(2));
 
@@ -696,7 +696,7 @@ public class DynamoDbOutboxTests
                     CancellationToken.None);
             }
 
-            await TestHelpers.WaitUntilAsync(() => executionTracker.Count == 2, timeoutMs: 10000);
+            await WaitUntilAsync(() => executionTracker.Count == 2, timeoutMs: 10000);
             await WaitForInboxStateAsync(consumerName, messageId, completedInboxState, timeoutMs: 10000);
 
             Assert.That(executionTracker.Count, Is.EqualTo(2));

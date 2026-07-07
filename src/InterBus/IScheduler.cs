@@ -118,7 +118,8 @@ public interface IScheduler
     /// publish-based scheduler (<c>ViaPublish()</c>) that cannot return the ID inline.
     /// A non-null value can be passed to <see cref="CancelAsync"/> to cancel the scheduled delivery.
     /// </returns>
-    Task<string?> ScheduleSendAsync<TConsumer, T>(T message, TimeSpan delay, CancellationToken cancellationToken = default)
+    Task<string?> ScheduleSendAsync<TConsumer, T>(T message, TimeSpan delay,
+        CancellationToken cancellationToken = default)
         where TConsumer : IConsume<T>
         where T : class =>
         ScheduleSendAsync<TConsumer, T>(message, DateTimeOffset.UtcNow + delay, cancellationToken);

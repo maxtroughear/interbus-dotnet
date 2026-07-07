@@ -55,7 +55,7 @@ public class TransactionalPumpTests(string imageTag)
         var msg = new OrderPlaced(Guid.NewGuid(), "tx@test.com", 10m);
         await publisher.PublishAsync(msg, TestContext.CurrentContext.CancellationToken);
 
-        await TestHelpers.WaitUntilAsync(() => orderTracker.Messages.Count == 1 && auditTracker.Messages.Count == 1);
+        await WaitUntilAsync(() => orderTracker.Messages.Count == 1 && auditTracker.Messages.Count == 1);
 
         using (Assert.EnterMultipleScope())
         {
@@ -83,7 +83,7 @@ public class TransactionalPumpTests(string imageTag)
         await publisher.PublishAsync(msg, TestContext.CurrentContext.CancellationToken);
 
         // Wait for the consumer to be called once.
-        await TestHelpers.WaitUntilAsync(() => receiveCounter.CallCount >= 1, timeoutMs: 15_000);
+        await WaitUntilAsync(() => receiveCounter.CallCount >= 1, timeoutMs: 15_000);
 
         // Allow a short window for the pump to commit the dead-letter transaction.
         await Task.Delay(500, TestContext.CurrentContext.CancellationToken);
@@ -116,7 +116,7 @@ public class TransactionalPumpTests(string imageTag)
         await publisher.PublishAsync(new OrderPlaced(Guid.NewGuid(), "tx-access@test.com", 5m),
             TestContext.CurrentContext.CancellationToken);
 
-        await TestHelpers.WaitUntilAsync(() => transactionTracker.ReceivedTransaction is not null);
+        await WaitUntilAsync(() => transactionTracker.ReceivedTransaction is not null);
 
         Assert.That(transactionTracker.ReceivedTransaction, Is.Not.Null,
             "Consumer should have received a non-null NpgsqlTransaction via GetPostgreSqlTransaction()");
@@ -144,7 +144,7 @@ public class TransactionalPumpTests(string imageTag)
         await publisher.PublishAsync(new OrderPlaced(Guid.NewGuid(), "slot1@test.com", 1m), ct);
         await publisher.PublishAsync(new OrderPlaced(Guid.NewGuid(), "slot2@test.com", 2m), ct);
 
-        await TestHelpers.WaitUntilAsync(() => transactionSlots.Snapshots.Count >= 2);
+        await WaitUntilAsync(() => transactionSlots.Snapshots.Count >= 2);
 
         Assert.That(transactionSlots.Snapshots,
             Has.All.Not.Null,

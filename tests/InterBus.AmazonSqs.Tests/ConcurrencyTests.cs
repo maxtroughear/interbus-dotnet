@@ -148,7 +148,7 @@ public class ConcurrencyTests
             });
 
         // Wait for all messages to be consumed.
-        await TestHelpers.WaitUntilAsync(
+        await WaitUntilAsync(
             () => _orderTracker.Messages.Count >= totalMessages,
             timeoutMs: 120_000);
 

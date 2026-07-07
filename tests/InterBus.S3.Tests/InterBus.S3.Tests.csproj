@@ -28,12 +28,18 @@
     </ItemGroup>
 
     <ItemGroup>
-        <Using Include="NUnit.Framework" />
+        <Using Include="NUnit.Framework"/>
     </ItemGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\..\src\InterBus.S3\InterBus.S3.csproj" />
-        <ProjectReference Include="..\..\src\InterBus.SourceGenerator\InterBus.SourceGenerator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+        <Using Include="InterBus.Tests.Common"/>
+        <Using Include="InterBus.Tests.Common.TestHelpers" Static="true"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\..\src\InterBus.S3\InterBus.S3.csproj"/>
+        <ProjectReference Include="..\InterBus.Tests.Common\InterBus.Tests.Common.csproj"/>
+        <ProjectReference Include="..\..\src\InterBus.SourceGenerator\InterBus.SourceGenerator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false"/>
     </ItemGroup>
 
 </Project>

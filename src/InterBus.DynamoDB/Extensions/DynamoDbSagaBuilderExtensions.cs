@@ -12,7 +12,8 @@ namespace InterBus.DynamoDB.Extensions;
 public static class DynamoDbSagaBuilderExtensions
 {
     /// <param name="builder">The saga builder.</param>
-    extension<TSaga, TState>(SagaBuilder<TSaga, TState> builder) where TSaga : class, ISaga<TState> where TState : class, new()
+    extension<TSaga, TState>(SagaBuilder<TSaga, TState> builder)
+        where TSaga : class, ISaga<TState> where TState : class, new()
     {
         /// <summary>
         /// Registers <see cref="DynamoDbSagaRepository{TSaga,TState}"/> as the

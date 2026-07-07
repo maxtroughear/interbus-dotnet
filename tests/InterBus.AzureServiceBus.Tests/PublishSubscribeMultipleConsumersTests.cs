@@ -3,34 +3,16 @@ using InterBus.Extensions;
 using InterBus.Generated;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Testcontainers.ServiceBus;
 
 namespace InterBus.AzureServiceBus.Tests;
 
-public class PublishSubscribeMultipleConsumersTests
+public class PublishSubscribeMultipleConsumersTests : ServiceBusFixture
 {
-    private readonly ServiceBusContainer _container =
-        new ServiceBusBuilder("mcr.microsoft.com/azure-messaging/servicebus-emulator:latest")
-            .WithAcceptLicenseAgreement(true)
-            .Build();
+    private ServiceProvider _provider;
+    private CancellationTokenSource _cts;
+    private OrderPlacedTracker _orderTracker;
+    private AuditTracker _auditTracker;
 
-    private ServiceProvider _provider = null!;
-    private CancellationTokenSource _cts = null!;
-    private OrderPlacedTracker _orderTracker = null!;
-    private AuditTracker _auditTracker = null!;
-
-    [OneTimeSetUp]
-    public async Task OneTimeSetUp()
-    {
-        await _container.StartAsync();
-    }
-
-    [OneTimeTearDown]
-    public async Task OneTimeTearDown()
-    {
-        await _container.StopAsync();
-        await _container.DisposeAsync();
-    }
 
     [SetUp]
     public async Task Setup()
@@ -80,7 +62,7 @@ public class PublishSubscribeMultipleConsumersTests
         var msg = new OrderPlaced(Guid.NewGuid(), "fan@out.test", 50m);
         await publisher.PublishAsync(msg, TestContext.CurrentContext.CancellationToken);
 
-        await TestHelpers.WaitUntilAsync(() => _orderTracker.Messages.Count == 1 && _auditTracker.Messages.Count == 1);
+        await WaitUntilAsync(() => _orderTracker.Messages.Count == 1 && _auditTracker.Messages.Count == 1);
 
         using (Assert.EnterMultipleScope())
         {
@@ -101,7 +83,7 @@ public class PublishSubscribeMultipleConsumersTests
         await publisher.SendAsync<OrderPlacedConsumer, OrderPlaced>(
             msg, TestContext.CurrentContext.CancellationToken);
 
-        await TestHelpers.WaitUntilAsync(() => _orderTracker.Messages.Count == 1);
+        await WaitUntilAsync(() => _orderTracker.Messages.Count == 1);
 
         using (Assert.EnterMultipleScope())
         {

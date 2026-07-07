@@ -164,7 +164,7 @@ public class OutboxPostgreSqlIntegrationTests(string imageTag)
             await dbContext.SaveChangesAsync(TestContext.CurrentContext.CancellationToken);
         }
 
-        await TestHelpers.WaitUntilAsync(() => _tracker.Messages.Count == 1);
+        await WaitUntilAsync(() => _tracker.Messages.Count == 1);
 
         Assert.That(_tracker.Messages, Has.Count.EqualTo(1));
         Assert.That(_tracker.Messages.Single().CustomerEmail, Is.EqualTo("pg-deliver@example.com"));
@@ -214,7 +214,7 @@ public class OutboxPostgreSqlIntegrationTests(string imageTag)
             await dbContext.SaveChangesAsync(TestContext.CurrentContext.CancellationToken);
         }
 
-        await TestHelpers.WaitUntilAsync(() => _tracker.Messages.Count >= count);
+        await WaitUntilAsync(() => _tracker.Messages.Count >= count);
 
         Assert.That(_tracker.Messages, Has.Count.EqualTo(count));
     }
@@ -252,7 +252,7 @@ public class OutboxPostgreSqlIntegrationTests(string imageTag)
             await dbContext.SaveChangesAsync(TestContext.CurrentContext.CancellationToken);
         }
 
-        await TestHelpers.WaitUntilAsync(() => _tracker.Messages.Count >= 2);
+        await WaitUntilAsync(() => _tracker.Messages.Count >= 2);
 
         using (Assert.EnterMultipleScope())
         {
@@ -289,7 +289,7 @@ public class OutboxPostgreSqlIntegrationTests(string imageTag)
         }
 
         var stopwatch = Stopwatch.StartNew();
-        await TestHelpers.WaitUntilAsync(() => _tracker.Messages.Count == messageCount, timeoutMs: 30_000,
+        await WaitUntilAsync(() => _tracker.Messages.Count == messageCount, timeoutMs: 30_000,
             intervalMs: 10);
         stopwatch.Stop();
 
@@ -369,7 +369,7 @@ public class OutboxPostgreSqlIntegrationTests(string imageTag)
         }
 
         await StartHostedServicesAsync();
-        await TestHelpers.WaitUntilAsync(() => _sendTracker.Count == expectedTotal, timeoutMs: 30_000, intervalMs: 20);
+        await WaitUntilAsync(() => _sendTracker.Count == expectedTotal, timeoutMs: 30_000, intervalMs: 20);
 
         var hotObserved = _sendTracker.Observations
             .Where(o => o.MessageGroupId == hotGroupId)
@@ -412,7 +412,7 @@ public class OutboxPostgreSqlIntegrationTests(string imageTag)
             await dbContext.SaveChangesAsync(TestContext.CurrentContext.CancellationToken);
         }
 
-        await TestHelpers.WaitUntilAsync(() => _sendTracker.Count == groupCount, timeoutMs: 30_000, intervalMs: 10);
+        await WaitUntilAsync(() => _sendTracker.Count == groupCount, timeoutMs: 30_000, intervalMs: 10);
         stopwatch.Stop();
 
         await TestContext.Progress.WriteLineAsync(

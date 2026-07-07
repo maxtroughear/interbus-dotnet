@@ -112,16 +112,6 @@ public sealed class TrafficLightSaga
 
 public class StatelessSagaTests
 {
-    private static async Task WaitUntilAsync(
-        Func<bool> condition,
-        int timeoutMs = 5000,
-        int intervalMs = 25)
-    {
-        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
-        while (!condition() && DateTime.UtcNow < deadline)
-            await Task.Delay(intervalMs);
-    }
-
     private static async Task<(ServiceProvider Provider, CancellationTokenSource Cts)> StartAsync(
         Action<InterBusBuilder> configureBus)
     {

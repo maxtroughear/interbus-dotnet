@@ -80,13 +80,6 @@ public sealed class TickerQSchedulerTests
         }
     }
 
-    private static async Task WaitUntilAsync(Func<bool> condition, int timeoutMs = 5000, int intervalMs = 25)
-    {
-        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
-        while (!condition() && DateTime.UtcNow < deadline)
-            await Task.Delay(intervalMs);
-    }
-
     private sealed class MinimalHost(IServiceProvider services) : IHost
     {
         public IServiceProvider Services => services;

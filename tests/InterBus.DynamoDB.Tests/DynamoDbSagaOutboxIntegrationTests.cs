@@ -51,7 +51,7 @@ public class DynamoDbSagaOutboxIntegrationTests : DynamoDbSagaTestFixtureBase
             var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
             await publisher.PublishAsync(new OrderStarted(orderId, "test@example.com"));
 
-            await TestHelpers.WaitUntilAsync(() =>
+            await WaitUntilAsync(() =>
             {
                 var repo = provider.GetRequiredService<ISagaRepository<OrderSaga, OrderSagaState>>();
                 return repo.GetAsync(orderId.ToString()).GetAwaiter().GetResult()?.State.MessageCount == 1;
@@ -93,7 +93,7 @@ public class DynamoDbSagaOutboxIntegrationTests : DynamoDbSagaTestFixtureBase
             var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
             await publisher.PublishAsync(new OrderStarted(orderId, "test@example.com"));
 
-            await TestHelpers.WaitUntilAsync(() =>
+            await WaitUntilAsync(() =>
             {
                 var repo = provider.GetRequiredService<ISagaRepository<OrderWithPublishSaga, OrderSagaState>>();
                 return repo.GetAsync(orderId.ToString()).GetAwaiter().GetResult()?.State.IsConfirmed is true;
@@ -141,7 +141,7 @@ public class DynamoDbSagaOutboxIntegrationTests : DynamoDbSagaTestFixtureBase
             var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
             await publisher.PublishAsync(new OrderStarted(orderId, "test@example.com"));
 
-            await TestHelpers.WaitUntilAsync(() =>
+            await WaitUntilAsync(() =>
             {
                 var repo = provider.GetRequiredService<ISagaRepository<OrderWithPublishSaga, OrderSagaState>>();
                 return repo.GetAsync(orderId.ToString()).GetAwaiter().GetResult()?.State is not null;

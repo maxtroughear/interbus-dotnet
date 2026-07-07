@@ -76,13 +76,6 @@ public sealed class HangfireSchedulerTests
         }
     }
 
-    private static async Task WaitUntilAsync(Func<bool> condition, int timeoutMs = 5000, int intervalMs = 25)
-    {
-        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
-        while (!condition() && DateTime.UtcNow < deadline)
-            await Task.Delay(intervalMs);
-    }
-
     internal record IntegrationMessage(Guid Id, string Payload);
 
     internal sealed class IntegrationMessageTracker

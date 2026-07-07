@@ -130,17 +130,6 @@ public sealed class SagaTestDbContext(DbContextOptions<SagaTestDbContext> option
 /// </summary>
 public class EfCoreSagaTests
 {
-    // Async WaitUntil that creates a fresh scope per poll to work with scoped DbContext.
-    private static async Task WaitUntilAsync(
-        Func<Task<bool>> condition,
-        int timeoutMs = 5000,
-        int intervalMs = 25)
-    {
-        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
-        while (!await condition() && DateTime.UtcNow < deadline)
-            await Task.Delay(intervalMs);
-    }
-
     private static async Task<(ServiceProvider Provider, CancellationTokenSource Cts, SqliteConnection KeepAlive)>
         StartAsync(Action<InterBusBuilder> configureBus)
     {

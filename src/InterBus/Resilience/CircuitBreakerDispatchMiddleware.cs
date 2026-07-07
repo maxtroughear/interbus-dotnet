@@ -24,7 +24,8 @@ public sealed class CircuitBreakerDispatchMiddleware(IServiceProvider servicePro
         var now = DateTimeOffset.UtcNow;
         if (state.IsOpen(now))
         {
-            context.Result = DispatchResult.Release(state.CreateOpenCircuitException(context.Descriptor.ConsumerType.Name));
+            context.Result =
+                DispatchResult.Release(state.CreateOpenCircuitException(context.Descriptor.ConsumerType.Name));
             return;
         }
 

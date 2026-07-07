@@ -15,20 +15,6 @@ namespace InterBus.Tests.InMemory.Middleware;
 /// </summary>
 public class PipelineTests
 {
-    /// <summary>
-    /// Polls <paramref name="condition"/> up to <paramref name="timeoutMs"/> milliseconds,
-    /// checking every <paramref name="intervalMs"/> milliseconds.
-    /// </summary>
-    private static async Task WaitUntilAsync(
-        Func<bool> condition,
-        int timeoutMs = 5000,
-        int intervalMs = 25)
-    {
-        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
-        while (!condition() && DateTime.UtcNow < deadline)
-            await Task.Delay(intervalMs);
-    }
-
     private static async Task<(ServiceProvider Provider, CancellationTokenSource Cts)> StartAsync(
         Action<IServiceCollection> registerSingletons,
         Action<InterBusBuilder> configureBus)

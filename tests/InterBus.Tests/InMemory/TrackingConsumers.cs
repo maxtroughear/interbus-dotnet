@@ -1,64 +1,18 @@
-using System.Collections.Concurrent;
 using InterBus.DeadLettering;
 
 namespace InterBus.Tests.InMemory;
 
-// ReSharper disable ClassNeverInstantiated.Global
-/// <summary>
-/// Singleton-safe tracker. Registered as singleton in DI so all consumer scopes write to the same list.
-/// Use distinct subclasses to differentiate trackers for different consumers handling the same message type.
-/// </summary>
-public class MessageTracker<T> where T : class
-{
-    private readonly ConcurrentBag<T> _messages = [];
-    public IReadOnlyCollection<T> Messages => _messages;
-    public void Track(T message) => _messages.Add(message);
-}
-
-// Distinct tracker types so OrderPlacedConsumer and AuditConsumer don't share the same singleton.
-public sealed class OrderPlacedTracker : MessageTracker<OrderPlaced>;
-
-public sealed class AuditTracker : MessageTracker<OrderPlaced>;
-
-public sealed class OrderShippedTracker : MessageTracker<OrderShipped>;
-
-/// <summary>
-/// Distinct trackers for <see cref="MultiTypeConsumer"/> so it doesn't interfere with
-/// <see cref="OrderPlacedConsumer"/> and <see cref="OrderShippedTracker"/> in other tests.
-/// </summary>
-public sealed class MultiTypeOrderPlacedTracker : MessageTracker<OrderPlaced>;
-
-public sealed class MultiTypeOrderShippedTracker : MessageTracker<OrderShipped>;
-
 /// <summary>Tracks dead-lettered <see cref="OrderPlaced"/> messages for integration tests.</summary>
 public sealed class DeadLetterOrderPlacedTracker : MessageTracker<DeadLetter<OrderPlaced>>;
 
-public sealed class OrderPlacedConsumer(OrderPlacedTracker tracker) : IConsumer<OrderPlaced>
-{
-    public Task Consume(OrderPlaced message, IConsumeContext context, CancellationToken cancellationToken = default)
-    {
-        tracker.Track(message);
-        return Task.CompletedTask;
-    }
-}
+public sealed class OrderPlacedConsumer(OrderPlacedTracker tracker)
+    : TrackingConsumer<OrderPlaced, OrderPlacedTracker>(tracker);
 
-public sealed class AuditConsumer(AuditTracker tracker) : IConsumer<OrderPlaced>
-{
-    public Task Consume(OrderPlaced message, IConsumeContext context, CancellationToken cancellationToken = default)
-    {
-        tracker.Track(message);
-        return Task.CompletedTask;
-    }
-}
+public sealed class AuditConsumer(AuditTracker tracker)
+    : TrackingConsumer<OrderPlaced, AuditTracker>(tracker);
 
-public sealed class OrderShippedConsumer(OrderShippedTracker tracker) : IConsumer<OrderShipped>
-{
-    public Task Consume(OrderShipped message, IConsumeContext context, CancellationToken cancellationToken = default)
-    {
-        tracker.Track(message);
-        return Task.CompletedTask;
-    }
-}
+public sealed class OrderShippedConsumer(OrderShippedTracker tracker)
+    : TrackingConsumer<OrderShipped, OrderShippedTracker>(tracker);
 
 /// <summary>
 /// A consumer that handles two distinct message types.
@@ -69,8 +23,8 @@ public sealed class OrderShippedConsumer(OrderShippedTracker tracker) : IConsume
 /// tests that use <see cref="OrderPlacedConsumer"/> or <see cref="OrderShippedTracker"/>.
 /// </summary>
 public sealed class MultiTypeConsumer(
-    MultiTypeOrderPlacedTracker orderTracker,
-    MultiTypeOrderShippedTracker shippedTracker) : IConsumer<OrderPlaced>, IConsumer<OrderShipped>
+    OrderPlacedTracker orderTracker,
+    OrderShippedTracker shippedTracker) : IConsumer<OrderPlaced>, IConsumer<OrderShipped>
 {
     public Task Consume(OrderPlaced message, IConsumeContext context, CancellationToken cancellationToken = default)
     {

@@ -21,7 +21,7 @@ public sealed class SnsSqsMessageEnvelope : ISnsSqsMessageEnvelope
         var envelope = new InterBusEnvelopeBody(
             Convert.ToBase64String(payload),
             new Dictionary<string, string>(headers, StringComparer.Ordinal));
-        
+
         return JsonSerializer.Serialize(envelope, SnsSqsJsonContext.Default.InterBusEnvelopeBody);
     }
 

@@ -93,7 +93,7 @@ internal class Scheduler(
 
         if (consumeHeaders?.TryGetValue(InterBusHeaders.MessageId, out var messageId) == true)
             headers[InterBusHeaders.CausationId] = messageId;
-        
+
         headers[InterBusHeaders.MessageGroupId] =
             options.GetPublisherDescriptor<T>().GroupBy?.Invoke(message)
             ?? headers[InterBusHeaders.CorrelationId];

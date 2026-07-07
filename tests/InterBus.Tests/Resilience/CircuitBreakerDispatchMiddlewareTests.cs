@@ -66,10 +66,12 @@ public sealed class CircuitBreakerDispatchMiddlewareTests
         var nextCallCount = 0;
 
         await InvokeWithResultAsync(middleware, descriptor, DispatchResult.Success, () => nextCallCount++);
-        await InvokeWithResultAsync(middleware, descriptor, DispatchResult.Release(new InvalidOperationException("boom")),
+        await InvokeWithResultAsync(middleware, descriptor,
+            DispatchResult.Release(new InvalidOperationException("boom")),
             () => nextCallCount++);
         await InvokeWithResultAsync(middleware, descriptor, DispatchResult.Success, () => nextCallCount++);
-        await InvokeWithResultAsync(middleware, descriptor, DispatchResult.Release(new InvalidOperationException("boom")),
+        await InvokeWithResultAsync(middleware, descriptor,
+            DispatchResult.Release(new InvalidOperationException("boom")),
             () => nextCallCount++);
 
         // Exactly 50% failures must not trip the circuit (threshold must be exceeded).

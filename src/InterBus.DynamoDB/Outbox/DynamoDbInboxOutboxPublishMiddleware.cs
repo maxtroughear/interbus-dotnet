@@ -13,8 +13,9 @@ internal class DynamoDbInboxOutboxPublishMiddleware(
 {
     private readonly string _createdAtEpoch = DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString();
     private string? _groupId;
-    
-    public Task InvokeAsync<T>(PublishContext<T> context, Func<PublishContext<T>, CancellationToken, Task> next, CancellationToken cancellationToken = default) where T : class
+
+    public Task InvokeAsync<T>(PublishContext<T> context, Func<PublishContext<T>, CancellationToken, Task> next,
+        CancellationToken cancellationToken = default) where T : class
     {
         if (typeof(T).IsGenericType && typeof(T).GetGenericTypeDefinition() == typeof(DeadLetter<>))
             return next(context, cancellationToken);
@@ -23,7 +24,7 @@ internal class DynamoDbInboxOutboxPublishMiddleware(
         {
             consumeState.GroupId = Guid.CreateVersion7();
             _groupId = consumeState.GroupId.ToString();
-            
+
             outboxContext.AddTransactItem(new TransactWriteItem
             {
                 Put = new Put
@@ -38,10 +39,10 @@ internal class DynamoDbInboxOutboxPublishMiddleware(
                 }
             });
         }
-        
+
         var payload = serializer.Serialize(context.Message);
         var headersJson = DynamoDbOutboxContext.SerializeHeaders(context.Headers);
-        
+
         var msgItem = new Dictionary<string, AttributeValue>
         {
             [DynamoDbOutboxContext.AttrGroupId] = new() { S = _groupId },

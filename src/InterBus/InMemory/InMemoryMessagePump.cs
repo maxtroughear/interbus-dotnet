@@ -48,7 +48,8 @@ internal sealed class InMemoryMessagePump(
             queue.Descriptor.QueueName);
     }
 
-    private async Task ProcessEnvelopeAsync(InMemoryQueue queue, InMemoryEnvelope envelope, CancellationToken stoppingToken)
+    private async Task ProcessEnvelopeAsync(InMemoryQueue queue, InMemoryEnvelope envelope,
+        CancellationToken stoppingToken)
     {
         try
         {

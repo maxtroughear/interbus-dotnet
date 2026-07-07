@@ -75,7 +75,7 @@ public class FailedConsumerRetriesTests(string imageTag)
         await publisher.PublishAsync(msg, TestContext.CurrentContext.CancellationToken);
 
         // Wait for the consumer to be called once.
-        await TestHelpers.WaitUntilAsync(() => _receiveTracker.CallCount >= 1, timeoutMs: 15_000);
+        await WaitUntilAsync(() => _receiveTracker.CallCount >= 1, timeoutMs: 15_000);
 
         // Allow a short window for the pump to write the dead-letter row.
         await Task.Delay(500, TestContext.CurrentContext.CancellationToken);

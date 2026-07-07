@@ -3,33 +3,13 @@ using Amazon.SQS;
 using InterBus.AmazonSqs.Extensions;
 using InterBus.Extensions;
 using InterBus.Generated;
+using InterBus.Tests.Common;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Testcontainers.LocalStack;
 
 namespace InterBus.AmazonSqs.Tests;
-
-public record GetOrderStatusRequest(Guid OrderId);
-
-public record GetOrderStatusReply(Guid OrderId, string Status);
-
-/// <summary>
-/// Consumer that handles <see cref="GetOrderStatusRequest"/> and sends a reply back
-/// to the temporary reply queue using the <see cref="IConsumeContext.ReplyTo"/> address.
-/// </summary>
-public sealed class GetOrderStatusConsumer(IPublisher publisher) : IConsumer<GetOrderStatusRequest>
-{
-    public async Task Consume(GetOrderStatusRequest message, IConsumeContext context,
-        CancellationToken cancellationToken = default)
-    {
-        if (context.ReplyTo is null) return;
-        await publisher.SendAsync(
-            context.ReplyTo,
-            new GetOrderStatusReply(message.OrderId, "Shipped"),
-            cancellationToken);
-    }
-}
 
 [TestFixture]
 public class RequestReplyTests

@@ -43,7 +43,7 @@ public class DeadLetteringTests(string imageTag)
         await publisher.PublishAsync(msg, TestContext.CurrentContext.CancellationToken);
 
         // Wait until the consumer has been called.
-        await TestHelpers.WaitUntilAsync(() => counter.Count >= 1, timeoutMs: 15_000);
+        await WaitUntilAsync(() => counter.Count >= 1, timeoutMs: 15_000);
 
         // Allow a short window for the pump to write to dead_letter_messages.
         await Task.Delay(500, TestContext.CurrentContext.CancellationToken);
@@ -84,7 +84,7 @@ public class DeadLetteringTests(string imageTag)
         await publisher.PublishAsync(msg, TestContext.CurrentContext.CancellationToken);
 
         // Wait until the consumer has been called.
-        await TestHelpers.WaitUntilAsync(() => counter.Count >= 1, timeoutMs: 15_000);
+        await WaitUntilAsync(() => counter.Count >= 1, timeoutMs: 15_000);
 
         // Allow a short window for the pump to commit the dead-letter transaction.
         await Task.Delay(500, TestContext.CurrentContext.CancellationToken);

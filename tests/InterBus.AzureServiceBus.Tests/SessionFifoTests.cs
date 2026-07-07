@@ -3,7 +3,6 @@ using InterBus.Extensions;
 using InterBus.Generated;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Testcontainers.ServiceBus;
 
 namespace InterBus.AzureServiceBus.Tests;
 
@@ -13,29 +12,11 @@ namespace InterBus.AzureServiceBus.Tests;
 /// cross-test entity collisions.
 /// </summary>
 [TestFixture]
-public class SessionFifoTests
+public class SessionFifoTests : ServiceBusFixture
 {
-    private readonly ServiceBusContainer _container =
-        new ServiceBusBuilder("mcr.microsoft.com/azure-messaging/servicebus-emulator:latest")
-            .WithAcceptLicenseAgreement(true)
-            .Build();
-
-    private ServiceProvider _provider = null!;
-    private CancellationTokenSource _cts = null!;
-    private SessionOrderPlacedTracker _tracker = null!;
-
-    [OneTimeSetUp]
-    public async Task OneTimeSetUp()
-    {
-        await _container.StartAsync();
-    }
-
-    [OneTimeTearDown]
-    public async Task OneTimeTearDown()
-    {
-        await _container.StopAsync();
-        await _container.DisposeAsync();
-    }
+    private ServiceProvider _provider;
+    private CancellationTokenSource _cts;
+    private SessionOrderPlacedTracker _tracker;
 
     [SetUp]
     public async Task Setup()
@@ -85,7 +66,7 @@ public class SessionFifoTests
         var msg = new SessionOrderPlaced(Guid.NewGuid(), "cust-1", 99.99m);
         await publisher.PublishAsync(msg, TestContext.CurrentContext.CancellationToken);
 
-        await TestHelpers.WaitUntilAsync(() => _tracker.Messages.Count >= 1, timeoutMs: 30_000);
+        await WaitUntilAsync(() => _tracker.Messages.Count >= 1, timeoutMs: 30_000);
 
         using (Assert.EnterMultipleScope())
         {
@@ -107,7 +88,7 @@ public class SessionFifoTests
         foreach (var msg in messages)
             await publisher.PublishAsync(msg, TestContext.CurrentContext.CancellationToken);
 
-        await TestHelpers.WaitUntilAsync(() => _tracker.Messages.Count >= messages.Count, timeoutMs: 30_000);
+        await WaitUntilAsync(() => _tracker.Messages.Count >= messages.Count, timeoutMs: 30_000);
 
         Assert.That(_tracker.Messages, Has.Count.EqualTo(messages.Count));
         Assert.That(

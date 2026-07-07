@@ -12,6 +12,6 @@
         <PackageReference Include="AWSSDK.SQS" Version="4.0.100.13" />
     </ItemGroup>
     <ItemGroup>
-        <ProjectReference Include="..\InterBus\InterBus.csproj" />
+        <ProjectReference Include="..\InterBus\InterBus.csproj"/>
     </ItemGroup>
 </Project>

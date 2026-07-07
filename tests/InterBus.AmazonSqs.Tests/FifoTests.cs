@@ -110,7 +110,7 @@ public class FifoTests
         var msg = new FifoOrderPlaced(Guid.NewGuid(), "cust-1", 99.99m);
         await publisher.PublishAsync(msg, TestContext.CurrentContext.CancellationToken);
 
-        await TestHelpers.WaitUntilAsync(() => tracker.Messages.Count >= 1);
+        await WaitUntilAsync(() => tracker.Messages.Count >= 1);
 
         using (Assert.EnterMultipleScope())
         {
@@ -141,7 +141,7 @@ public class FifoTests
         foreach (var order in orders)
             await publisher.PublishAsync(order, TestContext.CurrentContext.CancellationToken);
 
-        await TestHelpers.WaitUntilAsync(() => tracker.Messages.Count >= orders.Count);
+        await WaitUntilAsync(() => tracker.Messages.Count >= orders.Count);
 
         Assert.That(tracker.Messages, Has.Count.EqualTo(orders.Count));
         Assert.That(tracker.Messages.Select(m => m.OrderId),
@@ -167,7 +167,7 @@ public class FifoTests
         await publisher.SendAsync<FifoOrderDirectConsumer, FifoOrderDirect>(
             msg, TestContext.CurrentContext.CancellationToken);
 
-        await TestHelpers.WaitUntilAsync(() => tracker.Messages.Count >= 1);
+        await WaitUntilAsync(() => tracker.Messages.Count >= 1);
 
         using (Assert.EnterMultipleScope())
         {
@@ -179,10 +179,7 @@ public class FifoTests
     [Test]
     public async Task Send_ExternalFifoQueue_UsesGroupByMessageGroupId()
     {
-        await SetupProvider(bus =>
-        {
-            bus.Configure<FifoOrderDirect>(c => c.Fifo(o => o.CustomerId));
-        });
+        await SetupProvider(bus => { bus.Configure<FifoOrderDirect>(c => c.Fifo(o => o.CustomerId)); });
 
         var sqsClient = _provider.GetRequiredService<IAmazonSQS>();
         var externalQueueName = $"{_queuePrefix}external-target.fifo";
@@ -253,7 +250,7 @@ public class FifoTests
             new FifoOrderPlaced(Guid.NewGuid(), "cust-1", 1m),
             TestContext.CurrentContext.CancellationToken);
 
-        await TestHelpers.WaitUntilAsync(() => tracker.Messages.Count >= 1);
+        await WaitUntilAsync(() => tracker.Messages.Count >= 1);
 
         // Verify SNS topic has .fifo suffix
         var topics = await snsClient.ListTopicsAsync(TestContext.CurrentContext.CancellationToken);

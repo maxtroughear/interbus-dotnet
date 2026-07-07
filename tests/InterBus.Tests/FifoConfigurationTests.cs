@@ -42,7 +42,7 @@ public sealed class FifoConfigurationTests
 
         Assert.False(orderPlacedDescriptor.IsFifo);
     }
-    
+
     [Fact]
     public void WithFifo_ConsumerMessageTypesRemainNonFifoWithoutConfigureFifo()
     {
@@ -56,7 +56,7 @@ public sealed class FifoConfigurationTests
 
         var sp = services.BuildServiceProvider();
         var options = sp.GetRequiredService<InterBusOptions>();
-        
+
         var orderPlacedDescriptor = options.GetPublisherDescriptor<FifoTestOrderPlaced>();
 
         Assert.False(orderPlacedDescriptor.IsFifo);
@@ -74,12 +74,12 @@ public sealed class FifoConfigurationTests
 
         var sp = services.BuildServiceProvider();
         var options = sp.GetRequiredService<InterBusOptions>();
-        
+
         var orderPlacedDescriptor = options.GetPublisherDescriptor<FifoTestOrderPlaced>();
 
         Assert.False(orderPlacedDescriptor.IsFifo);
     }
-    
+
     [Fact]
     public async Task Publish_WithGroupBySelector_StampsMessageGroupIdHeader()
     {

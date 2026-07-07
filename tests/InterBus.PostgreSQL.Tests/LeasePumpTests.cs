@@ -46,7 +46,7 @@ public class LeasePumpTests(string imageTag)
         var msg = new OrderPlaced(Guid.NewGuid(), "lease@test.com", 50m);
         await publisher.PublishAsync(msg, TestContext.CurrentContext.CancellationToken);
 
-        await TestHelpers.WaitUntilAsync(() => tracker.Messages.Count == 1);
+        await WaitUntilAsync(() => tracker.Messages.Count == 1);
         Assert.That(tracker.Messages.Single().OrderId, Is.EqualTo(msg.OrderId));
     }
 
@@ -78,7 +78,7 @@ public class LeasePumpTests(string imageTag)
         await publisher.PublishAsync(msg, TestContext.CurrentContext.CancellationToken);
 
         // Wait for the consumer to be called.
-        await TestHelpers.WaitUntilAsync(() => counter.Value >= 1, timeoutMs: 15_000);
+        await WaitUntilAsync(() => counter.Value >= 1, timeoutMs: 15_000);
 
         // Allow a short window for the pump to write the dead-letter row.
         await Task.Delay(500, TestContext.CurrentContext.CancellationToken);
@@ -129,7 +129,7 @@ public class LeasePumpTests(string imageTag)
         var msg = new OrderPlaced(Guid.NewGuid(), "expire@test.com", 99m);
         await publisher.PublishAsync(msg, TestContext.CurrentContext.CancellationToken);
 
-        await TestHelpers.WaitUntilAsync(
+        await WaitUntilAsync(
             () => tracker.Messages.Count == 1,
             timeoutMs: 30_000);
 

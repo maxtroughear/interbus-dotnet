@@ -18,6 +18,11 @@
         <PackageReference Include="xunit.v3" Version="4.0.0"/>
     </ItemGroup>
     <ItemGroup>
+        <Using Include="InterBus.Tests.Common"/>
+        <Using Include="InterBus.Tests.Common.TestHelpers" Static="true"/>
+    </ItemGroup>
+    <ItemGroup>
         <ProjectReference Include="..\..\src\InterBus.TickerQ\InterBus.TickerQ.csproj"/>
+        <ProjectReference Include="..\InterBus.Tests.Common\InterBus.Tests.Common.csproj"/>
     </ItemGroup>
 </Project>

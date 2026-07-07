@@ -51,7 +51,8 @@ public static class InMemoryTransportBuilderExtensions
         public InterBusBuilder AddInMemoryScheduler()
         {
             builder.Services.AddSingleton<InMemoryMessageScheduler>();
-            builder.Services.AddSingleton<IMessageSchedulingProvider>(sp => sp.GetRequiredService<InMemoryMessageScheduler>());
+            builder.Services.AddSingleton<IMessageSchedulingProvider>(sp =>
+                sp.GetRequiredService<InMemoryMessageScheduler>());
             builder.Services.AddHostedService(sp => sp.GetRequiredService<InMemoryMessageScheduler>());
             return builder;
         }

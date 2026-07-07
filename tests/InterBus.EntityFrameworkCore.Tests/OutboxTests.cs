@@ -93,9 +93,27 @@ public sealed class FifoOrderIdTracker
 {
     private readonly object _lock = new();
     private readonly List<Guid> _orderIds = [];
-    public IReadOnlyList<Guid> OrderIds { get { lock (_lock) return [.. _orderIds]; } }
-    public int Count { get { lock (_lock) return _orderIds.Count; } }
-    public void Track(Guid orderId) { lock (_lock) _orderIds.Add(orderId); }
+
+    public IReadOnlyList<Guid> OrderIds
+    {
+        get
+        {
+            lock (_lock) return [.. _orderIds];
+        }
+    }
+
+    public int Count
+    {
+        get
+        {
+            lock (_lock) return _orderIds.Count;
+        }
+    }
+
+    public void Track(Guid orderId)
+    {
+        lock (_lock) _orderIds.Add(orderId);
+    }
 }
 
 public sealed class FifoOrderPlacedConsumer(FifoOrderIdTracker tracker) : IConsumer<OrderPlaced>
@@ -176,16 +194,6 @@ public sealed class DeadLetterOrderPlacedConsumerForOutbox(DeadLetterOrderPlaced
 /// </summary>
 public class OutboxTests
 {
-    private static async Task WaitUntilAsync(
-        Func<bool> condition,
-        int timeoutMs = 5000,
-        int intervalMs = 25)
-    {
-        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
-        while (!condition() && DateTime.UtcNow < deadline)
-            await Task.Delay(intervalMs);
-    }
-
     private static async Task<(ServiceProvider Provider, CancellationTokenSource Cts, SqliteConnection Connection)>
         StartAsync(
             Action<InterBusBuilder> configureBus,

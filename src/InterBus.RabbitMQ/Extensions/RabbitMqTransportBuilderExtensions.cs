@@ -48,7 +48,8 @@ public static class RabbitMqTransportBuilderExtensions
             var options = new RabbitMqTransportOptions();
             configure?.Invoke(options);
 
-            builder.Options.SetTransportUriSchemes(RabbitMqTopicTransport.TopicScheme, RabbitMqQueueTransport.QueueScheme);
+            builder.Options.SetTransportUriSchemes(RabbitMqTopicTransport.TopicScheme,
+                RabbitMqQueueTransport.QueueScheme);
             builder.Services.AddSingleton(options);
 
             // Connection provider manages publish and consume connections (singleton).

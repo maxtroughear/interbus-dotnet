@@ -112,7 +112,7 @@ public class ConcurrencyTests(string imageTag)
                                              $"at an overall rate of {totalMessages / consumerStopwatch.Elapsed.TotalSeconds:F2}/second");
 
         // Wait for all messages to be consumed.
-        await TestHelpers.WaitUntilAsync(
+        await WaitUntilAsync(
             () => _orderTracker.Messages.Count >= totalMessages,
             timeoutMs: 120_000);
 

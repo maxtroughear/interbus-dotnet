@@ -218,7 +218,7 @@ public class SnsSerialisedMessageOnSqsTests
             },
             TestContext.CurrentContext.CancellationToken);
 
-        await TestHelpers.WaitUntilAsync(() => _tracker.Messages.Count >= 1);
+        await WaitUntilAsync(() => _tracker.Messages.Count >= 1);
 
         var consumed = _tracker.Messages.Single();
         using (Assert.EnterMultipleScope())

@@ -4,7 +4,8 @@ using Sample.Components;
 
 namespace Sample.AuditComponents;
 
-public class EavesDroppingConsumer(ILogger<EavesDroppingConsumer> logger) : IConsumer<GreetingMessage>, IConsumer<FarewellMessage>
+public class EavesDroppingConsumer(ILogger<EavesDroppingConsumer> logger)
+    : IConsumer<GreetingMessage>, IConsumer<FarewellMessage>
 {
     public Task Consume(GreetingMessage message, IConsumeContext context, CancellationToken cancellationToken = default)
     {

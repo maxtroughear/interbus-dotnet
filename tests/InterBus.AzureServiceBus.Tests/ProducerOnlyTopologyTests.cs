@@ -4,34 +4,15 @@ using InterBus.AzureServiceBus.Extensions;
 using InterBus.Extensions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Testcontainers.ServiceBus;
 
 namespace InterBus.AzureServiceBus.Tests;
 
-public class ProducerOnlyTopologyTests
+public class ProducerOnlyTopologyTests : ServiceBusFixture
 {
-    private readonly ServiceBusContainer _container =
-        new ServiceBusBuilder("mcr.microsoft.com/azure-messaging/servicebus-emulator:latest")
-            .WithAcceptLicenseAgreement(true)
-            .Build();
-
-    private ServiceProvider _provider = null!;
-    private CancellationTokenSource _cts = null!;
-    private string _topicPrefix = null!;
-    private string _queuePrefix = null!;
-
-    [OneTimeSetUp]
-    public async Task OneTimeSetUp()
-    {
-        await _container.StartAsync();
-    }
-
-    [OneTimeTearDown]
-    public async Task OneTimeTearDown()
-    {
-        await _container.StopAsync();
-        await _container.DisposeAsync();
-    }
+    private ServiceProvider _provider;
+    private CancellationTokenSource _cts;
+    private string _topicPrefix;
+    private string _queuePrefix;
 
     [SetUp]
     public async Task Setup()

@@ -4,18 +4,12 @@ using InterBus.Extensions;
 using InterBus.Generated;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Testcontainers.ServiceBus;
 
 namespace InterBus.AzureServiceBus.Tests;
 
 [TestFixture]
-public class ConcurrencyTests
+public class ConcurrencyTests : ServiceBusFixture
 {
-    private readonly ServiceBusContainer _container =
-        new ServiceBusBuilder("mcr.microsoft.com/azure-messaging/servicebus-emulator:latest")
-            .WithAcceptLicenseAgreement(true)
-            .Build();
-
     private ServiceProvider _provider;
     private CancellationTokenSource _cts;
     private OrderPlacedTracker _orderTracker;
@@ -23,19 +17,6 @@ public class ConcurrencyTests
     private const int PublisherCount = 2;
     private const int MessagesPerPublisher = 100;
     private const int ConsumerCount = 10;
-
-    [OneTimeSetUp]
-    public async Task OneTimeSetUp()
-    {
-        await _container.StartAsync();
-    }
-
-    [OneTimeTearDown]
-    public async Task OneTimeTearDown()
-    {
-        await _container.StopAsync();
-        await _container.DisposeAsync();
-    }
 
     [SetUp]
     public async Task Setup()
@@ -121,7 +102,7 @@ public class ConcurrencyTests
                                              $"at an overall rate of {totalMessages / consumerStopwatch.Elapsed.TotalSeconds:F2}/second");
 
         // Wait for all messages to be consumed.
-        await TestHelpers.WaitUntilAsync(
+        await WaitUntilAsync(
             () => _orderTracker.Messages.Count >= totalMessages,
             timeoutMs: 120_000);
 

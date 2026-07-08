@@ -5,104 +5,27 @@ using Amazon.SimpleNotificationService.Model;
 using Amazon.SQS;
 using Amazon.SQS.Model;
 using InterBus.AmazonSqs.Extensions;
-using InterBus.Extensions;
 using InterBus.Generated;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
-using Testcontainers.LocalStack;
 using SnsMessageAttributeValue = Amazon.SimpleNotificationService.Model.MessageAttributeValue;
 
 namespace InterBus.AmazonSqs.Tests;
 
 [TestFixture]
-public class SnsSerialisedMessageOnSqsTests
+public class SnsSerialisedMessageOnSqsTests() : LocalstackTestFixtureBase(bus =>
 {
-    private static readonly LocalStackContainer? Container = TestHelpers.CreateLocalStackContainer();
-
-    private ServiceProvider _provider = null!;
-    private CancellationTokenSource _cts = null!;
-    private SnsSerialisedTracker _tracker = null!;
-    private string _runId = null!;
-    private string _queuePrefix = null!;
-    private string _topicPrefix = null!;
-
-    [OneTimeSetUp]
-    public static async Task OneTimeSetUp()
-    {
-        if (Container is not null)
-            await Container.StartAsync();
-    }
-
-    [OneTimeTearDown]
-    public static async Task OneTimeTearDown()
-    {
-        if (Container is not null)
-        {
-            await Container.StopAsync();
-            await Container.DisposeAsync();
-        }
-    }
-
-    [SetUp]
-    public async Task Setup()
-    {
-        _runId = Guid.NewGuid().ToString("N")[..8];
-        _queuePrefix = $"q-{_runId}-";
-        _topicPrefix = $"t-{_runId}-";
-        _tracker = new SnsSerialisedTracker();
-
-        var services = new ServiceCollection();
-        services.AddLogging();
-        services.AddSingleton(_tracker);
-
-        var awsOptions = TestHelpers.CreateAwsOptions(Container);
-        if (awsOptions is not null)
-            services.AddDefaultAWSOptions(awsOptions);
-
-        services.AddAWSService<IAmazonSimpleNotificationService>();
-        services.AddAWSService<IAmazonSQS>();
-        services.AddAWSService<Amazon.SecurityToken.IAmazonSecurityTokenService>();
-
-        services.AddInterBus(bus =>
-        {
-            bus.AddAmazonSqsTransport(o =>
-            {
-                o.QueuePrefix = _queuePrefix;
-                o.TopicPrefix = _topicPrefix;
-            });
-            bus.AddConsumer<SnsSerialisedOrderPlacedConsumer>(c => c.UseSnsSerialisedMessageOnSqs());
-        });
-
-        _provider = services.BuildServiceProvider();
-        _cts = new CancellationTokenSource();
-
-        foreach (var svc in _provider.GetServices<IHostedService>())
-            await svc.StartAsync(_cts.Token);
-    }
-
-    [TearDown]
-    public async Task TearDown()
-    {
-        await _cts.CancelAsync();
-        foreach (var svc in _provider.GetServices<IHostedService>())
-            await svc.StopAsync(CancellationToken.None);
-
-        _cts.Dispose();
-
-        var sqsClient = _provider.GetRequiredService<IAmazonSQS>();
-        var snsClient = _provider.GetRequiredService<IAmazonSimpleNotificationService>();
-        var logger = _provider.GetRequiredService<ILogger<SnsSerialisedMessageOnSqsTests>>();
-        await TestHelpers.CleanupResourcesByPrefixAsync(sqsClient, snsClient, _queuePrefix, _topicPrefix, logger);
-        await _provider.DisposeAsync();
-    }
+    bus.Services.AddSingleton(new SnsSerialisedTracker());
+    bus.AddConsumer<SnsSerialisedOrderPlacedConsumer>(c => c.UseSnsSerialisedMessageOnSqs());
+})
+{
+    private SnsSerialisedTracker Tracker => Provider.GetRequiredService<SnsSerialisedTracker>();
 
     [Test]
     public async Task Consume_SnsSerialisedMessageOnSqs_PullsHeadersFromSnsMessageAttributes()
     {
-        var sns = _provider.GetRequiredService<IAmazonSimpleNotificationService>();
-        var sqs = _provider.GetRequiredService<IAmazonSQS>();
-        var topologyBuilder = _provider.GetRequiredService<ITopologyBuilder>() as SnsSqsTopologyBuilder ??
+        var sns = Provider.GetRequiredService<IAmazonSimpleNotificationService>();
+        var sqs = Provider.GetRequiredService<IAmazonSQS>();
+        var topologyBuilder = Provider.GetRequiredService<ITopologyBuilder>() as SnsSqsTopologyBuilder ??
                               throw new InvalidOperationException(
                                   "Expected ITopologyBuilder to be of type SnsSqsTopologyBuilder.");
         var cancellationToken = TestContext.CurrentContext.CancellationToken;
@@ -218,9 +141,9 @@ public class SnsSerialisedMessageOnSqsTests
             },
             TestContext.CurrentContext.CancellationToken);
 
-        await WaitUntilAsync(() => _tracker.Messages.Count >= 1);
+        await WaitUntilAsync(() => Tracker.Messages.Count >= 1);
 
-        var consumed = _tracker.Messages.Single();
+        var consumed = Tracker.Messages.Single();
         using (Assert.EnterMultipleScope())
         {
             Assert.That(consumed.Message.OrderId, Is.EqualTo(order.OrderId));

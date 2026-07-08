@@ -1,105 +1,23 @@
-using Amazon.SimpleNotificationService;
 using Amazon.SQS;
 using Amazon.SQS.Model;
-using InterBus.AmazonSqs.Extensions;
-using InterBus.Extensions;
 using InterBus.Generated;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
-using Testcontainers.LocalStack;
 
 namespace InterBus.AmazonSqs.Tests;
 
 [TestFixture]
-public class DeadLetteringTests
+public class DeadLetteringTests() : LocalstackTestFixtureBase(bus =>
 {
-    private static readonly LocalStackContainer? Container = TestHelpers.CreateLocalStackContainer();
-
-    private ServiceProvider _provider = null!;
-    private CancellationTokenSource _cts = null!;
-    private ReceiveTracker _receiveTracker = null!;
-    private string _runId = null!;
-    private string _queuePrefix = null!;
-    private string _topicPrefix = null!;
-
-    [OneTimeSetUp]
-    public static async Task OneTimeSetUp()
-    {
-        if (Container is not null)
-            await Container.StartAsync();
-    }
-
-    [OneTimeTearDown]
-    public static async Task OneTimeTearDown()
-    {
-        if (Container is not null)
-        {
-            await Container.StopAsync();
-            await Container.DisposeAsync();
-        }
-    }
-
-    [SetUp]
-    public async Task Setup()
-    {
-        _runId = Guid.NewGuid().ToString("N")[..8];
-        _queuePrefix = $"q-{_runId}-";
-        _topicPrefix = $"t-{_runId}-";
-        _receiveTracker = new ReceiveTracker();
-
-        var services = new ServiceCollection();
-        services.AddLogging();
-        services.AddSingleton(_receiveTracker);
-
-        var awsOptions = TestHelpers.CreateAwsOptions(Container);
-
-        if (awsOptions is not null)
-            services.AddDefaultAWSOptions(awsOptions);
-
-        services.AddAWSService<IAmazonSimpleNotificationService>();
-        services.AddAWSService<IAmazonSQS>();
-        services.AddAWSService<Amazon.SecurityToken.IAmazonSecurityTokenService>();
-
-        services.AddInterBus(bus =>
-        {
-            bus.AddAmazonSqsTransport(o =>
-            {
-                o.QueuePrefix = _queuePrefix;
-                o.TopicPrefix = _topicPrefix;
-            });
-            bus.AddConsumer<DeadLetterOrderPlacedConsumer>();
-        });
-
-        _provider = services.BuildServiceProvider();
-        _cts = new CancellationTokenSource();
-
-        foreach (var svc in _provider.GetServices<IHostedService>())
-            await svc.StartAsync(_cts.Token);
-    }
-
-    [TearDown]
-    public async Task TearDown()
-    {
-        await _cts.CancelAsync();
-
-        foreach (var svc in _provider.GetServices<IHostedService>())
-            await svc.StopAsync(CancellationToken.None);
-
-        _cts.Dispose();
-
-        var sqsClient = _provider.GetRequiredService<IAmazonSQS>();
-        var snsClient = _provider.GetRequiredService<IAmazonSimpleNotificationService>();
-        var logger = _provider.GetRequiredService<ILogger<DeadLetteringTests>>();
-        await TestHelpers.CleanupResourcesByPrefixAsync(sqsClient, snsClient, _queuePrefix, _topicPrefix, logger);
-
-        await _provider.DisposeAsync();
-    }
-
+    bus.Services.AddSingleton(new ReceiveTracker());
+    bus.AddConsumer<DeadLetterOrderPlacedConsumer>();
+})
+{
+    private ReceiveTracker Tracker => Provider.GetRequiredService<ReceiveTracker>();
+    
     [Test]
     public async Task FailedConsumer_MessageIsMovedToDeadLetterQueueWithMetadata()
     {
-        using var scope = _provider.CreateScope();
+        using var scope = Provider.CreateScope();
         var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
         await publisher.PublishAsync(
             new OrderPlaced(Guid.NewGuid(), "deadletter@test.com", 1m),
@@ -112,7 +30,7 @@ public class DeadLetteringTests
         var deadLetterQueueUrl = await scope.ServiceProvider.GetRequiredService<SnsSqsTopologyBuilder>()
             .ResolveQueueAsync(deadLetterQueueName, TestContext.CurrentContext.CancellationToken);
 
-        var sqsClient = _provider.GetRequiredService<IAmazonSQS>();
+        var sqsClient = Provider.GetRequiredService<IAmazonSQS>();
         Message? deadLetterMessage = null;
         var deadline = DateTime.UtcNow.AddSeconds(30);
         while (deadLetterMessage is null && DateTime.UtcNow < deadline)
@@ -140,7 +58,7 @@ public class DeadLetteringTests
         Assert.That(deadLetterMessage!.MessageAttributes.ContainsKey(InterBusHeaders.DeadLetterReason), Is.True);
         Assert.That(deadLetterMessage.MessageAttributes.ContainsKey(InterBusHeaders.DeadLetterError), Is.True);
         Assert.That(deadLetterMessage.MessageAttributes.ContainsKey(InterBusHeaders.DeadLetterTime), Is.True);
-        Assert.That(_receiveTracker.Count, Is.EqualTo(1));
+        Assert.That(Tracker.Count, Is.EqualTo(1));
     }
 
     public sealed class ReceiveTracker

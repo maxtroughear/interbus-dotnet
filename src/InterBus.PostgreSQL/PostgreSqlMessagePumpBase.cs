@@ -102,11 +102,13 @@ internal abstract class PostgreSqlMessagePumpBase(
     private async Task ListenForQueueAsync(ConsumerDescriptor descriptor, long queueId, CancellationToken stoppingToken)
     {
         var channelName = $"ib_{queueId}";
+        var concurrency = Math.Max(1, descriptor.ConcurrencyCount);
 
         logger.LogDebug(
-            "InterBus PostgreSQL: starting {PumpMode} pump for queue {QueueName}",
+            "InterBus PostgreSQL: starting {PumpMode} pump for queue {QueueName} with concurrency {Concurrency}",
             PumpModeName,
-            descriptor.QueueName);
+            descriptor.QueueName,
+            concurrency);
 
         await using var listenConn = await DataSource.OpenConnectionAsync(stoppingToken);
 
@@ -116,12 +118,23 @@ internal abstract class PostgreSqlMessagePumpBase(
             await listenCmd.ExecuteNonQueryAsync(stoppingToken);
         }
 
-        await ProcessPendingAsync(descriptor, queueId, stoppingToken);
+        using var concurrencyGate = new SemaphoreSlim(concurrency, concurrency);
+        var activeWorkers = new List<Task>(concurrency);
+
+        await StartWorkersAsync(
+            descriptor,
+            queueId,
+            concurrency,
+            concurrencyGate,
+            activeWorkers,
+            stoppingToken);
 
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
+                await CleanCompletedWorkersAsync(activeWorkers, stoppingToken);
+
                 using var pollCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
                 pollCts.CancelAfter(Options.FallbackPollInterval);
 
@@ -135,7 +148,13 @@ internal abstract class PostgreSqlMessagePumpBase(
                     isFallbackPoll = true;
                 }
 
-                await ProcessPendingAsync(descriptor, queueId, stoppingToken);
+                await StartWorkersAsync(
+                    descriptor,
+                    queueId,
+                    concurrency,
+                    concurrencyGate,
+                    activeWorkers,
+                    stoppingToken);
 
                 if (isFallbackPoll)
                     await CleanupOrphanedPayloadsAsync(stoppingToken);
@@ -145,6 +164,8 @@ internal abstract class PostgreSqlMessagePumpBase(
                 break;
             }
         }
+
+        await DrainWorkersAsync(activeWorkers, stoppingToken);
 
         logger.LogDebug(
             "InterBus PostgreSQL: {PumpMode} pump for queue {QueueName} stopped",
@@ -159,6 +180,73 @@ internal abstract class PostgreSqlMessagePumpBase(
         {
             var processed = await TryProcessNextAsync(descriptor, queueId, stoppingToken);
             if (!processed) break;
+        }
+    }
+
+    private async Task StartWorkersAsync(
+        ConsumerDescriptor descriptor,
+        long queueId,
+        int concurrency,
+        SemaphoreSlim concurrencyGate,
+        List<Task> activeWorkers,
+        CancellationToken stoppingToken)
+    {
+        await CleanCompletedWorkersAsync(activeWorkers, stoppingToken);
+
+        while (activeWorkers.Count < concurrency && concurrencyGate.Wait(0))
+        {
+            activeWorkers.Add(RunWorkerAsync(descriptor, queueId, concurrencyGate, stoppingToken));
+        }
+    }
+
+    private async Task CleanCompletedWorkersAsync(
+        List<Task> activeWorkers,
+        CancellationToken stoppingToken)
+    {
+        for (var i = activeWorkers.Count - 1; i >= 0; i--)
+        {
+            var worker = activeWorkers[i];
+            if (!worker.IsCompleted)
+                continue;
+
+            activeWorkers.RemoveAt(i);
+
+            try
+            {
+                await worker;
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+            }
+        }
+    }
+
+    private async Task DrainWorkersAsync(
+        List<Task> activeWorkers,
+        CancellationToken stoppingToken)
+    {
+        try
+        {
+            await Task.WhenAll(activeWorkers);
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+        }
+    }
+
+    private async Task RunWorkerAsync(
+        ConsumerDescriptor descriptor,
+        long queueId,
+        SemaphoreSlim concurrencyGate,
+        CancellationToken stoppingToken)
+    {
+        try
+        {
+            await ProcessPendingAsync(descriptor, queueId, stoppingToken);
+        }
+        finally
+        {
+            concurrencyGate.Release();
         }
     }
 

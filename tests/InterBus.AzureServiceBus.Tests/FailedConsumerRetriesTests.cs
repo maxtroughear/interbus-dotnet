@@ -1,62 +1,23 @@
-using InterBus.AzureServiceBus.Extensions;
-using InterBus.Extensions;
 using InterBus.Generated;
 using Azure.Messaging.ServiceBus;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
 
 namespace InterBus.AzureServiceBus.Tests;
 
-public class FailedConsumerRetriesTests : ServiceBusFixture
+public class FailedConsumerRetriesTests() : ServiceBusFixture(bus =>
 {
-    private ServiceProvider _provider;
-    private CancellationTokenSource _cts;
-    private OrderPlacedTracker _tracker;
-    private ReceiveTracker _receiveTracker;
-
-    [SetUp]
-    public async Task Setup()
-    {
-        _tracker = new OrderPlacedTracker();
-        _receiveTracker = new ReceiveTracker();
-
-        var services = new ServiceCollection();
-        services.AddLogging();
-        services.AddSingleton(_tracker);
-        services.AddSingleton(_receiveTracker);
-        services.AddInterBus(bus =>
-        {
-            bus.AddAzureServiceBusTransport(o =>
-            {
-                o.ConnectionString = Container.GetConnectionString();
-                o.AdminConnectionString = Container.GetHttpConnectionString();
-            });
-            bus.AddConsumer<DeadLetterOrderPlacedConsumer>();
-        });
-
-        _provider = services.BuildServiceProvider();
-        _cts = new CancellationTokenSource();
-
-        foreach (var svc in _provider.GetServices<IHostedService>())
-            await svc.StartAsync(_cts.Token);
-    }
-
-    [TearDown]
-    public async Task TearDown()
-    {
-        await _cts.CancelAsync();
-
-        foreach (var svc in _provider.GetServices<IHostedService>())
-            await svc.StopAsync(CancellationToken.None);
-
-        _cts.Dispose();
-        await _provider.DisposeAsync();
-    }
-
+    bus.Services.AddSingleton<OrderPlacedTracker>();
+    bus.Services.AddSingleton<ReceiveTracker>();
+    bus.AddConsumer<DeadLetterOrderPlacedConsumer>();
+})
+{
+    private OrderPlacedTracker Tracker => Provider.GetRequiredService<OrderPlacedTracker>();
+    private ReceiveTracker ReceiveTracker => Provider.GetRequiredService<ReceiveTracker>();
+    
     [Test]
     public async Task FailedConsumer_MessageIsMovedToDeadLetterQueue()
     {
-        using var scope = _provider.CreateScope();
+        using var scope = Provider.CreateScope();
         var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
         var msg = new OrderPlaced(Guid.NewGuid(), "retry@test.com", 10m);
         await publisher.PublishAsync(msg, TestContext.CurrentContext.CancellationToken);
@@ -74,8 +35,8 @@ public class FailedConsumerRetriesTests : ServiceBusFixture
         Assert.That(deadLetterMessage!.DeadLetterReason, Is.EqualTo("InvalidOperationException"));
         Assert.That(deadLetterMessage.ApplicationProperties.ContainsKey(InterBusHeaders.DeadLetterError), Is.True);
         Assert.That(deadLetterMessage.ApplicationProperties.ContainsKey(InterBusHeaders.DeadLetterTime), Is.True);
-        Assert.That(_tracker.Messages, Is.Empty);
-        Assert.That(_receiveTracker.Count, Is.EqualTo(1));
+        Assert.That(Tracker.Messages, Is.Empty);
+        Assert.That(ReceiveTracker.Count, Is.EqualTo(1));
     }
 
     private async Task<ServiceBusReceivedMessage?> TryReadDeadLetterAsync()

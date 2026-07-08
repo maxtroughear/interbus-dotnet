@@ -1,18 +1,25 @@
 using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Networks;
+using InterBus.AzureServiceBus.Extensions;
+using InterBus.Extensions;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Testcontainers.MsSql;
 using Testcontainers.ServiceBus;
 
 namespace InterBus.AzureServiceBus.Tests;
 
-public abstract class ServiceBusFixture
+public abstract class ServiceBusFixture(Action<InterBusBuilder> configureBus)
 {
     private INetwork _network;
     private MsSqlContainer _sqlContainer;
     protected ServiceBusContainer Container;
 
+    protected ServiceProvider Provider;
+    private CancellationTokenSource _cts;
+
     [OneTimeSetUp]
-    public async Task OneTimeSetUp()
+    public async Task OneTimeSetUpBase()
     {
         _network = new NetworkBuilder().Build();
         _sqlContainer = new MsSqlBuilder("mcr.microsoft.com/mssql/server:2025-latest")
@@ -31,7 +38,7 @@ public abstract class ServiceBusFixture
     }
 
     [OneTimeTearDown]
-    public async Task OneTimeTearDown()
+    public async Task OneTimeTearDownBase()
     {
         await Container.StopAsync();
         await _sqlContainer.StopAsync();
@@ -40,5 +47,40 @@ public abstract class ServiceBusFixture
 
         await _network.DeleteAsync();
         await _network.DisposeAsync();
+    }
+
+    [SetUp]
+    public async Task SetupBase()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+
+        services.AddInterBus(bus =>
+        {
+            bus.AddAzureServiceBusTransport(o =>
+            {
+                o.ConnectionString = Container.GetConnectionString();
+                o.AdminConnectionString = Container.GetHttpConnectionString();
+            });
+            configureBus(bus);
+        });
+
+        Provider = services.BuildServiceProvider();
+        _cts = new CancellationTokenSource();
+
+        foreach (var svc in Provider.GetServices<IHostedService>())
+            await svc.StartAsync(_cts.Token);
+    }
+
+    [TearDown]
+    public async Task TearDownBase()
+    {
+        await _cts.CancelAsync();
+
+        foreach (var svc in Provider.GetServices<IHostedService>())
+            await svc.StopAsync(CancellationToken.None);
+
+        _cts.Dispose();
+        await Provider.DisposeAsync();
     }
 }

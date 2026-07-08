@@ -371,7 +371,7 @@ public class OutboxTests
 
             await StartHostedServicesAsync(provider, cts.Token);
 
-            await WaitUntilAsync(() => tracker.Messages.Count == 1);
+            await WaitUntilAsync(() => tracker.Messages.Count == 1, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Single(tracker.Messages);
             Assert.Equal("deliver@example.com", tracker.Messages.Single().CustomerEmail);
@@ -422,7 +422,7 @@ public class OutboxTests
 
             await StartHostedServicesAsync(provider, cts.Token);
 
-            await WaitUntilAsync(() => tracker.Messages.Count >= count);
+            await WaitUntilAsync(() => tracker.Messages.Count >= count, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Equal(count, tracker.Messages.Count);
         }
@@ -463,7 +463,7 @@ public class OutboxTests
 
             await StartHostedServicesAsync(provider, cts.Token);
 
-            await WaitUntilAsync(() => tracker.Messages.Count == 1);
+            await WaitUntilAsync(() => tracker.Messages.Count == 1, cancellationToken: TestContext.Current.CancellationToken);
 
             // Allow a brief moment for the delete + commit.
             await Task.Delay(200, TestContext.Current.CancellationToken);
@@ -691,7 +691,7 @@ public class OutboxTests
                 }, TestContext.Current.CancellationToken);
             }
 
-            await WaitUntilAsync(() => shippedTracker.Messages.Count == 1);
+            await WaitUntilAsync(() => shippedTracker.Messages.Count == 1, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Single(shippedTracker.Messages);
         }
@@ -761,7 +761,7 @@ public class OutboxTests
 
             await ExecuteOnceAsync();
 
-            await WaitUntilAsync(() => shippedTracker.Messages.Count == 1);
+            await WaitUntilAsync(() => shippedTracker.Messages.Count == 1, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Single(shippedTracker.Messages);
             Assert.Single(publishTracker.OrderIds);
@@ -883,7 +883,7 @@ public class OutboxTests
                 Assert.Equal(DispatchResultKind.DeadLetter, context.Result.Kind);
             }
 
-            await WaitUntilAsync(() => deadLetterTracker.Messages.Count >= 1);
+            await WaitUntilAsync(() => deadLetterTracker.Messages.Count >= 1, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.NotEmpty(deadLetterTracker.Messages);
             var dl = deadLetterTracker.Messages.First();
@@ -949,7 +949,7 @@ public class OutboxTests
 
             // Start the processor and wait for all messages to arrive.
             await StartHostedServicesAsync(provider, cts.Token);
-            await WaitUntilAsync(() => tracker.Count == 3);
+            await WaitUntilAsync(() => tracker.Count == 3, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Equal(3, tracker.Count);
 

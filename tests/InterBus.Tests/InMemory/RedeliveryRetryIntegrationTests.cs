@@ -71,7 +71,7 @@ public sealed class RedeliveryRetryIntegrationTests
                 message,
                 TestContext.Current.CancellationToken);
 
-            await WaitUntilAsync(() => tracker.Successes.Contains(message.Id));
+            await WaitUntilAsync(() => tracker.Successes.Contains(message.Id), cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Equal(2, tracker.GetAttemptCount(message.Id));
             Assert.Contains("1", tracker.SeenRetryHeaders);
@@ -106,7 +106,7 @@ public sealed class RedeliveryRetryIntegrationTests
                 message,
                 TestContext.Current.CancellationToken);
 
-            await WaitUntilAsync(() => tracker.Successes.Contains(message.Id));
+            await WaitUntilAsync(() => tracker.Successes.Contains(message.Id), cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Equal(2, tracker.GetAttemptCount(message.Id));
             Assert.Contains("1", tracker.SeenDelayRetryHeaders);
@@ -145,7 +145,7 @@ public sealed class RedeliveryRetryIntegrationTests
                 message,
                 TestContext.Current.CancellationToken);
 
-            await WaitUntilAsync(() => tracker.Successes.Contains(message.Id), timeoutMs: 2000);
+            await WaitUntilAsync(() => tracker.Successes.Contains(message.Id), timeoutMs: 2000, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Equal(2, tracker.GetAttemptCount(message.Id));
         }

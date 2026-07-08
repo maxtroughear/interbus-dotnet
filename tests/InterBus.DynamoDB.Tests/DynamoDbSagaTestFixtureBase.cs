@@ -3,7 +3,6 @@ using InterBus.DynamoDB.Sagas;
 using InterBus.Extensions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Testcontainers.LocalStack;
 
 namespace InterBus.DynamoDB.Tests;
 

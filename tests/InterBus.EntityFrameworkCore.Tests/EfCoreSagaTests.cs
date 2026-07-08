@@ -221,7 +221,7 @@ public class EfCoreSagaTests
 
             await WaitUntilAsync(async () =>
                 (await GetSagaEntryAsync<EfSagaOrderSaga>(provider, orderId.ToString()))
-                ?.State.MessageCount == 1);
+                ?.State.MessageCount == 1, cancellationToken: TestContext.Current.CancellationToken);
 
             var entry = await GetSagaEntryAsync<EfSagaOrderSaga>(provider, orderId.ToString());
 
@@ -259,7 +259,7 @@ public class EfCoreSagaTests
 
             await WaitUntilAsync(async () =>
                 (await GetSagaEntryAsync<EfSagaOrderSaga>(provider, orderId.ToString()))
-                ?.State.MessageCount == 2);
+                ?.State.MessageCount == 2, cancellationToken: TestContext.Current.CancellationToken);
 
             var entry = await GetSagaEntryAsync<EfSagaOrderSaga>(provider, orderId.ToString());
 
@@ -303,7 +303,7 @@ public class EfCoreSagaTests
                 var e1 = await GetSagaEntryAsync<EfSagaOrderSaga>(provider, orderId1.ToString());
                 var e2 = await GetSagaEntryAsync<EfSagaOrderSaga>(provider, orderId2.ToString());
                 return e1?.State.MessageCount == 1 && e2?.State.MessageCount == 1;
-            });
+            }, cancellationToken: TestContext.Current.CancellationToken);
 
             var entry1 = await GetSagaEntryAsync<EfSagaOrderSaga>(provider, orderId1.ToString());
             var entry2 = await GetSagaEntryAsync<EfSagaOrderSaga>(provider, orderId2.ToString());
@@ -342,13 +342,12 @@ public class EfCoreSagaTests
 
             await WaitUntilAsync(async () =>
                 (await GetSagaEntryAsync<EfSagaOrderWithDeletionSaga>(provider, orderId.ToString()))
-                ?.State.MessageCount == 1);
+                ?.State.MessageCount == 1, cancellationToken: TestContext.Current.CancellationToken);
 
             await publisher.PublishAsync(new EfSagaOrderCancelled(orderId), TestContext.Current.CancellationToken);
 
             await WaitUntilAsync(async () =>
-                    await GetSagaEntryAsync<EfSagaOrderWithDeletionSaga>(provider, orderId.ToString()) == null,
-                timeoutMs: 3000);
+                    await GetSagaEntryAsync<EfSagaOrderWithDeletionSaga>(provider, orderId.ToString()) == null, timeoutMs: 3000, cancellationToken: TestContext.Current.CancellationToken);
 
             var entry = await GetSagaEntryAsync<EfSagaOrderWithDeletionSaga>(provider, orderId.ToString());
             Assert.Null(entry);
@@ -381,12 +380,12 @@ public class EfCoreSagaTests
                 TestContext.Current.CancellationToken);
             await WaitUntilAsync(async () =>
                 (await GetSagaEntryAsync<EfSagaCompletingOrderSaga>(provider, orderId.ToString()))
-                ?.State.MessageCount == 1);
+                ?.State.MessageCount == 1, cancellationToken: TestContext.Current.CancellationToken);
 
             await publisher.PublishAsync(new EfSagaOrderConfirmed(orderId), TestContext.Current.CancellationToken);
             await WaitUntilAsync(async () =>
                 (await GetSagaEntryAsync<EfSagaCompletingOrderSaga>(provider, orderId.ToString()))
-                ?.IsCompleted == true);
+                ?.IsCompleted == true, cancellationToken: TestContext.Current.CancellationToken);
 
             var completedEntry = await GetSagaEntryAsync<EfSagaCompletingOrderSaga>(provider, orderId.ToString());
             Assert.NotNull(completedEntry);
@@ -399,8 +398,7 @@ public class EfCoreSagaTests
                 TestContext.Current.CancellationToken);
             await WaitUntilAsync(async () =>
                     (await GetSagaEntryAsync<EfSagaCompletingOrderSaga>(provider, orderId.ToString()))
-                    ?.State.CustomerEmail == "new@test.com",
-                timeoutMs: 500, intervalMs: 10);
+                    ?.State.CustomerEmail == "new@test.com", timeoutMs: 500, intervalMs: 10, cancellationToken: TestContext.Current.CancellationToken);
 
             var entryAfter = await GetSagaEntryAsync<EfSagaCompletingOrderSaga>(provider, orderId.ToString());
             Assert.NotNull(entryAfter);
@@ -437,7 +435,7 @@ public class EfCoreSagaTests
                 TestContext.Current.CancellationToken);
 
             await WaitUntilAsync(async () =>
-                await GetSagaEntryAsync<EfSagaOrderSaga>(provider, orderId.ToString()) != null);
+                await GetSagaEntryAsync<EfSagaOrderSaga>(provider, orderId.ToString()) != null, cancellationToken: TestContext.Current.CancellationToken);
 
             // Wait for the entry to expire.
             await Task.Delay(200, TestContext.Current.CancellationToken);

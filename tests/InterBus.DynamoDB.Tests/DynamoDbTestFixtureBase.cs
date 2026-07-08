@@ -1,9 +1,8 @@
-using Amazon.DynamoDBv2;
 using Testcontainers.LocalStack;
 
 namespace InterBus.DynamoDB.Tests;
 
-public class DynamoDbTestFixtureBase
+public abstract class DynamoDbTestFixtureBase
 {
     protected readonly LocalStackContainer? Container = TestHelpers.CreateLocalStackContainer();
     

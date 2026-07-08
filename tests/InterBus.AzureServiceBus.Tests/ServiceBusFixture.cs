@@ -5,11 +5,11 @@ using Testcontainers.ServiceBus;
 
 namespace InterBus.AzureServiceBus.Tests;
 
-public class ServiceBusFixture
+public abstract class ServiceBusFixture
 {
-    protected INetwork _network;
-    protected MsSqlContainer _sqlContainer;
-    protected ServiceBusContainer _container;
+    private INetwork _network;
+    private MsSqlContainer _sqlContainer;
+    protected ServiceBusContainer Container;
 
     [OneTimeSetUp]
     public async Task OneTimeSetUp()
@@ -20,22 +20,22 @@ public class ServiceBusFixture
             .WithNetwork(_network)
             .WithNetworkAliases("mssql")
             .Build();
-        _container = new ServiceBusBuilder("mcr.microsoft.com/azure-messaging/servicebus-emulator:latest")
+        Container = new ServiceBusBuilder("mcr.microsoft.com/azure-messaging/servicebus-emulator:latest")
             .WithMsSqlContainer(_network, _sqlContainer, "mssql", "Password123!")
             .WithAcceptLicenseAgreement(true)
             .Build();
 
         await _network.CreateAsync();
         await _sqlContainer.StartAsync();
-        await _container.StartAsync();
+        await Container.StartAsync();
     }
 
     [OneTimeTearDown]
     public async Task OneTimeTearDown()
     {
-        await _container.StopAsync();
+        await Container.StopAsync();
         await _sqlContainer.StopAsync();
-        await _container.DisposeAsync();
+        await Container.DisposeAsync();
         await _sqlContainer.DisposeAsync();
 
         await _network.DeleteAsync();

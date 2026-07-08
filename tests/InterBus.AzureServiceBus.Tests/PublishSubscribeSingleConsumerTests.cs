@@ -24,8 +24,8 @@ public class PublishSubscribeSingleConsumerTests : ServiceBusFixture
         {
             bus.AddAzureServiceBusTransport(o =>
             {
-                o.ConnectionString = _container.GetConnectionString();
-                o.AdminConnectionString = _container.GetHttpConnectionString();
+                o.ConnectionString = Container.GetConnectionString();
+                o.AdminConnectionString = Container.GetHttpConnectionString();
             });
             bus.AddConsumer<OrderPlacedConsumer>();
         });

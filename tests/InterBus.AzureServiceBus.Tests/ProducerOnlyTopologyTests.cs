@@ -27,8 +27,8 @@ public class ProducerOnlyTopologyTests : ServiceBusFixture
         {
             bus.AddAzureServiceBusTransport(o =>
             {
-                o.ConnectionString = _container.GetConnectionString();
-                o.AdminConnectionString = _container.GetHttpConnectionString();
+                o.ConnectionString = Container.GetConnectionString();
+                o.AdminConnectionString = Container.GetHttpConnectionString();
                 o.TopicPrefix = _topicPrefix;
                 o.QueuePrefix = _queuePrefix;
             });
@@ -63,7 +63,7 @@ public class ProducerOnlyTopologyTests : ServiceBusFixture
         await publisher.PublishAsync(msg, TestContext.CurrentContext.CancellationToken);
 
         var expectedTopicName = _topicPrefix + RoutingConventions.TopicName(typeof(OrderPlaced));
-        var adminClient = new ServiceBusAdministrationClient(_container.GetHttpConnectionString());
+        var adminClient = new ServiceBusAdministrationClient(Container.GetHttpConnectionString());
 
         var exists = await adminClient.TopicExistsAsync(
             expectedTopicName,
@@ -87,7 +87,7 @@ public class ProducerOnlyTopologyTests : ServiceBusFixture
             async () => await publisher.SendAsync(rawQueueName, msg, TestContext.CurrentContext.CancellationToken),
             Throws.TypeOf<ServiceBusException>());
 
-        var adminClient = new ServiceBusAdministrationClient(_container.GetHttpConnectionString());
+        var adminClient = new ServiceBusAdministrationClient(Container.GetHttpConnectionString());
         var exists = await adminClient.QueueExistsAsync(
             expectedQueueName,
             TestContext.CurrentContext.CancellationToken);

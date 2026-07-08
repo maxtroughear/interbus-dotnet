@@ -10,7 +10,6 @@ using InterBus.Sending;
 using InterBus.Tests.Common;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Testcontainers.LocalStack;
 
 namespace InterBus.DynamoDB.Tests;
 

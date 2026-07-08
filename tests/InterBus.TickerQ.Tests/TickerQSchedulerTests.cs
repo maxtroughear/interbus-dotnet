@@ -55,7 +55,7 @@ public sealed class TickerQSchedulerTests
             await scheduler.SchedulePublishAsync(
                 message, DateTimeOffset.UtcNow.AddSeconds(-1), cts.Token);
 
-            await WaitUntilAsync(() => tracker.Messages.Count >= 1, timeoutMs: 5000);
+            await WaitUntilAsync(() => tracker.Messages.Count >= 1, timeoutMs: 5000, cancellationToken: TestContext.Current.CancellationToken);
 
             var delivered = Assert.Single(tracker.Messages);
             Assert.Equal(message.Id, delivered.Id);

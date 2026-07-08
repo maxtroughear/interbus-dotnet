@@ -28,8 +28,8 @@ public class FailedConsumerRetriesTests : ServiceBusFixture
         {
             bus.AddAzureServiceBusTransport(o =>
             {
-                o.ConnectionString = _container.GetConnectionString();
-                o.AdminConnectionString = _container.GetHttpConnectionString();
+                o.ConnectionString = Container.GetConnectionString();
+                o.AdminConnectionString = Container.GetHttpConnectionString();
             });
             bus.AddConsumer<DeadLetterOrderPlacedConsumer>();
         });
@@ -81,7 +81,7 @@ public class FailedConsumerRetriesTests : ServiceBusFixture
     private async Task<ServiceBusReceivedMessage?> TryReadDeadLetterAsync()
     {
         var queueName = typeof(DeadLetterOrderPlacedConsumer).FullName!;
-        await using var client = new ServiceBusClient(_container.GetConnectionString());
+        await using var client = new ServiceBusClient(Container.GetConnectionString());
         await using var receiver = client.CreateReceiver(
             queueName,
             new ServiceBusReceiverOptions { SubQueue = SubQueue.DeadLetter });

@@ -169,7 +169,7 @@ public class StatelessSagaTests
             {
                 var e = repo.GetAsync(id.ToString()).GetAwaiter().GetResult();
                 return e?.State.CurrentState == TrafficLightState.Green;
-            });
+            }, cancellationToken: TestContext.Current.CancellationToken);
 
             var entry = await repo.GetAsync(id.ToString(), TestContext.Current.CancellationToken);
             Assert.NotNull(entry);
@@ -207,7 +207,7 @@ public class StatelessSagaTests
                 var e = repo.GetAsync(id.ToString()).GetAwaiter().GetResult();
                 return e?.State.CurrentState == TrafficLightState.Red
                        && e.State.TransitionCount == 1;
-            });
+            }, cancellationToken: TestContext.Current.CancellationToken);
 
             var entry = await repo.GetAsync(id.ToString(), TestContext.Current.CancellationToken);
             Assert.NotNull(entry);
@@ -248,7 +248,7 @@ public class StatelessSagaTests
             {
                 var e = repo.GetAsync(id1.ToString()).GetAwaiter().GetResult();
                 return e?.State.CurrentState == TrafficLightState.Green;
-            });
+            }, cancellationToken: TestContext.Current.CancellationToken);
 
             var entry1 = await repo.GetAsync(id1.ToString(), TestContext.Current.CancellationToken);
             var entry2 = await repo.GetAsync(id2.ToString(), TestContext.Current.CancellationToken);

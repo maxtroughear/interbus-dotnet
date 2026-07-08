@@ -79,7 +79,7 @@ public class DeadLetterConsumerTests
                 new OrderPlaced(Guid.NewGuid(), "deadletter@test.com", 99m),
                 TestContext.Current.CancellationToken);
 
-            await WaitUntilAsync(() => deadLetterTracker.Messages.Count >= 1);
+            await WaitUntilAsync(() => deadLetterTracker.Messages.Count >= 1, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.NotEmpty(deadLetterTracker.Messages);
             var deadLetter = deadLetterTracker.Messages.First();
@@ -127,7 +127,7 @@ public class DeadLetterConsumerTests
                 TestContext.Current.CancellationToken);
 
             // Give enough time for dead letter to flow through and verify no nested dead letter is produced.
-            await WaitUntilAsync(() => faultingCount.Count >= 1);
+            await WaitUntilAsync(() => faultingCount.Count >= 1, cancellationToken: TestContext.Current.CancellationToken);
             await Task.Delay(200, TestContext.Current.CancellationToken);
 
             Assert.Empty(nestedDeadLetterTracker.Messages);
@@ -170,7 +170,7 @@ public class DeadLetterConsumerTests
                 TestContext.Current.CancellationToken);
 
             // Wait until the dead letter is received, then allow extra time to confirm no redelivery.
-            await WaitUntilAsync(() => deadLetterTracker.Messages.Count >= 1);
+            await WaitUntilAsync(() => deadLetterTracker.Messages.Count >= 1, cancellationToken: TestContext.Current.CancellationToken);
             await Task.Delay(200, TestContext.Current.CancellationToken);
 
             // The faulting consumer should have been called exactly once — no infinite loop.

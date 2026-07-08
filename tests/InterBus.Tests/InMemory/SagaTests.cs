@@ -224,7 +224,7 @@ public class SagaTests
                 var repo = provider.GetRequiredService<ISagaRepository<OrderSaga, OrderSagaState>>();
                 var entry = repo.GetAsync(orderId.ToString()).GetAwaiter().GetResult();
                 return entry?.State.MessageCount == 1;
-            });
+            }, cancellationToken: TestContext.Current.CancellationToken);
 
             var repository = provider.GetRequiredService<ISagaRepository<OrderSaga, OrderSagaState>>();
             var sagaEntry = await repository.GetAsync(orderId.ToString(), TestContext.Current.CancellationToken);
@@ -267,7 +267,7 @@ public class SagaTests
                 var repo = provider.GetRequiredService<ISagaRepository<OrderSaga, OrderSagaState>>();
                 var entry = repo.GetAsync(orderId.ToString()).GetAwaiter().GetResult();
                 return entry?.State.MessageCount == 2;
-            });
+            }, cancellationToken: TestContext.Current.CancellationToken);
 
             var repository = provider.GetRequiredService<ISagaRepository<OrderSaga, OrderSagaState>>();
             var sagaEntry = await repository.GetAsync(orderId.ToString(), TestContext.Current.CancellationToken);
@@ -314,7 +314,7 @@ public class SagaTests
                 var s1 = repository.GetAsync(orderId1.ToString()).GetAwaiter().GetResult();
                 var s2 = repository.GetAsync(orderId2.ToString()).GetAwaiter().GetResult();
                 return s1?.State.MessageCount == 1 && s2?.State.MessageCount == 1;
-            });
+            }, cancellationToken: TestContext.Current.CancellationToken);
 
             var entry1 = await repository.GetAsync(orderId1.ToString(), TestContext.Current.CancellationToken);
             var entry2 = await repository.GetAsync(orderId2.ToString(), TestContext.Current.CancellationToken);
@@ -354,15 +354,16 @@ public class SagaTests
             var repository = provider.GetRequiredService<ISagaRepository<OrderWithDeletionSaga, OrderSagaState>>();
 
             await WaitUntilAsync(() =>
-                repository.GetAsync(orderId.ToString()).GetAwaiter().GetResult()?.State.MessageCount == 1);
+                    repository.GetAsync(orderId.ToString()).GetAwaiter().GetResult()?.State.MessageCount == 1,
+                cancellationToken: TestContext.Current.CancellationToken);
 
             // Now cancel the order - saga should call Delete()
             await publisher.PublishAsync(new OrderCancelled(orderId), TestContext.Current.CancellationToken);
 
             // Wait for the saga to process the cancellation and delete its state
             await WaitUntilAsync(() =>
-                    repository.GetAsync(orderId.ToString()).GetAwaiter().GetResult() == null,
-                timeoutMs: 3000);
+                    repository.GetAsync(orderId.ToString()).GetAwaiter().GetResult() == null, timeoutMs: 3000,
+                cancellationToken: TestContext.Current.CancellationToken);
 
             var entry = await repository.GetAsync(orderId.ToString(), TestContext.Current.CancellationToken);
             Assert.Null(entry);
@@ -395,7 +396,8 @@ public class SagaTests
             await publisher.PublishAsync(new OrderStarted(orderId, "complete@test.com"),
                 TestContext.Current.CancellationToken);
             await WaitUntilAsync(() =>
-                repository.GetAsync(orderId.ToString()).GetAwaiter().GetResult()?.State.MessageCount == 1);
+                    repository.GetAsync(orderId.ToString()).GetAwaiter().GetResult()?.State.MessageCount == 1,
+                cancellationToken: TestContext.Current.CancellationToken);
 
             // Confirming completes the saga
             await publisher.PublishAsync(new OrderConfirmed(orderId), TestContext.Current.CancellationToken);
@@ -403,7 +405,7 @@ public class SagaTests
             {
                 var e = repository.GetAsync(orderId.ToString()).GetAwaiter().GetResult();
                 return e?.IsCompleted == true;
-            });
+            }, cancellationToken: TestContext.Current.CancellationToken);
 
             // State is preserved and marked completed
             var completedEntry = await repository.GetAsync(orderId.ToString(), TestContext.Current.CancellationToken);
@@ -416,10 +418,9 @@ public class SagaTests
             // Wait briefly to give the message pump an opportunity to (incorrectly) process it.
             await publisher.PublishAsync(new OrderStarted(orderId, "new@test.com"),
                 TestContext.Current.CancellationToken);
-            await WaitUntilAsync(
-                () => repository.GetAsync(orderId.ToString()).GetAwaiter().GetResult()
-                    ?.State.CustomerEmail == "new@test.com",
-                timeoutMs: 500, intervalMs: 10);
+            await WaitUntilAsync(() => repository.GetAsync(orderId.ToString()).GetAwaiter().GetResult()
+                    ?.State.CustomerEmail == "new@test.com", timeoutMs: 500, intervalMs: 10,
+                cancellationToken: TestContext.Current.CancellationToken);
 
             // State must be unchanged — the message was silently dropped
             var entryAfter = await repository.GetAsync(orderId.ToString(), TestContext.Current.CancellationToken);
@@ -459,7 +460,8 @@ public class SagaTests
             var repository = provider.GetRequiredService<ISagaRepository<OrderSaga, OrderSagaState>>();
 
             await WaitUntilAsync(() =>
-                repository.GetAsync(orderId.ToString()).GetAwaiter().GetResult()?.State.MessageCount == 1);
+                    repository.GetAsync(orderId.ToString()).GetAwaiter().GetResult()?.State.MessageCount == 1,
+                cancellationToken: TestContext.Current.CancellationToken);
 
             // State should be present immediately after processing
             var entryBeforeExpiry =
@@ -502,7 +504,8 @@ public class SagaTests
             await publisher.PublishAsync(new OrderStarted(orderId, "publish@test.com"),
                 TestContext.Current.CancellationToken);
 
-            await WaitUntilAsync(() => tracker.Messages.Count == 1);
+            await WaitUntilAsync(() => tracker.Messages.Count == 1,
+                cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Single(tracker.Messages);
             Assert.Equal(orderId, tracker.Messages.Single().OrderId);
@@ -536,7 +539,8 @@ public class SagaTests
             var repository = provider.GetRequiredService<ISagaRepository<OrderSaga, OrderSagaState>>();
 
             await WaitUntilAsync(() =>
-                repository.GetAsync(orderId.ToString()).GetAwaiter().GetResult()?.State.MessageCount == 1);
+                    repository.GetAsync(orderId.ToString()).GetAwaiter().GetResult()?.State.MessageCount == 1,
+                cancellationToken: TestContext.Current.CancellationToken);
 
             var sagaEntry = await repository.GetAsync(orderId.ToString(), TestContext.Current.CancellationToken);
             Assert.NotNull(sagaEntry);

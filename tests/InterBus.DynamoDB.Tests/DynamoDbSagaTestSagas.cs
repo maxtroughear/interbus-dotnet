@@ -6,7 +6,6 @@ public sealed class OrderSagaState
 {
     public string? CustomerEmail { get; set; }
     public bool IsConfirmed { get; set; }
-    public bool IsCancelled { get; set; }
     public int MessageCount { get; set; }
 }
 
@@ -75,7 +74,6 @@ public sealed class OrderWithDeletionSaga :
     public Task Consume(OrderCancelled message, ISagaContext<OrderSagaState> context,
         CancellationToken cancellationToken = default)
     {
-        context.State.IsCancelled = true;
         context.Delete();
         return Task.CompletedTask;
     }

@@ -7,33 +7,12 @@ using Testcontainers.LocalStack;
 
 namespace InterBus.DynamoDB.Tests;
 
-public abstract class DynamoDbSagaTestFixtureBase
+public abstract class DynamoDbSagaTestFixtureBase : DynamoDbTestFixtureBase
 {
-    private readonly LocalStackContainer? _container = TestHelpers.CreateLocalStackContainer();
-
     protected IAmazonDynamoDB DynamoDb = null!;
     protected DynamoDbSagaOptions<OrderSaga> Options = null!;
     protected IDynamoDbStateWriter<OrderSaga> StateWriter = null!;
     protected string TableName = string.Empty;
-
-    [OneTimeSetUp]
-    public async Task OneTimeSetUp()
-    {
-        if (_container is null)
-            return;
-
-        await _container.StartAsync();
-    }
-
-    [OneTimeTearDown]
-    public async Task OneTimeTearDown()
-    {
-        if (_container is null)
-            return;
-
-        await _container.StopAsync();
-        await _container.DisposeAsync();
-    }
 
     [SetUp]
     public async Task SetUp()
@@ -41,7 +20,7 @@ public abstract class DynamoDbSagaTestFixtureBase
         var runId = Guid.NewGuid().ToString("N");
         TableName = $"{runId}-InterBusSagasTest";
 
-        var awsOptions = TestHelpers.CreateAwsOptions(_container);
+        var awsOptions = TestHelpers.CreateAwsOptions(Container);
         var services = new ServiceCollection();
 
         if (awsOptions is not null)
@@ -74,7 +53,7 @@ public abstract class DynamoDbSagaTestFixtureBase
         var services = new ServiceCollection();
         services.AddLogging();
 
-        var awsOptions = TestHelpers.CreateAwsOptions(_container);
+        var awsOptions = TestHelpers.CreateAwsOptions(Container);
         if (awsOptions is not null)
             services.AddDefaultAWSOptions(awsOptions);
 

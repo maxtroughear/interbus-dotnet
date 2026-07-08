@@ -69,7 +69,7 @@ public class DynamoDbSagaIntegrationTests : DynamoDbSagaTestFixtureBase
             {
                 var repo = provider.GetRequiredService<ISagaRepository<OrderSaga, OrderSagaState>>();
                 var entry = repo.GetAsync(orderId.ToString()).GetAwaiter().GetResult();
-                return entry?.State.MessageCount == 2 && entry.State.IsConfirmed;
+                return entry?.State is { MessageCount: 2, IsConfirmed: true };
             });
 
             var repository = provider.GetRequiredService<ISagaRepository<OrderSaga, OrderSagaState>>();

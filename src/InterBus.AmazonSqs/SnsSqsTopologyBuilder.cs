@@ -99,6 +99,22 @@ public sealed partial class SnsSqsTopologyBuilder(
                 : CreateQueueAsync(sqsQueueName, ct),
             cancellationToken);
     }
+    
+    public async Task<string> EnsureDeadLetterQueueAsync(Uri queue, CancellationToken cancellationToken)
+    {
+        var sqsQueueName = naming.BuildDeadLetterQueueName(queue);
+
+        if (QueueUrls.TryGetValue(sqsQueueName, out var cachedUrl))
+            return cachedUrl;
+
+        return await EnsureWithCacheAsync(
+            EnsuredQueues,
+            sqsQueueName,
+            ct => transportOptions.TopologyMode == TopologyMode.ResolveOnly
+                ? ResolveQueueAsync(sqsQueueName, ct)
+                : CreateQueueAsync(sqsQueueName, ct),
+            cancellationToken);
+    }
 
     private async Task CreateConsumerTopologyAsync(CancellationToken cancellationToken)
     {

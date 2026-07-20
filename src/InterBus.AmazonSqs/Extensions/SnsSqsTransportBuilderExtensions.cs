@@ -1,3 +1,4 @@
+using InterBus.MessagePumps;
 using InterBus.Requests;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -65,21 +66,17 @@ public static class SnsSqsTransportBuilderExtensions
             builder.Services.AddSingleton<SnsSqsNaming>();
             builder.Services.AddSingleton<SnsSqsTopologyBuilder>();
             builder.Services.AddSingleton<ITopologyBuilder>(sp => sp.GetRequiredService<SnsSqsTopologyBuilder>());
-            builder.Services.TryAddSingleton<SnsSqsMessageEnvelope>();
-            builder.Services.TryAddSingleton<SnsSerialisedMessageEnvelope>();
-            builder.Services.TryAddSingleton<ISnsSqsMessageEnvelope, SnsSqsMessageEnvelope>();
-
+            builder.Services.AddSingleton<SnsSqsMessageEnvelope>();
+            builder.Services.AddSingleton<SnsSerialisedMessageEnvelope>(); // TODO: Remove, doesn't seem used directly
+            builder.Services.AddSingleton<ISnsSqsMessageEnvelope, SnsSqsMessageEnvelope>();
             builder.Services.AddKeyedScoped<ITransport, SnsTransport>(SnsTransport.TopicScheme);
             builder.Services.AddKeyedScoped<ITransport, SqsTransport>(SqsTransport.QueueScheme);
-
-            // Message pump runs as a background service.
-            builder.Services.AddHostedService<SqsMessagePump>();
-
-            // Virtual queue host manages one real SQS queue shared across all reply exchanges.
+            builder.Services.AddSingleton<SqsPrefetchedMessageFactory>();
             builder.Services.AddSingleton<IVirtualQueueHost, SqsVirtualQueueHost>();
-
-            // Reply endpoint factory enables IRequestClient<,> without additional registration.
             builder.Services.AddSingleton<IReplyEndpointFactory, VirtualQueueReplyEndpointFactory>();
+            builder.Services.AddSingleton<IMessagePumpFactory, SqsQueueMessagePumpFactory>();
+
+            builder.Services.AddHostedService<SqsMessagePump>();
 
             return builder;
         }

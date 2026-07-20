@@ -52,6 +52,15 @@ public sealed class ConsumerDescriptor(Type consumerType, Uri queue)
     /// Defaults to <c>1</c> (sequential dispatch).
     /// </summary>
     public int ConcurrencyCount { get; internal set; } = 1;
+    
+    /// <summary>
+    /// The number of concurrent message pumps for this consumer's queue.
+    /// Setting above <c>1</c> effectively is the competing consumers pattern.
+    /// </summary>
+    /// <remarks>
+    /// This is transport agnostic and is used to scale out message consumption across multiple threads.
+    /// </remarks>
+    public int PumpCount { get; internal set; } = 1;
 
     public int MaxDeliveryCount { get; internal set; } = 10;
 

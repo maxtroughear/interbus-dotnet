@@ -68,6 +68,8 @@ public static class ServiceCollectionExtensions
             services.AddScoped<IMiddlewareFactory, MiddlewareFactory>();
             services.AddScoped<ConsumeContextAccessor>();
 
+            services.AddSingleton<Dispatcher>();
+            
             services.AddScoped<DispatchPipelineExecutor>();
             services.AddScoped<ConsumePipelineExecutor>();
             services.AddScoped<PublishPipelineExecutor>();

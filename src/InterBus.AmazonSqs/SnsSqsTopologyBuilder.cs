@@ -118,7 +118,7 @@ public sealed partial class SnsSqsTopologyBuilder(
                     ["RedrivePolicy"] = JsonSerializer.Serialize(new
                     {
                         deadLetterTargetArn = deadLetterQueueArn,
-                        maxReceiveCount = Math.Max(1, descriptor.MaxDeliveryCount)
+                        maxReceiveCount = Math.Max(1, descriptor.MaxDeliveryCount).ToString()
                     }),
                 });
 

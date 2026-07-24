@@ -107,8 +107,15 @@ public sealed partial class SnsSqsTopologyBuilder(
             var queueName = naming.BuildSqsQueueName(descriptor.Queue);
             var deadLetterQueueName = naming.BuildDeadLetterQueueName(descriptor.Queue);
 
-            await CreateQueueAsync(deadLetterQueueName, cancellationToken);
-            var deadLetterQueueArn = QueueArns[deadLetterQueueName];
+            var deadLetterQueueUrl = await CreateQueueAsync(deadLetterQueueName, cancellationToken);
+            var dlqAttributes = await sqsClient.GetQueueAttributesAsync(
+                new GetQueueAttributesRequest
+                {
+                    QueueUrl = deadLetterQueueUrl,
+                    AttributeNames = ["QueueArn"],
+                },
+                cancellationToken);
+            var deadLetterQueueArn = dlqAttributes.QueueARN;
 
             var queueUrl = await CreateQueueAsync(
                 queueName,
@@ -118,7 +125,7 @@ public sealed partial class SnsSqsTopologyBuilder(
                     ["RedrivePolicy"] = JsonSerializer.Serialize(new
                     {
                         deadLetterTargetArn = deadLetterQueueArn,
-                        maxReceiveCount = Math.Max(1, descriptor.MaxDeliveryCount).ToString()
+                        maxReceiveCount = Math.Max(1, descriptor.MaxDeliveryCount)
                     }),
                 });
 

@@ -341,25 +341,27 @@ public sealed partial class SnsSqsTopologyBuilder(
     }
 
     /// <summary>
-    /// Returns the effective region name for an AWS client config.
-    /// <para>
-    /// In AWS SDK v4, explicitly setting <see cref="Amazon.Runtime.ClientConfig.ServiceURL"/> clears
-    /// <see cref="Amazon.Runtime.ClientConfig.RegionEndpoint"/> (leaving it as an empty object whose
-    /// <c>SystemName</c> is <c>""</c>). This is the common pattern used when targeting LocalStack or
-    /// other mock endpoints. <see cref="Amazon.Runtime.ClientConfig.AuthenticationRegion"/> is set
-    /// independently and remains correct, so it is used as the fallback.
-    /// </para>
+    /// Returns the effective region name for an AWS client config, falling back to
+    /// <see cref="Amazon.Runtime.ClientConfig.AuthenticationRegion"/> when
+    /// <see cref="Amazon.Runtime.ClientConfig.RegionEndpoint"/> is cleared by an explicit
+    /// <see cref="Amazon.Runtime.ClientConfig.ServiceURL"/> override (the LocalStack pattern).
     /// </summary>
-    private static string GetRegion(Amazon.Runtime.IClientConfig config, string? requiredFor = null) =>
-        config.RegionEndpoint?.SystemName is { Length: > 0 } r
-            ? r
-            : config.AuthenticationRegion
-              ?? (requiredFor is null
-                  ? ""
-                  : throw new InvalidOperationException(
-                      $"Cannot determine the AWS region from the {requiredFor} client configuration. " +
-                      "Ensure a region has been configured on the AWS client " +
-                      "(e.g. via environment variable AWS_DEFAULT_REGION or AWSOptions.Region)."));
+    private static string GetRegion(Amazon.Runtime.IClientConfig config, string? requiredFor = null)
+    {
+        if (config.RegionEndpoint?.SystemName is { Length: > 0 } r)
+            return r;
+
+        if (config.AuthenticationRegion is { } authRegion)
+            return authRegion;
+
+        if (requiredFor is null)
+            return "";
+
+        throw new InvalidOperationException(
+            $"Cannot determine the AWS region from the {requiredFor} client configuration. " +
+            "Ensure a region has been configured on the AWS client " +
+            "(e.g. via environment variable AWS_DEFAULT_REGION or AWSOptions.Region).");
+    }
 
     [LoggerMessage(LogLevel.Debug, "InterBus AmazonSqs: verifying SQS queue {QueueName}")]
     partial void LogDebugVerifyingSqsQueue(string queueName);

@@ -293,9 +293,7 @@ public sealed partial class SnsSqsTopologyBuilder(
 
             LogDebugVerifyingSqsQueue(queueName);
 
-            var sqsRegion = sqsClient.Config.RegionEndpoint?.SystemName
-                            ?? throw new InvalidOperationException(
-                                "Cannot determine the AWS region from the IAmazonSQS client configuration. Ensure a region has been configured on the AWS client (e.g. via environment variable AWS_DEFAULT_REGION or AWSOptions.Region)");
+            var sqsRegion = GetRegion(sqsClient.Config);
 
             var url = $"{sqsClient.Config.ServiceURL}/{accountId}/{queueName}";
             var queueArn = $"arn:{partition}:sqs:{sqsRegion}:{accountId}:{queueName}";
@@ -309,7 +307,7 @@ public sealed partial class SnsSqsTopologyBuilder(
     {
         var (accountId, partition) = await ResolveCallerIdentityAsync(cancellationToken);
 
-        var sqsRegion = sqsClient.Config.RegionEndpoint?.SystemName ?? "";
+        var sqsRegion = GetRegion(sqsClient.Config);
 
         var url = $"{sqsClient.Config.ServiceURL}/{accountId}/{sqsQueueName}";
         var queueArn = $"arn:{partition}:sqs:{sqsRegion}:{accountId}:{sqsQueueName}";
@@ -324,9 +322,7 @@ public sealed partial class SnsSqsTopologyBuilder(
     {
         var (accountId, partition) = await ResolveCallerIdentityAsync(cancellationToken);
 
-        var region = snsClient.Config.RegionEndpoint?.SystemName
-                     ?? throw new InvalidOperationException(
-                         "Cannot determine the AWS region from the IAmazonSimpleNotificationService client configuration. Ensure a region has been configured on the AWS client (e.g. via environment variable AWS_DEFAULT_REGION or AWSOptions.Region)");
+        var region = GetRegion(snsClient.Config);
 
         var topicArn = $"arn:{partition}:sns:{region}:{accountId}:{snsTopicName}";
         TopicArns.TryAdd(snsTopicName, topicArn);
@@ -340,6 +336,26 @@ public sealed partial class SnsSqsTopologyBuilder(
         var callerArn = _callerIdentity.Arn;
         var partition = callerArn.Split(':') is { Length: >= 2 } parts ? parts[1] : "aws";
         return (_callerIdentity.Account, partition);
+    }
+
+    /// <summary>
+    /// Returns the effective region name for an AWS client config, falling back to
+    /// <see cref="Amazon.Runtime.ClientConfig.AuthenticationRegion"/> when
+    /// <see cref="Amazon.Runtime.ClientConfig.RegionEndpoint"/> is cleared by an explicit
+    /// <see cref="Amazon.Runtime.ClientConfig.ServiceURL"/> override (the LocalStack pattern).
+    /// </summary>
+    private static string GetRegion(Amazon.Runtime.IClientConfig config)
+    {
+        if (config.RegionEndpoint?.SystemName is { Length: > 0 } r)
+            return r;
+
+        if (config.AuthenticationRegion is { } authRegion)
+            return authRegion;
+
+        throw new InvalidOperationException(
+            "Cannot determine the AWS region from the client configuration. " +
+            "Ensure a region has been configured on the AWS client " +
+            "(e.g. via environment variable AWS_DEFAULT_REGION or AWSOptions.Region).");
     }
 
     [LoggerMessage(LogLevel.Debug, "InterBus AmazonSqs: verifying SQS queue {QueueName}")]

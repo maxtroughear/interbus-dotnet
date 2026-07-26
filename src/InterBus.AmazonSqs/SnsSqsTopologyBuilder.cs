@@ -293,8 +293,7 @@ public sealed partial class SnsSqsTopologyBuilder(
 
             LogDebugVerifyingSqsQueue(queueName);
 
-            var sqsRegion = GetRegion(sqsClient.Config,
-                                "IAmazonSQS");
+            var sqsRegion = GetRegion(sqsClient.Config);
 
             var url = $"{sqsClient.Config.ServiceURL}/{accountId}/{queueName}";
             var queueArn = $"arn:{partition}:sqs:{sqsRegion}:{accountId}:{queueName}";
@@ -323,8 +322,7 @@ public sealed partial class SnsSqsTopologyBuilder(
     {
         var (accountId, partition) = await ResolveCallerIdentityAsync(cancellationToken);
 
-        var region = GetRegion(snsClient.Config,
-            "IAmazonSimpleNotificationService");
+        var region = GetRegion(snsClient.Config);
 
         var topicArn = $"arn:{partition}:sns:{region}:{accountId}:{snsTopicName}";
         TopicArns.TryAdd(snsTopicName, topicArn);
@@ -346,7 +344,7 @@ public sealed partial class SnsSqsTopologyBuilder(
     /// <see cref="Amazon.Runtime.ClientConfig.RegionEndpoint"/> is cleared by an explicit
     /// <see cref="Amazon.Runtime.ClientConfig.ServiceURL"/> override (the LocalStack pattern).
     /// </summary>
-    private static string GetRegion(Amazon.Runtime.IClientConfig config, string? requiredFor = null)
+    private static string GetRegion(Amazon.Runtime.IClientConfig config)
     {
         if (config.RegionEndpoint?.SystemName is { Length: > 0 } r)
             return r;
@@ -354,11 +352,8 @@ public sealed partial class SnsSqsTopologyBuilder(
         if (config.AuthenticationRegion is { } authRegion)
             return authRegion;
 
-        if (requiredFor is null)
-            return "";
-
         throw new InvalidOperationException(
-            $"Cannot determine the AWS region from the {requiredFor} client configuration. " +
+            "Cannot determine the AWS region from the client configuration. " +
             "Ensure a region has been configured on the AWS client " +
             "(e.g. via environment variable AWS_DEFAULT_REGION or AWSOptions.Region).");
     }

@@ -141,6 +141,28 @@ public sealed class OrderAcknowledgedTracker
     public void Track(OrderAcknowledged msg) => _messages.Add(msg);
 }
 
+// ---------------------------------------------------------------------------
+// Saga that captures the SagaCorrelationId from the context
+// ---------------------------------------------------------------------------
+
+public sealed class SagaCorrelationCapture
+{
+    public string? CapturedSagaCorrelationId { get; set; }
+}
+
+public sealed class SagaCorrelationIdCapturingSaga(SagaCorrelationCapture capture) :
+    ISagaConsumer<OrderSagaState, OrderStarted>
+{
+    public string GetCorrelationId(OrderStarted message) => message.OrderId.ToString();
+
+    public Task Consume(OrderStarted message, ISagaContext<OrderSagaState> context,
+        CancellationToken cancellationToken = default)
+    {
+        capture.CapturedSagaCorrelationId = context.SagaCorrelationId;
+        return Task.CompletedTask;
+    }
+}
+
 public sealed class OrderAcknowledgedConsumer(OrderAcknowledgedTracker tracker) :
     IConsumer<OrderAcknowledged>
 {
@@ -556,6 +578,38 @@ public class SagaTests
             Assert.NotNull(sagaEntry);
             Assert.True(sagaEntry.State.IsConfirmed);
             Assert.Null(sagaEntry.State.CustomerEmail); // CustomerEmail not set because OrderStarted was not sent
+        }
+        finally
+        {
+            await StopAsync(provider, cts);
+        }
+    }
+
+    [Fact]
+    public async Task Saga_SagaCorrelationId_MatchesCorrelationId()
+    {
+        var orderId = Guid.NewGuid();
+        var capture = new SagaCorrelationCapture();
+
+        var (provider, cts) = await StartAsync(
+            services => services.AddSingleton(capture),
+            bus =>
+            {
+                bus.AddInMemoryTransport();
+                bus.AddSaga<SagaCorrelationIdCapturingSaga, OrderSagaState>(saga =>
+                    saga.UseInMemoryRepository());
+            });
+
+        try
+        {
+            using var scope = provider.CreateScope();
+            var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
+            await publisher.PublishAsync(new OrderStarted(orderId, "test@example.com"),
+                TestContext.Current.CancellationToken);
+
+            await WaitUntilAsync(() => capture.CapturedSagaCorrelationId is not null);
+
+            Assert.Equal(orderId.ToString(), capture.CapturedSagaCorrelationId);
         }
         finally
         {

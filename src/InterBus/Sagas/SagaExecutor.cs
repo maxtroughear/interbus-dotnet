@@ -59,7 +59,7 @@ public sealed partial class SagaExecutor<TSaga, TState, TMessage>(
                 ? DateTimeOffset.UtcNow.Add(options.TimeToLive.Value)
                 : null);
 
-        var sagaCtx = new SagaContext<TState>(entry, context);
+        var sagaCtx = new SagaContext<TState>(entry, correlationId, context);
 
         using var activity = diagnostics.ActivitySource.StartActivity(
             $"{typeof(TSaga).Name} consume");

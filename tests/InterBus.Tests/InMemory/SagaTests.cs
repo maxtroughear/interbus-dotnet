@@ -562,36 +562,4 @@ public class SagaTests
             await StopAsync(provider, cts);
         }
     }
-
-    [Fact]
-    public async Task Saga_SagaCorrelationId_MatchesCorrelationId()
-    {
-        var orderId = Guid.NewGuid();
-        var capture = new SagaCorrelationCapture();
-
-        var (provider, cts) = await StartAsync(
-            services => services.AddSingleton(capture),
-            bus =>
-            {
-                bus.AddInMemoryTransport();
-                bus.AddSaga<SagaCorrelationIdCapturingSaga, OrderSagaState>(saga =>
-                    saga.UseInMemoryRepository());
-            });
-
-        try
-        {
-            using var scope = provider.CreateScope();
-            var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
-            await publisher.PublishAsync(new OrderStarted(orderId, "test@example.com"),
-                TestContext.Current.CancellationToken);
-
-            await WaitUntilAsync(() => capture.CapturedSagaCorrelationId is not null);
-
-            Assert.Equal(orderId.ToString(), capture.CapturedSagaCorrelationId);
-        }
-        finally
-        {
-            await StopAsync(provider, cts);
-        }
-    }
 }

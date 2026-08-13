@@ -9,6 +9,11 @@ public interface ISagaContext<out TState> : IConsumeContext
     where TState : class, new()
 {
     /// <summary>
+    /// The saga correlation identifier that uniquely identifies this saga instance.
+    /// </summary>
+    string SagaCorrelationId { get; }
+
+    /// <summary>
     /// The current saga instance state. Modifications made to this object will be persisted
     /// after the <see cref="ISagaConsumer{TState,TMessage}.Consume"/> method completes,
     /// unless <see cref="Delete"/> has been called.

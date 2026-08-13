@@ -10,8 +10,6 @@ public interface ISagaContext<out TState> : IConsumeContext
 {
     /// <summary>
     /// The saga correlation identifier that uniquely identifies this saga instance.
-    /// This is distinct from <see cref="IConsumeContext.CorrelationId"/>, which is the
-    /// message-level correlation ID header used for request/reply tracing.
     /// </summary>
     string SagaCorrelationId { get; }
 

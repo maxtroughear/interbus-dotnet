@@ -141,28 +141,6 @@ public sealed class OrderAcknowledgedTracker
     public void Track(OrderAcknowledged msg) => _messages.Add(msg);
 }
 
-// ---------------------------------------------------------------------------
-// Saga that captures the SagaCorrelationId from the context
-// ---------------------------------------------------------------------------
-
-public sealed class SagaCorrelationCapture
-{
-    public string? CapturedSagaCorrelationId { get; set; }
-}
-
-public sealed class SagaCorrelationIdCapturingSaga(SagaCorrelationCapture capture) :
-    ISagaConsumer<OrderSagaState, OrderStarted>
-{
-    public string GetCorrelationId(OrderStarted message) => message.OrderId.ToString();
-
-    public Task Consume(OrderStarted message, ISagaContext<OrderSagaState> context,
-        CancellationToken cancellationToken = default)
-    {
-        capture.CapturedSagaCorrelationId = context.SagaCorrelationId;
-        return Task.CompletedTask;
-    }
-}
-
 public sealed class OrderAcknowledgedConsumer(OrderAcknowledgedTracker tracker) :
     IConsumer<OrderAcknowledged>
 {

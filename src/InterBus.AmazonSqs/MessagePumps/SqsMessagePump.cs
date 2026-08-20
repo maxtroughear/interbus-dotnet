@@ -6,7 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
-namespace InterBus.AmazonSqs;
+namespace InterBus.AmazonSqs.MessagePumps;
 
 /// <summary>
 /// Service Activator (Message Pump). A <see cref="BackgroundService"/> that polls each

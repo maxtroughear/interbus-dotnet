@@ -11,10 +11,18 @@ internal class PumpHost(InterBusOptions options, PumpController pumpController) 
             for (var i = 0; i < consumer.PumpCount; i++)
                 await pumpController.CreatePumpAsync(consumer);
         }
+        
+        await Task.Delay(Timeout.Infinite, stoppingToken);
+        
+        foreach (var pump in pumpController.Pumps)
+        {
+            await pump.StopAsync();
+        }
     }
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
+        // Will take a little bit of time to initialise pumps, blocking start of other hosted services
         foreach (var consumer in options.Consumers)
         {
             for (var i = 0; i < consumer.PumpCount; i++)
@@ -22,8 +30,11 @@ internal class PumpHost(InterBusOptions options, PumpController pumpController) 
         }
     }
 
-    public Task StopAsync(CancellationToken cancellationToken)
+    public async Task StopAsync(CancellationToken cancellationToken)
     {
-        throw new NotImplementedException();
+        foreach (var pump in pumpController.Pumps)
+        {
+            await pump.StopAsync();
+        }
     }
 }

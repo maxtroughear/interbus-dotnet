@@ -1,3 +1,4 @@
+using InterBus.AmazonSqs.MessagePumps;
 using InterBus.MessagePumps;
 using InterBus.Requests;
 using Microsoft.Extensions.DependencyInjection;

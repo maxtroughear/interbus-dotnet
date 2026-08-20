@@ -34,7 +34,7 @@ public class PumpController(IMessagePumpFactory messagePumpFactory, IHostApplica
         return pump;
     }
 
-    public Task StopPumpAsync(PumpLifetime pump)
+    public static Task StopPumpAsync(PumpLifetime pump)
     {
         return pump.StopAsync();
     }

@@ -2,7 +2,7 @@ using InterBus.Consuming;
 using InterBus.MessagePumps;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace InterBus.AmazonSqs;
+namespace InterBus.AmazonSqs.MessagePumps;
 
 public class SqsQueueMessagePumpFactory(IServiceProvider serviceProvider) : IMessagePumpFactory
 {

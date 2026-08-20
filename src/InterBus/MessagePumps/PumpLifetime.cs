@@ -8,6 +8,7 @@ public sealed class PumpLifetime(ConsumerDescriptor consumer, IMessagePump pump)
     public ConsumerDescriptor Consumer { get; } = consumer;
 
     private Task? _pumpLoopTask;
+    private Task? _channelPumpLoopTask;
     private CancellationTokenSource? _cancellationTokenSource;
 
     public async Task StartAsync(CancellationToken stoppingToken)
@@ -25,6 +26,13 @@ public sealed class PumpLifetime(ConsumerDescriptor consumer, IMessagePump pump)
         await pump.InitializeAsync(_cancellationTokenSource.Token);
 
         _pumpLoopTask = pump.PumpLoopAsync(_cancellationTokenSource.Token);
+
+        if (!pump.SelfContained)
+        {
+            // TODO: Create InterBus core channel reader loops?
+            _channelPumpLoopTask = Task.Run(() => Task.Delay(Timeout.Infinite, _cancellationTokenSource.Token),
+                _cancellationTokenSource.Token);
+        }
 
         lock (this)
         {

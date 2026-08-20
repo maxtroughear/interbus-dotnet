@@ -1,3 +1,4 @@
+using System.Threading.Channels;
 using Amazon.SQS;
 using Amazon.SQS.Model;
 using InterBus.Consuming;
@@ -5,7 +6,7 @@ using InterBus.Dispatching;
 using InterBus.MessagePumps;
 using Microsoft.Extensions.Logging;
 
-namespace InterBus.AmazonSqs
+namespace InterBus.AmazonSqs.MessagePumps
 {
     public partial class SqsQueueMessagePump(
         ConsumerDescriptor descriptor,
@@ -19,24 +20,40 @@ namespace InterBus.AmazonSqs
         : IMessagePump
     {
         private readonly SemaphoreSlim _semaphore = new(descriptor.ConcurrencyCount);
-        private readonly List<SqsPrefetchedMessage> _activeMessages = new(descriptor.ConcurrencyCount);
-        
+
+        private readonly Channel<SqsPrefetchedMessage> _channel =
+            Channel.CreateBounded<SqsPrefetchedMessage>(new BoundedChannelOptions(options.PrefetchCount)
+            {
+                FullMode = BoundedChannelFullMode.Wait,
+                SingleWriter = true,
+                SingleReader = false,
+            });
+
+        private readonly List<Task> _channelLoopTasks = [];
+
         private string? _queueUrl;
         private string? _deadLetterQueueUrl;
+
+        public bool SelfContained => false;
 
         public async Task InitializeAsync(CancellationToken stoppingToken)
         {
             _queueUrl = await topology.EnsureQueueAsync(descriptor.Queue, stoppingToken);
             _deadLetterQueueUrl = await topology.EnsureDeadLetterQueueAsync(descriptor.Queue, stoppingToken);
+
+            for (var i = 0; i < descriptor.ConcurrencyCount; i++)
+            {
+                _channelLoopTasks.Add(ChannelLoopAsync(stoppingToken));
+            }
         }
-        
+
         public async Task PumpLoopAsync(CancellationToken stoppingToken)
         {
             logger.LogDebug("InterBus AmazonSqs: consumer for queue {QueueName} started", _queueUrl);
-            
+
             if (_queueUrl is null || _deadLetterQueueUrl is null)
                 throw new InvalidOperationException("Queue URLs must be initialized before starting the pump");
-            
+
             while (!stoppingToken.IsCancellationRequested)
             {
                 await PumpAsync(_queueUrl, _deadLetterQueueUrl, stoppingToken);
@@ -96,66 +113,44 @@ namespace InterBus.AmazonSqs
 
             LogReceivedMessageCount(messages.Count, queueUrl);
 
-            var prefetchedMessages = messages
-                .Select(message => prefetchedMessageFactory.Create(message, queueUrl, stoppingToken));
+            var prefetchedMessages = messages.Select(message =>
+                prefetchedMessageFactory.Create(message, queueUrl, deadLetterQueueUrl, stoppingToken));
 
             foreach (var prefetched in prefetchedMessages)
             {
-                _activeMessages.Add(prefetched);
-                await _semaphore.WaitAsync(stoppingToken);
-
-                prefetched.AttachDispatchTask(ProcessMessageAsync(queueUrl, deadLetterQueueUrl, prefetched,
-                    stoppingToken));
+                await _channel.Writer.WriteAsync(prefetched, stoppingToken);
             }
-
-            _activeMessages.RemoveAll(m => m.DispatchCompleted());
         }
 
-        private async Task ProcessMessageAsync(
-            string queueUrl,
-            string deadLetterQueueUrl,
-            SqsPrefetchedMessage prefetched,
-            CancellationToken ct)
+        private async Task ChannelLoopAsync(CancellationToken stoppingToken)
         {
-            var message = prefetched.Message;
-
-            try
+            await foreach (var message in _channel.Reader.ReadAllAsync(stoppingToken))
             {
-                var result = await DispatchAsync(message, ct);
-                switch (result.Kind)
+                try
                 {
-                    case DispatchResultKind.Success:
-                        LogDispatchedSuccessfully(message.MessageId, descriptor.Queue);
+                    var result = await DispatchAsync(message.Message, stoppingToken);
 
-                        // ACK: delete the message from SQS.
-                        // Use CancellationToken.None so that a graceful shutdown does not leave
-                        // successfully dispatched messages to be redelivered unnecessarily.
-                        await sqsClient.DeleteMessageAsync(queueUrl, message.ReceiptHandle,
-                            CancellationToken.None);
-                        break;
-                    case DispatchResultKind.DeadLetter:
-                        if (await TryDeadLetterAsync(deadLetterQueueUrl, message, result))
-                            await sqsClient.DeleteMessageAsync(queueUrl, message.ReceiptHandle, CancellationToken.None);
-                        break;
-                    case DispatchResultKind.Release:
-                        LogConsumerFailed(descriptor.ConsumerType.Name, descriptor.Queue, result.Exception);
-                        break;
-                    default:
-                        throw new ArgumentOutOfRangeException();
+                    // log result
+                    LogDispatchedSuccessfully(message.Message.MessageId, descriptor.Queue);
+                    LogConsumerFailed(descriptor.ConsumerType.Name, descriptor.Queue, result.Exception);
+                    // Log Dead Letter
+
+                    await (result.Kind switch
+                    {
+                        DispatchResultKind.Success => message.Acknowledge(CancellationToken.None),
+                        DispatchResultKind.DeadLetter => message.DeadLetter(result, CancellationToken.None),
+                        DispatchResultKind.Release => message.Abandon(CancellationToken.None),
+                        _ => throw new ArgumentOutOfRangeException(),
+                    });
                 }
-            }
-            catch (OperationCanceledException) when (ct.IsCancellationRequested)
-            {
-                // Dispatch was cancelled mid-flight, SQS will redeliver
-            }
-            catch (Exception ex)
-            {
-                LogConsumerFailed(descriptor.ConsumerType.Name, descriptor.Queue, ex);
-            }
-            finally
-            {
-                await prefetched.StopRenewalAsync();
-                _semaphore.Release();
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                {
+                    // Dispatch was cancelled mid-flight, SQS will redeliver
+                }
+                catch (Exception ex)
+                {
+                    LogConsumerFailed(descriptor.ConsumerType.Name, descriptor.Queue, ex);
+                }
             }
         }
 
@@ -171,57 +166,6 @@ namespace InterBus.AmazonSqs
             var context = new DispatchContext(descriptor, payload, headers);
             await dispatcher.DispatchAsync(context, ct);
             return context.Result;
-        }
-
-        private async Task<bool> TryDeadLetterAsync(string deadLetterQueueUrl, Message message, DispatchResult result)
-        {
-            try
-            {
-                var deadLetterMessageAttributes = message.MessageAttributes ??
-                                                  new Dictionary<string, MessageAttributeValue>(StringComparer.Ordinal);
-                deadLetterMessageAttributes[InterBusHeaders.DeadLetterReason] = new MessageAttributeValue
-                {
-                    DataType = "String",
-                    StringValue = result.DeadLetterReason
-                };
-                deadLetterMessageAttributes[InterBusHeaders.DeadLetterError] = new MessageAttributeValue
-                {
-                    DataType = "String",
-                    StringValue = result.DeadLetterError
-                };
-                deadLetterMessageAttributes[InterBusHeaders.DeadLetterTime] = new MessageAttributeValue
-                {
-                    DataType = "String",
-                    StringValue = result.DeadLetteredAtUtc!.Value.ToString("O")
-                };
-
-                await sqsClient.SendMessageAsync(
-                    new SendMessageRequest
-                    {
-                        QueueUrl = deadLetterQueueUrl,
-                        MessageBody = message.Body,
-                        MessageAttributes = deadLetterMessageAttributes
-                    },
-                    CancellationToken.None);
-
-                logger.LogWarning(
-                    result.Exception,
-                    "InterBus AmazonSqs: consumer {ConsumerType} failed for queue {QueueName}; message moved to dead-letter queue {DeadLetterQueue}",
-                    descriptor.ConsumerType.Name,
-                    descriptor.Queue,
-                    deadLetterQueueUrl);
-
-                return true;
-            }
-            catch (Exception deadLetterFailure)
-            {
-                logger.LogError(
-                    deadLetterFailure,
-                    "InterBus AmazonSqs: failed sending dead-letter message for consumer {ConsumerType} queue {QueueName}",
-                    descriptor.ConsumerType.Name,
-                    descriptor.Queue);
-                return false;
-            }
         }
 
         [LoggerMessage(LogLevel.Trace,

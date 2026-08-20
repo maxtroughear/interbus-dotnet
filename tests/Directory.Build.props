@@ -1,0 +1,7 @@
+<Project>
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <EnableNUnitRunner>true</EnableNUnitRunner>
+        <UseMicrosoftTestingPlatformRunner>true</UseMicrosoftTestingPlatformRunner>
+    </PropertyGroup>
+</Project>

@@ -31,13 +31,13 @@ All affected test projects build. Final relevant suite results:
 
 | Project | Passed | Skipped | Scope |
 | --- | ---: | ---: | --- |
-| InterBus.Tests | 178 | 0 | Entire core/in-memory suite |
-| InterBus.PostgreSQL.Tests | 55 | 0 | All except high-volume `ConcurrencyTests`, PostgreSQL 17/18 and both modes |
+| InterBus.Tests | 182 | 0 | Entire core/in-memory suite |
+| InterBus.PostgreSQL.Tests | 59 | 0 | Entire suite, PostgreSQL 17/18 and both modes; load cases now match RabbitMQ's 10,000-message workload |
 | InterBus.AmazonSqs.Tests | 29 | 1 | All except high-volume `ConcurrencyTests` and the separate `EventBridgeSchedulerTests` fixture |
 | InterBus.AzureServiceBus.Tests | 21 | 0 | All except high-volume `ConcurrencyTests`; includes the new `SessionConcurrencyTests` |
 | InterBus.RabbitMQ.Tests | 8 | 0 | All except high-volume `ConcurrencyTests` |
 
-Commands use `dotnet test tests/<project>/<project>.csproj --no-restore -v quiet`, with `--filter 'FullyQualifiedName!~ConcurrencyTests'` for transport parity runs. Azure uses the precise exclusion `FullyQualifiedName!~InterBus.AzureServiceBus.Tests.ConcurrencyTests` so session scheduling coverage runs. SQS additionally excludes `FullyQualifiedName~EventBridgeSchedulerTests`. `--no-build` was used for independent integration runs after building their projects.
+Commands use `dotnet test tests/<project>/<project>.csproj --no-restore -v quiet`. PostgreSQL now runs without a filter. SQS and RabbitMQ parity runs exclude `FullyQualifiedName~ConcurrencyTests`. Azure uses the precise exclusion `FullyQualifiedName!~InterBus.AzureServiceBus.Tests.ConcurrencyTests` so session scheduling coverage runs. SQS additionally excludes `FullyQualifiedName~EventBridgeSchedulerTests`. `--no-build` was used for independent integration runs after building their projects.
 
 Deterministic additions cover shared receive capacity/concurrency, fresh scopes and disposal, dispatch outcomes, rejected and ambiguous settlement, ordering through settlement, canceled processing, initialization and partial startup failures, readiness cancellation, repeated stop, shutdown deadlines, prompt background fault reporting, snapshot stability and aggregated cleanup failures.
 
@@ -74,3 +74,13 @@ All seven scenarios identified in the implementation review now have tests:
 | Azure sessions have cancellation, lock-loss or startup failures | SDK adapter tests cover all outcomes during stop, lock loss before/during drain and partially initialized session processor cleanup. An emulator integration test runs two independent sessions concurrently while preserving one callback per session and message order. |
 
 The follow-up adds 26 test cases across the five projects, including the existing RabbitMQ recovery cases strengthened with settlement assertions. Transport integration tests use the current production registrations; deterministic adapter tests isolate races through controlled SDK calls. PostgreSQL fault injection and Azure/RabbitMQ scheduling and outage tests use actual containers/emulators. Real AWS credentials remain unavailable, so the existing AWS-only test remains skipped; no real cloud outage or twelve-hour renewal claim is made.
+
+## CI follow-up
+
+Run `39489862222` passed core message-pump tests and the SQS (including real AWS), Azure, RabbitMQ and EF PostgreSQL jobs. It exposed a SQLite outbox fixture race: concurrent contexts shared one physical connection and EF attempted to register SQLite functions while another scope had active statements. The fixture now uses separate connections to a unique temporary database. All 19 local EF Core tests pass with the fix.
+
+The PostgreSQL job originally ran four 200,000-message load cases in the ordinary parity suite. Its first load case failed after 5m12s, with 129,266/200,000 deliveries after the two-minute consumption wait. No further test result appeared for approximately twenty minutes before the job was cancelled for diagnosis. The workload was subsequently aligned with RabbitMQ at the user's request: 10,000 messages, 100 publishers and 50 processing slots, with four lease receive pumps. All 59 PostgreSQL cases then passed on CI in run `39513646875`. See `POSTGRESQL_PERFORMANCE_RESULTS.md` for the earlier baseline comparisons. The optional workflow split and manual load workflow remain local pending GitHub `workflow` permission; the active PR workflow still runs every PostgreSQL case. Load cases have a ten-minute cancellation budget and fixture shutdown has a fifteen-second deadline.
+
+The SQL Server job's two failed cases never reached assertions: the SQL Server 2025 container exited during startup with AppLoader/LSA failure `0xc0070102`. An independent rerun passed, consistent with a transient container startup failure. The revised PostgreSQL parity command also passed all 55 local cases with the new cancellation and diagnostic options.
+
+Run `39513646875` exposed a source-failure observation race during shutdown: intake completion/cancellation could win `WhenAny` before the runtime retained an already-published failure. Buffered and managed execution now share failure observation before and after intake completion, retaining the original source error when cancellation races with it. Four deterministic regression cases failed before the fix and pass afterward; all 182 core tests pass, and the affected real-host tests passed 50 fresh-process runs with two reported processors. Cancellation-aware test waits and dispatches use the test token, and PostgreSQL load logging no longer captures constructor parameters already owned by its base fixture. The SQL Server test project overrides its vulnerable transitive PKCS dependency with patched version 9.0.21. The full Release solution build reports zero warnings and errors. DynamoDB AWS completed successfully in 10m54s without intervention.

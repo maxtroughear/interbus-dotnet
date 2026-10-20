@@ -16,16 +16,7 @@ public sealed class ConsumerRuntime(ConsumerDescriptor descriptor, DeliveryProce
         var drain = DrainAsync();
         try
         {
-            var receives = Task.WhenAll(producers);
-            if (await Task.WhenAny(receives, source.Failure) == source.Failure)
-            {
-                var failure = await source.Failure;
-                reportFailure?.Invoke(failure);
-                await intake.CancelAsync();
-                await receives;
-                System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
-            }
-            await receives;
+            await ObserveSourceAsync(Task.WhenAll(producers), source, intake);
         }
         finally { sink.Complete(); await drain; }
 
@@ -105,13 +96,32 @@ public sealed class ConsumerRuntime(ConsumerDescriptor descriptor, DeliveryProce
             throw new InvalidOperationException("Transport-managed consumers support PumpCount = 1 only");
         var run = source.RunAsync((delivery, token) => processor.ProcessAsync(descriptor, delivery, token),
             intakeToken, processingToken);
+        await ObserveSourceAsync(run, source);
+    }
+
+    private async Task ObserveSourceAsync(Task run, IConsumerSource source, CancellationTokenSource? intake = null)
+    {
+        var health = source.Failure;
         Exception? failure = null;
-        if (await Task.WhenAny(run, source.Failure) == source.Failure)
+        // Intake completion can win WhenAny even when a source failure has already been published
+        await Task.WhenAny(run, health);
+        await ObserveFailureAsync();
+        try { await run; }
+        catch (OperationCanceledException) when (health.IsCompletedSuccessfully)
         {
-            failure = await source.Failure;
-            reportFailure?.Invoke(failure);
+            await ObserveFailureAsync();
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure!).Throw();
+            throw;
         }
-        await run;
+        await ObserveFailureAsync();
         if (failure is not null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
+
+        async Task ObserveFailureAsync()
+        {
+            if (failure is not null || !health.IsCompleted) return;
+            failure = await health;
+            reportFailure?.Invoke(failure);
+            if (intake is not null) await intake.CancelAsync();
+        }
     }
 }

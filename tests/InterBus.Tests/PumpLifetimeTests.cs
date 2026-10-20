@@ -18,7 +18,7 @@ public class PumpLifetimeTests
         var start = lifetime.StartAsync(TestContext.Current.CancellationToken);
         await source.Initializing.Task;
         var stop = lifetime.StopAsync(TestContext.Current.CancellationToken);
-        await Task.WhenAll(start, stop).WaitAsync(TimeSpan.FromSeconds(5));
+        await Task.WhenAll(start, stop).WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
         Assert.False(source.Ran);
         Assert.True(source.Disposed);
         Assert.Equal(PumpState.Stopped, lifetime.State);

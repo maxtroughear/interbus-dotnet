@@ -10,6 +10,28 @@ namespace InterBus.Tests;
 public class MessagePumpRuntimeTests
 {
     [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task CompletedIntake_DoesNotHidePublishedFailure(bool buffered, bool canceledCompletion)
+    {
+        var (services, descriptor) = Create((_, _, _, _) => Task.CompletedTask);
+        await using var provider = services.BuildServiceProvider();
+        using var intake = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        intake.Cancel();
+        var error = new IOException("source failed before intake completed");
+        var source = new CompletedFaultSource(error, canceledCompletion);
+        Exception? observed = null;
+        var runtime = new ConsumerRuntime(descriptor, provider.GetRequiredService<DeliveryProcessor>(), failure => observed = failure);
+        var failure = await Assert.ThrowsAsync<IOException>(() => buffered
+            ? runtime.RunAsync((IBufferedSource)source, intake.Token, TestContext.Current.CancellationToken)
+            : runtime.RunAsync((IManagedSource)source, intake.Token, TestContext.Current.CancellationToken));
+        Assert.Same(error, failure);
+        Assert.Same(error, observed);
+    }
+
+    [Theory]
     [InlineData(DispatchResultKind.Success)]
     [InlineData(DispatchResultKind.Release)]
     [InlineData(DispatchResultKind.DeadLetter)]
@@ -24,7 +46,7 @@ public class MessagePumpRuntimeTests
         var (services, descriptor) = Create((ctx, _, _, _) => { ctx.Result = result; return Task.CompletedTask; });
         await using var provider = services.BuildServiceProvider();
         var delivery = new Delivery();
-        await provider.GetRequiredService<DeliveryProcessor>().ProcessAsync(descriptor, delivery, default);
+        await provider.GetRequiredService<DeliveryProcessor>().ProcessAsync(descriptor, delivery, TestContext.Current.CancellationToken);
         Assert.Same(result, delivery.Result);
         Assert.Equal(1, delivery.Settlements);
         Assert.True(delivery.Disposed);
@@ -38,7 +60,7 @@ public class MessagePumpRuntimeTests
         var (services, descriptor) = Create((_, _, _, _) => Task.CompletedTask);
         await using var provider = services.BuildServiceProvider();
         var delivery = new Delivery { ThrowSettlement = throws, Accepted = false };
-        await provider.GetRequiredService<DeliveryProcessor>().ProcessAsync(descriptor, delivery, default);
+        await provider.GetRequiredService<DeliveryProcessor>().ProcessAsync(descriptor, delivery, TestContext.Current.CancellationToken);
         Assert.Equal(1, delivery.Settlements);
         Assert.True(delivery.Disposed);
     }
@@ -49,7 +71,7 @@ public class MessagePumpRuntimeTests
         var (services, descriptor) = Create((_, _, _, _) => throw new Exception("Must not dispatch"));
         await using var provider = services.BuildServiceProvider();
         var delivery = new Delivery { DecodeError = new FormatException() };
-        await provider.GetRequiredService<DeliveryProcessor>().ProcessAsync(descriptor, delivery, default);
+        await provider.GetRequiredService<DeliveryProcessor>().ProcessAsync(descriptor, delivery, TestContext.Current.CancellationToken);
         Assert.Equal(DispatchResultKind.Release, delivery.Result?.Kind);
         Assert.True(delivery.Disposed);
     }
@@ -73,13 +95,13 @@ public class MessagePumpRuntimeTests
         var source = new Source(1);
         using var intake = new CancellationTokenSource();
         var run = new ConsumerRuntime(descriptor, provider.GetRequiredService<DeliveryProcessor>())
-            .RunAsync(source, intake.Token, default);
-        await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            .RunAsync(source, intake.Token, TestContext.Current.CancellationToken);
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
         Assert.InRange(source.Owned, 2, 3);
         Assert.Equal(2, maximum);
         await intake.CancelAsync();
         finish.SetResult();
-        await run.WaitAsync(TimeSpan.FromSeconds(5));
+        await run.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
         Assert.Equal(0, source.Owned);
     }
 
@@ -90,7 +112,7 @@ public class MessagePumpRuntimeTests
         await using var provider = services.BuildServiceProvider();
         var source = new ManagedSource();
         await new ConsumerRuntime(descriptor, provider.GetRequiredService<DeliveryProcessor>())
-            .RunAsync(source, default, default);
+            .RunAsync(source, TestContext.Current.CancellationToken, TestContext.Current.CancellationToken);
         Assert.True(source.Delivery.Disposed);
         Assert.Equal(1, source.Delivery.Settlements);
     }
@@ -120,13 +142,13 @@ public class MessagePumpRuntimeTests
         var source = new ScriptedSource([first, next, other]);
         var run = new ConsumerRuntime(descriptor, provider.GetRequiredService<DeliveryProcessor>())
             .RunAsync(source, intake.Token, TestContext.Current.CancellationToken);
-        await firstSettling.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        await independent.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await firstSettling.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        await independent.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
         Assert.False(second.Task.IsCompleted);
         allowSettlement.SetResult();
-        await second.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await second.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
         await intake.CancelAsync();
-        await run.WaitAsync(TimeSpan.FromSeconds(5));
+        await run.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
     }
 
     [Fact]
@@ -251,5 +273,17 @@ public class MessagePumpRuntimeTests
             await process(Delivery, processingToken);
             Assert.True(Delivery.Disposed);
         }
+    }
+
+    private sealed class CompletedFaultSource(Exception error, bool canceledCompletion) : IManagedSource, IBufferedSource
+    {
+        public int PrefetchCount => 0;
+        public Task<Exception> Failure { get; } = Task.FromResult(error);
+        public Task InitializeAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+        public Task ReceiveAsync(DeliverySink sink, CancellationToken intakeToken) => Complete(intakeToken);
+        public Task RunAsync(Func<IDelivery, CancellationToken, Task> process, CancellationToken intakeToken,
+            CancellationToken processingToken) => Complete(intakeToken);
+        private Task Complete(CancellationToken token) => canceledCompletion ? Task.FromCanceled(token) : Task.CompletedTask;
     }
 }

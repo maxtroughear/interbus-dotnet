@@ -58,7 +58,7 @@ public static class AzureServiceBusTransportBuilderExtensions
             builder.Services.AddKeyedScoped<ITransport, AzureServiceBusQueueTransport>(
                 AzureServiceBusQueueTransport.QueueScheme);
 
-            builder.Services.AddHostedService<AzureServiceBusMessagePump>();
+            builder.Services.AddSingleton<InterBus.MessagePumps.IConsumerSourceFactory, AzureServiceBusSourceFactory>();
 
             builder.Services.AddSingleton<IVirtualQueueHost, AzureServiceBusVirtualQueueHost>();
             builder.Services.AddSingleton<IReplyEndpointFactory, VirtualQueueReplyEndpointFactory>();

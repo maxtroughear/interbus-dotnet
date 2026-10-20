@@ -20,6 +20,9 @@ public sealed class DeliverySink
         return new Reservation(this);
     }
 
+    /// <summary>Reserves another immediately available slot for a batch without waiting.</summary>
+    public Reservation? TryReserve() => _capacity.Wait(0) ? new Reservation(this) : null;
+
     /// <summary>A single-use receive reservation. Disposing after handoff does not reclaim core ownership.</summary>
     public sealed class Reservation : IDisposable
     {

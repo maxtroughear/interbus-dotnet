@@ -61,6 +61,7 @@ public static class SnsSqsTransportBuilderExtensions
         {
             var options = new SnsSqsTransportOptions();
             configure?.Invoke(options);
+            options.Validate();
 
             builder.Options.SetTransportUriSchemes(SnsTransport.TopicScheme, SqsTransport.QueueScheme);
             builder.Services.AddSingleton(options);
@@ -72,12 +73,10 @@ public static class SnsSqsTransportBuilderExtensions
             builder.Services.AddSingleton<ISnsSqsMessageEnvelope, SnsSqsMessageEnvelope>();
             builder.Services.AddKeyedScoped<ITransport, SnsTransport>(SnsTransport.TopicScheme);
             builder.Services.AddKeyedScoped<ITransport, SqsTransport>(SqsTransport.QueueScheme);
-            builder.Services.AddSingleton<SqsPrefetchedMessageFactory>();
             builder.Services.AddSingleton<IVirtualQueueHost, SqsVirtualQueueHost>();
             builder.Services.AddSingleton<IReplyEndpointFactory, VirtualQueueReplyEndpointFactory>();
-            builder.Services.AddSingleton<IMessagePumpFactory, SqsQueueMessagePumpFactory>();
+            builder.Services.AddSingleton<IConsumerSourceFactory, SqsQueueMessagePumpFactory>();
 
-            builder.Services.AddHostedService<SqsMessagePump>();
 
             return builder;
         }

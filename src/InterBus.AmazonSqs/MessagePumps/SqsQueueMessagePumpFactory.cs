@@ -4,9 +4,9 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace InterBus.AmazonSqs.MessagePumps;
 
-public class SqsQueueMessagePumpFactory(IServiceProvider serviceProvider) : IMessagePumpFactory
+internal sealed class SqsQueueMessagePumpFactory(IServiceProvider serviceProvider) : IConsumerSourceFactory
 {
-    public IMessagePump Create(ConsumerDescriptor descriptor)
+    public IConsumerSource Create(ConsumerDescriptor descriptor)
     {
         var envelope = serviceProvider.GetKeyedService<ISnsSqsMessageEnvelope>(descriptor.ConsumerType) ??
                        serviceProvider.GetRequiredService<ISnsSqsMessageEnvelope>();

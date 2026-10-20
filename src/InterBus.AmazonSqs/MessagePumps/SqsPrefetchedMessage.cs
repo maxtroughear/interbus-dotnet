@@ -6,178 +6,100 @@ using Microsoft.Extensions.Logging;
 
 namespace InterBus.AmazonSqs.MessagePumps;
 
-public sealed class SqsPrefetchedMessage : IDisposable, IMessage
+internal sealed class SqsPrefetchedMessage : IDelivery
 {
-    public Message Message { get; }
-
-    private readonly ILogger<SqsPrefetchedMessage> _logger;
-    private readonly IAmazonSQS _sqsClient;
+    private readonly IAmazonSQS _client;
+    private readonly Message _message;
     private readonly string _queueUrl;
     private readonly string _deadLetterQueueUrl;
-    private readonly TimeSpan _extensionInterval;
-    private readonly int _visibilityTimeout;
-    private readonly CancellationTokenSource _renewalCts;
+    private readonly CancellationTokenSource _renewal = new();
     private readonly Task _renewalTask;
-    private Task? _dispatchTask;
+    private volatile bool _lost;
+    public ReadOnlyMemory<byte> Payload { get; }
+    public MessageHeaders Headers { get; } = new();
+    public Exception? DecodeError { get; }
+    public string? OrderingKey => _message.Attributes?.GetValueOrDefault("MessageGroupId");
 
-    public SqsPrefetchedMessage(
-        ILogger<SqsPrefetchedMessage> logger,
-        IAmazonSQS sqsClient,
-        SnsSqsTransportOptions options,
-        Message message,
-        string queueUrl,
-        string deadLetterQueueUrl,
-        CancellationToken stoppingToken)
+    public SqsPrefetchedMessage(ILogger<SqsPrefetchedMessage> logger, IAmazonSQS client,
+        SnsSqsTransportOptions options, Message message, string queueUrl, string deadLetterQueueUrl,
+        ISnsSqsMessageEnvelope envelope)
     {
-        Message = message;
-        _logger = logger;
-        _sqsClient = sqsClient;
-        _extensionInterval = options.EffectiveLeaseRenewalInterval;
-        _visibilityTimeout = Convert.ToInt32(options.VisibilityTimeout.TotalSeconds);
+        _client = client;
+        _message = message;
         _queueUrl = queueUrl;
         _deadLetterQueueUrl = deadLetterQueueUrl;
-        _renewalCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
-        _renewalTask = ExtendVisibilityAsync();
-    }
-
-    public async Task StopRenewalAsync()
-    {
+        _renewalTask = RenewAsync();
         try
         {
-            await _renewalCts.CancelAsync();
-            await _renewalTask;
+            if (message.Body is null) throw new FormatException("SQS message body is null");
+            if (envelope is SnsSerialisedMessageEnvelope)
+            {
+                using var document = System.Text.Json.JsonDocument.Parse(message.Body);
+                if (document.RootElement.TryGetProperty("p", out _)) envelope = new SnsSqsMessageEnvelope();
+            }
+            var decoded = envelope.DeserializeFromSqs(message.Body);
+            Payload = decoded.Payload;
+            Headers = decoded.Headers;
         }
-        catch
-        {
-            // ignore
-        }
-    }
+        catch (Exception error) { DecodeError = error; }
 
-    public void AttachDispatchTask(Task dispatchTask)
-    {
-        _dispatchTask = dispatchTask;
-    }
-
-    public bool DispatchCompleted()
-    {
-        return _dispatchTask?.IsCompleted ?? false;
-    }
-
-    private async Task ExtendVisibilityAsync()
-    {
-        while (!_renewalCts.IsCancellationRequested)
+        async Task RenewAsync()
         {
             try
             {
-                await Task.Delay(_extensionInterval, _renewalCts.Token);
-
-                await _sqsClient.ChangeMessageVisibilityAsync(new ChangeMessageVisibilityRequest
+                while (true)
                 {
-                    QueueUrl = _queueUrl,
-                    ReceiptHandle = Message.ReceiptHandle,
-                    VisibilityTimeout = _visibilityTimeout
-                }, _renewalCts.Token);
-
-                _logger.LogTrace(
-                    "InterBus AmazonSqs: extended visibility timeout for message (receipt={ShortHandle}) by {Seconds}s",
-                    Message.ReceiptHandle[..Math.Min(8, Message.ReceiptHandle.Length)],
-                    _visibilityTimeout);
+                    await Task.Delay(options.EffectiveLeaseRenewalInterval, _renewal.Token);
+                    await client.ChangeMessageVisibilityAsync(queueUrl, message.ReceiptHandle,
+                        (int)options.VisibilityTimeout.TotalSeconds, _renewal.Token);
+                }
             }
-            catch (ReceiptHandleIsInvalidException)
+            catch (OperationCanceledException) when (_renewal.IsCancellationRequested) { }
+            catch (Exception error)
             {
-                // Message has been processed and most likely deleted
+                _lost = true;
+                logger.LogWarning(error, "InterBus SQS: ownership renewal failed for {MessageId}", message.MessageId);
+            }
+        }
+    }
+
+    public async Task<bool> SettleAsync(DispatchResult result, CancellationToken cancellationToken)
+    {
+        if (_lost) return false;
+        switch (result.Kind)
+        {
+            case DispatchResultKind.Success:
+                await _client.DeleteMessageAsync(_queueUrl, _message.ReceiptHandle, cancellationToken);
                 break;
-            }
-            catch (OperationCanceledException)
-            {
-                // Cancellation requested, exit the loop
+            case DispatchResultKind.Release:
+                // Preserve visibility-expiry redelivery rather than making the message immediately visible
                 break;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(
-                    ex,
-                    "InterBus AmazonSqs: failed to extend visibility timeout for message (receipt={ShortHandle})",
-                    Message.ReceiptHandle[..Math.Min(8, Message.ReceiptHandle.Length)]);
-            }
+            case DispatchResultKind.DeadLetter:
+                var attributes = new Dictionary<string, MessageAttributeValue>(_message.MessageAttributes ?? []);
+                attributes[InterBusHeaders.DeadLetterReason] = Attribute(result.DeadLetterReason);
+                attributes[InterBusHeaders.DeadLetterError] = Attribute(result.DeadLetterError);
+                attributes[InterBusHeaders.DeadLetterTime] = Attribute(result.DeadLetteredAtUtc!.Value.ToString("O"));
+                await _client.SendMessageAsync(new SendMessageRequest
+                {
+                    QueueUrl = _deadLetterQueueUrl,
+                    MessageBody = _message.Body,
+                    MessageAttributes = attributes,
+                    MessageGroupId = OrderingKey,
+                    MessageDeduplicationId = OrderingKey is null ? null : Guid.NewGuid().ToString("N")
+                }, cancellationToken);
+                await _client.DeleteMessageAsync(_queueUrl, _message.ReceiptHandle, cancellationToken);
+                break;
+            default: throw new ArgumentOutOfRangeException(nameof(result));
         }
+        return true;
     }
 
-    public void Dispose()
+    private static MessageAttributeValue Attribute(string value) => new() { DataType = "String", StringValue = value };
+
+    public async ValueTask DisposeAsync()
     {
-        _renewalCts.Dispose();
-    }
-
-    public async Task Acknowledge(CancellationToken cancellationToken)
-    {
-        await _sqsClient.DeleteMessageAsync(_queueUrl, Message.ReceiptHandle, cancellationToken);
-        await StopRenewalAsync();
-    }
-
-    public async Task Abandon(CancellationToken cancellationToken)
-    {
-        await StopRenewalAsync();
-        try
-        {
-            await _sqsClient.ChangeMessageVisibilityAsync(_queueUrl, Message.ReceiptHandle, 0, cancellationToken);
-        }
-        catch (ReceiptHandleIsInvalidException)
-        {
-            _logger.LogWarning(
-                "InterBus AmazonSqs: Failed to abandon message, receipt handle is invalid, message may have been deleted or handle expired (receipt={ShortHandle}",
-                Message.ReceiptHandle[..Math.Min(8, Message.ReceiptHandle.Length)]);
-        }
-    }
-
-    public async Task DeadLetter(DispatchResult result, CancellationToken cancellationToken)
-    {
-        var deadLetterMessageAttributes = Message.MessageAttributes ??
-                                          new Dictionary<string, MessageAttributeValue>(StringComparer.Ordinal);
-        deadLetterMessageAttributes[InterBusHeaders.DeadLetterReason] = new MessageAttributeValue
-        {
-            DataType = "String",
-            StringValue = result.DeadLetterReason
-        };
-        deadLetterMessageAttributes[InterBusHeaders.DeadLetterError] = new MessageAttributeValue
-        {
-            DataType = "String",
-            StringValue = result.DeadLetterError
-        };
-        deadLetterMessageAttributes[InterBusHeaders.DeadLetterTime] = new MessageAttributeValue
-        {
-            DataType = "String",
-            StringValue = result.DeadLetteredAtUtc!.Value.ToString("O")
-        };
-
-        await _sqsClient.SendMessageAsync(
-            new SendMessageRequest
-            {
-                QueueUrl = _deadLetterQueueUrl,
-                MessageBody = Message.Body,
-                MessageAttributes = deadLetterMessageAttributes
-            },
-            cancellationToken);
-
-        await _sqsClient.DeleteMessageAsync(_queueUrl, Message.ReceiptHandle, cancellationToken);
-        
-        await StopRenewalAsync();
-        
-        // TODO: Move logging into InterBus core
-        // _logger.LogWarning(
-        //     result.Exception,
-        //     "InterBus AmazonSqs: consumer {ConsumerType} failed for queue {QueueName}; message moved to dead-letter queue {DeadLetterQueue}",
-        //     Descriptor.ConsumerType.Name,
-        //     descriptor.Queue,
-        //     deadLetterQueueUrl);
-        // TODO: Move error handling into InterBus core
-        // catch (Exception deadLetterFailure)
-        // {
-        //     _logger.LogError(
-        //         deadLetterFailure,
-        //         "InterBus AmazonSqs: failed sending dead-letter message for consumer {ConsumerType} queue {QueueName}",
-        //         descriptor.ConsumerType.Name,
-        //         descriptor.Queue);
-        //     return false;
-        // }
+        await _renewal.CancelAsync();
+        try { await _renewalTask; }
+        finally { _renewal.Dispose(); }
     }
 }

@@ -2,39 +2,41 @@ using Microsoft.Extensions.Hosting;
 
 namespace InterBus.MessagePumps;
 
-internal class PumpHost(InterBusOptions options, PumpController pumpController) : BackgroundService, IHostedService
+internal sealed class PumpHost(InterBusOptions options, PumpController controller) : BackgroundService
 {
+    public override async Task StartAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            foreach (var consumer in options.Consumers)
+                await controller.CreatePumpAsync(consumer, cancellationToken);
+            await base.StartAsync(cancellationToken);
+        }
+        catch
+        {
+            try { await controller.StopAsync(cancellationToken); }
+            catch { /* Preserve startup failure; controller retains cleanup failures */ }
+            throw;
+        }
+    }
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        foreach (var consumer in options.Consumers)
+        var pumps = controller.Pumps;
+        if (pumps.Count == 0) return;
+        // WhenAny surfaces one failed consumer without waiting for unrelated consumers to stop
+        var remaining = pumps.Select(pump => pump.Completion).ToList();
+        while (remaining.Count > 0)
         {
-            for (var i = 0; i < consumer.PumpCount; i++)
-                await pumpController.CreatePumpAsync(consumer);
-        }
-        
-        await Task.Delay(Timeout.Infinite, stoppingToken);
-        
-        foreach (var pump in pumpController.Pumps)
-        {
-            await pump.StopAsync();
+            var completed = await Task.WhenAny(remaining);
+            await completed;
+            remaining.Remove(completed);
         }
     }
 
-    public async Task StartAsync(CancellationToken cancellationToken)
+    public override async Task StopAsync(CancellationToken cancellationToken)
     {
-        // Will take a little bit of time to initialise pumps, blocking start of other hosted services
-        foreach (var consumer in options.Consumers)
-        {
-            for (var i = 0; i < consumer.PumpCount; i++)
-                await pumpController.CreatePumpAsync(consumer);
-        }
-    }
-
-    public async Task StopAsync(CancellationToken cancellationToken)
-    {
-        foreach (var pump in pumpController.Pumps)
-        {
-            await pump.StopAsync();
-        }
+        try { await controller.StopAsync(cancellationToken); }
+        finally { await base.StopAsync(cancellationToken); }
     }
 }

@@ -61,6 +61,12 @@ public static class ServiceCollectionExtensions
 
             configure(builder);
 
+            if (services.Any(service => service.ServiceType == typeof(IConsumerSourceFactory)))
+            {
+                services.AddSingleton<PumpController>();
+                services.AddHostedService<PumpHost>();
+            }
+
             services.AddSingleton(options);
 
             // Register the default serialiser if the user has not supplied one via UseSerializer<T>()

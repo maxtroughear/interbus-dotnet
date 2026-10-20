@@ -1,60 +1,34 @@
 using InterBus.Consuming;
-using Microsoft.Extensions.Hosting;
 
 namespace InterBus.MessagePumps;
 
-public class PumpController(IMessagePumpFactory messagePumpFactory, IHostApplicationLifetime appLifetime)
+/// <summary>Owns one supervised runtime per consumer and exposes diagnostic snapshots.</summary>
+public sealed class PumpController(IConsumerSourceFactory factory, DeliveryProcessor processor)
 {
-    public IReadOnlyList<PumpLifetime> Pumps
-    {
-        get
-        {
-            IReadOnlyList<PumpLifetime> pumps;
-            lock (_pumps)
-            {
-                pumps = _pumps.AsReadOnly();
-            }
-
-            return pumps;
-        }
-    }
-
     private readonly List<PumpLifetime> _pumps = [];
-    private readonly CancellationToken _stoppingToken = appLifetime.ApplicationStopping;
+    /// <summary>A snapshot retaining terminal states and failures for diagnostics.</summary>
+    public IReadOnlyList<PumpLifetime> Pumps { get { lock (_pumps) return _pumps.ToArray(); } }
 
-    public async Task<PumpLifetime> CreatePumpAsync(ConsumerDescriptor consumer)
+    /// <summary>Creates and initializes a consumer runtime before returning.</summary>
+    public async Task<PumpLifetime> CreatePumpAsync(ConsumerDescriptor consumer, CancellationToken cancellationToken = default)
     {
-        var pump = new PumpLifetime(consumer, messagePumpFactory.Create(consumer));
-        lock (_pumps)
-        {
-            _pumps.Add(pump);
-        }
-
-        await pump.StartAsync(_stoppingToken);
+        var pump = new PumpLifetime(consumer, factory.Create(consumer), processor);
+        lock (_pumps) _pumps.Add(pump);
+        await pump.StartAsync(cancellationToken);
         return pump;
     }
 
-    public static Task StopPumpAsync(PumpLifetime pump)
-    {
-        return pump.StopAsync();
-    }
+    /// <summary>Stops every runtime, observing all failures before reporting them.</summary>
+    public Task StopAsync(CancellationToken cancellationToken) =>
+        Task.WhenAll(Pumps.Select(pump => StopAndDisposeAsync(pump, cancellationToken)));
 
-    public Task StopPumpsForConsumerAsync(ConsumerDescriptor consumer)
-    {
-        List<PumpLifetime> pumpsToStop;
-        lock (_pumps)
-        {
-            pumpsToStop = _pumps.Where(p => p.Consumer == consumer).ToList();
-        }
+    /// <summary>Stops all runtimes for a consumer.</summary>
+    public Task StopPumpsForConsumerAsync(ConsumerDescriptor consumer) =>
+        Task.WhenAll(Pumps.Where(pump => pump.Consumer == consumer).Select(pump => StopAndDisposeAsync(pump, default)));
 
-        return Task.WhenAll(pumpsToStop.Select(p => p.StopAsync()));
-    }
-
-    public void CleanupStoppedPumps()
+    private static async Task StopAndDisposeAsync(PumpLifetime pump, CancellationToken cancellationToken)
     {
-        lock (_pumps)
-        {
-            _pumps.RemoveAll(p => p.State == PumpState.Stopped);
-        }
+        try { await pump.StopAsync(cancellationToken); }
+        finally { if (pump.Completion.IsCompleted) await pump.DisposeAsync(); }
     }
 }

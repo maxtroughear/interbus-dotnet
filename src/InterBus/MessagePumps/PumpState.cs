@@ -6,5 +6,6 @@ public enum PumpState
     Stopped,
     Starting,
     Running,
+    Faulted,
     Stopping
 }

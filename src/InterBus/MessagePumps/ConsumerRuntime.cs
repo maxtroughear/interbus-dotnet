@@ -69,6 +69,23 @@ public sealed class ConsumerRuntime(ConsumerDescriptor descriptor, DeliveryProce
         }
     }
 
+    /// <summary>Runs a fixed set of core workers over an existing transport input, without adding another queue.</summary>
+    /// <remarks>A worker stops reading when intake is canceled and awaits its accepted delivery before returning.
+    /// A worker fault stops sibling intake; every worker is awaited before this operation completes.</remarks>
+    public static async Task RunWorkersAsync(int workerCount, Func<CancellationToken, Task> worker,
+        CancellationToken intakeToken)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(workerCount, 1);
+        using var intake = CancellationTokenSource.CreateLinkedTokenSource(intakeToken);
+        await Task.WhenAll(Enumerable.Range(0, workerCount).Select(_ => RunAsync()));
+        async Task RunAsync()
+        {
+            try { await worker(intake.Token); }
+            catch (OperationCanceledException) when (intake.IsCancellationRequested) { }
+            catch { await intake.CancelAsync(); throw; }
+        }
+    }
+
     /// <summary>Runs processing inside transport-managed delivery lifetimes without an additional buffer.</summary>
     public Task RunAsync(IManagedSource source, CancellationToken intakeToken, CancellationToken processingToken)
     {

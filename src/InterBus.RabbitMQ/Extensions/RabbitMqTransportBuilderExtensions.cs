@@ -61,7 +61,7 @@ public static class RabbitMqTransportBuilderExtensions
             builder.Services.AddKeyedScoped<ITransport, RabbitMqQueueTransport>(RabbitMqQueueTransport.QueueScheme);
 
             // Message pump runs as a background service.
-            builder.Services.AddHostedService<RabbitMqMessagePump>();
+            builder.Services.AddSingleton<InterBus.MessagePumps.IConsumerSourceFactory, RabbitMqSourceFactory>();
 
             // Request/reply support via virtual queue host.
             builder.Services.AddSingleton<IVirtualQueueHost, RabbitMqVirtualQueueHost>();

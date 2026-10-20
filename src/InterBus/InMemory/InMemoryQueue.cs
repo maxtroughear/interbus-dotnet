@@ -13,7 +13,7 @@ namespace InterBus.InMemory;
 internal sealed class InMemoryQueue
 {
     private readonly Channel<InMemoryEnvelope> _channel = Channel.CreateUnbounded<InMemoryEnvelope>(
-        new UnboundedChannelOptions { SingleReader = true, AllowSynchronousContinuations = false });
+        new UnboundedChannelOptions { SingleReader = false, AllowSynchronousContinuations = false });
 
     /// <summary>The consumer descriptor that owns this queue.</summary>
     public ConsumerDescriptor Descriptor { get; }

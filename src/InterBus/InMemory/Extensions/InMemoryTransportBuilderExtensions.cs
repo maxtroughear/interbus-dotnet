@@ -36,7 +36,7 @@ public static class InMemoryTransportBuilderExtensions
             builder.Services.AddKeyedSingleton<ITransport, InMemoryTransport>(InMemoryBroker.QueueScheme);
 
             // Message pump runs as a background service.
-            builder.Services.AddHostedService<InMemoryMessagePump>();
+            builder.Services.AddSingleton<InterBus.MessagePumps.IConsumerSourceFactory, InMemorySourceFactory>();
 
             // Reply endpoint factory enables IRequestClient<,> without additional registration.
             builder.Services.AddSingleton<IReplyEndpointFactory, InMemoryReplyEndpointFactory>();

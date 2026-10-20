@@ -1,0 +1,80 @@
+using InterBus.Consuming;
+
+namespace InterBus.MessagePumps;
+
+/// <summary>Runs one consumer's shared processing limit and ownership budget across all receive pumps.</summary>
+public sealed class ConsumerRuntime(ConsumerDescriptor descriptor, DeliveryProcessor processor)
+{
+    /// <summary>Runs initialized sources until intake stops, then drains accepted deliveries using the processing token.</summary>
+    public async Task RunAsync(IBufferedSource source, CancellationToken intakeToken, CancellationToken processingToken)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(source.PrefetchCount);
+        var sink = new DeliverySink(checked(descriptor.ConcurrencyCount + source.PrefetchCount));
+        using var intake = CancellationTokenSource.CreateLinkedTokenSource(intakeToken);
+        using var concurrency = new SemaphoreSlim(descriptor.ConcurrencyCount);
+        var producers = Enumerable.Range(0, descriptor.PumpCount).Select(_ => ProduceAsync()).ToArray();
+        var drain = DrainAsync();
+        try { await Task.WhenAll(producers); }
+        finally { sink.Complete(); await drain; }
+
+        async Task ProduceAsync()
+        {
+            try
+            {
+                await source.ReceiveAsync(sink, intake.Token);
+                if (!intake.IsCancellationRequested)
+                    throw new InvalidOperationException("Buffered source stopped unexpectedly");
+            }
+            catch (OperationCanceledException) when (intake.IsCancellationRequested) { }
+            catch { await intake.CancelAsync(); throw; }
+        }
+
+        async Task DrainAsync()
+        {
+            var active = new List<Task>();
+            var tails = new Dictionary<string, Task>(StringComparer.Ordinal);
+            await foreach (var entry in sink.Reader.ReadAllAsync())
+            {
+                active.RemoveAll(task => task.IsCompletedSuccessfully);
+                var key = entry.Delivery.OrderingKey;
+                var previous = key is not null && tails.TryGetValue(key, out var tail) ? tail : Task.CompletedTask;
+                var task = ProcessAsync(entry, previous);
+                active.Add(task);
+                if (key is not null) tails[key] = task;
+                foreach (var completed in tails.Where(pair => pair.Value.IsCompletedSuccessfully).Select(pair => pair.Key).ToArray())
+                    tails.Remove(completed);
+            }
+            await Task.WhenAll(active);
+        }
+
+        async Task ProcessAsync(DeliverySink.Entry entry, Task previous)
+        {
+            var entered = false;
+            var transferred = false;
+            try
+            {
+                await previous;
+                await concurrency.WaitAsync(processingToken);
+                entered = true;
+                transferred = true;
+                await processor.ProcessAsync(descriptor, entry.Delivery, processingToken);
+            }
+            catch (OperationCanceledException) when (processingToken.IsCancellationRequested) { }
+            catch { await intake.CancelAsync(); throw; }
+            finally
+            {
+                try { if (!transferred) await entry.Delivery.DisposeAsync(); }
+                finally { if (entered) concurrency.Release(); entry.Capacity.Release(); }
+            }
+        }
+    }
+
+    /// <summary>Runs processing inside transport-managed delivery lifetimes without an additional buffer.</summary>
+    public Task RunAsync(IManagedSource source, CancellationToken intakeToken, CancellationToken processingToken)
+    {
+        if (descriptor.PumpCount != 1)
+            throw new InvalidOperationException("Transport-managed consumers support PumpCount = 1 only");
+        return source.RunAsync((delivery, token) => processor.ProcessAsync(descriptor, delivery, token),
+            intakeToken, processingToken);
+    }
+}

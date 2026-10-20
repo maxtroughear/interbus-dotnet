@@ -90,6 +90,16 @@ public class ConsumerBuilder(ConsumerDescriptor descriptor, IServiceCollection s
         return this;
     }
 
+    /// <summary>Configures buffered receive pumps sharing this consumer's concurrency and prefetch budget.
+    /// Transport-managed adapters support only one pump.</summary>
+    /// <param name="pumpCount">Number of receive pumps, at least one.</param>
+    public ConsumerBuilder WithPumpCount(int pumpCount)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(pumpCount, 1);
+        descriptor.PumpCount = pumpCount;
+        return this;
+    }
+
     /// <summary>
     /// Add a middleware step to the consume pipeline for this consumer only.
     /// Steps are executed in registration order - the first registered step is outermost

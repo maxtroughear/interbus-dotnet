@@ -71,6 +71,7 @@ public static class ServiceCollectionExtensions
             services.AddScoped<ConsumeContextAccessor>();
 
             services.AddSingleton<Dispatcher>();
+            services.AddSingleton<DeliveryProcessor>();
             
             services.AddScoped<DispatchPipelineExecutor>();
             services.AddScoped<ConsumePipelineExecutor>();

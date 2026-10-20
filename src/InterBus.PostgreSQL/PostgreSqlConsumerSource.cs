@@ -89,9 +89,11 @@ internal abstract class PostgreSqlConsumerSource(
     }
 }
 
-internal sealed class PostgreSqlConsumerSourceFactory(IServiceProvider provider)
+internal sealed class PostgreSqlConsumerSourceFactory(IServiceProvider provider, PostgreSqlTransportOptions options)
     : IConsumerSourceFactory
 {
     public IConsumerSource Create(ConsumerDescriptor descriptor) =>
-        ActivatorUtilities.CreateInstance<PostgreSqlLeaseMessagePump>(provider, descriptor);
+        options.MessagePumpMode == PostgreSqlMessagePumpMode.Lease
+            ? ActivatorUtilities.CreateInstance<PostgreSqlLeaseMessagePump>(provider, descriptor)
+            : ActivatorUtilities.CreateInstance<PostgreSqlTransactionalMessagePump>(provider, descriptor);
 }

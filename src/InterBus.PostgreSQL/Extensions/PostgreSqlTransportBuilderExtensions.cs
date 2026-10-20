@@ -155,7 +155,7 @@ public static class PostgreSqlTransportBuilderExtensions
                 builder.Services.AddSingleton<InterBus.MessagePumps.IConsumerSourceFactory, PostgreSqlConsumerSourceFactory>();
                 break;
             case PostgreSqlMessagePumpMode.Transactional:
-                builder.Services.AddHostedService<PostgreSqlTransactionalMessagePump>();
+                builder.Services.AddSingleton<InterBus.MessagePumps.IConsumerSourceFactory, PostgreSqlConsumerSourceFactory>();
                 break;
             default:
                 throw new ArgumentOutOfRangeException(nameof(options.MessagePumpMode), options.MessagePumpMode,

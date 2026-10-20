@@ -31,8 +31,9 @@ internal sealed class PostgreSqlLoadProgress : IAsyncDisposable
         {
             while (await timer.WaitForNextTickAsync(_stop.Token))
             {
-                await TestContext.Progress.WriteLineAsync(
-                    $"Load progress {_elapsed.Elapsed.TotalSeconds:F0}s: published={Volatile.Read(ref _published)}, received={_received()}");
+                await WriteAsync(
+                    $"Load progress {_elapsed.Elapsed.TotalSeconds:F0}s: published={Volatile.Read(ref _published)}, received={_received()}, " +
+                    $"processors={Environment.ProcessorCount}, threads={ThreadPool.ThreadCount}, pending_work={ThreadPool.PendingWorkItemCount}");
                 try
                 {
                     await using var command = _observer.CreateCommand("""
@@ -46,14 +47,21 @@ internal sealed class PostgreSqlLoadProgress : IAsyncDisposable
                         """);
                     await using var reader = await command.ExecuteReaderAsync(_stop.Token);
                     while (await reader.ReadAsync(_stop.Token))
-                        await TestContext.Progress.WriteLineAsync(
+                        await WriteAsync(
                             $"DB {reader.GetString(0)} {reader.GetString(1)} count={reader.GetInt64(2)} oldest_tx={reader.GetDouble(3):F1}s {reader.GetString(4)}");
                 }
                 catch (NpgsqlException error)
-                { await TestContext.Progress.WriteLineAsync($"Load diagnostics unavailable: {error.Message}"); }
+                { await WriteAsync($"Load diagnostics unavailable: {error.Message}"); }
             }
         }
         catch (OperationCanceledException) when (_stop.IsCancellationRequested) { }
+    }
+
+    private static async Task WriteAsync(string message)
+    {
+        // The adapter's hosted runner captures Out; direct runs also stream Progress
+        await TestContext.Out.WriteLineAsync(message);
+        await TestContext.Progress.WriteLineAsync(message);
     }
 
     public async ValueTask DisposeAsync()

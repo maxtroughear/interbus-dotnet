@@ -11,6 +11,10 @@ internal sealed class AzureServiceBusMessagePump(
     ConsumerDescriptor descriptor, AzureServiceBusClientProvider clientProvider,
     AzureServiceBusTransportOptions options, ILogger<AzureServiceBusMessagePump> logger) : IManagedSource
 {
+    private readonly TaskCompletionSource<Exception> _failure = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public Task<Exception> Failure => _failure.Task;
+    private readonly TaskCompletionSource _ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public Task Ready => _ready.Task;
     private ServiceBusProcessor? _processor;
     private ServiceBusSessionProcessor? _sessions;
 
@@ -44,12 +48,22 @@ internal sealed class AzureServiceBusMessagePump(
     public async Task RunAsync(Func<IDelivery, CancellationToken, Task> process, CancellationToken intakeToken,
         CancellationToken processingToken)
     {
+        async Task ProcessAsync(IDelivery delivery, CancellationToken token)
+        {
+            try { await process(delivery, token); }
+            catch (Exception error) { _failure.TrySetResult(error); throw; }
+        }
         if (_processor is not null)
         {
             _processor.ProcessMessageAsync += async args =>
             {
-                using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(args.CancellationToken, processingToken);
-                await process(new ServiceBusDelivery(args.Message, async (result, ct) =>
+                using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(processingToken);
+                using var callbackCancellation = args.CancellationToken.Register(() =>
+                {
+                    // SDK stop cancels its callback token before accepted work has drained
+                    if (!intakeToken.IsCancellationRequested) cancellation.Cancel();
+                });
+                await ProcessAsync(new ServiceBusDelivery(args.Message, async (result, ct) =>
                 {
                     switch (result.Kind)
                     {
@@ -66,6 +80,7 @@ internal sealed class AzureServiceBusMessagePump(
             try
             {
                 await _processor.StartProcessingAsync(intakeToken);
+                _ready.TrySetResult();
                 await Task.Delay(Timeout.Infinite, intakeToken);
             }
             catch (OperationCanceledException) when (intakeToken.IsCancellationRequested) { }
@@ -75,8 +90,13 @@ internal sealed class AzureServiceBusMessagePump(
         {
             _sessions.ProcessMessageAsync += async args =>
             {
-                using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(args.CancellationToken, processingToken);
-                await process(new ServiceBusDelivery(args.Message, async (result, ct) =>
+                using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(processingToken);
+                using var callbackCancellation = args.CancellationToken.Register(() =>
+                {
+                    // SDK stop cancels its callback token before accepted work has drained
+                    if (!intakeToken.IsCancellationRequested) cancellation.Cancel();
+                });
+                await ProcessAsync(new ServiceBusDelivery(args.Message, async (result, ct) =>
                 {
                     switch (result.Kind)
                     {
@@ -93,6 +113,7 @@ internal sealed class AzureServiceBusMessagePump(
             try
             {
                 await _sessions.StartProcessingAsync(intakeToken);
+                _ready.TrySetResult();
                 await Task.Delay(Timeout.Infinite, intakeToken);
             }
             catch (OperationCanceledException) when (intakeToken.IsCancellationRequested) { }

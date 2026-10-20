@@ -11,8 +11,9 @@ namespace InterBus.RabbitMQ.Tests;
 [TestFixture]
 public class ManagedShutdownTests
 {
-    [Test]
-    public async Task RealHost_DrainsCallbacksBeforeClosingChannel()
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task RealHost_DrainsCallbacksBeforeClosingChannel(bool recoverConnection)
     {
         await using var container = new RabbitMqBuilder("rabbitmq:4-alpine").Build();
         await container.StartAsync();
@@ -31,6 +32,17 @@ public class ManagedShutdownTests
         for (var i = 0; i < 6; i++)
             await publisher.PublishAsync(new OrderPlaced(Guid.NewGuid(), "shutdown@test.com", i));
         await gate.Entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        if (recoverConnection)
+        {
+            var closed = await container.ExecAsync(["rabbitmqctl", "close_all_connections", "--global", "interbus recovery test"]);
+            Assert.That(closed.ExitCode, Is.Zero, closed.Stderr);
+            await WaitUntilAsync(async () =>
+            {
+                var connections = await container.ExecAsync(["rabbitmqctl", "list_connections", "--quiet", "--no-table-headers", "pid"]);
+                return connections.Stdout.Split('\n', StringSplitOptions.RemoveEmptyEntries).Length >= 2;
+            }, timeoutMs: 30_000, cancellationToken: TestContext.CurrentContext.CancellationToken);
+            Assert.That(gate.Active, Is.EqualTo(2));
+        }
         var stop = host.StopAsync();
         try
         {

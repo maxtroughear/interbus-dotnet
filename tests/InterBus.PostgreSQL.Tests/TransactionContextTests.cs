@@ -33,6 +33,23 @@ public class TransactionContextTests(string imageTag, PostgreSqlMessagePumpMode 
         Assert.That(state.Seen.All(item => item.Value == 42), Is.True);
     }
 
+    [Test]
+    public async Task Transactional_ReleaseRollsBackConsumerChanges()
+    {
+        var dataSource = Provider.GetRequiredService<NpgsqlDataSource>();
+        await using (var setup = dataSource.CreateCommand("CREATE TABLE IF NOT EXISTS test_ledger (value int); TRUNCATE test_ledger"))
+            await setup.ExecuteNonQueryAsync();
+        var state = Provider.GetRequiredService<Transactions>();
+        state.UseLedger = true;
+        await PublishAsync();
+        await WaitUntilAsync(async () =>
+        {
+            await using var count = dataSource.CreateCommand("SELECT COUNT(*) FROM test_ledger");
+            return (long)(await count.ExecuteScalarAsync())! == 1;
+        }, cancellationToken: TestContext.CurrentContext.CancellationToken);
+        Assert.That(state.Attempts, Is.EqualTo(2));
+    }
+
     private async Task PublishAsync()
     {
         await using var scope = Provider.CreateAsyncScope();
@@ -42,6 +59,8 @@ public class TransactionContextTests(string imageTag, PostgreSqlMessagePumpMode 
 
     public sealed class Transactions
     {
+        public bool UseLedger;
+        public int Attempts;
         public ConcurrentBag<(long TransactionId, int Value)> Seen { get; } = [];
     }
     public sealed class TransactionConsumer(Transactions state) : IConsumer<OrderPlaced>
@@ -56,6 +75,13 @@ public class TransactionContextTests(string imageTag, PostgreSqlMessagePumpMode 
             var transactionId = (long)(await command.ExecuteScalarAsync(cancellationToken))!;
             command.CommandText = "SELECT 42";
             var value = (int)(await command.ExecuteScalarAsync(cancellationToken))!;
+            if (state.UseLedger)
+            {
+                command.CommandText = "INSERT INTO test_ledger VALUES (42)";
+                await command.ExecuteNonQueryAsync(cancellationToken);
+                if (Interlocked.Increment(ref state.Attempts) == 1)
+                    ((InterBus.Consuming.ConsumeContext<OrderPlaced>)context).Result = InterBus.Dispatching.DispatchResult.Release(new IOException("retry"));
+            }
             await Task.Yield();
             if (!ReferenceEquals(transaction, context.GetPostgreSqlTransaction()))
                 throw new InvalidOperationException("Transaction changed within a delivery");

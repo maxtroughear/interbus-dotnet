@@ -25,13 +25,20 @@ internal sealed class PumpHost(InterBusOptions options, PumpController controlle
         var pumps = controller.Pumps;
         if (pumps.Count == 0) return;
         // WhenAny surfaces one failed consumer without waiting for unrelated consumers to stop
-        var remaining = pumps.Select(pump => pump.Completion).ToList();
+        var remaining = pumps.Select(ObserveAsync).ToList();
         while (remaining.Count > 0)
         {
             var completed = await Task.WhenAny(remaining);
             await completed;
             remaining.Remove(completed);
         }
+    }
+
+    private static async Task ObserveAsync(PumpLifetime pump)
+    {
+        if (await Task.WhenAny(pump.Completion, pump.Fault) == pump.Fault)
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(await pump.Fault).Throw();
+        await pump.Completion;
     }
 
     public override async Task StopAsync(CancellationToken cancellationToken)

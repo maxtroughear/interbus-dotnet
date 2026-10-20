@@ -45,7 +45,8 @@ public class PumpLifetimeTests
         await using var provider = Provider();
         var source = new Source { FailRun = throws, CompleteRun = !throws };
         var lifetime = Lifetime(source, provider);
-        await lifetime.StartAsync(TestContext.Current.CancellationToken);
+        try { await lifetime.StartAsync(TestContext.Current.CancellationToken); }
+        catch (Exception error) when (error is IOException or InvalidOperationException) { }
         await Assert.ThrowsAnyAsync<Exception>(() => lifetime.Completion);
         Assert.Equal(PumpState.Faulted, lifetime.State);
         Assert.True(source.Disposed);
@@ -105,6 +106,84 @@ public class PumpLifetimeTests
         Assert.Equal(PumpState.Stopped, snapshot[0].State);
     }
 
+    [Fact]
+    public async Task BackgroundFault_IsReportedBeforeActiveWorkFinishes()
+    {
+        await using var provider = Provider();
+        var source = new Source { IgnoreIntake = true };
+        var lifetime = Lifetime(source, provider);
+        await lifetime.StartAsync(TestContext.Current.CancellationToken);
+        var failure = new IOException("listener failed");
+        source.Health.SetResult(failure);
+        Assert.Same(failure, await lifetime.Fault.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
+        Assert.Equal(PumpState.Faulted, lifetime.State);
+        Assert.False(source.Disposed);
+        source.Finish.SetResult();
+        await Assert.ThrowsAsync<IOException>(() => lifetime.Completion);
+        Assert.True(source.Disposed);
+    }
+
+    [Fact]
+    public async Task RealHost_PartialStartupFailure_StopsEveryInitializedConsumer()
+    {
+        var first = new Source();
+        var second = new Source { InitializationFailure = new IOException("initialization failed") };
+        var builder = Host.CreateApplicationBuilder();
+        builder.Services.AddInterBus(bus =>
+        {
+            bus.Options.GetConsumerDescriptor(typeof(PumpLifetimeTests));
+            bus.Options.GetConsumerDescriptor(typeof(Source));
+            bus.Services.AddSingleton<IConsumerSourceFactory>(new SequenceFactory(first, second));
+        });
+        using var host = builder.Build();
+        await Assert.ThrowsAsync<IOException>(() => host.StartAsync(TestContext.Current.CancellationToken));
+        Assert.True(first.Disposed);
+        Assert.True(second.Disposed);
+        Assert.All(host.Services.GetRequiredService<PumpController>().Pumps,
+            pump => Assert.True(pump.State is PumpState.Stopped or PumpState.Faulted));
+    }
+
+    private sealed class SequenceFactory(params Source[] sources) : IConsumerSourceFactory
+    {
+        private int _next;
+        public IConsumerSource Create(ConsumerDescriptor descriptor) => sources[_next++];
+    }
+
+    [Fact]
+    public async Task Startup_AwaitsAdapterReadiness_AndStopCancelsPendingStartup()
+    {
+        await using var provider = Provider();
+        var source = new Source { BlockReady = true };
+        var lifetime = Lifetime(source, provider);
+        var start = lifetime.StartAsync(TestContext.Current.CancellationToken);
+        Assert.True(source.Ran);
+        Assert.False(start.IsCompleted);
+        Assert.Equal(PumpState.Starting, lifetime.State);
+        await Task.WhenAll(start, lifetime.StopAsync(TestContext.Current.CancellationToken))
+            .WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        Assert.True(source.Disposed);
+        Assert.Equal(PumpState.Stopped, lifetime.State);
+    }
+
+    [Fact]
+    public async Task Controller_StopsEveryConsumer_AndAggregatesCleanupFailures()
+    {
+        await using var provider = Provider();
+        var first = new Source { DisposalFailure = new IOException("first") };
+        var second = new Source { DisposalFailure = new IOException("second") };
+        var controller = new PumpController(new SequenceFactory(first, second), provider.GetRequiredService<DeliveryProcessor>());
+        await controller.CreatePumpAsync(new ConsumerDescriptor(typeof(PumpLifetimeTests), new Uri("memory://first")),
+            TestContext.Current.CancellationToken);
+        var snapshot = controller.Pumps;
+        await controller.CreatePumpAsync(new ConsumerDescriptor(typeof(Source), new Uri("memory://second")),
+            TestContext.Current.CancellationToken);
+        Assert.Single(snapshot);
+        var failure = await Assert.ThrowsAsync<AggregateException>(() => controller.StopAsync(TestContext.Current.CancellationToken));
+        Assert.Equal(2, failure.InnerExceptions.Count);
+        Assert.True(first.Disposed);
+        Assert.True(second.Disposed);
+    }
+
     private static ServiceProvider Provider()
     {
         var services = new ServiceCollection();
@@ -121,9 +200,13 @@ public class PumpLifetimeTests
     }
     private sealed class Source : IManagedSource
     {
-        public bool BlockInitialize, FailRun, CompleteRun, IgnoreIntake, Ran, Disposed;
-        public Exception? InitializationFailure;
+        public bool BlockReady, BlockInitialize, FailRun, CompleteRun, IgnoreIntake, Ran, Disposed;
+        public Exception? InitializationFailure, DisposalFailure;
         public CancellationToken ProcessingToken;
+        private readonly TaskCompletionSource _ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public Task Ready => BlockReady ? _ready.Task : Task.CompletedTask;
+        public TaskCompletionSource<Exception> Health { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public Task<Exception> Failure => Health.Task;
         public TaskCompletionSource Initializing { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource Finish { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public async Task InitializeAsync(CancellationToken cancellationToken)
@@ -142,6 +225,10 @@ public class PumpLifetimeTests
             if (IgnoreIntake) await Finish.Task;
             else await Task.Delay(Timeout.Infinite, intakeToken);
         }
-        public ValueTask DisposeAsync() { Disposed = true; return ValueTask.CompletedTask; }
+        public ValueTask DisposeAsync()
+        {
+            Disposed = true;
+            return DisposalFailure is null ? ValueTask.CompletedTask : ValueTask.FromException(DisposalFailure);
+        }
     }
 }

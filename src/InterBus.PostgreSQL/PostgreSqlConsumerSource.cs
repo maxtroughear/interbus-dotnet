@@ -15,6 +15,9 @@ internal abstract class PostgreSqlConsumerSource(
     protected readonly NpgsqlDataSource DataSource = dataSource;
     protected readonly PostgreSqlTransportOptions Options = options;
     protected long QueueId;
+    private readonly TaskCompletionSource<Exception> _failure = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public Task<Exception> Failure => _failure.Task;
+    protected void ReportFailure(Exception error) => _failure.TrySetResult(error);
     private readonly CancellationTokenSource _listenerStop = new();
     private readonly Channel<bool> _notifications = Channel.CreateBounded<bool>(new BoundedChannelOptions(1)
     { FullMode = BoundedChannelFullMode.DropWrite, SingleWriter = true, SingleReader = false });
@@ -24,6 +27,8 @@ internal abstract class PostgreSqlConsumerSource(
 
     public Task InitializeAsync(CancellationToken cancellationToken) => PostgreSqlConnectionRetry.ExecuteAsync(async ct =>
     {
+        if (this is IManagedSource && Descriptor.PumpCount != 1)
+            throw new InvalidOperationException("PostgreSQL transactional consumers support PumpCount = 1 only");
         await using var connection = await DataSource.OpenConnectionAsync(ct);
         await using var queue = connection.CreateCommand();
         queue.CommandText = $"SELECT \"{EscapeIdentifier(Options.SchemaName)}\".ensure_queue($1)";
@@ -59,7 +64,14 @@ internal abstract class PostgreSqlConsumerSource(
         }
     }
 
-    private Task ListenAsync() => PostgreSqlConnectionRetry.ExecuteAsync(async ct =>
+    private async Task ListenAsync()
+    {
+        try { await ListenWithRetryAsync(); }
+        catch (OperationCanceledException) when (_listenerStop.IsCancellationRequested) { }
+        catch (Exception error) { ReportFailure(error); throw; }
+    }
+
+    private Task ListenWithRetryAsync() => PostgreSqlConnectionRetry.ExecuteAsync(async ct =>
     {
         await using var connection = await DataSource.OpenConnectionAsync(ct);
         connection.Notification += (_, _) => _notifications.Writer.TryWrite(true);

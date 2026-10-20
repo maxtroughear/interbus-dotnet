@@ -12,19 +12,41 @@ public sealed class PumpController(IConsumerSourceFactory factory, DeliveryProce
     /// <summary>Creates and initializes a consumer runtime before returning.</summary>
     public async Task<PumpLifetime> CreatePumpAsync(ConsumerDescriptor consumer, CancellationToken cancellationToken = default)
     {
-        var pump = new PumpLifetime(consumer, factory.Create(consumer), processor);
-        lock (_pumps) _pumps.Add(pump);
+        PumpLifetime pump;
+        lock (_pumps)
+        {
+            pump = _pumps.FirstOrDefault(existing => existing.Consumer == consumer &&
+                !existing.Completion.IsCompleted)!;
+            if (pump is null)
+            {
+                pump = new PumpLifetime(consumer, factory.Create(consumer), processor);
+                _pumps.Add(pump);
+            }
+        }
         await pump.StartAsync(cancellationToken);
         return pump;
     }
 
     /// <summary>Stops every runtime, observing all failures before reporting them.</summary>
     public Task StopAsync(CancellationToken cancellationToken) =>
-        Task.WhenAll(Pumps.Select(pump => StopAndDisposeAsync(pump, cancellationToken)));
+        StopAllAsync(Pumps, cancellationToken);
 
     /// <summary>Stops all runtimes for a consumer.</summary>
     public Task StopPumpsForConsumerAsync(ConsumerDescriptor consumer) =>
-        Task.WhenAll(Pumps.Where(pump => pump.Consumer == consumer).Select(pump => StopAndDisposeAsync(pump, default)));
+        StopAllAsync(Pumps.Where(pump => pump.Consumer == consumer), default);
+
+    private static async Task StopAllAsync(IEnumerable<PumpLifetime> pumps, CancellationToken cancellationToken)
+    {
+        var stops = pumps.Select(pump => StopAndDisposeAsync(pump, cancellationToken)).ToArray();
+        try { await Task.WhenAll(stops); }
+        catch
+        {
+            var failures = stops.Where(task => task.IsFaulted)
+                .SelectMany(task => task.Exception!.InnerExceptions).ToArray();
+            if (failures.Length > 1) throw new AggregateException("Consumer shutdown failed", failures);
+            throw;
+        }
+    }
 
     private static async Task StopAndDisposeAsync(PumpLifetime pump, CancellationToken cancellationToken)
     {

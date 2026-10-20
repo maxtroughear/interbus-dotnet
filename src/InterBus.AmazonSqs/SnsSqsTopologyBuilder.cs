@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
+using Amazon.Runtime;
 using Amazon.SecurityToken;
 using Amazon.SecurityToken.Model;
 using Amazon.SimpleNotificationService;
@@ -62,11 +63,32 @@ public sealed partial class SnsSqsTopologyBuilder(
     /// </summary>
     public async Task BuildConsumerTopologyAsync(CancellationToken cancellationToken)
     {
-        if (transportOptions.TopologyMode == TopologyMode.ResolveOnly)
-            await ResolveConsumerTopologyAsync(cancellationToken);
-        else
-            await CreateConsumerTopologyAsync(cancellationToken);
+        var attempt = 0;
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                if (transportOptions.TopologyMode == TopologyMode.ResolveOnly)
+                    await ResolveConsumerTopologyAsync(cancellationToken);
+                else
+                    await CreateConsumerTopologyAsync(cancellationToken);
+                return;
+            }
+            catch (Exception error) when (!cancellationToken.IsCancellationRequested &&
+                IsTransient(error) && attempt < transportOptions.ConnectionRetry.RetryCount &&
+                (transportOptions.ConnectionRetry.ShouldRetry?.Invoke(error) ?? true))
+            {
+                var delay = transportOptions.ConnectionRetry.DelayProvider(++attempt);
+                logger.LogWarning(error, "InterBus SQS: topology connection failed; retrying in {Delay}", delay);
+                await Task.Delay(delay, cancellationToken);
+            }
+        }
     }
+
+    private static bool IsTransient(Exception error) => error is HttpRequestException or IOException or TimeoutException ||
+        error is AmazonServiceException aws && ((int)aws.StatusCode >= 500 ||
+            aws.ErrorCode is "Throttling" or "ThrottlingException" or "RequestThrottled");
 
     public async Task<string> EnsureTopicAsync(Uri topic, CancellationToken cancellationToken)
     {

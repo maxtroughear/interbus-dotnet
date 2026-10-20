@@ -73,6 +73,8 @@ internal sealed class SqsPrefetchedMessage : IDelivery
                 break;
             case DispatchResultKind.Release:
                 // Preserve visibility-expiry redelivery rather than making the message immediately visible
+                await _renewal.CancelAsync();
+                await _renewalTask;
                 break;
             case DispatchResultKind.DeadLetter:
                 var attributes = new Dictionary<string, MessageAttributeValue>(_message.MessageAttributes ?? []);
@@ -85,7 +87,8 @@ internal sealed class SqsPrefetchedMessage : IDelivery
                     MessageBody = _message.Body,
                     MessageAttributes = attributes,
                     MessageGroupId = OrderingKey,
-                    MessageDeduplicationId = OrderingKey is null ? null : Guid.NewGuid().ToString("N")
+                    MessageDeduplicationId = _deadLetterQueueUrl.EndsWith(".fifo", StringComparison.OrdinalIgnoreCase)
+                        ? Guid.NewGuid().ToString("N") : null
                 }, cancellationToken);
                 await _client.DeleteMessageAsync(_queueUrl, _message.ReceiptHandle, cancellationToken);
                 break;

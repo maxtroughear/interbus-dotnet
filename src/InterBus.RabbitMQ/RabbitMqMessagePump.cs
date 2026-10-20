@@ -16,6 +16,12 @@ internal sealed class RabbitMqMessagePump(
     private readonly ConsumerDescriptor _descriptor = descriptor;
     private IConnection? _connection;
     private IChannel? _channel;
+    private int _generation;
+    private readonly SemaphoreSlim _dispatchGate = new(descriptor.ConcurrencyCount);
+    private readonly TaskCompletionSource<Exception> _failure = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public Task<Exception> Failure => _failure.Task;
+    private readonly TaskCompletionSource _ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public Task Ready => _ready.Task;
     private readonly object _gate = new();
     private int _active;
     private TaskCompletionSource _idle = Completed();
@@ -32,11 +38,19 @@ internal sealed class RabbitMqMessagePump(
         if (_descriptor.PumpCount != 1) throw new InvalidOperationException("RabbitMQ supports PumpCount = 1 only");
         if (_descriptor.ConcurrencyCount > ushort.MaxValue) throw new InvalidOperationException("RabbitMQ concurrency exceeds 65535");
         _connection = await ConnectWithRetryAsync(cancellationToken);
+        _connection.ConnectionShutdownAsync += (_, _) =>
+        { Interlocked.Increment(ref _generation); return Task.CompletedTask; };
         var concurrency = (ushort)_descriptor.ConcurrencyCount;
         _channel = await _connection.CreateChannelAsync(new CreateChannelOptions(
             publisherConfirmationsEnabled: false, publisherConfirmationTrackingEnabled: false,
             consumerDispatchConcurrency: concurrency), cancellationToken);
         await _channel.BasicQosAsync(0, concurrency, false, cancellationToken);
+        _channel.ChannelShutdownAsync += (_, reason) =>
+        {
+            if (reason.Initiator != ShutdownInitiator.Application && _connection.IsOpen)
+                _failure.TrySetResult(new InvalidOperationException($"RabbitMQ consumer channel closed: {reason.ReplyText}"));
+            return Task.CompletedTask;
+        };
     }
 
     public async Task RunAsync(Func<IDelivery, CancellationToken, Task> process, CancellationToken intakeToken,
@@ -49,19 +63,41 @@ internal sealed class RabbitMqMessagePump(
         consumer.ReceivedAsync += async (_, args) =>
         {
             lock (_gate) { if (_active++ == 0) _idle = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously); }
-            try { await process(new RabbitDelivery(this, args), processingToken); }
-            finally { lock (_gate) { if (--_active == 0) _idle.TrySetResult(); } }
+            RabbitDelivery? delivery = null;
+            var transferred = false;
+            try
+            {
+                delivery = new RabbitDelivery(this, args);
+                await _dispatchGate.WaitAsync(processingToken);
+                try { transferred = true; await process(delivery, processingToken); }
+                finally { _dispatchGate.Release(); }
+            }
+            catch (OperationCanceledException) when (processingToken.IsCancellationRequested) { }
+            catch (Exception error) { _failure.TrySetResult(error); throw; }
+            finally
+            {
+                try { if (!transferred && delivery is not null) await delivery.DisposeAsync(); }
+                finally { lock (_gate) { if (--_active == 0) _idle.TrySetResult(); } }
+            }
         };
-        var tag = await channel.BasicConsumeAsync(_descriptor.QueueName, false, consumer, intakeToken);
+        await channel.BasicConsumeAsync(_descriptor.QueueName, false, consumer, intakeToken);
+        _ready.TrySetResult();
         try { await Task.Delay(Timeout.Infinite, intakeToken); }
         catch (OperationCanceledException) when (intakeToken.IsCancellationRequested) { }
         finally
         {
-            await channel.BasicCancelAsync(tag, cancellationToken: CancellationToken.None);
-            await unregistered.Task;
-            Task idle;
-            lock (_gate) idle = _idle.Task;
-            await idle;
+            try
+            {
+                foreach (var activeTag in consumer.ConsumerTags.ToArray())
+                    await channel.BasicCancelAsync(activeTag, cancellationToken: CancellationToken.None);
+                await unregistered.Task;
+            }
+            finally
+            {
+                Task idle;
+                lock (_gate) idle = _idle.Task;
+                await idle;
+            }
         }
     }
 
@@ -71,25 +107,31 @@ internal sealed class RabbitMqMessagePump(
         {
             if (_channel is not null) await _channel.DisposeAsync();
         }
-        finally { if (_connection is not null) await _connection.DisposeAsync(); }
+        finally
+        {
+            try { if (_connection is not null) await _connection.DisposeAsync(); }
+            finally { _dispatchGate.Dispose(); }
+        }
     }
 
     private sealed class RabbitDelivery : IDelivery
     {
         private readonly RabbitMqMessagePump _owner;
         private readonly BasicDeliverEventArgs _args;
+        private readonly int _generation;
         public ReadOnlyMemory<byte> Payload { get; }
         public MessageHeaders Headers { get; } = new();
         public Exception? DecodeError { get; }
         public RabbitDelivery(RabbitMqMessagePump owner, BasicDeliverEventArgs args)
         {
-            _owner = owner; _args = args; Payload = args.Body.ToArray();
+            _owner = owner; _args = args; _generation = Volatile.Read(ref owner._generation); Payload = args.Body.ToArray();
             try { Headers = RabbitMqHeaders.ParseAmqpHeaders(args.BasicProperties.Headers); }
             catch (Exception error) { DecodeError = error; }
         }
         public async Task<bool> SettleAsync(DispatchResult result, CancellationToken cancellationToken)
         {
             var channel = _owner._channel!;
+            if (!channel.IsOpen || _generation != Volatile.Read(ref _owner._generation)) return false;
             switch (result.Kind)
             {
                 case DispatchResultKind.Success:
@@ -100,7 +142,7 @@ internal sealed class RabbitMqMessagePump(
                     await _owner.DeadLetterAsync(channel, _owner._descriptor, _args, result, cancellationToken); break;
                 default: throw new ArgumentOutOfRangeException(nameof(result));
             }
-            return true;
+            return _generation == Volatile.Read(ref _owner._generation);
         }
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }

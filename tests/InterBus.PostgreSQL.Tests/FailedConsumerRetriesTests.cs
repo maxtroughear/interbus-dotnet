@@ -24,10 +24,9 @@ public class FailedConsumerRetriesTests(string imageTag, PostgreSqlMessagePumpMo
         // Wait for the consumer to be called once.
         await WaitUntilAsync(() => Tracker.Messages.Count >= 1, timeoutMs: 15_000);
 
-        // Allow a short window for the pump to write the dead-letter row.
-        await Task.Delay(500, TestContext.CurrentContext.CancellationToken);
-
         var dataSource = scope.ServiceProvider.GetRequiredService<NpgsqlDataSource>();
+        await WaitUntilAsync(async () => await CountDeadLetterRowsAsync(dataSource) == 1,
+            timeoutMs: 15_000, cancellationToken: TestContext.CurrentContext.CancellationToken);
         var deadLetterCount = await CountDeadLetterRowsAsync(dataSource);
 
         using (Assert.EnterMultipleScope())
@@ -44,6 +43,12 @@ public class FailedConsumerRetriesTests(string imageTag, PostgreSqlMessagePumpMo
         return Convert.ToInt32(await cmd.ExecuteScalarAsync());
     }
 
-    internal sealed class FailingOrderPlacedConsumer(OrderPlacedTracker tracker)
-        : TrackingConsumer<OrderPlaced, OrderPlacedTracker>(tracker);
+    internal sealed class FailingOrderPlacedConsumer(OrderPlacedTracker tracker) : IConsumer<OrderPlaced>
+    {
+        public Task Consume(OrderPlaced message, IConsumeContext context, CancellationToken cancellationToken = default)
+        {
+            tracker.Track(message);
+            throw new InvalidOperationException("Simulated consumer failure");
+        }
+    }
 }

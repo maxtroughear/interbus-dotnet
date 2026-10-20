@@ -32,7 +32,7 @@ internal sealed class PostgreSqlTransactionalMessagePump(
                 }, Options, logger, workers.Token);
             }
             catch (OperationCanceledException) when (workers.IsCancellationRequested) { }
-            catch { await workers.CancelAsync(); throw; }
+            catch (Exception error) { ReportFailure(error); await workers.CancelAsync(); throw; }
         }
     }
 

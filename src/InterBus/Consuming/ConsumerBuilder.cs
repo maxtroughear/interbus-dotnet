@@ -73,8 +73,8 @@ public class ConsumerBuilder(ConsumerDescriptor descriptor, IServiceCollection s
 
     /// <summary>
     /// Configures the number of concurrent message handlers for this consumer's queue.
-    /// Transports that support concurrent dispatch per queue (e.g. RabbitMQ) use this value
-    /// to configure the channel's dispatch concurrency and prefetch count.
+    /// Buffered transports share this limit across all receive sources. Managed transports
+    /// configure their SDK callbacks or transaction-owning workers with this total limit.
     /// Defaults to <c>1</c> (sequential dispatch) when not configured.
     /// </summary>
     /// <param name="concurrencyCount">

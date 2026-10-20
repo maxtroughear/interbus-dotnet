@@ -1,5 +1,4 @@
 using System.Diagnostics.CodeAnalysis;
-using System.Threading.Channels;
 using InterBus.Consuming;
 using InterBus.Dispatching;
 using InterBus.Internal;

@@ -5,7 +5,7 @@ namespace InterBus.RabbitMQ;
 
 /// <summary>
 /// Singleton service that manages the <see cref="ConnectionFactory"/> configuration and
-/// creates the two long-lived connections used by the RabbitMQ transport:
+/// creates the long-lived connections used by the RabbitMQ transport:
 /// <list type="bullet">
 ///   <item>A <em>publish</em> connection, lazily created on the first publish call and
 ///   shared for the lifetime of the application.</item>
@@ -13,7 +13,7 @@ namespace InterBus.RabbitMQ;
 ///   at startup.</item>
 /// </list>
 /// <para>
-/// Both connections are created with <see cref="ConnectionFactory.AutomaticRecoveryEnabled"/>
+/// All connections are created with <see cref="ConnectionFactory.AutomaticRecoveryEnabled"/>
 /// set to <c>true</c> so that the client automatically re-establishes connections and
 /// re-subscribes consumers after transient broker failures.
 /// </para>

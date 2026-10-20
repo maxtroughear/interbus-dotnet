@@ -3,7 +3,7 @@ using InterBus.Consuming;
 namespace InterBus.MessagePumps;
 
 /// <summary>Runs one consumer's shared processing limit and ownership budget across all receive pumps.</summary>
-public sealed class ConsumerRuntime(ConsumerDescriptor descriptor, DeliveryProcessor processor)
+public sealed class ConsumerRuntime(ConsumerDescriptor descriptor, DeliveryProcessor processor, Action<Exception>? reportFailure = null)
 {
     /// <summary>Runs initialized sources until intake stops, then drains accepted deliveries using the processing token.</summary>
     public async Task RunAsync(IBufferedSource source, CancellationToken intakeToken, CancellationToken processingToken)
@@ -14,7 +14,19 @@ public sealed class ConsumerRuntime(ConsumerDescriptor descriptor, DeliveryProce
         using var concurrency = new SemaphoreSlim(descriptor.ConcurrencyCount);
         var producers = Enumerable.Range(0, descriptor.PumpCount).Select(_ => ProduceAsync()).ToArray();
         var drain = DrainAsync();
-        try { await Task.WhenAll(producers); }
+        try
+        {
+            var receives = Task.WhenAll(producers);
+            if (await Task.WhenAny(receives, source.Failure) == source.Failure)
+            {
+                var failure = await source.Failure;
+                reportFailure?.Invoke(failure);
+                await intake.CancelAsync();
+                await receives;
+                System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
+            }
+            await receives;
+        }
         finally { sink.Complete(); await drain; }
 
         async Task ProduceAsync()
@@ -26,7 +38,7 @@ public sealed class ConsumerRuntime(ConsumerDescriptor descriptor, DeliveryProce
                     throw new InvalidOperationException("Buffered source stopped unexpectedly");
             }
             catch (OperationCanceledException) when (intake.IsCancellationRequested) { }
-            catch { await intake.CancelAsync(); throw; }
+            catch (Exception error) { reportFailure?.Invoke(error); await intake.CancelAsync(); throw; }
         }
 
         async Task DrainAsync()
@@ -60,7 +72,7 @@ public sealed class ConsumerRuntime(ConsumerDescriptor descriptor, DeliveryProce
                 await processor.ProcessAsync(descriptor, entry.Delivery, processingToken);
             }
             catch (OperationCanceledException) when (processingToken.IsCancellationRequested) { }
-            catch { await intake.CancelAsync(); throw; }
+            catch (Exception error) { reportFailure?.Invoke(error); await intake.CancelAsync(); throw; }
             finally
             {
                 try { if (!transferred) await entry.Delivery.DisposeAsync(); }
@@ -87,11 +99,19 @@ public sealed class ConsumerRuntime(ConsumerDescriptor descriptor, DeliveryProce
     }
 
     /// <summary>Runs processing inside transport-managed delivery lifetimes without an additional buffer.</summary>
-    public Task RunAsync(IManagedSource source, CancellationToken intakeToken, CancellationToken processingToken)
+    public async Task RunAsync(IManagedSource source, CancellationToken intakeToken, CancellationToken processingToken)
     {
         if (descriptor.PumpCount != 1)
             throw new InvalidOperationException("Transport-managed consumers support PumpCount = 1 only");
-        return source.RunAsync((delivery, token) => processor.ProcessAsync(descriptor, delivery, token),
+        var run = source.RunAsync((delivery, token) => processor.ProcessAsync(descriptor, delivery, token),
             intakeToken, processingToken);
+        Exception? failure = null;
+        if (await Task.WhenAny(run, source.Failure) == source.Failure)
+        {
+            failure = await source.Failure;
+            reportFailure?.Invoke(failure);
+        }
+        await run;
+        if (failure is not null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
     }
 }

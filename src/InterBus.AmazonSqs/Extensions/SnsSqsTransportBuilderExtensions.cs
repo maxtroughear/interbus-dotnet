@@ -27,7 +27,7 @@ public static class SnsSqsTransportBuilderExtensions
         /// <c>{QueuePrefix}{queueName}</c>, delivering the message to exactly one consumer.
         /// </para>
         /// <para>
-        /// The <see cref="SqsMessagePump"/> hosted service declares all required SNS topics,
+        /// Bus startup declares all required SNS topics,
         /// SQS queues, and subscriptions at startup, then long-polls each consumer's SQS queue
         /// for incoming messages.
         /// </para>
@@ -69,7 +69,6 @@ public static class SnsSqsTransportBuilderExtensions
             builder.Services.AddSingleton<SnsSqsTopologyBuilder>();
             builder.Services.AddSingleton<ITopologyBuilder>(sp => sp.GetRequiredService<SnsSqsTopologyBuilder>());
             builder.Services.AddSingleton<SnsSqsMessageEnvelope>();
-            builder.Services.AddSingleton<SnsSerialisedMessageEnvelope>(); // TODO: Remove, doesn't seem used directly
             builder.Services.AddSingleton<ISnsSqsMessageEnvelope, SnsSqsMessageEnvelope>();
             builder.Services.AddKeyedScoped<ITransport, SnsTransport>(SnsTransport.TopicScheme);
             builder.Services.AddKeyedScoped<ITransport, SqsTransport>(SqsTransport.QueueScheme);

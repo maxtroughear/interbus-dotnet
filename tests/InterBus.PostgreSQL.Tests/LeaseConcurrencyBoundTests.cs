@@ -12,8 +12,9 @@ public class LeaseConcurrencyBoundTests(string imageTag, PostgreSqlMessagePumpMo
         bus.AddConsumer<BlockingConsumer>(consumer => consumer.WithConcurrency(2).WithPumpCount(4));
     })
 {
-    [Test]
-    public async Task SeveralReceivePumps_ShareTwoProcessingSlots()
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task SeveralReceivePumps_ShareTwoProcessingSlots(bool reconnectListener)
     {
         var gate = Provider.GetRequiredService<Gate>();
         try
@@ -23,6 +24,23 @@ public class LeaseConcurrencyBoundTests(string imageTag, PostgreSqlMessagePumpMo
             for (var i = 0; i < 8; i++)
                 await publisher.PublishAsync(new OrderPlaced(Guid.NewGuid(), "bound@test.com", i));
             await gate.Entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            if (reconnectListener)
+            {
+                var dataSource = Provider.GetRequiredService<NpgsqlDataSource>();
+                async Task<long> ListenerCountAsync()
+                {
+                    await using var count = dataSource.CreateCommand(
+                        "SELECT COUNT(*) FROM pg_stat_activity WHERE datname = current_database() AND query LIKE 'LISTEN%'");
+                    return (long)(await count.ExecuteScalarAsync())!;
+                }
+                await WaitUntilAsync(async () => await ListenerCountAsync() > 0,
+                    cancellationToken: TestContext.CurrentContext.CancellationToken);
+                await using (var terminate = dataSource.CreateCommand(
+                    "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = current_database() AND query LIKE 'LISTEN%'"))
+                    await terminate.ExecuteNonQueryAsync();
+                await WaitUntilAsync(async () => await ListenerCountAsync() > 0,
+                    cancellationToken: TestContext.CurrentContext.CancellationToken);
+            }
             Assert.That(Volatile.Read(ref gate.Active), Is.EqualTo(2));
             Assert.That(Volatile.Read(ref gate.Maximum), Is.EqualTo(2));
         }

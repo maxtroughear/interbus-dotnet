@@ -118,6 +118,143 @@ public sealed class MessagePumpAdapterTests
         Assert.That(client.Deletes, Is.Zero);
     }
 
+    [Test]
+    public async Task BufferedDeliveries_RenewWhileConsumerIsBlocked()
+    {
+        using var client = new FakeSqs();
+        var envelope = new SnsSqsMessageEnvelope();
+        for (var i = 0; i < 4; i++)
+            client.Messages.Enqueue(new Message { ReceiptHandle = i.ToString(), Body = envelope.SerializeForSnsPublish([], new MessageHeaders()) });
+        var finish = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var provider = Configure(client, async (_, _, _, ct) => await finish.Task.WaitAsync(ct), 1, 3);
+        var descriptor = provider.GetRequiredService<InterBusOptions>().Consumers.Single();
+        await using var source = (IBufferedSource)provider.GetRequiredService<IConsumerSourceFactory>().Create(descriptor);
+        await source.InitializeAsync(default);
+        using var intake = new CancellationTokenSource();
+        var run = new ConsumerRuntime(descriptor, provider.GetRequiredService<DeliveryProcessor>()).RunAsync(source, intake.Token, default);
+        try
+        {
+            await client.FourRenewed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.That(client.Deletes, Is.Zero);
+        }
+        finally { await intake.CancelAsync(); finish.TrySetResult(); }
+        await run.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.That(client.Deletes, Is.EqualTo(4));
+    }
+
+    [Test]
+    public async Task FifoGroup_IsSerializedThroughDelete_WhileAnotherGroupProgresses()
+    {
+        using var client = new FakeSqs { BlockDeleteReceipt = "a0" };
+        var envelope = new SnsSqsMessageEnvelope();
+        foreach (var id in new[] { "a0", "a1", "b0", "b1" })
+            client.Messages.Enqueue(new Message { ReceiptHandle = id,
+                Attributes = new Dictionary<string, string> { ["MessageGroupId"] = id[..1] },
+                Body = envelope.SerializeForSnsPublish([], new MessageHeaders { ["id"] = id }) });
+        var second = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var independent = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var provider = Configure(client, (ctx, _, _, _) =>
+        {
+            if (ctx.Headers["id"] == "a1") second.TrySetResult();
+            if (ctx.Headers["id"] == "b0") independent.TrySetResult();
+            return Task.CompletedTask;
+        }, 2, 2);
+        var descriptor = provider.GetRequiredService<InterBusOptions>().Consumers.Single();
+        await using var source = (IBufferedSource)provider.GetRequiredService<IConsumerSourceFactory>().Create(descriptor);
+        await source.InitializeAsync(default);
+        using var intake = new CancellationTokenSource();
+        var run = new ConsumerRuntime(descriptor, provider.GetRequiredService<DeliveryProcessor>()).RunAsync(source, intake.Token, default);
+        try
+        {
+            await client.DeleteBlocked.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await independent.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.That(second.Task.IsCompleted, Is.False);
+        }
+        finally { client.AllowDelete.TrySetResult(); await intake.CancelAsync(); }
+        await run.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.That(second.Task.IsCompletedSuccessfully, Is.True);
+    }
+
+    private static ServiceProvider Configure(FakeSqs client,
+        Func<DispatchContext, ConsumePipelineExecutor, IServiceProvider, CancellationToken, Task> dispatch,
+        int concurrency, int prefetch)
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddSingleton<IAmazonSQS>(client);
+        services.AddSingleton<Amazon.SimpleNotificationService.IAmazonSimpleNotificationService>(
+            new Amazon.SimpleNotificationService.AmazonSimpleNotificationServiceClient(new AnonymousAWSCredentials(), RegionEndpoint.USEast1));
+        services.AddSingleton<Amazon.SecurityToken.IAmazonSecurityTokenService>(
+            new Amazon.SecurityToken.AmazonSecurityTokenServiceClient(new AnonymousAWSCredentials(), RegionEndpoint.USEast1));
+        services.AddInterBus(bus =>
+        {
+            bus.AddAmazonSqsTransport(options => { options.PrefetchCount = prefetch; options.LeaseRenewalInterval = TimeSpan.FromMilliseconds(10); });
+            var descriptor = bus.Options.GetConsumerDescriptor(typeof(TestConsumer));
+            new ConsumerBuilder<TestConsumer>(descriptor, services).Dispatch(dispatch).WithConcurrency(concurrency).WithPumpCount(3);
+        });
+        var provider = services.BuildServiceProvider();
+        var naming = provider.GetRequiredService<SnsSqsNaming>();
+        var queue = provider.GetRequiredService<InterBusOptions>().Consumers.Single().Queue;
+        var topology = provider.GetRequiredService<SnsSqsTopologyBuilder>();
+        topology.QueueUrls[naming.BuildSqsQueueName(queue)] = "queue";
+        topology.QueueUrls[naming.BuildDeadLetterQueueName(queue)] = "dlq";
+        return provider;
+    }
+
+    [Test]
+    public async Task FailedDeadLetterSend_DoesNotDeleteOriginal_AndStopsRenewal()
+    {
+        using var client = new FakeSqs { FailSend = true };
+        var delivery = Delivery(client, new SnsSqsTransportOptions());
+        try
+        {
+            await delivery.SettleAsync(DispatchResult.DeadLetter(DateTimeOffset.UtcNow, new Exception()), default);
+            Assert.Fail("Expected send failure");
+        }
+        catch (IOException) { }
+        finally { await delivery.DisposeAsync(); }
+        Assert.That(client.Deletes, Is.Zero);
+        Assert.That(client.ImmediateReleases, Is.Zero);
+    }
+
+    [Test]
+    public async Task CancellationAfterReceive_CleansUpTheEntireUntransferredBatch()
+    {
+        using var intake = new CancellationTokenSource();
+        using var client = new FakeSqs { CancelOnReceive = intake };
+        var envelope = new SnsSqsMessageEnvelope();
+        for (var i = 0; i < 4; i++)
+            client.Messages.Enqueue(new Message { ReceiptHandle = i.ToString(), Body = envelope.SerializeForSnsPublish([], new MessageHeaders()) });
+        await using var provider = Configure(client, (_, _, _, _) => throw new InvalidOperationException("Must not dispatch"), 2, 2);
+        var descriptor = provider.GetRequiredService<InterBusOptions>().Consumers.Single();
+        await using var source = (IBufferedSource)provider.GetRequiredService<IConsumerSourceFactory>().Create(descriptor);
+        await source.InitializeAsync(default);
+        await new ConsumerRuntime(descriptor, provider.GetRequiredService<DeliveryProcessor>())
+            .RunAsync(source, intake.Token, default).WaitAsync(TimeSpan.FromSeconds(5));
+        await Task.Delay(40);
+        Assert.That(client.Deletes, Is.Zero);
+        Assert.That(client.Renewals, Is.Zero);
+    }
+
+    [Test]
+    public async Task FifoDeadLetter_PreservesWireBodyGroupAndDiagnostics()
+    {
+        using var client = new FakeSqs();
+        const string wireBody = "{invalid-original-wire-data}";
+        await using var delivery = new SqsPrefetchedMessage(NullLogger<SqsPrefetchedMessage>.Instance,
+            client, new SnsSqsTransportOptions(), new Message { Body = wireBody, ReceiptHandle = "receipt",
+                Attributes = new Dictionary<string, string> { ["MessageGroupId"] = "group" } },
+            "queue.fifo", "dlq.fifo", new SnsSqsMessageEnvelope());
+        var result = DispatchResult.DeadLetter(DateTimeOffset.UtcNow, new FormatException("decode"));
+        Assert.That(await delivery.SettleAsync(result, default), Is.True);
+        Assert.That(client.LastSend!.MessageBody, Is.EqualTo(wireBody));
+        Assert.That(client.LastSend.MessageGroupId, Is.EqualTo("group"));
+        Assert.That(client.LastSend.MessageDeduplicationId, Is.Not.Null.And.Not.Empty);
+        Assert.That(client.LastSend.MessageAttributes[InterBusHeaders.DeadLetterReason].StringValue,
+            Is.EqualTo(nameof(FormatException)));
+        Assert.That(client.Deletes, Is.EqualTo(1));
+    }
+
     [TestCase(-1, 20)]
     [TestCase(0, 21)]
     public void InvalidOptions_AreRejected(int prefetch, int wait)
@@ -139,32 +276,56 @@ public sealed class MessagePumpAdapterTests
     private sealed class FakeSqs() : AmazonSQSClient(new AnonymousAWSCredentials(), RegionEndpoint.USEast1)
     {
         public ConcurrentQueue<Message> Messages { get; } = new();
-        public bool FailDelete, FailRenewal;
+        public bool FailDelete, FailRenewal, FailSend;
+        public SendMessageRequest? LastSend;
         public int Deletes, Renewals, ImmediateReleases;
+        public CancellationTokenSource? CancelOnReceive;
+        public string? BlockDeleteReceipt;
+        public TaskCompletionSource DeleteBlocked { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource AllowDelete { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource FourRenewed { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly ConcurrentDictionary<string, bool> _renewedReceipts = new();
         public TaskCompletionSource Deleted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource Renewed { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public override async Task<ReceiveMessageResponse> ReceiveMessageAsync(ReceiveMessageRequest request, CancellationToken cancellationToken = default)
         {
-            if (Messages.TryDequeue(out var message)) return new ReceiveMessageResponse { Messages = [message] };
+            var batch = new List<Message>();
+            while (batch.Count < request.MaxNumberOfMessages && Messages.TryDequeue(out var message)) batch.Add(message);
+            if (batch.Count > 0)
+            {
+                CancelOnReceive?.Cancel();
+                return new ReceiveMessageResponse { Messages = batch };
+            }
             await Task.Delay(Timeout.Infinite, cancellationToken);
             return new ReceiveMessageResponse();
         }
-        public override Task<DeleteMessageResponse> DeleteMessageAsync(DeleteMessageRequest request, CancellationToken cancellationToken = default)
+        public override async Task<DeleteMessageResponse> DeleteMessageAsync(DeleteMessageRequest request, CancellationToken cancellationToken = default)
         {
             Interlocked.Increment(ref Deletes);
             if (FailDelete) throw new IOException("delete failed");
+            if (request.ReceiptHandle == BlockDeleteReceipt)
+            {
+                DeleteBlocked.TrySetResult();
+                await AllowDelete.Task.WaitAsync(cancellationToken);
+            }
             Deleted.TrySetResult();
-            return Task.FromResult(new DeleteMessageResponse());
+            return new DeleteMessageResponse();
         }
         public override Task<ChangeMessageVisibilityResponse> ChangeMessageVisibilityAsync(ChangeMessageVisibilityRequest request, CancellationToken cancellationToken = default)
         {
             if (request.VisibilityTimeout == 0) Interlocked.Increment(ref ImmediateReleases);
             Interlocked.Increment(ref Renewals);
+            _renewedReceipts.TryAdd(request.ReceiptHandle, true);
+            if (_renewedReceipts.Count == 4) FourRenewed.TrySetResult();
             Renewed.TrySetResult();
             if (FailRenewal) throw new ReceiptHandleIsInvalidException("lost");
             return Task.FromResult(new ChangeMessageVisibilityResponse());
         }
-        public override Task<SendMessageResponse> SendMessageAsync(SendMessageRequest request, CancellationToken cancellationToken = default) =>
-            Task.FromResult(new SendMessageResponse());
+        public override Task<SendMessageResponse> SendMessageAsync(SendMessageRequest request, CancellationToken cancellationToken = default)
+        {
+            LastSend = request;
+            if (FailSend) throw new IOException("send failed");
+            return Task.FromResult(new SendMessageResponse());
+        }
     }
 }

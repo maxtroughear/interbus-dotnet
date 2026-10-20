@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using InterBus.Consuming;
 using InterBus.Dispatching;
 
@@ -22,7 +23,7 @@ public interface IDelivery : IAsyncDisposable
 }
 
 /// <summary>Runs the shared scoped dispatch pipeline and settles an owned delivery.</summary>
-public sealed class DeliveryProcessor(Dispatcher dispatcher, Microsoft.Extensions.Logging.ILogger<DeliveryProcessor> logger)
+public sealed class DeliveryProcessor(Dispatcher dispatcher, ILogger<DeliveryProcessor> logger)
 {
     /// <summary>Processes and disposes a delivery before returning, including on cancellation or failed settlement.</summary>
     /// <remarks>A failed settlement is never followed by another settlement attempt.</remarks>
@@ -44,16 +45,21 @@ public sealed class DeliveryProcessor(Dispatcher dispatcher, Microsoft.Extension
             try
             {
                 if (await delivery.SettleAsync(result, cancellationToken))
-                    Microsoft.Extensions.Logging.LoggerExtensions.LogDebug(logger,
-                        "InterBus: delivery for {Consumer} settled with {Outcome}", descriptor.ConsumerType, result.Kind);
+                {
+                    if (result.Kind == DispatchResultKind.Success)
+                        logger.LogDebug("InterBus: delivery for {Consumer} acknowledged", descriptor.ConsumerType);
+                    else
+                        logger.LogWarning(result.Exception, "InterBus: delivery for {Consumer} settled with {Outcome}",
+                            descriptor.ConsumerType, result.Kind);
+                }
                 else
-                    Microsoft.Extensions.Logging.LoggerExtensions.LogWarning(logger,
+                    logger.LogWarning(
                         "InterBus: settlement rejected for {Consumer}", descriptor.ConsumerType);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
             catch (Exception error)
             {
-                Microsoft.Extensions.Logging.LoggerExtensions.LogError(logger, error,
+                logger.LogError(error,
                     "InterBus: settlement failed for {Consumer}; allowing transport recovery", descriptor.ConsumerType);
             }
         }

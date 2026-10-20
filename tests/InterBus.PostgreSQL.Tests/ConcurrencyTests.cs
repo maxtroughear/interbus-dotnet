@@ -4,6 +4,8 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace InterBus.PostgreSQL.Tests;
 
+[Category("Load")]
+[CancelAfter(600_000)]
 public class ConcurrencyTests(string imageTag, PostgreSqlMessagePumpMode pumpMode) : PostgreSqlFixtureBase(imageTag,
     pumpMode, bus =>
     {
@@ -21,6 +23,7 @@ public class ConcurrencyTests(string imageTag, PostgreSqlMessagePumpMode pumpMod
     public async Task LotsOfPublishedMessages_AllAreConsumed()
     {
         const int totalMessages = PublisherCount * MessagesPerPublisher;
+        await TestContext.Progress.WriteLineAsync($"Starting load test: {imageTag}, {pumpMode}, {totalMessages} messages");
 
         // Partition messages across N publishers, so the test is scalable: change
         // PublisherCount / MessagesPerPublisher at the top of the class to adjust load.

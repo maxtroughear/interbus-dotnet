@@ -50,7 +50,7 @@ public abstract class PostgreSqlFixtureBase(
         });
 
         Provider = services.BuildServiceProvider();
-        _cts = new CancellationTokenSource();
+        _cts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.CurrentContext.CancellationToken);
 
         foreach (var svc in Provider.GetServices<IHostedService>())
             await svc.StartAsync(_cts.Token);
@@ -61,8 +61,9 @@ public abstract class PostgreSqlFixtureBase(
     {
         await _cts.CancelAsync();
 
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(15));
         foreach (var svc in Provider.GetServices<IHostedService>())
-            await svc.StopAsync(CancellationToken.None);
+            await svc.StopAsync(deadline.Token).WaitAsync(deadline.Token);
 
         _cts.Dispose();
         await Provider.DisposeAsync();

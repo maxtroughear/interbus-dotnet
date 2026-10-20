@@ -190,7 +190,7 @@ public sealed class DeadLetterOrderPlacedConsumerForOutbox(DeadLetterOrderPlaced
 
 /// <summary>
 /// Integration tests for the transactional outbox middleware and background processor.
-/// Uses SQLite in-memory for the DbContext and the InMemory transport for message delivery.
+/// Uses a temporary SQLite database for the DbContext and the InMemory transport for message delivery.
 /// </summary>
 public class OutboxTests
 {
@@ -199,14 +199,17 @@ public class OutboxTests
             Action<InterBusBuilder> configureBus,
             Action<IServiceCollection>? extraServices = null)
     {
-        // Use a single kept-open SqliteConnection so all DbContext instances share the same
-        // in-memory database for the duration of the test.
-        var connection = new SqliteConnection("Data Source=:memory:");
+        // Each scope needs its own connection because the processor and assertions run concurrently
+        var connection = new SqliteConnection(new SqliteConnectionStringBuilder
+        {
+            DataSource = Path.Combine(Path.GetTempPath(), $"interbus-outbox-{Guid.NewGuid():N}.db"),
+            Pooling = false
+        }.ToString());
         await connection.OpenAsync();
 
         var services = new ServiceCollection();
         services.AddLogging();
-        services.AddDbContext<TestDbContext>(o => o.UseSqlite(connection));
+        services.AddDbContext<TestDbContext>(o => o.UseSqlite(connection.ConnectionString));
         extraServices?.Invoke(services);
         services.AddInterBus(configureBus);
 
@@ -247,6 +250,7 @@ public class OutboxTests
         await provider.DisposeAsync();
         cts.Dispose();
         await connection.DisposeAsync();
+        File.Delete(connection.DataSource);
     }
 
     /// <summary>

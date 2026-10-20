@@ -10,7 +10,8 @@ public class ConcurrencyTests(string imageTag, PostgreSqlMessagePumpMode pumpMod
     pumpMode, bus =>
     {
         bus.Services.AddSingleton<OrderPlacedTracker>();
-        bus.AddConsumer<ConcurrencyTestConsumer>(cfg => cfg.WithConcurrency(ConsumerCount));
+        bus.AddConsumer<ConcurrencyTestConsumer>(cfg => cfg.WithConcurrency(ConsumerCount)
+            .WithPumpCount(pumpMode == PostgreSqlMessagePumpMode.Lease ? 4 : 1));
     })
 {
     private OrderPlacedTracker OrderTracker => Provider.GetRequiredService<OrderPlacedTracker>();
@@ -24,6 +25,7 @@ public class ConcurrencyTests(string imageTag, PostgreSqlMessagePumpMode pumpMod
     {
         const int totalMessages = PublisherCount * MessagesPerPublisher;
         await TestContext.Progress.WriteLineAsync($"Starting load test: {imageTag}, {pumpMode}, {totalMessages} messages");
+        await using var progress = new PostgreSqlLoadProgress(Container.GetConnectionString(), () => OrderTracker.Messages.Count);
 
         // Partition messages across N publishers, so the test is scalable: change
         // PublisherCount / MessagesPerPublisher at the top of the class to adjust load.
@@ -52,10 +54,8 @@ public class ConcurrencyTests(string imageTag, PostgreSqlMessagePumpMode pumpMod
 
                 foreach (var message in batch)
                 {
-                    if (ct.IsCancellationRequested)
-                        break;
-
                     await publisher.PublishAsync(message, ct);
+                    progress.Published();
                 }
 
                 await TestContext.Out.WriteLineAsync(
@@ -71,9 +71,10 @@ public class ConcurrencyTests(string imageTag, PostgreSqlMessagePumpMode pumpMod
             timeoutMs: 120_000,
             cancellationToken: TestContext.CurrentContext.CancellationToken);
 
-        await TestContext.Out.WriteLineAsync(
-            $"Consumed {OrderTracker.Messages.Count}/{totalMessages} messages at {DateTime.UtcNow:O} " +
-            $"at a rate of {totalMessages / consumerStopwatch.Elapsed.TotalSeconds:F2}/second");
+        var received = OrderTracker.Messages.Count;
+        await TestContext.Progress.WriteLineAsync(
+            $"Consumed {received}/{totalMessages} messages at {DateTime.UtcNow:O} " +
+            $"at a rate of {received / consumerStopwatch.Elapsed.TotalSeconds:F2}/second");
 
         Assert.That(OrderTracker.Messages, Has.Count.EqualTo(totalMessages));
         Assert.That(

@@ -16,9 +16,9 @@ public class ConcurrencyTests(string imageTag, PostgreSqlMessagePumpMode pumpMod
 {
     private OrderPlacedTracker OrderTracker => Provider.GetRequiredService<OrderPlacedTracker>();
 
-    private const int PublisherCount = 20;
-    private const int MessagesPerPublisher = 10000;
-    private const int ConsumerCount = 40;
+    private const int PublisherCount = 100;
+    private const int MessagesPerPublisher = 100;
+    private const int ConsumerCount = 50;
 
     [Test]
     public async Task LotsOfPublishedMessages_AllAreConsumed()

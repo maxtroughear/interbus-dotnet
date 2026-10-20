@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace InterBus.PostgreSQL.Tests;
 
+[TestFixtureSource(typeof(PostgreSqlVersions), nameof(PostgreSqlVersions.Lease))]
 public class LeasePumpStallTests(string imageTag, PostgreSqlMessagePumpMode pumpMode) : PostgreSqlFixtureBase(
     imageTag, pumpMode, bus =>
     {

@@ -1,156 +1,79 @@
 using InterBus.Consuming;
 using InterBus.Dispatching;
-using Microsoft.Extensions.DependencyInjection;
+using InterBus.MessagePumps;
 using Microsoft.Extensions.Logging;
 using Npgsql;
 using NpgsqlTypes;
 
 namespace InterBus.PostgreSQL;
 
-/// <summary>
-/// Lease-based PostgreSQL message pump
-/// <para>
-/// Claims a message by setting a renewable visibility lease in the database, then releases the
-/// processing connection while the consumer runs. Ownership-sensitive operations such as renew,
-/// acknowledge, and release are validated against the lease token stored on the message row.
-/// </para>
-/// </summary>
-internal sealed class PostgreSqlLeaseMessagePump : PostgreSqlMessagePumpBase
+internal sealed class PostgreSqlLeaseMessagePump : PostgreSqlConsumerSource, IBufferedSource
 {
     private readonly TimeSpan _leaseDuration;
     private readonly TimeSpan _leaseRenewInterval;
     private readonly string _workerInstanceId = $"{Environment.MachineName}/{Guid.NewGuid():N}";
     private readonly ILogger<PostgreSqlLeaseMessagePump> _logger;
 
-    /// <summary>
-    /// Lease-based PostgreSQL message pump.
-    /// <para>
-    /// Claims a message by setting a renewable visibility lease in the database, then releases the
-    /// processing connection while the consumer runs. Ownership-sensitive operations such as renew,
-    /// acknowledge, and release are validated against the lease token stored on the message row.
-    /// </para>
-    /// </summary>
-    public PostgreSqlLeaseMessagePump(NpgsqlDataSource dataSource,
-        PostgreSqlTransportOptions options,
-        InterBusOptions busOptions,
-        IServiceScopeFactory scopeFactory,
-        ILogger<PostgreSqlLeaseMessagePump> logger) : base(dataSource, options, busOptions, scopeFactory, logger)
+    public PostgreSqlLeaseMessagePump(ConsumerDescriptor descriptor, NpgsqlDataSource dataSource,
+        PostgreSqlTransportOptions options, InterBusOptions busOptions, ILogger<PostgreSqlLeaseMessagePump> logger)
+        : base(descriptor, dataSource, options, busOptions, logger)
     {
         _logger = logger;
         _leaseDuration = options.LeaseDuration;
         _leaseRenewInterval = options.GetEffectiveLeaseRenewInterval();
     }
 
-    protected override string PumpModeName => "lease";
+    public int PrefetchCount => 0;
 
-    protected override async Task<bool> TryProcessNextAsync(ConsumerDescriptor descriptor, long queueId,
-        CancellationToken stoppingToken)
+    public async Task ReceiveAsync(DeliverySink sink, CancellationToken intakeToken)
     {
-        var leaseToken = CreateLeaseToken();
-        var claim = await TryClaimNextAsync(queueId, leaseToken, stoppingToken);
-        if (claim is null)
-            return false;
-
-        var headers = PostgreSqlTransport.DeserializeHeaders(claim.HeadersJson);
-        using var renewalCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
-        var renewalTask = RunLeaseRenewalLoopAsync(claim.MessageId, descriptor.QueueName, leaseToken, renewalCts.Token);
-
-        try
+        while (!intakeToken.IsCancellationRequested)
         {
-            var result = await DispatchAsync(descriptor, claim.Payload, headers, stoppingToken);
-            await renewalCts.CancelAsync();
-            var leaseStillOwned = await AwaitLeaseRenewalLoopAsync(renewalTask);
-
-            switch (result.Kind)
-            {
-                case DispatchResultKind.Success:
-                {
-                    var acked = await AckClaimAsync(claim.MessageId, claim.PayloadId, leaseToken, stoppingToken);
-                    if (!acked)
-                    {
-                        _logger.LogWarning(
-                            "InterBus PostgreSQL: lease for message {MessageId} on queue {QueueName} was no longer owned when acknowledging completion",
-                            claim.MessageId,
-                            descriptor.QueueName);
-                        break;
-                    }
-
-                    if (!leaseStillOwned)
-                    {
-                        _logger.LogDebug(
-                            "InterBus PostgreSQL: message {MessageId} on queue {QueueName} completed after at least one unsuccessful lease renewal attempt",
-                            claim.MessageId,
-                            descriptor.QueueName);
-                    }
-
-                    break;
-                }
-                case DispatchResultKind.DeadLetter:
-                {
-                    var deadLettered = await DeadLetterClaimAsync(
-                        claim.MessageId,
-                        claim.PayloadId,
-                        leaseToken,
-                        descriptor.QueueName,
-                        result,
-                        CancellationToken.None);
-
-                    if (deadLettered)
-                    {
-                        _logger.LogWarning(
-                            result.Exception,
-                            "InterBus PostgreSQL: lease consumer {ConsumerType} failed for queue {QueueName}; message moved to dead-letter",
-                            descriptor.ConsumerType.Name,
-                            descriptor.QueueName);
-                    }
-                    else
-                    {
-                        _logger.LogWarning(
-                            result.Exception,
-                            "InterBus PostgreSQL: lease consumer {ConsumerType} failed for queue {QueueName}; could not dead-letter because lease was already lost",
-                            descriptor.ConsumerType.Name,
-                            descriptor.QueueName);
-                    }
-
-                    return false;
-                }
-                case DispatchResultKind.Release:
-                {
-                    _logger.LogWarning(
-                        result.Exception,
-                        "InterBus PostgreSQL: lease consumer {ConsumerType} failed for queue {QueueName}; message will be retried",
-                        descriptor.ConsumerType.Name,
-                        descriptor.QueueName);
-
-                    var released = await ReleaseClaimAsync(
-                        claim.MessageId,
-                        descriptor.QueueName,
-                        leaseToken,
-                        Options.FailureRedeliveryDelay,
-                        CancellationToken.None);
-
-                    if (!released)
-                    {
-                        _logger.LogWarning(
-                            "InterBus PostgreSQL: failed to release lease for message {MessageId} on queue {QueueName} because ownership had already changed",
-                            claim.MessageId,
-                            descriptor.QueueName);
-                    }
-
-                    return false;
-                }
-                default:
-                    throw new ArgumentOutOfRangeException();
-            }
-
-            return true;
+            using var reservation = await sink.ReserveAsync(intakeToken);
+            var token = CreateLeaseToken();
+            var claim = await PostgreSqlConnectionRetry.ExecuteAsync(
+                ct => TryClaimNextAsync(QueueId, token, ct), Options, _logger, intakeToken);
+            if (claim is null) { await WaitForWorkAsync(intakeToken); continue; }
+            var delivery = new LeaseDelivery(this, claim, token);
+            try { intakeToken.ThrowIfCancellationRequested(); reservation.Handoff(delivery); }
+            catch { await delivery.DisposeAsync(); throw; }
         }
-        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+    }
+
+    private sealed class LeaseDelivery : IDelivery
+    {
+        private readonly PostgreSqlLeaseMessagePump _owner;
+        private readonly ClaimedMessage _claim;
+        private readonly string _token;
+        private readonly CancellationTokenSource _renewal = new();
+        private readonly Task<bool> _renewalTask;
+        public ReadOnlyMemory<byte> Payload => _claim.Payload;
+        public MessageHeaders Headers { get; } = new();
+        public Exception? DecodeError { get; }
+
+        public LeaseDelivery(PostgreSqlLeaseMessagePump owner, ClaimedMessage claim, string token)
         {
-            await renewalCts.CancelAsync();
-            await AwaitLeaseRenewalLoopAsync(renewalTask);
-            await BestEffortReleaseClaimAsync(claim.MessageId, descriptor.QueueName, leaseToken);
-            throw;
+            _owner = owner; _claim = claim; _token = token;
+            _renewalTask = owner.RunLeaseRenewalLoopAsync(claim.MessageId, owner.Descriptor.QueueName, token, _renewal.Token);
+            try { Headers = PostgreSqlTransport.DeserializeHeaders(claim.HeadersJson); }
+            catch (Exception error) { DecodeError = error; }
+        }
+
+        public Task<bool> SettleAsync(DispatchResult result, CancellationToken cancellationToken) => result.Kind switch
+        {
+            DispatchResultKind.Success => _owner.AckClaimAsync(_claim.MessageId, _claim.PayloadId, _token, cancellationToken),
+            DispatchResultKind.DeadLetter => _owner.DeadLetterClaimAsync(_claim.MessageId, _claim.PayloadId, _token,
+                _owner.Descriptor.QueueName, result, cancellationToken),
+            DispatchResultKind.Release => _owner.ReleaseClaimAsync(_claim.MessageId, _owner.Descriptor.QueueName,
+                _token, _owner.Options.FailureRedeliveryDelay, cancellationToken),
+            _ => throw new ArgumentOutOfRangeException(nameof(result))
+        };
+
+        public async ValueTask DisposeAsync()
+        {
+            await _renewal.CancelAsync();
+            try { await _renewalTask; }
+            finally { _renewal.Dispose(); }
         }
     }
 
@@ -264,30 +187,6 @@ internal sealed class PostgreSqlLeaseMessagePump : PostgreSqlMessagePumpBase
         return released;
     }
 
-    private async Task BestEffortReleaseClaimAsync(long messageId, string queueName, string leaseToken)
-    {
-        try
-        {
-            var released =
-                await ReleaseClaimAsync(messageId, queueName, leaseToken, TimeSpan.Zero, CancellationToken.None);
-            if (!released)
-            {
-                _logger.LogDebug(
-                    "InterBus PostgreSQL: lease for message {MessageId} on queue {QueueName} was already lost during shutdown",
-                    messageId,
-                    queueName);
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(
-                ex,
-                "InterBus PostgreSQL: failed to release lease for message {MessageId} on queue {QueueName} during shutdown",
-                messageId,
-                queueName);
-        }
-    }
-
     private async Task<bool> RunLeaseRenewalLoopAsync(
         long messageId,
         string queueName,
@@ -332,18 +231,6 @@ internal sealed class PostgreSqlLeaseMessagePump : PostgreSqlMessagePumpBase
         }
 
         return true;
-    }
-
-    private static async Task<bool> AwaitLeaseRenewalLoopAsync(Task<bool> renewalTask)
-    {
-        try
-        {
-            return await renewalTask;
-        }
-        catch (OperationCanceledException)
-        {
-            return true;
-        }
     }
 
     private string CreateLeaseToken() => $"{_workerInstanceId}/{Guid.NewGuid():N}";

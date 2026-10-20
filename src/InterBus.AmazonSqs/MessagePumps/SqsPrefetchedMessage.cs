@@ -90,11 +90,12 @@ internal sealed class SqsPrefetchedMessage : IDelivery
                     MessageDeduplicationId = _deadLetterQueueUrl.EndsWith(".fifo", StringComparison.OrdinalIgnoreCase)
                         ? Guid.NewGuid().ToString("N") : null
                 }, cancellationToken);
+                if (_lost) return false;
                 await _client.DeleteMessageAsync(_queueUrl, _message.ReceiptHandle, cancellationToken);
                 break;
             default: throw new ArgumentOutOfRangeException(nameof(result));
         }
-        return true;
+        return !_lost;
     }
 
     private static MessageAttributeValue Attribute(string value) => new() { DataType = "String", StringValue = value };

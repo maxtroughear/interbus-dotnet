@@ -13,6 +13,7 @@ public sealed class PumpLifetime(ConsumerDescriptor consumer, IConsumerSource so
     private readonly TaskCompletionSource<Exception> _fault = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private Task? _start;
     private Task? _stop;
+    private CancellationToken _stopToken;
     private bool _stopping;
     private bool _stopExited;
     private bool _initializationFinished;
@@ -138,10 +139,32 @@ public sealed class PumpLifetime(ConsumerDescriptor consumer, IConsumerSource so
     }
 
     /// <summary>Stops intake once and drains accepted work. Deadline cancellation cancels processing and reports incomplete shutdown.</summary>
-    /// <remarks>Concurrent calls await the same shutdown. Resources remain alive if a handler ignores cancellation.</remarks>
+    /// <remarks>Concurrent calls share shutdown work and honor each caller's cancellation deadline. Resources remain alive if a handler ignores cancellation.</remarks>
     public Task StopAsync(CancellationToken cancellationToken = default)
     {
-        lock (_gate) return _stop ??= StopCoreAsync(cancellationToken);
+        lock (_gate)
+        {
+            if (_stop is null)
+            {
+                _stopToken = cancellationToken;
+                return _stop = StopCoreAsync(cancellationToken);
+            }
+            return cancellationToken.CanBeCanceled && cancellationToken != _stopToken && !_stop.IsCompleted
+                ? AwaitStopWithDeadlineAsync(_stop, cancellationToken) : _stop;
+        }
+    }
+
+    private async Task AwaitStopWithDeadlineAsync(Task stop, CancellationToken cancellationToken)
+    {
+        void CancelProcessing()
+        {
+            try { _processing.Cancel(); }
+            catch (ObjectDisposedException) when (Completion.IsCompleted) { }
+        }
+        using var deadline = cancellationToken.Register(CancelProcessing);
+        try { await stop.WaitAsync(cancellationToken); }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        { CancelProcessing(); throw; }
     }
 
     private async Task StopCoreAsync(CancellationToken cancellationToken)

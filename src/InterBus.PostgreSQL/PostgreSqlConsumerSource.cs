@@ -1,4 +1,3 @@
-using System.Threading.Channels;
 using InterBus.Consuming;
 using InterBus.MessagePumps;
 using Microsoft.Extensions.DependencyInjection;
@@ -19,10 +18,14 @@ internal abstract class PostgreSqlConsumerSource(
     public Task<Exception> Failure => _failure.Task;
     protected void ReportFailure(Exception error) => _failure.TrySetResult(error);
     private readonly CancellationTokenSource _listenerStop = new();
-    private readonly Channel<bool> _notifications = Channel.CreateBounded<bool>(new BoundedChannelOptions(1)
-    { FullMode = BoundedChannelFullMode.DropWrite, SingleWriter = true, SingleReader = false });
+    private TaskCompletionSource _notification = NewNotification();
+    private long _workVersion;
+    protected long WorkVersion { get { lock (_gate) return _workVersion; } }
+    private static TaskCompletionSource NewNotification() => new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly object _gate = new();
     private Task? _listener;
+    private int _waitingForWorkCount;
+    internal int WaitingForWorkCount => Volatile.Read(ref _waitingForWorkCount);
     protected static string EscapeIdentifier(string name) => name.Replace("\"", "\"\"");
 
     public Task InitializeAsync(CancellationToken cancellationToken) => PostgreSqlConnectionRetry.ExecuteAsync(async ct =>
@@ -44,24 +47,47 @@ internal abstract class PostgreSqlConsumerSource(
         }
     }, Options, logger, cancellationToken);
 
-    protected async Task WaitForWorkAsync(CancellationToken cancellationToken)
+    protected async Task WaitForWorkAsync(long observedVersion, CancellationToken cancellationToken)
     {
-        Task listener;
-        lock (_gate) listener = _listener ??= ListenAsync();
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(Options.FallbackPollInterval);
-        var notification = _notifications.Reader.ReadAsync(timeout.Token).AsTask();
-        if (await Task.WhenAny(listener, notification) == listener)
+        Interlocked.Increment(ref _waitingForWorkCount);
+        try
         {
-            await timeout.CancelAsync();
-            try { await notification; } catch (OperationCanceledException) { }
-            await listener;
-        }
-        else
-        {
-            try { await notification; }
+            Task listener;
+            Task notification;
+            lock (_gate)
+            {
+                listener = _listener ??= ListenAsync();
+                if (_workVersion != observedVersion) return;
+                notification = _notification.Task;
+            }
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(Options.FallbackPollInterval);
+            var notificationWait = notification.WaitAsync(timeout.Token);
+            try
+            {
+                if (await Task.WhenAny(listener, notificationWait) == listener)
+                {
+                    await timeout.CancelAsync();
+                    try { await notificationWait; } catch (OperationCanceledException) { }
+                    await listener;
+                }
+                else await notificationWait;
+            }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) { }
         }
+        finally { Interlocked.Decrement(ref _waitingForWorkCount); }
+    }
+
+    private void NotifyWork()
+    {
+        TaskCompletionSource previous;
+        lock (_gate)
+        {
+            _workVersion++;
+            previous = _notification;
+            _notification = NewNotification();
+        }
+        previous.TrySetResult();
     }
 
     private async Task ListenAsync()
@@ -74,10 +100,11 @@ internal abstract class PostgreSqlConsumerSource(
     private Task ListenWithRetryAsync() => PostgreSqlConnectionRetry.ExecuteAsync(async ct =>
     {
         await using var connection = await DataSource.OpenConnectionAsync(ct);
-        connection.Notification += (_, _) => _notifications.Writer.TryWrite(true);
+        connection.Notification += (_, _) => NotifyWork();
         await using var command = connection.CreateCommand();
         command.CommandText = $"LISTEN \"ib_{QueueId}\"";
         await command.ExecuteNonQueryAsync(ct);
+        NotifyWork();
         while (!ct.IsCancellationRequested)
         {
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);

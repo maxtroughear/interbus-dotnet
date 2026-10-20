@@ -13,7 +13,7 @@ Implemented on `maxtroughear-test-cleanup-plan`, starting from `f14bf59`. The ch
 | 5 | `cf719af` | PostgreSQL transaction-owning managed execution |
 | 6 | `f8c8a5b` | Azure normal/session managed callbacks |
 | 7 | `3879e3c` | RabbitMQ managed callbacks and in-memory core workers |
-| 8 | Final cleanup commit | Remove prototype pumps, strengthen readiness/recovery/cleanup tests and document behavior |
+| 8 | `41f93f6` | Remove prototype pumps, strengthen readiness/recovery/cleanup tests and document behavior |
 
 ## Final behavior
 
@@ -31,13 +31,13 @@ All affected test projects build. Final relevant suite results:
 
 | Project | Passed | Skipped | Scope |
 | --- | ---: | ---: | --- |
-| InterBus.Tests | 173 | 0 | Entire core/in-memory suite |
-| InterBus.PostgreSQL.Tests | 45 | 0 | All except high-volume `ConcurrencyTests`, PostgreSQL 17/18 and both modes |
-| InterBus.AmazonSqs.Tests | 26 | 1 | All except high-volume `ConcurrencyTests` and the separate `EventBridgeSchedulerTests` fixture |
-| InterBus.AzureServiceBus.Tests | 14 | 0 | All except high-volume `ConcurrencyTests` |
-| InterBus.RabbitMQ.Tests | 7 | 0 | All except high-volume `ConcurrencyTests` |
+| InterBus.Tests | 178 | 0 | Entire core/in-memory suite |
+| InterBus.PostgreSQL.Tests | 55 | 0 | All except high-volume `ConcurrencyTests`, PostgreSQL 17/18 and both modes |
+| InterBus.AmazonSqs.Tests | 29 | 1 | All except high-volume `ConcurrencyTests` and the separate `EventBridgeSchedulerTests` fixture |
+| InterBus.AzureServiceBus.Tests | 21 | 0 | All except high-volume `ConcurrencyTests`; includes the new `SessionConcurrencyTests` |
+| InterBus.RabbitMQ.Tests | 8 | 0 | All except high-volume `ConcurrencyTests` |
 
-Commands use `dotnet test tests/<project>/<project>.csproj --no-restore -v quiet`, with `--filter 'FullyQualifiedName!~ConcurrencyTests'` for transport parity runs. SQS additionally excludes `FullyQualifiedName~EventBridgeSchedulerTests`. `--no-build` was used for independent integration runs after building their projects.
+Commands use `dotnet test tests/<project>/<project>.csproj --no-restore -v quiet`, with `--filter 'FullyQualifiedName!~ConcurrencyTests'` for transport parity runs. Azure uses the precise exclusion `FullyQualifiedName!~InterBus.AzureServiceBus.Tests.ConcurrencyTests` so session scheduling coverage runs. SQS additionally excludes `FullyQualifiedName~EventBridgeSchedulerTests`. `--no-build` was used for independent integration runs after building their projects.
 
 Deterministic additions cover shared receive capacity/concurrency, fresh scopes and disposal, dispatch outcomes, rejected and ambiguous settlement, ordering through settlement, canceled processing, initialization and partial startup failures, readiness cancellation, repeated stop, shutdown deadlines, prompt background fault reporting, snapshot stability and aggregated cleanup failures.
 
@@ -58,3 +58,19 @@ Existing publish/consume, dead-letter and request/reply coverage runs through mi
 - In-memory queued envelopes are not durable and are not drained after intake stops. A handler ignoring cancellation can exceed the shutdown budget; resources remain alive until its work exits, and shutdown reports incomplete work.
 
 User-facing execution, ordering and shutdown documentation is in `docs/docs/reference/message-pumps.md`.
+
+## Follow-up failure and concurrency coverage
+
+All seven scenarios identified in the implementation review now have tests:
+
+| Scenario | Added coverage and result |
+| --- | --- |
+| A later stop caller supplies a shorter deadline | Deterministic lifecycle tests cover an original unlimited or longer stop, retained active resources, and a real host stopping after controller shutdown began. The two deadline regressions failed before the fix. Every caller's deadline now cancels processing while shared cleanup continues. |
+| SQS loses renewal ownership while settlement is blocked | Three controlled SDK races cover acknowledge, dead-letter send and dead-letter delete. All failed before the fix. Settlement now reports rejection if ownership is lost during the operation, and dead-letter send does not proceed to delete after known loss. |
+| RabbitMQ recovers or stops during an outage | Recovery tests wait for all logical messages and zero ready/unacknowledged broker depth, check rejected stale settlements, and enforce the concurrency bound across connection generations. A broker-stop test verifies deadline cancellation and callback completion. |
+| One PostgreSQL notification should wake multiple idle transaction workers | A single transaction emits one coalesced notification for three messages while three workers wait with a 30-second fallback. Tests failed on PostgreSQL 17 and 18 before the fix. Versioned broadcast notifications now wake all idle workers and cover notification arrival between claim and wait. |
+| PostgreSQL settlement fails at different transaction stages | PostgreSQL 17/18 exercise acknowledgement SQL failure, deferred commit failure, backend termination and a test TCP proxy dropping the actual COMMIT response. Assertions cover atomic rollback/redelivery or committed ambiguous outcome, recovered subsequent dispatch, ambient transaction cleanup, payload cleanup and closed test-owned connections. |
+| Several consumers fault together or during drain | Real host tests observe every retained exception and aggregated shutdown failures. Host observation tasks now capture errors as results so later consumer faults cannot become unobserved task exceptions after the first fault is surfaced. |
+| Azure sessions have cancellation, lock-loss or startup failures | SDK adapter tests cover all outcomes during stop, lock loss before/during drain and partially initialized session processor cleanup. An emulator integration test runs two independent sessions concurrently while preserving one callback per session and message order. |
+
+The follow-up adds 26 test cases across the five projects, including the existing RabbitMQ recovery cases strengthened with settlement assertions. Transport integration tests use the current production registrations; deterministic adapter tests isolate races through controlled SDK calls. PostgreSQL fault injection and Azure/RabbitMQ scheduling and outage tests use actual containers/emulators. Real AWS credentials remain unavailable, so the existing AWS-only test remains skipped; no real cloud outage or twelve-hour renewal claim is made.

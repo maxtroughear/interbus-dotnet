@@ -4,6 +4,9 @@ namespace InterBus.MessagePumps;
 
 internal sealed class PumpHost(InterBusOptions options, PumpController controller) : BackgroundService
 {
+    private Task<Exception?>[] _observers = [];
+    internal Task<Exception?[]> Observations => Task.WhenAll(_observers);
+
     public override async Task StartAsync(CancellationToken cancellationToken)
     {
         try
@@ -25,20 +28,26 @@ internal sealed class PumpHost(InterBusOptions options, PumpController controlle
         var pumps = controller.Pumps;
         if (pumps.Count == 0) return;
         // WhenAny surfaces one failed consumer without waiting for unrelated consumers to stop
-        var remaining = pumps.Select(ObserveAsync).ToList();
+        _observers = pumps.Select(ObserveAsync).ToArray();
+        var remaining = _observers.ToList();
         while (remaining.Count > 0)
         {
             var completed = await Task.WhenAny(remaining);
-            await completed;
+            var failure = await completed;
+            if (failure is not null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
             remaining.Remove(completed);
         }
     }
 
-    private static async Task ObserveAsync(PumpLifetime pump)
+    private static async Task<Exception?> ObserveAsync(PumpLifetime pump)
     {
-        if (await Task.WhenAny(pump.Completion, pump.Fault) == pump.Fault)
-            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(await pump.Fault).Throw();
-        await pump.Completion;
+        try
+        {
+            if (await Task.WhenAny(pump.Completion, pump.Fault) == pump.Fault) return await pump.Fault;
+            await pump.Completion;
+            return null;
+        }
+        catch (Exception error) { return error; }
     }
 
     public override async Task StopAsync(CancellationToken cancellationToken)

@@ -26,8 +26,9 @@ internal sealed class PostgreSqlTransactionalMessagePump(
                 {
                     while (!ct.IsCancellationRequested)
                     {
+                        var version = WorkVersion;
                         var processed = await ProcessNextAsync(process, ct, processingToken);
-                        if (!processed) await WaitForWorkAsync(ct);
+                        if (!processed) await WaitForWorkAsync(version, ct);
                     }
                 }, Options, logger, workers.Token);
             }

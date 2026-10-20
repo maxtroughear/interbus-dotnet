@@ -30,10 +30,11 @@ internal sealed class PostgreSqlLeaseMessagePump : PostgreSqlConsumerSource, IBu
         while (!intakeToken.IsCancellationRequested)
         {
             using var reservation = await sink.ReserveAsync(intakeToken);
+            var version = WorkVersion;
             var token = CreateLeaseToken();
             var claim = await PostgreSqlConnectionRetry.ExecuteAsync(
                 ct => TryClaimNextAsync(QueueId, token, ct), Options, _logger, intakeToken);
-            if (claim is null) { await WaitForWorkAsync(intakeToken); continue; }
+            if (claim is null) { await WaitForWorkAsync(version, intakeToken); continue; }
             var delivery = new LeaseDelivery(this, claim, token);
             try { intakeToken.ThrowIfCancellationRequested(); reservation.Handoff(delivery); }
             catch { await delivery.DisposeAsync(); throw; }

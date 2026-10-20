@@ -184,6 +184,106 @@ public class PumpLifetimeTests
         Assert.True(second.Disposed);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task LaterStopDeadline_CancelsProcessing_WithoutDisposingActiveResources(bool firstHasDeadline)
+    {
+        await using var provider = Provider();
+        var source = new Source { IgnoreIntake = true };
+        var lifetime = Lifetime(source, provider);
+        await lifetime.StartAsync(TestContext.Current.CancellationToken);
+        using var original = new CancellationTokenSource();
+        using var later = new CancellationTokenSource();
+        var first = lifetime.StopAsync(firstHasDeadline ? original.Token : CancellationToken.None);
+        var second = lifetime.StopAsync(later.Token);
+        try
+        {
+            later.Cancel();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+                second.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
+            Assert.True(source.ProcessingToken.IsCancellationRequested);
+            Assert.False(source.Disposed);
+            Assert.False(lifetime.Completion.IsCompleted);
+        }
+        finally { source.Finish.TrySetResult(); }
+        await first.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        await lifetime.DisposeAsync();
+        Assert.True(source.Disposed);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RealHost_ObservesEveryFailure_WhenConsumersFaultTogetherOrDuringDrain(bool duringDrain)
+    {
+        var first = new Source();
+        var second = new Source { IgnoreIntake = true };
+        var firstFailure = new IOException("first consumer failed");
+        var secondFailure = new IOException("second consumer failed");
+        var builder = Host.CreateApplicationBuilder();
+        builder.Services.Configure<HostOptions>(options =>
+            options.BackgroundServiceExceptionBehavior = BackgroundServiceExceptionBehavior.Ignore);
+        builder.Services.AddInterBus(bus =>
+        {
+            bus.Options.GetConsumerDescriptor(typeof(PumpLifetimeTests));
+            bus.Options.GetConsumerDescriptor(typeof(Source));
+            bus.Services.AddSingleton<IConsumerSourceFactory>(new SequenceFactory(first, second));
+        });
+        using var host = builder.Build();
+        await host.StartAsync(TestContext.Current.CancellationToken);
+        var pumpHost = (BackgroundService)host.Services.GetServices<IHostedService>()
+            .Single(service => service.GetType().Name == "PumpHost");
+        first.Health.SetResult(firstFailure);
+        if (!duringDrain) second.Health.SetResult(secondFailure);
+        await Assert.ThrowsAsync<IOException>(() => pumpHost.ExecuteTask!);
+        var stop = host.StopAsync(TestContext.Current.CancellationToken);
+        if (duringDrain) second.Health.SetResult(secondFailure);
+        try
+        {
+            var observations = (Task<Exception?[]>)pumpHost.GetType().GetProperty("Observations",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(pumpHost)!;
+            var observed = await observations.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+            Assert.Contains(firstFailure, observed);
+            Assert.Contains(secondFailure, observed);
+        }
+        finally { second.Finish.TrySetResult(); }
+        var shutdown = await Assert.ThrowsAsync<AggregateException>(() => stop);
+        Assert.Equal(2, shutdown.Flatten().InnerExceptions.Count);
+        Assert.All(host.Services.GetRequiredService<PumpController>().Pumps,
+            pump => Assert.Equal(PumpState.Faulted, pump.State));
+        Assert.True(first.Disposed);
+        Assert.True(second.Disposed);
+    }
+
+    [Fact]
+    public async Task RealHost_DeadlineAppliesAfterControllerAlreadyStartedGracefulStop()
+    {
+        var source = new Source { IgnoreIntake = true };
+        var builder = Host.CreateApplicationBuilder();
+        builder.Services.AddInterBus(bus =>
+        {
+            bus.Options.GetConsumerDescriptor(typeof(PumpLifetimeTests));
+            bus.Services.AddSingleton<IConsumerSourceFactory>(new Factory(source));
+        });
+        using var host = builder.Build();
+        await host.StartAsync(TestContext.Current.CancellationToken);
+        var graceful = host.Services.GetRequiredService<PumpController>().StopAsync(CancellationToken.None);
+        using var deadline = new CancellationTokenSource();
+        var stop = host.StopAsync(deadline.Token);
+        try
+        {
+            deadline.Cancel();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+                stop.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
+            Assert.True(source.ProcessingToken.IsCancellationRequested);
+            Assert.False(source.Disposed);
+        }
+        finally { source.Finish.TrySetResult(); }
+        await graceful.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        Assert.True(source.Disposed);
+    }
+
     private static ServiceProvider Provider()
     {
         var services = new ServiceCollection();

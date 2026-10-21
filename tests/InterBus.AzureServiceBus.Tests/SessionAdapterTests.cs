@@ -117,8 +117,8 @@ public class SessionAdapterTests
         services.AddInterBus(_ => { });
         await using var provider = services.BuildServiceProvider();
         var lifetime = new PumpLifetime(descriptor, source, provider.GetRequiredService<DeliveryProcessor>());
-        Assert.ThrowsAsync<IOException>(() => lifetime.StartAsync(default));
-        Assert.ThrowsAsync<IOException>(() => lifetime.Completion);
+        await Assert.ThrowsAsync<IOException>(() => lifetime.StartAsync(default));
+        await Assert.ThrowsAsync<IOException>(() => lifetime.Completion);
         Assert.That(processor.Stopping.Task.IsCompletedSuccessfully, Is.True);
         Assert.That(processor.Closed, Is.True);
         Assert.That(lifetime.State, Is.EqualTo(PumpState.Faulted));

@@ -8,21 +8,21 @@
         <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
     </PropertyGroup>
     <ItemGroup>
-        <PackageReference Include="AWSSDK.Extensions.NETCore.Setup" Version="4.0.101.4" />
-        <PackageReference Include="AWSSDK.Signin" Version="4.0.101.11" />
-        <PackageReference Include="coverlet.collector" Version="10.0.1">
+        <PackageReference Include="AWSSDK.Extensions.NETCore.Setup" Version="4.0.102.4" />
+        <PackageReference Include="AWSSDK.Signin" Version="4.0.101.15" />
+        <PackageReference Include="coverlet.collector" Version="10.1.0">
             <PrivateAssets>all</PrivateAssets>
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
         </PackageReference>
-        <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.12" />
-        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
-        <PackageReference Include="NUnit" Version="4.6.1" />
+        <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.13" />
+        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
+        <PackageReference Include="NUnit" Version="5.0.0" />
         <PackageReference Include="NUnit.Analyzers" Version="4.15.0">
             <PrivateAssets>all</PrivateAssets>
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
         </PackageReference>
-        <PackageReference Include="NUnit3TestAdapter" Version="6.3.0" />
-        <PackageReference Include="Testcontainers.LocalStack" Version="4.15.0" />
+        <PackageReference Include="NUnit3TestAdapter" Version="6.3.1" />
+        <PackageReference Include="Testcontainers.LocalStack" Version="4.16.0" />
     </ItemGroup>
     <ItemGroup>
         <Using Include="InterBus.Tests.Common.TestHelpers" Static="true"/>

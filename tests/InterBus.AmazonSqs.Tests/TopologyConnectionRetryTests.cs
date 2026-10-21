@@ -28,7 +28,7 @@ public class TopologyConnectionRetryTests
         Assert.That(topology.QueueUrls.Count, Is.EqualTo(1));
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
-        Assert.ThrowsAsync<OperationCanceledException>(() => topology.BuildConsumerTopologyAsync(cancellation.Token));
+        await Assert.ThrowsAsync<OperationCanceledException>(() => topology.BuildConsumerTopologyAsync(cancellation.Token));
         Assert.That(sts.Attempts, Is.EqualTo(2));
     }
 

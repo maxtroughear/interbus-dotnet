@@ -3,7 +3,7 @@ using System.Threading.Channels;
 namespace InterBus.MessagePumps;
 
 /// <summary>Shared per-consumer ownership budget, including receives, queued deliveries and active processing.</summary>
-public sealed partial class DeliverySink
+public sealed class DeliverySink
 {
     private readonly SemaphoreSlim _capacity;
     private readonly Channel<Entry> _input = Channel.CreateUnbounded<Entry>(new UnboundedChannelOptions
@@ -22,4 +22,23 @@ public sealed partial class DeliverySink
 
     /// <summary>Reserves another immediately available slot for a batch without waiting.</summary>
     public Reservation? TryReserve() => _capacity.Wait(0) ? new Reservation(this) : null;
+
+    /// <summary>A single-use receive reservation. Disposing after handoff does not reclaim core ownership.</summary>
+    public sealed class Reservation : IDisposable
+    {
+        private DeliverySink? _owner;
+        internal Reservation(DeliverySink owner) => _owner = owner;
+        /// <summary>Transfers ownership synchronously. If it throws, the source must dispose the delivery.</summary>
+        public void Handoff(IDelivery delivery)
+        {
+            var owner = _owner ?? throw new InvalidOperationException("Reservation already used");
+            if (!owner._input.Writer.TryWrite(new Entry(delivery, owner._capacity)))
+                throw new InvalidOperationException("Consumer intake completed");
+            _owner = null;
+        }
+        /// <summary>Returns an unused receive slot.</summary>
+        public void Dispose() => Interlocked.Exchange(ref _owner, null)?._capacity.Release();
+    }
+
+    internal sealed record Entry(IDelivery Delivery, SemaphoreSlim Capacity);
 }

@@ -1,9 +1,10 @@
 using InterBus.Consuming;
 using InterBus.MessagePumps;
+using InterBus.Dispatching;
 
 namespace InterBus.InMemory;
 
-internal sealed partial class InMemoryMessagePump(ConsumerDescriptor descriptor, InMemoryBroker broker) : IManagedSource
+internal sealed class InMemoryMessagePump(ConsumerDescriptor descriptor, InMemoryBroker broker) : IManagedSource
 {
     private InMemoryQueue _queue = null!;
     public Task InitializeAsync(CancellationToken cancellationToken)
@@ -31,4 +32,17 @@ internal sealed partial class InMemoryMessagePump(ConsumerDescriptor descriptor,
         }, intakeToken);
 
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
+    private sealed class MemoryDelivery(InMemoryEnvelope envelope) : IDelivery
+    {
+        public ReadOnlyMemory<byte> Payload => envelope.Payload;
+        public MessageHeaders Headers => envelope.Headers;
+        public bool Released { get; private set; }
+        public Task<bool> SettleAsync(DispatchResult result, CancellationToken cancellationToken)
+        {
+            Released = result.Kind == DispatchResultKind.Release;
+            return Task.FromResult(true);
+        }
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
 }

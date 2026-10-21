@@ -13,7 +13,7 @@ namespace InterBus.Consuming;
 /// is performed during message dispatch.
 /// </para>
 /// </summary>
-public sealed partial class ConsumerDescriptor(Type consumerType, Uri queue)
+public sealed class ConsumerDescriptor(Type consumerType, Uri queue)
 {
     private static readonly Func<DispatchContext, ConsumePipelineExecutor, IServiceProvider, CancellationToken, Task>
         MissingDispatchDelegate = MissingDispatch;
@@ -62,7 +62,7 @@ public sealed partial class ConsumerDescriptor(Type consumerType, Uri queue)
     public int MaxDeliveryCount { get; internal set; } = 10;
 
     /// <summary>
-    /// 
+    ///
     /// </summary>
     public TimeSpan? Timeout { get; internal set; }
 
@@ -155,5 +155,10 @@ public sealed partial class ConsumerDescriptor(Type consumerType, Uri queue)
             return consumePipeline.ExecuteAsync(consumeContext, (ctx, _) => capture(ctx.Message), ct);
         };
         return descriptor;
+    }
+
+    /// <summary>Marker type used as the consumer type for temporary reply descriptors.</summary>
+    private sealed class ReplyEndpointConsumer
+    {
     }
 }

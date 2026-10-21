@@ -1,10 +1,11 @@
 using InterBus.Extensions;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
+using InterBus.Transporting;
 
 namespace InterBus.Tests;
 
-public sealed partial class FifoConfigurationTests
+public sealed class FifoConfigurationTests
 {
     [Fact]
     public void ConfigureFifo_AddsTypeToFifoMessageTypes()
@@ -117,5 +118,24 @@ public sealed partial class FifoConfigurationTests
         Assert.NotNull(headers[InterBusHeaders.MessageGroupId]);
         Assert.Equal(headers[InterBusHeaders.CorrelationId],
             headers[InterBusHeaders.MessageGroupId]);
+    }
+
+    // ── Helpers ─────────────────────────────────────────────────────────────
+
+    internal sealed class FifoOrderConsumer : IConsumer<FifoTestOrderPlaced>
+    {
+        public Task Consume(FifoTestOrderPlaced message, IConsumeContext context,
+            CancellationToken cancellationToken = default) => Task.CompletedTask;
+    }
+
+    private sealed class HeaderCaptureTransport : ITransport
+    {
+        public MessageHeaders? LastHeaders { get; private set; }
+
+        public Task SendAsync(TransportSendContext context, CancellationToken cancellationToken)
+        {
+            LastHeaders = context.Headers;
+            return Task.CompletedTask;
+        }
     }
 }

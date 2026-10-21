@@ -7,7 +7,7 @@ using Xunit;
 
 namespace InterBus.Tests;
 
-public partial class MessagePumpRuntimeTests
+public class MessagePumpRuntimeTests
 {
     [Theory]
     [InlineData(false, false)]
@@ -131,12 +131,8 @@ public partial class MessagePumpRuntimeTests
             return Task.CompletedTask;
         }, concurrency: 2);
         await using var provider = services.BuildServiceProvider();
-        var first = new Delivery
-        {
-            OrderingKey = "a",
-            Settlement = async () =>
-        { firstSettling.SetResult(); await allowSettlement.Task; }
-        };
+        var first = new Delivery { OrderingKey = "a", Settlement = async () =>
+        { firstSettling.SetResult(); await allowSettlement.Task; } };
         var next = new Delivery { OrderingKey = "a" };
         next.Headers["id"] = "second";
         first.Headers["id"] = "first";
@@ -183,6 +179,28 @@ public partial class MessagePumpRuntimeTests
         Assert.Equal(0, delivery.Settlements);
     }
 
+    private sealed class ScopeMarker : IDisposable
+    {
+        public bool Disposed;
+        public void Dispose() => Disposed = true;
+    }
+
+    private sealed class ScriptedSource(Delivery[] deliveries) : IBufferedSource
+    {
+        public int PrefetchCount => 4;
+        public Task InitializeAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+        public async Task ReceiveAsync(DeliverySink sink, CancellationToken intakeToken)
+        {
+            foreach (var delivery in deliveries)
+            {
+                using var reservation = await sink.ReserveAsync(intakeToken);
+                reservation.Handoff(delivery);
+            }
+            await Task.Delay(Timeout.Infinite, intakeToken);
+        }
+    }
+
     private static (ServiceCollection, ConsumerDescriptor) Create(
         Func<DispatchContext, ConsumePipelineExecutor, IServiceProvider, CancellationToken, Task> dispatch,
         int concurrency = 1, int pumps = 1)
@@ -200,5 +218,72 @@ public partial class MessagePumpRuntimeTests
         int current;
         do { current = Volatile.Read(ref target); if (current >= value) return; }
         while (Interlocked.CompareExchange(ref target, value, current) != current);
+    }
+
+    private sealed class TestConsumer : IConsumer;
+    private sealed class Delivery : IDelivery
+    {
+        public ReadOnlyMemory<byte> Payload => ReadOnlyMemory<byte>.Empty;
+        public MessageHeaders Headers { get; } = new();
+        public Exception? DecodeError { get; init; }
+        public string? OrderingKey { get; init; }
+        public Func<Task>? Settlement { get; init; }
+        public bool ThrowSettlement { get; init; }
+        public bool Accepted { get; init; } = true;
+        public int Settlements;
+        public bool Disposed;
+        public DispatchResult? Result;
+        public Action? Cleanup;
+        public async Task<bool> SettleAsync(DispatchResult result, CancellationToken cancellationToken)
+        {
+            Settlements++;
+            Result = result;
+            if (ThrowSettlement) throw new IOException("ambiguous settlement");
+            if (Settlement is not null) await Settlement();
+            return Accepted;
+        }
+        public ValueTask DisposeAsync() { Disposed = true; Cleanup?.Invoke(); return ValueTask.CompletedTask; }
+    }
+    private sealed class Source(int prefetch) : IBufferedSource
+    {
+        public int Owned;
+        public int PrefetchCount => prefetch;
+        public Task InitializeAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+        public async Task ReceiveAsync(DeliverySink sink, CancellationToken intakeToken)
+        {
+            while (true)
+            {
+                using var reservation = await sink.ReserveAsync(intakeToken);
+                Interlocked.Increment(ref Owned);
+                var delivery = new Delivery { Cleanup = () => Interlocked.Decrement(ref Owned) };
+                try { reservation.Handoff(delivery); }
+                catch { await delivery.DisposeAsync(); throw; }
+            }
+        }
+    }
+    private sealed class ManagedSource : IManagedSource
+    {
+        public Delivery Delivery { get; } = new();
+        public Task InitializeAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+        public async Task RunAsync(Func<IDelivery, CancellationToken, Task> process, CancellationToken intakeToken,
+            CancellationToken processingToken)
+        {
+            await process(Delivery, processingToken);
+            Assert.True(Delivery.Disposed);
+        }
+    }
+
+    private sealed class CompletedFaultSource(Exception error, bool canceledCompletion) : IManagedSource, IBufferedSource
+    {
+        public int PrefetchCount => 0;
+        public Task<Exception> Failure { get; } = Task.FromResult(error);
+        public Task InitializeAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+        public Task ReceiveAsync(DeliverySink sink, CancellationToken intakeToken) => Complete(intakeToken);
+        public Task RunAsync(Func<IDelivery, CancellationToken, Task> process, CancellationToken intakeToken,
+            CancellationToken processingToken) => Complete(intakeToken);
+        private Task Complete(CancellationToken token) => canceledCompletion ? Task.FromCanceled(token) : Task.CompletedTask;
     }
 }

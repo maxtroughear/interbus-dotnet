@@ -1,10 +1,11 @@
 using InterBus.Generated;
 using Microsoft.Extensions.DependencyInjection;
+using System.Collections.Concurrent;
 
 namespace InterBus.AzureServiceBus.Tests;
 
 [TestFixture]
-public partial class SessionConcurrencyTests() : ServiceBusFixture(bus =>
+public class SessionConcurrencyTests() : ServiceBusFixture(bus =>
 {
     bus.Services.AddSingleton<Gate>();
     bus.Configure<SessionOrderPlaced>(options => options.Fifo(message => message.CustomerId));
@@ -33,5 +34,37 @@ public partial class SessionConcurrencyTests() : ServiceBusFixture(bus =>
             Assert.That(gate.Started.Where(item => item.Group == group).Select(item => item.Sequence), Is.EqualTo(new[] { 0, 1 }));
         Assert.That(gate.Maximum, Is.EqualTo(2));
         Assert.That(gate.PerSessionMaximum.Values, Is.All.EqualTo(1));
+    }
+
+    public sealed class Gate
+    {
+        public int Active, Maximum, Finished;
+        public ConcurrentQueue<(string Group, int Sequence)> Started { get; } = new();
+        public ConcurrentDictionary<string, int> PerSessionActive { get; } = new();
+        public ConcurrentDictionary<string, int> PerSessionMaximum { get; } = new();
+        public TaskCompletionSource BothEntered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Completed { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    }
+    public sealed class BlockingSessionConsumer(Gate gate) : IConsumer<SessionOrderPlaced>
+    {
+        public async Task Consume(SessionOrderPlaced message, IConsumeContext context, CancellationToken cancellationToken = default)
+        {
+            var active = Interlocked.Increment(ref gate.Active);
+            int previous;
+            do { previous = Volatile.Read(ref gate.Maximum); if (previous >= active) break; }
+            while (Interlocked.CompareExchange(ref gate.Maximum, active, previous) != previous);
+            var inSession = gate.PerSessionActive.AddOrUpdate(message.CustomerId, 1, (_, count) => count + 1);
+            gate.PerSessionMaximum.AddOrUpdate(message.CustomerId, inSession, (_, maximum) => Math.Max(maximum, inSession));
+            gate.Started.Enqueue((message.CustomerId, (int)message.Total));
+            if (active == 2) gate.BothEntered.TrySetResult();
+            try { await gate.Release.Task.WaitAsync(cancellationToken); }
+            finally
+            {
+                gate.PerSessionActive.AddOrUpdate(message.CustomerId, 0, (_, count) => count - 1);
+                Interlocked.Decrement(ref gate.Active);
+                if (Interlocked.Increment(ref gate.Finished) == 4) gate.Completed.TrySetResult();
+            }
+        }
     }
 }

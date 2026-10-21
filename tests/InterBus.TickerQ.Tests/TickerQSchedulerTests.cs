@@ -7,13 +7,14 @@ using Microsoft.Extensions.Hosting;
 using TickerQ.DependencyInjection;
 using TickerQ.Utilities;
 using Xunit;
+using System.Collections.Concurrent;
 
 namespace InterBus.TickerQ.Tests;
 
 /// <summary>
 /// Unit tests for <see cref="TickerQMessageScheduler"/> and <see cref="ScheduledDeliveryRequest"/>.
 /// </summary>
-public sealed partial class TickerQSchedulerTests
+public sealed class TickerQSchedulerTests
 {
     [Fact]
     public async Task SchedulePublishAsync_MessageIsConsumed_UsingTickerQInMemoryStorage()
@@ -76,6 +77,37 @@ public sealed partial class TickerQSchedulerTests
 
             await provider.DisposeAsync();
             cts.Dispose();
+        }
+    }
+
+    private sealed class MinimalHost(IServiceProvider services) : IHost
+    {
+        public IServiceProvider Services => services;
+        public Task StartAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task StopAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        public void Dispose()
+        {
+        }
+    }
+
+    internal record IntegrationMessage(Guid Id, string Payload);
+
+    internal sealed class IntegrationMessageTracker
+    {
+        private readonly ConcurrentBag<IntegrationMessage> _messages = [];
+        public IReadOnlyCollection<IntegrationMessage> Messages => _messages;
+        public void Track(IntegrationMessage msg) => _messages.Add(msg);
+    }
+
+    internal sealed class IntegrationMessageConsumer(IntegrationMessageTracker tracker)
+        : IConsumer<IntegrationMessage>
+    {
+        public Task Consume(IntegrationMessage message, IConsumeContext context,
+            CancellationToken cancellationToken = default)
+        {
+            tracker.Track(message);
+            return Task.CompletedTask;
         }
     }
 }

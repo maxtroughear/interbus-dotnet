@@ -8,7 +8,7 @@ using Xunit;
 
 namespace InterBus.Tests.InMemory;
 
-public partial class HeadersTests
+public class HeadersTests
 {
     private static async Task<(ServiceProvider Provider, CancellationTokenSource Cts)> StartAsync(
         Action<IServiceCollection> registerSingletons,
@@ -46,6 +46,37 @@ public partial class HeadersTests
         cts.Dispose();
     }
 
+    #region Helpers
+
+    /// <summary>Captures headers seen by the consumer during Consume.</summary>
+    public sealed class HeaderCapture
+    {
+        private readonly ConcurrentBag<IReadOnlyDictionary<string, string>> _captured = [];
+        public IReadOnlyCollection<IReadOnlyDictionary<string, string>> Captured => _captured;
+        public void Add(IReadOnlyDictionary<string, string> headers) => _captured.Add(headers);
+    }
+
+    public sealed class HeaderAwareConsumer(
+        HeaderCapture headerCapture) : IConsumer<OrderPlaced>
+    {
+        public Task Consume(OrderPlaced message, IConsumeContext context, CancellationToken cancellationToken = default)
+        {
+            headerCapture.Add(context.Headers);
+            return Task.CompletedTask;
+        }
+    }
+
+    public sealed class CorrelationIdCapturingConsumer(
+        ConcurrentBag<string?> correlationIds) : IConsumer<OrderPlaced>
+    {
+        public Task Consume(OrderPlaced message, IConsumeContext context, CancellationToken cancellationToken = default)
+        {
+            correlationIds.Add(context.CorrelationId);
+            return Task.CompletedTask;
+        }
+    }
+
+    #endregion
 
     [Fact]
     public async Task Publish_WithHeaders_ConsumerReceivesHeaders()

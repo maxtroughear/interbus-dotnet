@@ -5,13 +5,15 @@ using InterBus.InMemory.Extensions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Xunit;
+using InterBus.Consuming;
+using InterBus.Publishing;
 
 namespace InterBus.Tests.InMemory.Middleware;
 
 /// <summary>
 /// Tests for the publish and consume middleware pipelines.
 /// </summary>
-public partial class PipelineTests
+public class PipelineTests
 {
     private static async Task<(ServiceProvider Provider, CancellationTokenSource Cts)> StartAsync(
         Action<IServiceCollection> registerSingletons,
@@ -47,6 +49,37 @@ public partial class PipelineTests
 
         await provider.DisposeAsync();
         cts.Dispose();
+    }
+
+    #region Publish middleware
+
+    /// <summary>
+    /// Tracks which destinations were seen by publish middleware so tests can
+    /// assert the middleware ran in the expected order.
+    /// </summary>
+    public sealed class PublishCallTracker
+    {
+        private readonly ConcurrentBag<string> _calls = [];
+        public IReadOnlyCollection<string> Calls => _calls;
+        public void Record(string name) => _calls.Add(name);
+    }
+
+    /// <summary>
+    /// Publish middleware that records a call to <see cref="PublishCallTracker"/>
+    /// and appends a header before calling next middleware.
+    /// </summary>
+    public sealed class RecordingPublishMiddleware(PublishCallTracker tracker) : IPublishMiddleware
+    {
+        public async Task InvokeAsync<T>(PublishContext<T> context,
+            Func<PublishContext<T>, CancellationToken, Task> next,
+            CancellationToken cancellationToken = default) where T : class
+        {
+            tracker.Record("before-" + context.Destination);
+            // Demonstrate header mutation (claim-check-like interception point).
+            context.Headers["x-middleware-ran"] = "true";
+            await next(context, cancellationToken);
+            tracker.Record("after-" + context.Destination);
+        }
     }
 
     [Fact]
@@ -170,7 +203,9 @@ public partial class PipelineTests
         }
     }
 
+    #endregion
 
+    #region Consume middleware
 
     [Fact]
     public async Task ConsumeMiddleware_IsInvoked_ForEachMessage()
@@ -258,7 +293,9 @@ public partial class PipelineTests
         }
     }
 
+    #endregion
 
+    #region Per-consumer middleware
 
     [Fact]
     public async Task PerConsumerMiddleware_IsInvoked_OnlyForThatConsumer()
@@ -342,4 +379,110 @@ public partial class PipelineTests
             await StopAsync(provider, cts);
         }
     }
+
+    #endregion
+
+    #region Support types
+
+    public sealed class HeaderCapturingTracker
+    {
+        private readonly ConcurrentBag<IReadOnlyDictionary<string, string>> _captured = [];
+        public IReadOnlyCollection<IReadOnlyDictionary<string, string>> CapturedHeaders => _captured;
+        public void Capture(IReadOnlyDictionary<string, string> headers) => _captured.Add(headers);
+    }
+
+    public sealed class HeaderCapturingConsumer(HeaderCapturingTracker tracker) : IConsumer<OrderPlaced>
+    {
+        public Task Consume(OrderPlaced message, IConsumeContext context, CancellationToken cancellationToken = default)
+        {
+            tracker.Capture(context.Headers);
+            return Task.CompletedTask;
+        }
+    }
+
+    public sealed class ConsumeMiddlewareCallTracker
+    {
+        private int _count;
+        public int InvocationCount => _count;
+        public void Increment() => Interlocked.Increment(ref _count);
+    }
+
+    public sealed class RecordingConsumeMiddleware(ConsumeMiddlewareCallTracker tracker) : IConsumeMiddleware
+    {
+        public async Task InvokeAsync<T>(ConsumeContext<T> context,
+            Func<ConsumeContext<T>, CancellationToken, Task> next,
+            CancellationToken cancellationToken = default) where T : class
+        {
+            tracker.Increment();
+            await next(context, cancellationToken);
+        }
+    }
+
+    public sealed class FirstPublishMiddleware(ConcurrentQueue<string> log) : IPublishMiddleware
+    {
+        public async Task InvokeAsync<T>(PublishContext<T> context,
+            Func<PublishContext<T>, CancellationToken, Task> next,
+            CancellationToken cancellationToken = default) where T : class
+        {
+            log.Enqueue("first-enter");
+            await next(context, cancellationToken);
+            log.Enqueue("first-exit");
+        }
+    }
+
+    public sealed class SecondPublishMiddleware(ConcurrentQueue<string> log) : IPublishMiddleware
+    {
+        public async Task InvokeAsync<T>(PublishContext<T> context,
+            Func<PublishContext<T>, CancellationToken, Task> next,
+            CancellationToken cancellationToken = default) where T : class
+        {
+            log.Enqueue("second-enter");
+            await next(context, cancellationToken);
+            log.Enqueue("second-exit");
+        }
+    }
+
+    /// <summary>Consume middleware that logs entry/exit to a shared queue for ordering tests.</summary>
+    public sealed class FirstConsumeMiddleware(ConcurrentQueue<string> log) : IConsumeMiddleware
+    {
+        public async Task InvokeAsync<T>(ConsumeContext<T> context,
+            Func<ConsumeContext<T>, CancellationToken, Task> next,
+            CancellationToken cancellationToken = default) where T : class
+        {
+            log.Enqueue("first-enter");
+            await next(context, cancellationToken);
+            log.Enqueue("first-exit");
+        }
+    }
+
+    /// <summary>Consume middleware that logs entry/exit to a shared queue for ordering tests.</summary>
+    public sealed class SecondConsumeMiddleware(ConcurrentQueue<string> log) : IConsumeMiddleware
+    {
+        public async Task InvokeAsync<T>(ConsumeContext<T> context,
+            Func<ConsumeContext<T>, CancellationToken, Task> next,
+            CancellationToken cancellationToken = default) where T : class
+        {
+            log.Enqueue("second-enter");
+            await next(context, cancellationToken);
+            log.Enqueue("second-exit");
+        }
+    }
+
+    public sealed class FaultingConsumerCallCount
+    {
+        private int _count;
+        public int Count => _count;
+        public void Increment() => Interlocked.Increment(ref _count);
+    }
+
+    public sealed class FaultingConsumer(FaultingConsumerCallCount count) : IConsumer<OrderPlaced>
+    {
+        public Task Consume(OrderPlaced message, IConsumeContext context, CancellationToken cancellationToken = default)
+        {
+            count.Increment();
+            throw new InvalidOperationException("Intentional test exception from FaultingConsumer");
+        }
+    }
+
+    #endregion
 }

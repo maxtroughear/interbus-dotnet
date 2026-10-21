@@ -12,11 +12,12 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
+using System.Collections.Concurrent;
 
 namespace InterBus.AmazonSqs.Tests;
 
 [TestFixture]
-public sealed partial class MessagePumpAdapterTests
+public sealed class MessagePumpAdapterTests
 {
     [TestCase(false)]
     [TestCase(true)]
@@ -25,13 +26,9 @@ public sealed partial class MessagePumpAdapterTests
         using var client = new FakeSqs();
         var received = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var envelope = serialized ? (ISnsSqsMessageEnvelope)new SnsSerialisedMessageEnvelope() : new SnsSqsMessageEnvelope();
-        client.Messages.Enqueue(new Message
-        {
-            Body = serialized
+        client.Messages.Enqueue(new Message { Body = serialized
             ? "{\"Message\":\"hello\",\"MessageAttributes\":{}}"
-            : envelope.SerializeForSnsPublish("hello"u8.ToArray(), new MessageHeaders()),
-            ReceiptHandle = "receipt"
-        });
+            : envelope.SerializeForSnsPublish("hello"u8.ToArray(), new MessageHeaders()), ReceiptHandle = "receipt" });
         var builder = Host.CreateApplicationBuilder();
         builder.Services.AddSingleton<IAmazonSQS>(client);
         builder.Services.AddSingleton<Amazon.SimpleNotificationService.IAmazonSimpleNotificationService>(
@@ -151,12 +148,9 @@ public sealed partial class MessagePumpAdapterTests
         using var client = new FakeSqs { BlockDeleteReceipt = "a0" };
         var envelope = new SnsSqsMessageEnvelope();
         foreach (var id in new[] { "a0", "a1", "b0", "b1" })
-            client.Messages.Enqueue(new Message
-            {
-                ReceiptHandle = id,
+            client.Messages.Enqueue(new Message { ReceiptHandle = id,
                 Attributes = new Dictionary<string, string> { ["MessageGroupId"] = id[..1] },
-                Body = envelope.SerializeForSnsPublish([], new MessageHeaders { ["id"] = id })
-            });
+                Body = envelope.SerializeForSnsPublish([], new MessageHeaders { ["id"] = id }) });
         var second = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var independent = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         await using var provider = Configure(client, (ctx, _, _, _) =>
@@ -248,12 +242,8 @@ public sealed partial class MessagePumpAdapterTests
         using var client = new FakeSqs();
         const string wireBody = "{invalid-original-wire-data}";
         await using var delivery = new SqsPrefetchedMessage(NullLogger<SqsPrefetchedMessage>.Instance,
-            client, new SnsSqsTransportOptions(), new Message
-            {
-                Body = wireBody,
-                ReceiptHandle = "receipt",
-                Attributes = new Dictionary<string, string> { ["MessageGroupId"] = "group" }
-            },
+            client, new SnsSqsTransportOptions(), new Message { Body = wireBody, ReceiptHandle = "receipt",
+                Attributes = new Dictionary<string, string> { ["MessageGroupId"] = "group" } },
             "queue.fifo", "dlq.fifo", new SnsSqsMessageEnvelope());
         var result = DispatchResult.DeadLetter(DateTimeOffset.UtcNow, new FormatException("decode"));
         Assert.That(await delivery.SettleAsync(result, default), Is.True);
@@ -277,4 +267,65 @@ public sealed partial class MessagePumpAdapterTests
         new(NullLogger<SqsPrefetchedMessage>.Instance, client, options,
             new Message { Body = new SnsSqsMessageEnvelope().SerializeForSnsPublish([], new MessageHeaders()), ReceiptHandle = "receipt" },
             "queue", "dlq", new SnsSqsMessageEnvelope());
+
+    private sealed class TestConsumer : IConsumer;
+    private sealed class CachedTopology : ITopologyBuilder
+    {
+        public Task BuildConsumerTopologyAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+    }
+    private sealed class FakeSqs() : AmazonSQSClient(new AnonymousAWSCredentials(), RegionEndpoint.USEast1)
+    {
+        public ConcurrentQueue<Message> Messages { get; } = new();
+        public bool FailDelete, FailRenewal, FailSend;
+        public SendMessageRequest? LastSend;
+        public int Deletes, Renewals, ImmediateReleases;
+        public CancellationTokenSource? CancelOnReceive;
+        public string? BlockDeleteReceipt;
+        public TaskCompletionSource DeleteBlocked { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource AllowDelete { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource FourRenewed { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly ConcurrentDictionary<string, bool> _renewedReceipts = new();
+        public TaskCompletionSource Deleted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Renewed { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public override async Task<ReceiveMessageResponse> ReceiveMessageAsync(ReceiveMessageRequest request, CancellationToken cancellationToken = default)
+        {
+            var batch = new List<Message>();
+            while (batch.Count < request.MaxNumberOfMessages && Messages.TryDequeue(out var message)) batch.Add(message);
+            if (batch.Count > 0)
+            {
+                CancelOnReceive?.Cancel();
+                return new ReceiveMessageResponse { Messages = batch };
+            }
+            await Task.Delay(Timeout.Infinite, cancellationToken);
+            return new ReceiveMessageResponse();
+        }
+        public override async Task<DeleteMessageResponse> DeleteMessageAsync(DeleteMessageRequest request, CancellationToken cancellationToken = default)
+        {
+            Interlocked.Increment(ref Deletes);
+            if (FailDelete) throw new IOException("delete failed");
+            if (request.ReceiptHandle == BlockDeleteReceipt)
+            {
+                DeleteBlocked.TrySetResult();
+                await AllowDelete.Task.WaitAsync(cancellationToken);
+            }
+            Deleted.TrySetResult();
+            return new DeleteMessageResponse();
+        }
+        public override Task<ChangeMessageVisibilityResponse> ChangeMessageVisibilityAsync(ChangeMessageVisibilityRequest request, CancellationToken cancellationToken = default)
+        {
+            if (request.VisibilityTimeout == 0) Interlocked.Increment(ref ImmediateReleases);
+            Interlocked.Increment(ref Renewals);
+            _renewedReceipts.TryAdd(request.ReceiptHandle, true);
+            if (_renewedReceipts.Count == 4) FourRenewed.TrySetResult();
+            Renewed.TrySetResult();
+            if (FailRenewal) throw new ReceiptHandleIsInvalidException("lost");
+            return Task.FromResult(new ChangeMessageVisibilityResponse());
+        }
+        public override Task<SendMessageResponse> SendMessageAsync(SendMessageRequest request, CancellationToken cancellationToken = default)
+        {
+            LastSend = request;
+            if (FailSend) throw new IOException("send failed");
+            return Task.FromResult(new SendMessageResponse());
+        }
+    }
 }

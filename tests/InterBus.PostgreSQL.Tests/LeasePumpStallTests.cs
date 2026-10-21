@@ -4,7 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 namespace InterBus.PostgreSQL.Tests;
 
 [TestFixtureSource(typeof(PostgreSqlVersions), nameof(PostgreSqlVersions.Lease))]
-public partial class LeasePumpStallTests(string imageTag, PostgreSqlMessagePumpMode pumpMode) : PostgreSqlFixtureBase(
+public class LeasePumpStallTests(string imageTag, PostgreSqlMessagePumpMode pumpMode) : PostgreSqlFixtureBase(
     imageTag, pumpMode, bus =>
     {
         bus.Services.AddSingleton<OrderPlacedTracker>();
@@ -40,5 +40,35 @@ public partial class LeasePumpStallTests(string imageTag, PostgreSqlMessagePumpM
             Assert.That(counter.Value, Is.GreaterThanOrEqualTo(2),
                 "Should have been delivered at least twice: once while stalling and once after lease expiry");
         }
+    }
+
+    public sealed class LeaseStallingConsumer(OrderPlacedTracker tracker, LeaseAtomicCounter counter)
+        : IConsumer<OrderPlaced>
+    {
+        private static readonly TimeSpan StallingDuration = TimeSpan.FromSeconds(8);
+
+        public async Task Consume(OrderPlaced message, IConsumeContext context,
+            CancellationToken cancellationToken = default)
+        {
+            var attempt = counter.Increment();
+            if (attempt == 1)
+            {
+                // Sleep past the lease duration. The lease expires at 3 s; we stall 8 s.
+                // Use CancellationToken.None so teardown does not cut short the stall while
+                // the test is still waiting on the reclaim path.
+                await Task.Delay(StallingDuration, CancellationToken.None);
+                // Return without tracking – ack_claim will be rejected by token mismatch.
+                return;
+            }
+
+            tracker.Track(message);
+        }
+    }
+
+    public sealed class LeaseAtomicCounter
+    {
+        private int _value;
+        public int Value => _value;
+        public int Increment() => Interlocked.Increment(ref _value);
     }
 }

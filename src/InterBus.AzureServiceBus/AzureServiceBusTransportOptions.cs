@@ -54,7 +54,7 @@ public sealed class AzureServiceBusTransportOptions
     /// can be handled.
     /// </summary>
     public int ReplyMaxConcurrentSessions { get; set; } = 50;
-    
+
     /// <summary>
     /// The maximum amount of time to wait for a message to be received for the currently active session.
     /// After this time has elapsed, the processor will close the session and attempt to process another session.

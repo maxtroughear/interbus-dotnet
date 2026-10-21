@@ -27,6 +27,12 @@ internal sealed class AzureServiceBusClientProvider : IAsyncDisposable
         AdminClient = new ServiceBusAdministrationClient(adminConnectionString);
     }
 
+    internal AzureServiceBusClientProvider(ServiceBusClient client, ServiceBusAdministrationClient adminClient)
+    {
+        _client = client;
+        AdminClient = adminClient;
+    }
+
     /// <summary>The administration client for managing topics, queues, and subscriptions.</summary>
     public ServiceBusAdministrationClient AdminClient { get; }
 

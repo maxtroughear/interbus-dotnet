@@ -9,16 +9,6 @@ namespace InterBus.Tests.InMemory;
 
 public class InMemorySchedulerTests
 {
-    private static async Task WaitUntilAsync(
-        Func<bool> condition,
-        int timeoutMs = 5000,
-        int intervalMs = 25)
-    {
-        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
-        while (!condition() && DateTime.UtcNow < deadline)
-            await Task.Delay(intervalMs);
-    }
-
     private static async Task<(ServiceProvider Provider, CancellationTokenSource Cts)> StartAsync(
         Action<IServiceCollection> registerSingletons,
         Action<InterBusBuilder> configureBus)
@@ -83,7 +73,7 @@ public class InMemorySchedulerTests
             await Task.Delay(150, TestContext.Current.CancellationToken);
             Assert.Empty(tracker.Messages);
 
-            await WaitUntilAsync(() => tracker.Messages.Count == 1, timeoutMs: 4000);
+            await WaitUntilAsync(() => tracker.Messages.Count == 1, timeoutMs: 4000, cancellationToken: TestContext.Current.CancellationToken);
 
             var delivered = Assert.Single(tracker.Messages);
             Assert.Equal(message.OrderId, delivered.OrderId);
@@ -123,7 +113,7 @@ public class InMemorySchedulerTests
             Assert.NotNull(scheduleId);
             await scheduler.CancelAsync(scheduleId, TestContext.Current.CancellationToken);
 
-            await WaitUntilAsync(() => tracker.Messages.Count > 0, timeoutMs: 1600);
+            await WaitUntilAsync(() => tracker.Messages.Count > 0, timeoutMs: 1600, cancellationToken: TestContext.Current.CancellationToken);
             Assert.Empty(tracker.Messages);
         }
         finally
@@ -165,7 +155,7 @@ public class InMemorySchedulerTests
                 DateTimeOffset.UtcNow.AddMilliseconds(300),
                 TestContext.Current.CancellationToken);
 
-            await WaitUntilAsync(() => orderTracker.Messages.Count == 1, timeoutMs: 4000);
+            await WaitUntilAsync(() => orderTracker.Messages.Count == 1, timeoutMs: 4000, cancellationToken: TestContext.Current.CancellationToken);
 
             var delivered = Assert.Single(orderTracker.Messages);
             Assert.Equal(message.OrderId, delivered.OrderId);

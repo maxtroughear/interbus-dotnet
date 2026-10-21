@@ -25,10 +25,12 @@
         <PackageReference Include="Testcontainers.LocalStack" Version="4.15.0" />
     </ItemGroup>
     <ItemGroup>
-        <Using Include="NUnit.Framework" />
+        <Using Include="InterBus.Tests.Common.TestHelpers" Static="true"/>
+        <Using Include="NUnit.Framework"/>
     </ItemGroup>
     <ItemGroup>
-        <ProjectReference Include="..\..\src\InterBus.DynamoDB\InterBus.DynamoDB.csproj" />
-        <ProjectReference Include="..\..\src\InterBus.SourceGenerator\InterBus.SourceGenerator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+        <ProjectReference Include="..\InterBus.Tests.Common\InterBus.Tests.Common.csproj"/>
+        <ProjectReference Include="..\..\src\InterBus.DynamoDB\InterBus.DynamoDB.csproj"/>
+        <ProjectReference Include="..\..\src\InterBus.SourceGenerator\InterBus.SourceGenerator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false"/>
     </ItemGroup>
 </Project>

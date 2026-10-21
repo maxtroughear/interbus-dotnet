@@ -1,13 +1,11 @@
-using System.Collections.Concurrent;
+using InterBus.Generated;
 using InterBus.Consuming;
 using InterBus.DeadLettering;
 using InterBus.Dispatching;
 using InterBus.EntityFrameworkCore.Extensions;
 using InterBus.EntityFrameworkCore.Outbox;
 using InterBus.Extensions;
-using InterBus.Generated;
 using InterBus.InMemory.Extensions;
-using InterBus.Sending;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -16,189 +14,28 @@ using Xunit;
 
 namespace InterBus.EntityFrameworkCore.Tests;
 
-public record OrderPlaced(Guid OrderId, string CustomerEmail, decimal Total);
-
-public record OrderShipped(Guid OrderId);
-
-public sealed class OrderPlacedTracker
-{
-    private readonly ConcurrentBag<OrderPlaced> _messages = [];
-    public IReadOnlyCollection<OrderPlaced> Messages => _messages;
-    public void Track(OrderPlaced msg) => _messages.Add(msg);
-}
-
-public sealed class OrderShippedTracker
-{
-    private readonly ConcurrentBag<OrderShipped> _messages = [];
-    public IReadOnlyCollection<OrderShipped> Messages => _messages;
-    public void Track(OrderShipped msg) => _messages.Add(msg);
-}
-
-public sealed class OrderPlacedConsumer(OrderPlacedTracker tracker) : IConsumer<OrderPlaced>
-{
-    public Task Consume(OrderPlaced message, IConsumeContext context, CancellationToken cancellationToken = default)
-    {
-        tracker.Track(message);
-        return Task.CompletedTask;
-    }
-}
-
-/// <summary>
-/// Consumer that publishes <see cref="OrderShipped"/> to the outbox when it receives
-/// <see cref="OrderPlaced"/>. Saves the DbContext explicitly so the outbox row is committed.
-/// </summary>
-public sealed class OrderPlacedPublishingConsumer(TestDbContext dbContext, IPublisher publisher)
-    : IConsumer<OrderPlaced>
-{
-    public async Task Consume(OrderPlaced message, IConsumeContext context,
-        CancellationToken cancellationToken = default)
-    {
-        await publisher.PublishAsync(new OrderShipped(message.OrderId), cancellationToken);
-        await dbContext.SaveChangesAsync(cancellationToken);
-    }
-}
-
-public sealed class OrderPlacedPublishingTracker
-{
-    private readonly ConcurrentBag<Guid> _orderIds = [];
-    public IReadOnlyCollection<Guid> OrderIds => _orderIds;
-    public void Track(Guid orderId) => _orderIds.Add(orderId);
-}
-
-public sealed class OrderPlacedPublishingTrackedConsumer(
-    TestDbContext dbContext,
-    IPublisher publisher,
-    OrderPlacedPublishingTracker tracker) : IConsumer<OrderPlaced>
-{
-    public async Task Consume(OrderPlaced message, IConsumeContext context,
-        CancellationToken cancellationToken = default)
-    {
-        tracker.Track(message.OrderId);
-        await publisher.PublishAsync(new OrderShipped(message.OrderId), cancellationToken);
-        await dbContext.SaveChangesAsync(cancellationToken);
-    }
-}
-
-public sealed class OrderShippedConsumer(OrderShippedTracker tracker) : IConsumer<OrderShipped>
-{
-    public Task Consume(OrderShipped message, IConsumeContext context, CancellationToken cancellationToken = default)
-    {
-        tracker.Track(message);
-        return Task.CompletedTask;
-    }
-}
-
-/// <summary>Tracker that preserves insertion order (needed for FIFO assertions).</summary>
-public sealed class FifoOrderIdTracker
-{
-    private readonly object _lock = new();
-    private readonly List<Guid> _orderIds = [];
-    public IReadOnlyList<Guid> OrderIds { get { lock (_lock) return [.. _orderIds]; } }
-    public int Count { get { lock (_lock) return _orderIds.Count; } }
-    public void Track(Guid orderId) { lock (_lock) _orderIds.Add(orderId); }
-}
-
-public sealed class FifoOrderPlacedConsumer(FifoOrderIdTracker tracker) : IConsumer<OrderPlaced>
-{
-    public Task Consume(OrderPlaced message, IConsumeContext context, CancellationToken cancellationToken = default)
-    {
-        tracker.Track(message.OrderId);
-        return Task.CompletedTask;
-    }
-}
-
-public sealed class TestDbContext(DbContextOptions<TestDbContext> options)
-    : DbContext(options)
-{
-    public DbSet<InboxState> InboxStates => Set<InboxState>();
-    public DbSet<OutboxLock> OutboxLocks => Set<OutboxLock>();
-    public DbSet<OutboxGroup> OutboxGroups => Set<OutboxGroup>();
-    public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
-
-    protected override void OnModelCreating(ModelBuilder modelBuilder) =>
-        modelBuilder.AddInterBusOutbox();
-}
-
-public sealed class FailSendOnceController
-{
-    public bool ShouldFail { get; set; } = true;
-}
-
-public sealed class FailSendOnceMiddleware(FailSendOnceController controller) : ISendMiddleware
-{
-    public Task InvokeAsync(SendContext context, Func<SendContext, CancellationToken, Task> next,
-        CancellationToken cancellationToken = default)
-    {
-        if (!controller.ShouldFail)
-            return next(context, cancellationToken);
-
-        controller.ShouldFail = false;
-        throw new InvalidOperationException("Simulated send failure");
-    }
-}
-
-/// <summary>
-/// A consumer that always throws, used to verify dead-letter delivery when the outbox is configured.
-/// Uses a distinct name to avoid conflicts with other test projects.
-/// </summary>
-public sealed class FaultingOrderPlacedConsumerWithOutbox : IConsumer<OrderPlaced>
-{
-    public Task Consume(OrderPlaced message, IConsumeContext context, CancellationToken cancellationToken = default) =>
-        throw new InvalidOperationException("Intentional failure for dead-letter outbox test");
-}
-
-/// <summary>
-/// Tracker for <see cref="DeadLetter{T}"/> messages in the outbox test project.
-/// Uses a distinct type to avoid singleton conflicts with other test projects.
-/// </summary>
-public sealed class DeadLetterOrderPlacedTrackerForOutbox
-{
-    private readonly ConcurrentBag<DeadLetter<OrderPlaced>> _messages = [];
-    public IReadOnlyCollection<DeadLetter<OrderPlaced>> Messages => _messages;
-    public void Track(DeadLetter<OrderPlaced> msg) => _messages.Add(msg);
-}
-
-/// <summary>Consumer of <see cref="DeadLetter{OrderPlaced}"/> used by the outbox dead-letter test.</summary>
-public sealed class DeadLetterOrderPlacedConsumerForOutbox(DeadLetterOrderPlacedTrackerForOutbox tracker)
-    : IConsumer<DeadLetter<OrderPlaced>>
-{
-    public Task Consume(DeadLetter<OrderPlaced> message, IConsumeContext context,
-        CancellationToken cancellationToken = default)
-    {
-        tracker.Track(message);
-        return Task.CompletedTask;
-    }
-}
-
 /// <summary>
 /// Integration tests for the transactional outbox middleware and background processor.
-/// Uses SQLite in-memory for the DbContext and the InMemory transport for message delivery.
+/// Uses a temporary SQLite database for the DbContext and the InMemory transport for message delivery.
 /// </summary>
 public class OutboxTests
 {
-    private static async Task WaitUntilAsync(
-        Func<bool> condition,
-        int timeoutMs = 5000,
-        int intervalMs = 25)
-    {
-        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
-        while (!condition() && DateTime.UtcNow < deadline)
-            await Task.Delay(intervalMs);
-    }
-
     private static async Task<(ServiceProvider Provider, CancellationTokenSource Cts, SqliteConnection Connection)>
         StartAsync(
             Action<InterBusBuilder> configureBus,
             Action<IServiceCollection>? extraServices = null)
     {
-        // Use a single kept-open SqliteConnection so all DbContext instances share the same
-        // in-memory database for the duration of the test.
-        var connection = new SqliteConnection("Data Source=:memory:");
+        // Each scope needs its own connection because the processor and assertions run concurrently
+        var connection = new SqliteConnection(new SqliteConnectionStringBuilder
+        {
+            DataSource = Path.Combine(Path.GetTempPath(), $"interbus-outbox-{Guid.NewGuid():N}.db"),
+            Pooling = false
+        }.ToString());
         await connection.OpenAsync();
 
         var services = new ServiceCollection();
         services.AddLogging();
-        services.AddDbContext<TestDbContext>(o => o.UseSqlite(connection));
+        services.AddDbContext<TestDbContext>(o => o.UseSqlite(connection.ConnectionString));
         extraServices?.Invoke(services);
         services.AddInterBus(configureBus);
 
@@ -239,6 +76,7 @@ public class OutboxTests
         await provider.DisposeAsync();
         cts.Dispose();
         await connection.DisposeAsync();
+        File.Delete(connection.DataSource);
     }
 
     /// <summary>
@@ -363,7 +201,7 @@ public class OutboxTests
 
             await StartHostedServicesAsync(provider, cts.Token);
 
-            await WaitUntilAsync(() => tracker.Messages.Count == 1);
+            await WaitUntilAsync(() => tracker.Messages.Count == 1, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Single(tracker.Messages);
             Assert.Equal("deliver@example.com", tracker.Messages.Single().CustomerEmail);
@@ -414,7 +252,7 @@ public class OutboxTests
 
             await StartHostedServicesAsync(provider, cts.Token);
 
-            await WaitUntilAsync(() => tracker.Messages.Count >= count);
+            await WaitUntilAsync(() => tracker.Messages.Count >= count, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Equal(count, tracker.Messages.Count);
         }
@@ -455,7 +293,7 @@ public class OutboxTests
 
             await StartHostedServicesAsync(provider, cts.Token);
 
-            await WaitUntilAsync(() => tracker.Messages.Count == 1);
+            await WaitUntilAsync(() => tracker.Messages.Count == 1, cancellationToken: TestContext.Current.CancellationToken);
 
             // Allow a brief moment for the delete + commit.
             await Task.Delay(200, TestContext.Current.CancellationToken);
@@ -683,7 +521,7 @@ public class OutboxTests
                 }, TestContext.Current.CancellationToken);
             }
 
-            await WaitUntilAsync(() => shippedTracker.Messages.Count == 1);
+            await WaitUntilAsync(() => shippedTracker.Messages.Count == 1, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Single(shippedTracker.Messages);
         }
@@ -753,7 +591,7 @@ public class OutboxTests
 
             await ExecuteOnceAsync();
 
-            await WaitUntilAsync(() => shippedTracker.Messages.Count == 1);
+            await WaitUntilAsync(() => shippedTracker.Messages.Count == 1, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Single(shippedTracker.Messages);
             Assert.Single(publishTracker.OrderIds);
@@ -875,7 +713,7 @@ public class OutboxTests
                 Assert.Equal(DispatchResultKind.DeadLetter, context.Result.Kind);
             }
 
-            await WaitUntilAsync(() => deadLetterTracker.Messages.Count >= 1);
+            await WaitUntilAsync(() => deadLetterTracker.Messages.Count >= 1, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.NotEmpty(deadLetterTracker.Messages);
             var dl = deadLetterTracker.Messages.First();
@@ -941,7 +779,7 @@ public class OutboxTests
 
             // Start the processor and wait for all messages to arrive.
             await StartHostedServicesAsync(provider, cts.Token);
-            await WaitUntilAsync(() => tracker.Count == 3);
+            await WaitUntilAsync(() => tracker.Count == 3, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Equal(3, tracker.Count);
 

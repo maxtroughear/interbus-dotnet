@@ -1,15 +1,9 @@
 using InterBus.Extensions;
-using InterBus.Transporting;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
+using InterBus.Transporting;
 
 namespace InterBus.Tests;
-
-// Types used only by FifoConfigurationTests, defined at namespace level to avoid
-// source-generator accessibility issues with nested private types.
-public record FifoTestOrderPlaced(Guid OrderId, string CustomerId);
-
-public record FifoTestOrderShipped(Guid OrderId);
 
 public sealed class FifoConfigurationTests
 {
@@ -42,7 +36,7 @@ public sealed class FifoConfigurationTests
 
         Assert.False(orderPlacedDescriptor.IsFifo);
     }
-    
+
     [Fact]
     public void WithFifo_ConsumerMessageTypesRemainNonFifoWithoutConfigureFifo()
     {
@@ -56,7 +50,7 @@ public sealed class FifoConfigurationTests
 
         var sp = services.BuildServiceProvider();
         var options = sp.GetRequiredService<InterBusOptions>();
-        
+
         var orderPlacedDescriptor = options.GetPublisherDescriptor<FifoTestOrderPlaced>();
 
         Assert.False(orderPlacedDescriptor.IsFifo);
@@ -74,12 +68,12 @@ public sealed class FifoConfigurationTests
 
         var sp = services.BuildServiceProvider();
         var options = sp.GetRequiredService<InterBusOptions>();
-        
+
         var orderPlacedDescriptor = options.GetPublisherDescriptor<FifoTestOrderPlaced>();
 
         Assert.False(orderPlacedDescriptor.IsFifo);
     }
-    
+
     [Fact]
     public async Task Publish_WithGroupBySelector_StampsMessageGroupIdHeader()
     {

@@ -8,8 +8,10 @@ internal static class PostgreSqlConnectionRetry
 {
     private static bool IsConnectionRelated(Exception exception)
     {
-        if (exception is PostgresException)
-            return false;
+        if (exception is PostgresException postgres)
+            return postgres.SqlState.StartsWith("08", StringComparison.Ordinal) ||
+                postgres.SqlState is PostgresErrorCodes.AdminShutdown or PostgresErrorCodes.CrashShutdown
+                    or PostgresErrorCodes.CannotConnectNow;
 
         return exception is NpgsqlException
                || FindInner<SocketException>(exception) is not null

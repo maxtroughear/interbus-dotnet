@@ -48,7 +48,8 @@ public static class RabbitMqTransportBuilderExtensions
             var options = new RabbitMqTransportOptions();
             configure?.Invoke(options);
 
-            builder.Options.SetTransportUriSchemes(RabbitMqTopicTransport.TopicScheme, RabbitMqQueueTransport.QueueScheme);
+            builder.Options.SetTransportUriSchemes(RabbitMqTopicTransport.TopicScheme,
+                RabbitMqQueueTransport.QueueScheme);
             builder.Services.AddSingleton(options);
 
             // Connection provider manages publish and consume connections (singleton).
@@ -60,7 +61,7 @@ public static class RabbitMqTransportBuilderExtensions
             builder.Services.AddKeyedScoped<ITransport, RabbitMqQueueTransport>(RabbitMqQueueTransport.QueueScheme);
 
             // Message pump runs as a background service.
-            builder.Services.AddHostedService<RabbitMqMessagePump>();
+            builder.Services.AddSingleton<InterBus.MessagePumps.IConsumerSourceFactory, RabbitMqSourceFactory>();
 
             // Request/reply support via virtual queue host.
             builder.Services.AddSingleton<IVirtualQueueHost, RabbitMqVirtualQueueHost>();

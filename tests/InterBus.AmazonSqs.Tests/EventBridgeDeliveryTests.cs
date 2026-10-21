@@ -93,7 +93,7 @@ public sealed class EventBridgeDeliveryTests
             var directMsg = new OrderPlaced(Guid.NewGuid(), "direct@test.com", 1.00m);
             await publisher.SendAsync<OrderPlacedConsumer, OrderPlaced>(directMsg, ct);
 
-            await TestHelpers.WaitUntilAsync(
+            await WaitUntilAsync(
                 () => tracker.Messages.Count >= 1,
                 timeoutMs: 30_000,
                 intervalMs: 1_000,
@@ -108,7 +108,7 @@ public sealed class EventBridgeDeliveryTests
             await scheduler.ScheduleSendAsync<OrderPlacedConsumer, OrderPlaced>(scheduledMsg, scheduledAt, ct);
 
             // Wait up to 8 minutes — EventBridge fires ~1 min after the scheduled time.
-            await TestHelpers.WaitUntilAsync(
+            await WaitUntilAsync(
                 () => tracker.Messages.Count >= 2,
                 timeoutMs: 8 * 60 * 1_000,
                 intervalMs: 5_000,

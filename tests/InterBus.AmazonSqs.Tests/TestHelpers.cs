@@ -38,26 +38,6 @@ public static class TestHelpers
         };
     }
 
-    internal static async Task WaitUntilAsync(
-        Func<bool> condition,
-        int timeoutMs = 30_000,
-        int intervalMs = 200,
-        CancellationToken cancellationToken = default)
-    {
-        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
-        while (!condition() && DateTime.UtcNow < deadline)
-        {
-            try
-            {
-                await Task.Delay(intervalMs, cancellationToken);
-            }
-            catch (OperationCanceledException)
-            {
-                break;
-            }
-        }
-    }
-
     /// <summary>
     /// Cleans up AWS resources (SQS queues, SNS subscriptions, and SNS topics)
     /// matching the specified prefix.

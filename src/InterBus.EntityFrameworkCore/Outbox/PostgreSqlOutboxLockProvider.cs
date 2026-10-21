@@ -24,7 +24,7 @@ public sealed class PostgreSqlOutboxLockProvider<TDbContext> : IOutboxLockProvid
         for (var i = 0; i < shardCount; i++)
         {
             var insertLockSql = $"INSERT INTO {locksFqn} ({shardCol}) VALUES ({i}) ON CONFLICT ({shardCol}) DO NOTHING";
-            
+
             await context.Database.ExecuteSqlRawAsync(insertLockSql, cancellationToken);
         }
     }

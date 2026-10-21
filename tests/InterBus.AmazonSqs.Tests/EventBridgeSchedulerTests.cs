@@ -5,7 +5,6 @@ using Amazon.SimpleNotificationService;
 using Amazon.SQS;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Testcontainers.LocalStack;
 
 namespace InterBus.AmazonSqs.Tests;
 
@@ -13,52 +12,27 @@ namespace InterBus.AmazonSqs.Tests;
 /// Integration tests for <see cref="EventBridgeSchedulingProvider"/> using LocalStack.
 /// </summary>
 [TestFixture]
-public sealed class EventBridgeSchedulerTests
+public sealed class EventBridgeSchedulerTests() : LocalstackTestFixtureBase(_ => { })
 {
-    private static readonly LocalStackContainer? Container = TestHelpers.CreateLocalStackContainer();
-
-    private ServiceProvider _serviceProvider;
     private SnsSqsNaming _naming;
     private SnsSqsTopologyBuilder _topologyBuilder;
-    private string _queuePrefix;
-    private string _topicPrefix;
     private readonly List<(string ScheduleId, string GroupName)> _createdSchedules = [];
     private readonly List<string> _createdGroups = [];
 
-    private IAmazonSQS SqsClient => _serviceProvider.GetRequiredService<IAmazonSQS>();
+    private IAmazonSQS SqsClient => Provider.GetRequiredService<IAmazonSQS>();
 
     private IAmazonSimpleNotificationService SnsClient =>
-        _serviceProvider.GetRequiredService<IAmazonSimpleNotificationService>();
+        Provider.GetRequiredService<IAmazonSimpleNotificationService>();
 
-    private IAmazonScheduler SchedulerClient => _serviceProvider.GetRequiredService<IAmazonScheduler>();
+    private IAmazonScheduler SchedulerClient => Provider.GetRequiredService<IAmazonScheduler>();
 
     private static string TargetRoleArn =>
         Environment.GetEnvironmentVariable("INTERBUS_EVENTBRIDGE_TARGET_ROLE_ARN")
         ?? "arn:aws:iam::123456789012:role/eventbridge-role";
 
-    [OneTimeSetUp]
-    public static async Task OneTimeSetUp()
-    {
-        if (Container is not null)
-            await Container.StartAsync();
-    }
-
-    [OneTimeTearDown]
-    public static async Task OneTimeTearDown()
-    {
-        if (Container is not null)
-        {
-            await Container.StopAsync();
-            await Container.DisposeAsync();
-        }
-    }
-
     [SetUp]
     public void Setup()
     {
-        var runId = Guid.NewGuid().ToString("N")[..8];
-        _queuePrefix = $"q-{runId}-";
-        _topicPrefix = $"t-{runId}-";
         _createdSchedules.Clear();
         _createdGroups.Clear();
 
@@ -69,14 +43,14 @@ public sealed class EventBridgeSchedulerTests
         services.AddAWSService<IAmazonSimpleNotificationService>(awsOptions);
         services.AddAWSService<IAmazonSecurityTokenService>(awsOptions);
         services.AddAWSService<IAmazonScheduler>(awsOptions);
-        _serviceProvider = services.BuildServiceProvider();
+        Provider = services.BuildServiceProvider();
 
-        var transportOptions = new SnsSqsTransportOptions { QueuePrefix = _queuePrefix, TopicPrefix = _topicPrefix };
+        var transportOptions = new SnsSqsTransportOptions { QueuePrefix = QueuePrefix, TopicPrefix = TopicPrefix };
         _naming = new SnsSqsNaming(transportOptions);
-        var logger = _serviceProvider.GetRequiredService<ILogger<SnsSqsTopologyBuilder>>();
+        var logger = Provider.GetRequiredService<ILogger<SnsSqsTopologyBuilder>>();
         _topologyBuilder = new SnsSqsTopologyBuilder(
             SnsClient, SqsClient,
-            _serviceProvider.GetRequiredService<IAmazonSecurityTokenService>(),
+            Provider.GetRequiredService<IAmazonSecurityTokenService>(),
             _naming,
             transportOptions,
             new InterBusOptions(),
@@ -114,11 +88,6 @@ public sealed class EventBridgeSchedulerTests
                 /* best-effort cleanup */
             }
         }
-
-        await TestHelpers.CleanupResourcesByPrefixAsync(
-            SqsClient, SnsClient, _queuePrefix, _topicPrefix);
-
-        await _serviceProvider.DisposeAsync();
     }
 
     #region ScheduleAsync - creates EventBridge schedule

@@ -10,6 +10,6 @@
         <PackageReference Include="System.IO.Hashing" Version="10.0.12" />
     </ItemGroup>
     <ItemGroup>
-        <ProjectReference Include="..\InterBus\InterBus.csproj" />
+        <ProjectReference Include="..\InterBus\InterBus.csproj"/>
     </ItemGroup>
 </Project>

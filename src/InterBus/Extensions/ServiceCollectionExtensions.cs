@@ -2,6 +2,7 @@ using System.Diagnostics.CodeAnalysis;
 using InterBus.Consuming;
 using InterBus.Dispatching;
 using InterBus.Internal;
+using InterBus.MessagePumps;
 using InterBus.Middleware;
 using InterBus.Middleware.Internal;
 using InterBus.Publishing;
@@ -59,6 +60,12 @@ public static class ServiceCollectionExtensions
 
             configure(builder);
 
+            if (services.Any(service => service.ServiceType == typeof(IConsumerSourceFactory)))
+            {
+                services.AddSingleton<PumpController>();
+                services.AddHostedService<PumpHost>();
+            }
+
             services.AddSingleton(options);
 
             // Register the default serialiser if the user has not supplied one via UseSerializer<T>()
@@ -68,6 +75,9 @@ public static class ServiceCollectionExtensions
             services.AddScoped<IMiddlewareFactory, MiddlewareFactory>();
             services.AddScoped<ConsumeContextAccessor>();
 
+            services.AddSingleton<Dispatcher>();
+            services.AddSingleton<DeliveryProcessor>();
+            
             services.AddScoped<DispatchPipelineExecutor>();
             services.AddScoped<ConsumePipelineExecutor>();
             services.AddScoped<PublishPipelineExecutor>();
@@ -76,7 +86,7 @@ public static class ServiceCollectionExtensions
             // Register the transport factory and the scoped publisher.
             services.AddSingleton<ITransportFactory, TransportFactory>();
             services.AddScoped<IPublisher, Publisher>();
-
+            
             // Register IRequestClient<,> as an open-generic scoped service.
             // Requires the transport to register IReplyEndpointFactory.
             services.AddScoped(typeof(IRequestClient<,>), typeof(RequestClient<,>));

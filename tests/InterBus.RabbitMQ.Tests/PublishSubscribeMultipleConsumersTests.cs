@@ -73,7 +73,7 @@ public class PublishSubscribeMultipleConsumersTests(string imageTag)
         var msg = new OrderPlaced(Guid.NewGuid(), "fan@out.test", 50m);
         await publisher.PublishAsync(msg, TestContext.CurrentContext.CancellationToken);
 
-        await TestHelpers.WaitUntilAsync(() => _orderTracker.Messages.Count == 1 && _auditTracker.Messages.Count == 1);
+        await WaitUntilAsync(() => _orderTracker.Messages.Count == 1 && _auditTracker.Messages.Count == 1);
 
         using (Assert.EnterMultipleScope())
         {
@@ -93,7 +93,7 @@ public class PublishSubscribeMultipleConsumersTests(string imageTag)
 
         await publisher.SendAsync<OrderPlacedConsumer, OrderPlaced>(msg, TestContext.CurrentContext.CancellationToken);
 
-        await TestHelpers.WaitUntilAsync(() => _orderTracker.Messages.Count == 1);
+        await WaitUntilAsync(() => _orderTracker.Messages.Count == 1);
 
         using (Assert.EnterMultipleScope())
         {

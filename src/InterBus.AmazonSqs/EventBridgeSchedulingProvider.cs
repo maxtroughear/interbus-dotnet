@@ -102,9 +102,9 @@ public sealed class EventBridgeSchedulingProvider(
         if (destination.Scheme == SqsTransport.QueueScheme)
         {
             var queueName = naming.BuildSqsQueueName(destination);
-            
+
             var queueUrl = await topology.ResolveQueueAsync(queueName, cancellationToken);
-            
+
             // if (!topology.QueueUrls.TryGetValue(queueName, out var queueUrl))
             //     throw new InvalidOperationException(
             //         $"Queue '{queueName}' has not been declared. Ensure the consumer for this queue " +

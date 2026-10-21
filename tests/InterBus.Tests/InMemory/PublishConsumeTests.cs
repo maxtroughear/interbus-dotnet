@@ -10,20 +10,6 @@ namespace InterBus.Tests.InMemory;
 public class PublishConsumeTests
 {
     /// <summary>
-    /// Polls <paramref name="condition"/> up to <paramref name="timeoutMs"/> milliseconds,
-    /// checking every <paramref name="intervalMs"/> milliseconds. Avoids hard-coded sleeps.
-    /// </summary>
-    private static async Task WaitUntilAsync(
-        Func<bool> condition,
-        int timeoutMs = 5000,
-        int intervalMs = 25)
-    {
-        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
-        while (!condition() && DateTime.UtcNow < deadline)
-            await Task.Delay(intervalMs);
-    }
-
-    /// <summary>
     /// Builds a DI container with the given consumer registrations and bus configuration,
     /// starts all hosted services, and returns the provider + CTS for cleanup.
     /// </summary>
@@ -83,7 +69,8 @@ public class PublishConsumeTests
             var msg = new OrderPlaced(Guid.NewGuid(), "test@example.com", 99.99m);
             await publisher.PublishAsync(msg, TestContext.Current.CancellationToken);
 
-            await WaitUntilAsync(() => tracker.Messages.Count == 1);
+            await WaitUntilAsync(() => tracker.Messages.Count == 1,
+                cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Single(tracker.Messages);
             Assert.Equal(msg.OrderId, tracker.Messages.Single().OrderId);
@@ -121,7 +108,8 @@ public class PublishConsumeTests
             await publisher.PublishAsync(msg, TestContext.Current.CancellationToken);
 
             // Both consumers should receive the message via topic fan-out.
-            await WaitUntilAsync(() => orderTracker.Messages.Count == 1 && auditTracker.Messages.Count == 1);
+            await WaitUntilAsync(() => orderTracker.Messages.Count == 1 && auditTracker.Messages.Count == 1,
+                cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Single(orderTracker.Messages);
             Assert.Equal(msg.OrderId, orderTracker.Messages.Single().OrderId);
@@ -162,7 +150,8 @@ public class PublishConsumeTests
             // Send directly to OrderPlacedConsumer only - AuditConsumer should NOT receive.
             await publisher.SendAsync<OrderPlacedConsumer, OrderPlaced>(msg, TestContext.Current.CancellationToken);
 
-            await WaitUntilAsync(() => orderTracker.Messages.Count == 1);
+            await WaitUntilAsync(() => orderTracker.Messages.Count == 1,
+                cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Single(orderTracker.Messages);
             Assert.Equal(msg.OrderId, orderTracker.Messages.Single().OrderId);
@@ -203,7 +192,8 @@ public class PublishConsumeTests
 
             // Both explicitly registered consumers should receive.
             await WaitUntilAsync(() =>
-                orderTracker.Messages.Count == 1 && auditTracker.Messages.Count == 1);
+                    orderTracker.Messages.Count == 1 && auditTracker.Messages.Count == 1,
+                cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Single(orderTracker.Messages);
             Assert.Equal(msg.OrderId, orderTracker.Messages.Single().OrderId);
@@ -224,8 +214,8 @@ public class PublishConsumeTests
     [Fact]
     public async Task MultiTypeConsumer_SingleQueue_ReceivesBothMessageTypes()
     {
-        var orderTracker = new MultiTypeOrderPlacedTracker();
-        var shippedTracker = new MultiTypeOrderShippedTracker();
+        var orderTracker = new OrderPlacedTracker();
+        var shippedTracker = new OrderShippedTracker();
         InterBusOptions? capturedOptions = null;
 
         var (provider, cts) = await StartAsync(
@@ -258,7 +248,8 @@ public class PublishConsumeTests
             await publisher.PublishAsync(shippedMsg, TestContext.Current.CancellationToken);
 
             await WaitUntilAsync(() =>
-                orderTracker.Messages.Count == 1 && shippedTracker.Messages.Count == 1);
+                    orderTracker.Messages.Count == 1 && shippedTracker.Messages.Count == 1,
+                cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Single(orderTracker.Messages);
             Assert.Equal(orderMsg.OrderId, orderTracker.Messages.Single().OrderId);

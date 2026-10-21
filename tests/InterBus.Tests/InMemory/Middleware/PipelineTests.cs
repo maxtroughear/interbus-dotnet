@@ -1,12 +1,12 @@
-using System.Collections.Concurrent;
-using InterBus.Consuming;
-using InterBus.Extensions;
 using InterBus.Generated;
+using System.Collections.Concurrent;
+using InterBus.Extensions;
 using InterBus.InMemory.Extensions;
-using InterBus.Publishing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Xunit;
+using InterBus.Consuming;
+using InterBus.Publishing;
 
 namespace InterBus.Tests.InMemory.Middleware;
 
@@ -15,20 +15,6 @@ namespace InterBus.Tests.InMemory.Middleware;
 /// </summary>
 public class PipelineTests
 {
-    /// <summary>
-    /// Polls <paramref name="condition"/> up to <paramref name="timeoutMs"/> milliseconds,
-    /// checking every <paramref name="intervalMs"/> milliseconds.
-    /// </summary>
-    private static async Task WaitUntilAsync(
-        Func<bool> condition,
-        int timeoutMs = 5000,
-        int intervalMs = 25)
-    {
-        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
-        while (!condition() && DateTime.UtcNow < deadline)
-            await Task.Delay(intervalMs);
-    }
-
     private static async Task<(ServiceProvider Provider, CancellationTokenSource Cts)> StartAsync(
         Action<IServiceCollection> registerSingletons,
         Action<InterBusBuilder> configureBus)
@@ -122,7 +108,7 @@ public class PipelineTests
             var msg = new OrderPlaced(Guid.NewGuid(), "pipeline@test.com", 10m);
             await publisher.PublishAsync(msg, TestContext.Current.CancellationToken);
 
-            await WaitUntilAsync(() => orderTracker.Messages.Count == 1);
+            await WaitUntilAsync(() => orderTracker.Messages.Count == 1, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Single(orderTracker.Messages);
             // Middleware recorded both before and after, confirming it wrapped the send.
@@ -163,7 +149,7 @@ public class PipelineTests
             var msg = new OrderPlaced(Guid.NewGuid(), "header@test.com", 5m);
             await publisher.PublishAsync(msg, TestContext.Current.CancellationToken);
 
-            await WaitUntilAsync(() => headerCapture.CapturedHeaders.Count == 1);
+            await WaitUntilAsync(() => headerCapture.CapturedHeaders.Count == 1, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.True(headerCapture.CapturedHeaders.Single().TryGetValue("x-middleware-ran", out var value));
             Assert.Equal("true", value);
@@ -246,7 +232,7 @@ public class PipelineTests
             var msg = new OrderPlaced(Guid.NewGuid(), "consume@test.com", 20m);
             await publisher.PublishAsync(msg, TestContext.Current.CancellationToken);
 
-            await WaitUntilAsync(() => orderTracker.Messages.Count >= 1);
+            await WaitUntilAsync(() => orderTracker.Messages.Count >= 1, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.True(consumeTracker.InvocationCount > 0);
         }
@@ -294,7 +280,7 @@ public class PipelineTests
             await publisher.SendAsync<OrderPlacedConsumer, OrderPlaced>(normalMsg,
                 TestContext.Current.CancellationToken);
 
-            await WaitUntilAsync(() => orderTracker.Messages.Count >= 1 && faultingCount.Count >= 1);
+            await WaitUntilAsync(() => orderTracker.Messages.Count >= 1 && faultingCount.Count >= 1, cancellationToken: TestContext.Current.CancellationToken);
 
             // The faulting consumer was called.
             Assert.True(faultingCount.Count >= 1);
@@ -342,7 +328,7 @@ public class PipelineTests
             var msg = new OrderPlaced(Guid.NewGuid(), "per-consumer@test.com", 10m);
             await publisher.PublishAsync(msg, TestContext.Current.CancellationToken);
 
-            await WaitUntilAsync(() => orderTracker.Messages.Count >= 1 && auditTracker.Messages.Count >= 1);
+            await WaitUntilAsync(() => orderTracker.Messages.Count >= 1 && auditTracker.Messages.Count >= 1, cancellationToken: TestContext.Current.CancellationToken);
 
             // Per-consumer middleware should have been invoked exactly once (for OrderPlacedConsumer).
             Assert.Equal(1, perConsumerTracker.InvocationCount);
@@ -383,7 +369,7 @@ public class PipelineTests
             var msg = new OrderPlaced(Guid.NewGuid(), "all-consumers@test.com", 5m);
             await publisher.PublishAsync(msg, TestContext.Current.CancellationToken);
 
-            await WaitUntilAsync(() => orderTracker.Messages.Count >= 1 && auditTracker.Messages.Count >= 1);
+            await WaitUntilAsync(() => orderTracker.Messages.Count >= 1 && auditTracker.Messages.Count >= 1, cancellationToken: TestContext.Current.CancellationToken);
 
             // Per-consumer middleware should have been invoked once per consumer (2 consumers → 2 invocations).
             Assert.Equal(2, perConsumerTracker.InvocationCount);

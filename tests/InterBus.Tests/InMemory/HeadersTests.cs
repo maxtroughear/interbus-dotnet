@@ -1,6 +1,6 @@
+using InterBus.Generated;
 using System.Collections.Concurrent;
 using InterBus.Extensions;
-using InterBus.Generated;
 using InterBus.InMemory.Extensions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -44,13 +44,6 @@ public class HeadersTests
 
         await provider.DisposeAsync();
         cts.Dispose();
-    }
-
-    private static async Task WaitUntilAsync(Func<bool> condition, int timeoutMs = 5000, int intervalMs = 25)
-    {
-        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
-        while (!condition() && DateTime.UtcNow < deadline)
-            await Task.Delay(intervalMs);
     }
 
     #region Helpers
@@ -110,7 +103,7 @@ public class HeadersTests
                 ctx.Headers["x-tenant"] = "acme";
             }, TestContext.Current.CancellationToken);
 
-            await WaitUntilAsync(() => headerCapture.Captured.Count == 1);
+            await WaitUntilAsync(() => headerCapture.Captured.Count == 1, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Single(headerCapture.Captured);
             var received = headerCapture.Captured.Single();
@@ -145,7 +138,7 @@ public class HeadersTests
             await publisher.SendAsync<HeaderAwareConsumer, OrderPlaced>(msg,
                 ctx => { ctx.Headers["x-source"] = "unit-test"; }, TestContext.Current.CancellationToken);
 
-            await WaitUntilAsync(() => headerCapture.Captured.Count == 1);
+            await WaitUntilAsync(() => headerCapture.Captured.Count == 1, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Single(headerCapture.Captured);
             Assert.Equal("unit-test", headerCapture.Captured.Single()["x-source"]);
@@ -187,7 +180,7 @@ public class HeadersTests
             await publisher.PublishAsync(msg, ctx => { ctx.Headers[InterBusHeaders.CorrelationId] = "corr-999"; },
                 TestContext.Current.CancellationToken);
 
-            await WaitUntilAsync(() => correlationIds.Count == 1);
+            await WaitUntilAsync(() => correlationIds.Count == 1, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Equal("corr-999", correlationIds.Single());
         }

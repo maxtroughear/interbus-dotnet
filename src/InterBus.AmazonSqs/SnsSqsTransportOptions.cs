@@ -35,7 +35,7 @@ public sealed class SnsSqsTransportOptions
     /// <see cref="LeaseRenewalInterval"/> intervals while the message is still being
     /// processed, preventing redelivery for long-running consumers.
     /// <para>
-    /// Defaults to <c>30</c> seconds. SQS accepts values from <c>0</c> to
+    /// Defaults to <c>30</c> seconds. Renewing consumers require values from <c>1</c> to
     /// <c>43200</c> seconds (12 hours); fractional seconds are truncated.
     /// </para>
     /// </summary>
@@ -141,4 +141,14 @@ public sealed class SnsSqsTransportOptions
     internal TimeSpan EffectiveLeaseRenewalInterval =>
         LeaseRenewalInterval
         ?? TimeSpan.FromSeconds(Math.Max(1.0, VisibilityTimeout.TotalSeconds / 2.0));
+    internal void Validate()
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(PrefetchCount);
+        if (ReceiveWaitTimeSeconds is < 0 or > 20)
+            throw new ArgumentOutOfRangeException(nameof(ReceiveWaitTimeSeconds));
+        if (VisibilityTimeout < TimeSpan.FromSeconds(1) || VisibilityTimeout > TimeSpan.FromHours(12))
+            throw new ArgumentOutOfRangeException(nameof(VisibilityTimeout));
+        if (EffectiveLeaseRenewalInterval <= TimeSpan.Zero || EffectiveLeaseRenewalInterval >= VisibilityTimeout)
+            throw new ArgumentOutOfRangeException(nameof(LeaseRenewalInterval));
+    }
 }

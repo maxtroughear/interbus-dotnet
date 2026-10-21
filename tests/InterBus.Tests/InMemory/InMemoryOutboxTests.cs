@@ -1,26 +1,16 @@
-using InterBus.Extensions;
 using InterBus.Generated;
+using InterBus.Extensions;
 using InterBus.InMemory.Extensions;
 using InterBus.Retry;
-using InterBus.Sending;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Xunit;
+using InterBus.Sending;
 
 namespace InterBus.Tests.InMemory;
 
 public class InMemoryOutboxTests
 {
-    private static async Task WaitUntilAsync(
-        Func<bool> condition,
-        int timeoutMs = 5000,
-        int intervalMs = 25)
-    {
-        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
-        while (!condition() && DateTime.UtcNow < deadline)
-            await Task.Delay(intervalMs);
-    }
-
     private static async Task<(ServiceProvider Provider, CancellationTokenSource Cts)> StartAsync(
         Action<IServiceCollection> registerSingletons,
         Action<InterBusBuilder> configureBus)
@@ -81,12 +71,12 @@ public class InMemoryOutboxTests
             var msg = new OrderPlaced(Guid.NewGuid(), "test@example.com", 99.99m);
             await publisher.PublishAsync(msg, TestContext.Current.CancellationToken);
 
-            await WaitUntilAsync(() => orderPlacedTracker.Messages.Count == 1);
+            await WaitUntilAsync(() => orderPlacedTracker.Messages.Count == 1, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Single(orderPlacedTracker.Messages);
             Assert.Equal(msg.OrderId, orderPlacedTracker.Messages.Single().OrderId);
 
-            await WaitUntilAsync(() => orderShippedTracker.Messages.Count == 1);
+            await WaitUntilAsync(() => orderShippedTracker.Messages.Count == 1, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Single(orderShippedTracker.Messages);
             Assert.Equal(msg.OrderId, orderShippedTracker.Messages.Single().OrderId);
@@ -138,7 +128,7 @@ public class InMemoryOutboxTests
 
             await publisher.PublishAsync(msg, TestContext.Current.CancellationToken);
 
-            await WaitUntilAsync(() => orderPlacedTracker.Messages.Count == 1);
+            await WaitUntilAsync(() => orderPlacedTracker.Messages.Count == 1, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Single(orderPlacedTracker.Messages);
             Assert.Equal(msg.OrderId, orderPlacedTracker.Messages.Single().OrderId);
@@ -151,7 +141,7 @@ public class InMemoryOutboxTests
 
             delayedController.Semaphore.Release();
 
-            await WaitUntilAsync(() => orderShippedTracker.Messages.Count == 1);
+            await WaitUntilAsync(() => orderShippedTracker.Messages.Count == 1, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Single(orderShippedTracker.Messages);
             Assert.Equal(msg.OrderId, orderShippedTracker.Messages.Single().OrderId);
@@ -199,19 +189,19 @@ public class InMemoryOutboxTests
 
             await publisher.PublishAsync(msg, TestContext.Current.CancellationToken);
 
-            await WaitUntilAsync(() => orderPlacedTracker.Messages.Count == 1);
+            await WaitUntilAsync(() => orderPlacedTracker.Messages.Count == 1, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Single(orderPlacedTracker.Messages);
             Assert.Equal(msg.OrderId, orderPlacedTracker.Messages.Single().OrderId);
 
-            await WaitUntilAsync(() => delayedController.Published);
+            await WaitUntilAsync(() => delayedController.Published, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Empty(orderShippedTracker.Messages);
 
             delayedController.ShouldFail = true;
             delayedController.Semaphore.Release();
 
-            await WaitUntilAsync(() => orderShippedTracker.Messages.Count == 1);
+            await WaitUntilAsync(() => orderShippedTracker.Messages.Count == 1, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Single(orderShippedTracker.Messages);
             Assert.Equal(msg.OrderId, orderShippedTracker.Messages.Single().OrderId);
@@ -260,18 +250,18 @@ public class InMemoryOutboxTests
 
             await publisher.PublishAsync(msg, TestContext.Current.CancellationToken);
 
-            await WaitUntilAsync(() => orderPlacedTracker.Messages.Count == 1);
+            await WaitUntilAsync(() => orderPlacedTracker.Messages.Count == 1, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Single(orderPlacedTracker.Messages);
             Assert.Equal(msg.OrderId, orderPlacedTracker.Messages.Single().OrderId);
 
-            await WaitUntilAsync(() => delayedController.Published);
+            await WaitUntilAsync(() => delayedController.Published, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Empty(orderShippedTracker.Messages);
 
             delayedController.Semaphore.Release();
 
-            await WaitUntilAsync(() => orderShippedTracker.Messages.Count == 1);
+            await WaitUntilAsync(() => orderShippedTracker.Messages.Count == 1, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Single(orderPlacedTracker.Messages);
             Assert.Single(orderShippedTracker.Messages);

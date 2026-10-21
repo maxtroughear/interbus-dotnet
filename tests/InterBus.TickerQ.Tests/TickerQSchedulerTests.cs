@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using InterBus.Extensions;
 using InterBus.InMemory.Extensions;
 using InterBus.TickerQ.Extensions;
@@ -8,6 +7,7 @@ using Microsoft.Extensions.Hosting;
 using TickerQ.DependencyInjection;
 using TickerQ.Utilities;
 using Xunit;
+using System.Collections.Concurrent;
 
 namespace InterBus.TickerQ.Tests;
 
@@ -55,7 +55,7 @@ public sealed class TickerQSchedulerTests
             await scheduler.SchedulePublishAsync(
                 message, DateTimeOffset.UtcNow.AddSeconds(-1), cts.Token);
 
-            await WaitUntilAsync(() => tracker.Messages.Count >= 1, timeoutMs: 5000);
+            await WaitUntilAsync(() => tracker.Messages.Count >= 1, timeoutMs: 5000, cancellationToken: TestContext.Current.CancellationToken);
 
             var delivered = Assert.Single(tracker.Messages);
             Assert.Equal(message.Id, delivered.Id);
@@ -78,13 +78,6 @@ public sealed class TickerQSchedulerTests
             await provider.DisposeAsync();
             cts.Dispose();
         }
-    }
-
-    private static async Task WaitUntilAsync(Func<bool> condition, int timeoutMs = 5000, int intervalMs = 25)
-    {
-        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
-        while (!condition() && DateTime.UtcNow < deadline)
-            await Task.Delay(intervalMs);
     }
 
     private sealed class MinimalHost(IServiceProvider services) : IHost

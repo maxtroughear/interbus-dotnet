@@ -27,7 +27,7 @@ public class DynamoDbSagaIntegrationTests : DynamoDbSagaTestFixtureBase
             var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
             await publisher.PublishAsync(new OrderStarted(orderId, "test@example.com"));
 
-            await TestHelpers.WaitUntilAsync(() =>
+            await WaitUntilAsync(() =>
             {
                 var repo = provider.GetRequiredService<ISagaRepository<OrderSaga, OrderSagaState>>();
                 return repo.GetAsync(orderId.ToString()).GetAwaiter().GetResult()?.State.MessageCount == 1;
@@ -65,11 +65,11 @@ public class DynamoDbSagaIntegrationTests : DynamoDbSagaTestFixtureBase
             await publisher.PublishAsync(new OrderStarted(orderId, "multi@example.com"));
             await publisher.PublishAsync(new OrderConfirmed(orderId));
 
-            await TestHelpers.WaitUntilAsync(() =>
+            await WaitUntilAsync(() =>
             {
                 var repo = provider.GetRequiredService<ISagaRepository<OrderSaga, OrderSagaState>>();
                 var entry = repo.GetAsync(orderId.ToString()).GetAwaiter().GetResult();
-                return entry?.State.MessageCount == 2 && entry.State.IsConfirmed;
+                return entry?.State is { MessageCount: 2, IsConfirmed: true };
             });
 
             var repository = provider.GetRequiredService<ISagaRepository<OrderSaga, OrderSagaState>>();
@@ -105,12 +105,12 @@ public class DynamoDbSagaIntegrationTests : DynamoDbSagaTestFixtureBase
 
             await publisher.PublishAsync(new OrderStarted(orderId, "del@example.com"));
 
-            await TestHelpers.WaitUntilAsync(() =>
+            await WaitUntilAsync(() =>
                 repository.GetAsync(orderId.ToString()).GetAwaiter().GetResult()?.State.MessageCount == 1);
 
             await publisher.PublishAsync(new OrderCancelled(orderId));
 
-            await TestHelpers.WaitUntilAsync(() =>
+            await WaitUntilAsync(() =>
                 repository.GetAsync(orderId.ToString()).GetAwaiter().GetResult() is null);
 
             var entry = await repository.GetAsync(orderId.ToString());
@@ -142,7 +142,7 @@ public class DynamoDbSagaIntegrationTests : DynamoDbSagaTestFixtureBase
             await publisher.PublishAsync(new OrderStarted(orderId, "complete@example.com"));
             await publisher.PublishAsync(new OrderConfirmed(orderId));
 
-            await TestHelpers.WaitUntilAsync(() =>
+            await WaitUntilAsync(() =>
             {
                 var repo = provider.GetRequiredService<ISagaRepository<CompletingOrderSaga, OrderSagaState>>();
                 var entry = repo.GetAsync(orderId.ToString()).GetAwaiter().GetResult();

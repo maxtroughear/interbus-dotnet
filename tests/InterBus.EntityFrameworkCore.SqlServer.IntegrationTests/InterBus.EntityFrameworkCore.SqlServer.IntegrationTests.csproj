@@ -23,13 +23,18 @@
         </PackageReference>
         <PackageReference Include="NUnit3TestAdapter" Version="6.3.0"/>
         <PackageReference Include="Testcontainers.MsSql" Version="4.15.0" />
+        <!-- Override SqlClient's vulnerable transitive dependency until its package dependency is updated -->
+        <PackageReference Include="System.Security.Cryptography.Pkcs" Version="9.0.21" />
     </ItemGroup>
 
     <ItemGroup>
+        <Using Include="InterBus.Tests.Common"/>
+        <Using Include="InterBus.Tests.Common.TestHelpers" Static="true"/>
         <Using Include="NUnit.Framework"/>
     </ItemGroup>
 
     <ItemGroup>
+        <ProjectReference Include="..\InterBus.Tests.Common\InterBus.Tests.Common.csproj"/>
         <ProjectReference Include="..\..\src\InterBus.EntityFrameworkCore\InterBus.EntityFrameworkCore.csproj"/>
         <ProjectReference Include="..\..\src\InterBus.SourceGenerator\InterBus.SourceGenerator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false"/>
     </ItemGroup>

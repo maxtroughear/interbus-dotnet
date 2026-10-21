@@ -25,7 +25,6 @@ public class ConcurrencyTests(string imageTag, PostgreSqlMessagePumpMode pumpMod
     {
         const int totalMessages = PublisherCount * MessagesPerPublisher;
         await TestContext.Progress.WriteLineAsync($"Starting load test: {TestContext.CurrentContext.Test.FullName}, {totalMessages} messages");
-        await using var progress = new PostgreSqlLoadProgress(Container.GetConnectionString(), () => OrderTracker.Messages.Count);
 
         // Partition messages across N publishers, so the test is scalable: change
         // PublisherCount / MessagesPerPublisher at the top of the class to adjust load.
@@ -55,7 +54,6 @@ public class ConcurrencyTests(string imageTag, PostgreSqlMessagePumpMode pumpMod
                 foreach (var message in batch)
                 {
                     await publisher.PublishAsync(message, ct);
-                    progress.Published();
                 }
 
                 await TestContext.Out.WriteLineAsync(

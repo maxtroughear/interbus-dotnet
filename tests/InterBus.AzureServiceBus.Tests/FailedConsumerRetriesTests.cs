@@ -13,7 +13,7 @@ public class FailedConsumerRetriesTests() : ServiceBusFixture(bus =>
 {
     private OrderPlacedTracker Tracker => Provider.GetRequiredService<OrderPlacedTracker>();
     private ReceiveTracker ReceiveTracker => Provider.GetRequiredService<ReceiveTracker>();
-    
+
     [Test]
     public async Task FailedConsumer_MessageIsMovedToDeadLetterQueue()
     {
@@ -47,23 +47,5 @@ public class FailedConsumerRetriesTests() : ServiceBusFixture(bus =>
             queueName,
             new ServiceBusReceiverOptions { SubQueue = SubQueue.DeadLetter });
         return await receiver.ReceiveMessageAsync(TimeSpan.FromMilliseconds(100));
-    }
-}
-
-/// <summary>Tracks how many times a consumer was invoked regardless of outcome.</summary>
-public sealed class ReceiveTracker
-{
-    private int _count;
-    public int Count => _count;
-    public void Increment() => Interlocked.Increment(ref _count);
-}
-
-public sealed class DeadLetterOrderPlacedConsumer(ReceiveTracker receiveTracker)
-    : IConsumer<OrderPlaced>
-{
-    public Task Consume(OrderPlaced message, IConsumeContext context, CancellationToken cancellationToken = default)
-    {
-        receiveTracker.Increment();
-        throw new InvalidOperationException("Simulated dead-letter failure");
     }
 }

@@ -1,7 +1,6 @@
-using System.Collections.Concurrent;
+using InterBus.Generated;
 using Microsoft.Extensions.Logging;
 using InterBus.Extensions;
-using InterBus.Generated;
 using InterBus.MessagePumps;
 using InterBus.RabbitMQ.Extensions;
 using Microsoft.Extensions.DependencyInjection;
@@ -11,7 +10,7 @@ using Testcontainers.RabbitMq;
 namespace InterBus.RabbitMQ.Tests;
 
 [TestFixture]
-public class ManagedShutdownTests
+public partial class ManagedShutdownTests
 {
     [TestCase(false)]
     [TestCase(true)]
@@ -117,42 +116,5 @@ public class ManagedShutdownTests
             Assert.That(gate.Tokens.All(token => token.IsCancellationRequested), Is.True);
         }
         finally { gate.Release.TrySetResult(); }
-    }
-
-    private sealed class CaptureLog : ILoggerProvider, ILogger
-    {
-        public ConcurrentQueue<string> Messages { get; } = new();
-        public ILogger CreateLogger(string categoryName) => this;
-        public bool IsEnabled(LogLevel level) => true;
-        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
-        public void Log<TState>(LogLevel level, EventId id, TState state, Exception? exception, Func<TState, Exception?, string> formatter) =>
-            Messages.Enqueue(formatter(state, exception));
-        public void Dispose() { }
-    }
-
-    public sealed class Gate
-    {
-        public int Active, Maximum;
-        public ConcurrentDictionary<Guid, int> Received { get; } = new();
-        public ConcurrentQueue<CancellationToken> Tokens { get; } = new();
-        public TaskCompletionSource AllReceived { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    }
-    public sealed class BlockingConsumer(Gate gate) : IConsumer<OrderPlaced>
-    {
-        public async Task Consume(OrderPlaced message, IConsumeContext context, CancellationToken cancellationToken = default)
-        {
-            var active = Interlocked.Increment(ref gate.Active);
-            int previous;
-            do { previous = Volatile.Read(ref gate.Maximum); if (previous >= active) break; }
-            while (Interlocked.CompareExchange(ref gate.Maximum, active, previous) != previous);
-            gate.Tokens.Enqueue(cancellationToken);
-            gate.Received.AddOrUpdate(message.OrderId, 1, (_, count) => count + 1);
-            if (gate.Received.Count == 6) gate.AllReceived.TrySetResult();
-            if (active == 2) gate.Entered.TrySetResult();
-            try { await gate.Release.Task.WaitAsync(cancellationToken); }
-            finally { Interlocked.Decrement(ref gate.Active); }
-        }
     }
 }

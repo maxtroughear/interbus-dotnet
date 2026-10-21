@@ -1,11 +1,10 @@
-using System.Collections.Concurrent;
+using InterBus.Generated;
 using System.Text.Json;
 using Amazon.SimpleNotificationService;
 using Amazon.SimpleNotificationService.Model;
 using Amazon.SQS;
 using Amazon.SQS.Model;
 using InterBus.AmazonSqs.Extensions;
-using InterBus.Generated;
 using Microsoft.Extensions.DependencyInjection;
 using SnsMessageAttributeValue = Amazon.SimpleNotificationService.Model.MessageAttributeValue;
 
@@ -135,7 +134,7 @@ public class SnsSerialisedMessageOnSqsTests() : LocalstackTestFixtureBase(bus =>
                 {
                     [InterBusHeaders.MessageType] = new() { DataType = "String", StringValue = messageType },
                     [InterBusHeaders.MessageId] = new()
-                        { DataType = "String", StringValue = Guid.NewGuid().ToString("N") },
+                    { DataType = "String", StringValue = Guid.NewGuid().ToString("N") },
                     ["x-custom"] = new() { DataType = "String", StringValue = customHeader },
                 },
             },
@@ -150,25 +149,5 @@ public class SnsSerialisedMessageOnSqsTests() : LocalstackTestFixtureBase(bus =>
             Assert.That(consumed.Headers["x-custom"], Is.EqualTo(customHeader));
             Assert.That(consumed.Headers[InterBusHeaders.MessageType], Is.EqualTo(messageType));
         }
-    }
-}
-
-public sealed class SnsSerialisedTracker
-{
-    private readonly ConcurrentBag<SnsSerialisedConsumedMessage> _messages = [];
-    public IReadOnlyCollection<SnsSerialisedConsumedMessage> Messages => _messages;
-
-    public void Track(OrderPlaced message, MessageHeaders headers) =>
-        _messages.Add(new SnsSerialisedConsumedMessage(message, headers));
-}
-
-public sealed record SnsSerialisedConsumedMessage(OrderPlaced Message, MessageHeaders Headers);
-
-public sealed class SnsSerialisedOrderPlacedConsumer(SnsSerialisedTracker tracker) : IConsumer<OrderPlaced>
-{
-    public Task Consume(OrderPlaced message, IConsumeContext context, CancellationToken cancellationToken = default)
-    {
-        tracker.Track(message, new MessageHeaders(context.Headers));
-        return Task.CompletedTask;
     }
 }

@@ -1,12 +1,12 @@
-using System.Diagnostics;
 using InterBus.Generated;
+using System.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace InterBus.PostgreSQL.Tests;
 
 [Category("Load")]
 [CancelAfter(600_000)]
-public class ConcurrencyTests(string imageTag, PostgreSqlMessagePumpMode pumpMode) : PostgreSqlFixtureBase(imageTag,
+public partial class ConcurrencyTests(string imageTag, PostgreSqlMessagePumpMode pumpMode) : PostgreSqlFixtureBase(imageTag,
     pumpMode, bus =>
     {
         bus.Services.AddSingleton<OrderPlacedTracker>();
@@ -78,15 +78,5 @@ public class ConcurrencyTests(string imageTag, PostgreSqlMessagePumpMode pumpMod
         Assert.That(
             OrderTracker.Messages.Select(m => m.OrderId),
             Is.EquivalentTo(allMessages.Select(m => m.OrderId)));
-    }
-
-    public sealed class ConcurrencyTestConsumer(OrderPlacedTracker tracker) : IConsumer<OrderPlaced>
-    {
-        public Task Consume(OrderPlaced message, IConsumeContext context,
-            CancellationToken cancellationToken = default)
-        {
-            tracker.Track(message);
-            return Task.CompletedTask;
-        }
     }
 }

@@ -1,6 +1,5 @@
 using InterBus.Consuming;
 using InterBus.MessagePumps;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Npgsql;
 
@@ -126,13 +125,4 @@ internal abstract class PostgreSqlConsumerSource(
         catch (OperationCanceledException) when (_listenerStop.IsCancellationRequested) { }
         finally { _listenerStop.Dispose(); }
     }
-}
-
-internal sealed class PostgreSqlConsumerSourceFactory(IServiceProvider provider, PostgreSqlTransportOptions options)
-    : IConsumerSourceFactory
-{
-    public IConsumerSource Create(ConsumerDescriptor descriptor) =>
-        options.MessagePumpMode == PostgreSqlMessagePumpMode.Lease
-            ? ActivatorUtilities.CreateInstance<PostgreSqlLeaseMessagePump>(provider, descriptor)
-            : ActivatorUtilities.CreateInstance<PostgreSqlTransactionalMessagePump>(provider, descriptor);
 }

@@ -1,7 +1,6 @@
+using InterBus.Generated;
 using System.Reflection;
 using System.Text.Json;
-using InterBus.Consuming;
-using InterBus.Generated;
 using InterBus.MessagePumps;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
@@ -9,7 +8,7 @@ using Npgsql;
 namespace InterBus.PostgreSQL.Tests;
 
 [TestFixtureSource(typeof(PostgreSqlVersions), nameof(PostgreSqlVersions.Transactional))]
-public class TransactionalNotificationTests(string imageTag, PostgreSqlMessagePumpMode mode) : PostgreSqlFixtureBase(
+public partial class TransactionalNotificationTests(string imageTag, PostgreSqlMessagePumpMode mode) : PostgreSqlFixtureBase(
     imageTag, mode, bus =>
     {
         bus.Services.AddSingleton<Gate>();
@@ -55,31 +54,5 @@ public class TransactionalNotificationTests(string imageTag, PostgreSqlMessagePu
         }
         finally { gate.Release.TrySetResult(); }
         await gate.Completed.Task.WaitAsync(TimeSpan.FromSeconds(5));
-    }
-
-    private sealed class RecordingFactory(IConsumerSourceFactory inner, Gate gate) : IConsumerSourceFactory
-    {
-        public IConsumerSource Create(ConsumerDescriptor descriptor) => gate.Source = inner.Create(descriptor);
-    }
-    public sealed class Gate
-    {
-        public IConsumerSource? Source;
-        public int Active, Finished;
-        public TaskCompletionSource AllEntered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        public TaskCompletionSource Completed { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    }
-    public sealed class BlockingConsumer(Gate gate) : IConsumer<OrderPlaced>
-    {
-        public async Task Consume(OrderPlaced message, IConsumeContext context, CancellationToken cancellationToken = default)
-        {
-            if (Interlocked.Increment(ref gate.Active) == 3) gate.AllEntered.TrySetResult();
-            try { await gate.Release.Task.WaitAsync(cancellationToken); }
-            finally
-            {
-                Interlocked.Decrement(ref gate.Active);
-                if (Interlocked.Increment(ref gate.Finished) == 3) gate.Completed.TrySetResult();
-            }
-        }
     }
 }

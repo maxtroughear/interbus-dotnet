@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using Hangfire;
 using InterBus.Extensions;
 using InterBus.Hangfire.Extensions;
@@ -12,7 +11,7 @@ namespace InterBus.Hangfire.Tests;
 /// <summary>
 /// Unit tests for <see cref="HangfireMessageScheduler"/> and <see cref="ScheduledDeliveryRequest"/>.
 /// </summary>
-public sealed class HangfireSchedulerTests
+public sealed partial class HangfireSchedulerTests
 {
     [Fact]
     public async Task SchedulePublishAsync_MessageIsConsumed_UsingHangfireInMemoryStorage()
@@ -73,26 +72,6 @@ public sealed class HangfireSchedulerTests
 
             await provider.DisposeAsync();
             cts.Dispose();
-        }
-    }
-
-    internal record IntegrationMessage(Guid Id, string Payload);
-
-    internal sealed class IntegrationMessageTracker
-    {
-        private readonly ConcurrentBag<IntegrationMessage> _messages = [];
-        public IReadOnlyCollection<IntegrationMessage> Messages => _messages;
-        public void Track(IntegrationMessage msg) => _messages.Add(msg);
-    }
-
-    internal sealed class IntegrationMessageConsumer(IntegrationMessageTracker tracker)
-        : IConsumer<IntegrationMessage>
-    {
-        public Task Consume(IntegrationMessage message, IConsumeContext context,
-            CancellationToken cancellationToken = default)
-        {
-            tracker.Track(message);
-            return Task.CompletedTask;
         }
     }
 }

@@ -1,7 +1,6 @@
-using Amazon.DynamoDBv2.Model;
+using InterBus.Generated;
 using InterBus.DynamoDB.Extensions;
 using InterBus.DynamoDB.Outbox;
-using InterBus.Generated;
 using InterBus.InMemory.Extensions;
 using InterBus.Sagas;
 using Microsoft.Extensions.DependencyInjection;
@@ -10,7 +9,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 namespace InterBus.DynamoDB.Tests;
 
 [TestFixture]
-public class DynamoDbSagaOutboxIntegrationTests : DynamoDbSagaTestFixtureBase
+public partial class DynamoDbSagaOutboxIntegrationTests : DynamoDbSagaTestFixtureBase
 {
     private string _outboxTableName = string.Empty;
 
@@ -160,21 +159,6 @@ public class DynamoDbSagaOutboxIntegrationTests : DynamoDbSagaTestFixtureBase
         finally
         {
             await StopBusAsync(provider, cts);
-        }
-    }
-
-    private class FailingOutboxContext : IDynamoDbOutboxContext
-    {
-        internal List<TransactWriteItem> Items { get; } = [];
-
-        public void AddTransactItem(TransactWriteItem item)
-        {
-            Items.Add(item);
-        }
-
-        public Task CommitAsync(CancellationToken cancellationToken = default)
-        {
-            throw new TimeoutException("Outbox commit timed out");
         }
     }
 }

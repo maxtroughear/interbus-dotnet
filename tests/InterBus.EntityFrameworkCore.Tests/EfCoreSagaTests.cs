@@ -1,7 +1,6 @@
-using InterBus.EntityFrameworkCore.Extensions;
-using InterBus.EntityFrameworkCore.Sagas;
-using InterBus.Extensions;
 using InterBus.Generated;
+using InterBus.EntityFrameworkCore.Extensions;
+using InterBus.Extensions;
 using InterBus.InMemory.Extensions;
 using InterBus.Sagas;
 using Microsoft.Data.Sqlite;
@@ -11,117 +10,6 @@ using Microsoft.Extensions.Hosting;
 using Xunit;
 
 namespace InterBus.EntityFrameworkCore.Tests;
-
-// ---------------------------------------------------------------------------
-// Saga-specific messages (separate from outbox test messages to avoid conflicts)
-// ---------------------------------------------------------------------------
-
-public record EfSagaOrderStarted(Guid OrderId, string CustomerEmail);
-
-public record EfSagaOrderConfirmed(Guid OrderId);
-
-public record EfSagaOrderCancelled(Guid OrderId);
-
-// ---------------------------------------------------------------------------
-// Saga state
-// ---------------------------------------------------------------------------
-
-public sealed class EfSagaOrderState
-{
-    public string? CustomerEmail { get; set; }
-    public bool IsConfirmed { get; set; }
-    public bool IsCancelled { get; set; }
-    public int MessageCount { get; set; }
-}
-
-// ---------------------------------------------------------------------------
-// Saga implementations
-// ---------------------------------------------------------------------------
-
-public sealed class EfSagaOrderSaga :
-    ISagaConsumer<EfSagaOrderState, EfSagaOrderStarted>,
-    ISagaConsumer<EfSagaOrderState, EfSagaOrderConfirmed>
-{
-    public string GetCorrelationId(EfSagaOrderStarted message) => message.OrderId.ToString();
-    public string GetCorrelationId(EfSagaOrderConfirmed message) => message.OrderId.ToString();
-
-    public Task Consume(EfSagaOrderStarted message, ISagaContext<EfSagaOrderState> context,
-        CancellationToken cancellationToken = default)
-    {
-        context.State.CustomerEmail = message.CustomerEmail;
-        context.State.MessageCount++;
-        return Task.CompletedTask;
-    }
-
-    public Task Consume(EfSagaOrderConfirmed message, ISagaContext<EfSagaOrderState> context,
-        CancellationToken cancellationToken = default)
-    {
-        context.State.IsConfirmed = true;
-        context.State.MessageCount++;
-        return Task.CompletedTask;
-    }
-}
-
-public sealed class EfSagaOrderWithDeletionSaga :
-    ISagaConsumer<EfSagaOrderState, EfSagaOrderStarted>,
-    ISagaConsumer<EfSagaOrderState, EfSagaOrderCancelled>
-{
-    public string GetCorrelationId(EfSagaOrderStarted message) => message.OrderId.ToString();
-    public string GetCorrelationId(EfSagaOrderCancelled message) => message.OrderId.ToString();
-
-    public Task Consume(EfSagaOrderStarted message, ISagaContext<EfSagaOrderState> context,
-        CancellationToken cancellationToken = default)
-    {
-        context.State.CustomerEmail = message.CustomerEmail;
-        context.State.MessageCount++;
-        return Task.CompletedTask;
-    }
-
-    public Task Consume(EfSagaOrderCancelled message, ISagaContext<EfSagaOrderState> context,
-        CancellationToken cancellationToken = default)
-    {
-        context.State.IsCancelled = true;
-        context.Delete();
-        return Task.CompletedTask;
-    }
-}
-
-public sealed class EfSagaCompletingOrderSaga :
-    ISagaConsumer<EfSagaOrderState, EfSagaOrderStarted>,
-    ISagaConsumer<EfSagaOrderState, EfSagaOrderConfirmed>
-{
-    public string GetCorrelationId(EfSagaOrderStarted message) => message.OrderId.ToString();
-    public string GetCorrelationId(EfSagaOrderConfirmed message) => message.OrderId.ToString();
-
-    public Task Consume(EfSagaOrderStarted message, ISagaContext<EfSagaOrderState> context,
-        CancellationToken cancellationToken = default)
-    {
-        context.State.CustomerEmail = message.CustomerEmail;
-        context.State.MessageCount++;
-        return Task.CompletedTask;
-    }
-
-    public Task Consume(EfSagaOrderConfirmed message, ISagaContext<EfSagaOrderState> context,
-        CancellationToken cancellationToken = default)
-    {
-        context.State.MessageCount++;
-        context.Complete();
-        return Task.CompletedTask;
-    }
-}
-
-// ---------------------------------------------------------------------------
-// DbContext for saga tests
-// ---------------------------------------------------------------------------
-
-public sealed class SagaTestDbContext(DbContextOptions<SagaTestDbContext> options)
-    : DbContext(options)
-{
-    public DbSet<SagaStateEntry> SagaStateEntries => Set<SagaStateEntry>();
-
-    protected override void OnModelCreating(ModelBuilder modelBuilder) =>
-        modelBuilder.AddInterBusSagas();
-}
 
 /// <summary>
 /// Integration tests for the EF Core saga repository using SQLite in-memory.

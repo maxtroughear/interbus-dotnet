@@ -13,7 +13,7 @@ namespace InterBus.Consuming;
 /// is performed during message dispatch.
 /// </para>
 /// </summary>
-public sealed class ConsumerDescriptor(Type consumerType, Uri queue)
+public sealed partial class ConsumerDescriptor(Type consumerType, Uri queue)
 {
     private static readonly Func<DispatchContext, ConsumePipelineExecutor, IServiceProvider, CancellationToken, Task>
         MissingDispatchDelegate = MissingDispatch;
@@ -52,7 +52,7 @@ public sealed class ConsumerDescriptor(Type consumerType, Uri queue)
     /// Defaults to <c>1</c> (sequential dispatch).
     /// </summary>
     public int ConcurrencyCount { get; internal set; } = 1;
-    
+
     /// <summary>
     /// Buffered receive sources sharing one consumer concurrency limit and prefetch budget.
     /// Defaults to one. Transport-managed adapters reject values above one.
@@ -155,10 +155,5 @@ public sealed class ConsumerDescriptor(Type consumerType, Uri queue)
             return consumePipeline.ExecuteAsync(consumeContext, (ctx, _) => capture(ctx.Message), ct);
         };
         return descriptor;
-    }
-
-    /// <summary>Marker type used as the consumer type for temporary reply descriptors.</summary>
-    private sealed class ReplyEndpointConsumer
-    {
     }
 }

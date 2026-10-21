@@ -1,15 +1,14 @@
-using InterBus.Extensions;
 using InterBus.Generated;
+using InterBus.Extensions;
 using InterBus.InMemory.Extensions;
 using InterBus.Retry;
-using InterBus.Sending;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Xunit;
 
 namespace InterBus.Tests.InMemory;
 
-public class InMemoryOutboxTests
+public partial class InMemoryOutboxTests
 {
     private static async Task<(ServiceProvider Provider, CancellationTokenSource Cts)> StartAsync(
         Action<IServiceCollection> registerSingletons,
@@ -84,18 +83,6 @@ public class InMemoryOutboxTests
         finally
         {
             await StopAsync(provider, cts);
-        }
-    }
-
-    internal class OrderPlacedShippingConsumer(OrderPlacedTracker tracker, IPublisher publisher)
-        : IConsumer<OrderPlaced>
-    {
-        public async Task Consume(OrderPlaced message, IConsumeContext context,
-            CancellationToken cancellationToken = default)
-        {
-            tracker.Track(message);
-
-            await publisher.PublishAsync(new OrderShipped(message.OrderId, string.Empty), cancellationToken);
         }
     }
 
@@ -270,51 +257,6 @@ public class InMemoryOutboxTests
         finally
         {
             await StopAsync(provider, cts);
-        }
-    }
-
-    internal class DelayedConsumerController
-    {
-        internal SemaphoreSlim Semaphore { get; } = new(1);
-        internal bool Published { get; set; }
-        internal bool ShouldFail { get; set; }
-    }
-
-    internal class OrderPlacedDelayedShippingConsumer(
-        OrderPlacedTracker tracker,
-        DelayedConsumerController controller,
-        IPublisher publisher)
-        : IConsumer<OrderPlaced>
-    {
-        public async Task Consume(OrderPlaced message, IConsumeContext context,
-            CancellationToken cancellationToken = default)
-        {
-            await publisher.PublishAsync(new OrderShipped(message.OrderId, string.Empty), cancellationToken);
-
-            tracker.Track(message);
-            controller.Published = true;
-            await controller.Semaphore.WaitAsync(cancellationToken);
-            controller.Semaphore.Release();
-
-            if (controller.ShouldFail)
-            {
-                controller.ShouldFail = false;
-                throw new Exception("Simulated failure");
-            }
-        }
-    }
-
-    internal class SimulateFailure : ISendMiddleware
-    {
-        private bool _shouldFail = true;
-
-        public Task InvokeAsync(SendContext context, Func<SendContext, CancellationToken, Task> next,
-            CancellationToken cancellationToken = default)
-        {
-            if (!_shouldFail) return next(context, cancellationToken);
-
-            _shouldFail = false;
-            throw new Exception("Simulated failure");
         }
     }
 }

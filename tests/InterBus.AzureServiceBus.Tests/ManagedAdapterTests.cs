@@ -1,15 +1,12 @@
 using Azure.Messaging.ServiceBus;
-using Azure.Messaging.ServiceBus.Administration;
 using InterBus.Consuming;
 using InterBus.Dispatching;
-using InterBus.MessagePumps;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace InterBus.AzureServiceBus.Tests;
 
 [TestFixture]
-public class ManagedAdapterTests
+public partial class ManagedAdapterTests
 {
     [TestCase(DispatchResultKind.Success)]
     [TestCase(DispatchResultKind.Release)]
@@ -97,45 +94,5 @@ public class ManagedAdapterTests
         Assert.That(source.Failure.IsCompleted, Is.False);
         await intake.CancelAsync();
         await run;
-    }
-
-    private sealed class FakeAdmin : ServiceBusAdministrationClient;
-    private sealed class FakeClient(FakeProcessor processor) : ServiceBusClient
-    {
-        public override ValueTask DisposeAsync() => ValueTask.CompletedTask;
-        public override ServiceBusProcessor CreateProcessor(string queueName, ServiceBusProcessorOptions options)
-        {
-            Assert.That(options.AutoCompleteMessages, Is.False);
-            return processor;
-        }
-    }
-    private sealed class FakeProcessor : ServiceBusProcessor
-    {
-        public Task Active = Task.CompletedTask;
-        public bool Stopped;
-        public CancellationTokenSource? SdkStop;
-        public Task DeliverAsync(ProcessMessageEventArgs args) => OnProcessMessageAsync(args);
-        public Task ReportAsync(ProcessErrorEventArgs args) => OnProcessErrorAsync(args);
-        public override Task StartProcessingAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
-        public override async Task StopProcessingAsync(CancellationToken cancellationToken = default)
-        { SdkStop?.Cancel(); await Active; Stopped = true; }
-        public override Task CloseAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
-    }
-    private sealed class FakeReceiver : ServiceBusReceiver
-    {
-        public bool LoseLock;
-        public DispatchResultKind? Outcome;
-        public override Task CompleteMessageAsync(ServiceBusReceivedMessage message, CancellationToken cancellationToken = default)
-        {
-            if (LoseLock) throw new ServiceBusException("lost", ServiceBusFailureReason.MessageLockLost);
-            Outcome = DispatchResultKind.Success; return Task.CompletedTask;
-        }
-        public override Task AbandonMessageAsync(ServiceBusReceivedMessage message,
-            IDictionary<string, object>? propertiesToModify = null, CancellationToken cancellationToken = default)
-        { Outcome = DispatchResultKind.Release; return Task.CompletedTask; }
-        public override Task DeadLetterMessageAsync(ServiceBusReceivedMessage message,
-            IDictionary<string, object>? propertiesToModify = null, string? deadLetterReason = null,
-            string? deadLetterErrorDescription = null, CancellationToken cancellationToken = default)
-        { Outcome = DispatchResultKind.DeadLetter; return Task.CompletedTask; }
     }
 }

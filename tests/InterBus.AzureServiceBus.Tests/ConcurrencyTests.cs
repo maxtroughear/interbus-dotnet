@@ -1,5 +1,5 @@
-using System.Diagnostics;
 using InterBus.Generated;
+using System.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace InterBus.AzureServiceBus.Tests;
@@ -77,6 +77,3 @@ public class ConcurrencyTests() : ServiceBusFixture(bus =>
             Is.EquivalentTo(allMessages.Select(m => m.OrderId)));
     }
 }
-
-public sealed class ConcurrencyTestConsumer(OrderPlacedTracker tracker)
-    : TrackingConsumer<OrderPlaced, OrderPlacedTracker>(tracker);

@@ -1,8 +1,6 @@
-using System.Collections.Concurrent;
-using InterBus.Extensions;
 using InterBus.Generated;
+using InterBus.Extensions;
 using InterBus.InMemory.Extensions;
-using InterBus.Retry;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Xunit;
@@ -153,73 +151,5 @@ public sealed class RedeliveryRetryIntegrationTests
         {
             await StopAsync(provider, cts);
         }
-    }
-}
-
-public sealed record RedeliveryTestMessage(Guid Id);
-
-public sealed class RedeliveryTracker
-{
-    private readonly ConcurrentDictionary<Guid, int> _attemptCounts = [];
-    private readonly ConcurrentBag<Guid> _successes = [];
-    private readonly ConcurrentBag<string?> _seenRetryHeaders = [];
-    private readonly ConcurrentBag<string?> _seenDelayRetryHeaders = [];
-
-    public IReadOnlyCollection<Guid> Successes => _successes;
-    public IReadOnlyCollection<string?> SeenRetryHeaders => _seenRetryHeaders;
-    public IReadOnlyCollection<string?> SeenDelayRetryHeaders => _seenDelayRetryHeaders;
-
-    public int GetAttemptCount(Guid messageId) => _attemptCounts.GetOrAdd(messageId, 0);
-
-    public int RecordAttempt(Guid messageId)
-    {
-        var updated = _attemptCounts.AddOrUpdate(messageId, 1, (_, count) => count + 1);
-        return updated;
-    }
-
-    public void RecordSuccess(Guid messageId) => _successes.Add(messageId);
-
-    public void RecordRetryHeader(IReadOnlyDictionary<string, string> headers)
-    {
-        headers.TryGetValue(RedeliveryImmediateConsumeMiddleware.RetryCountHeader, out var value);
-        _seenRetryHeaders.Add(value);
-    }
-
-    public void RecordDelayRetryHeader(IReadOnlyDictionary<string, string> headers)
-    {
-        headers.TryGetValue(RedeliveryDelayConsumeMiddleware.RetryCountHeader, out var value);
-        _seenDelayRetryHeaders.Add(value);
-    }
-}
-
-public sealed class RedeliveryTestConsumer(RedeliveryTracker tracker) : IConsumer<RedeliveryTestMessage>
-{
-    public Task Consume(RedeliveryTestMessage message, IConsumeContext context,
-        CancellationToken cancellationToken = default)
-    {
-        var attempt = tracker.RecordAttempt(message.Id);
-        tracker.RecordRetryHeader(context.Headers);
-
-        if (attempt == 1)
-            throw new InvalidOperationException("fail first attempt");
-
-        tracker.RecordSuccess(message.Id);
-        return Task.CompletedTask;
-    }
-}
-
-public sealed class RedeliveryDelayTestConsumer(RedeliveryTracker tracker) : IConsumer<RedeliveryTestMessage>
-{
-    public Task Consume(RedeliveryTestMessage message, IConsumeContext context,
-        CancellationToken cancellationToken = default)
-    {
-        var attempt = tracker.RecordAttempt(message.Id);
-        tracker.RecordDelayRetryHeader(context.Headers);
-
-        if (attempt == 1)
-            throw new InvalidOperationException("fail first attempt");
-
-        tracker.RecordSuccess(message.Id);
-        return Task.CompletedTask;
     }
 }

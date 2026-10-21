@@ -6,7 +6,7 @@ using Xunit;
 
 namespace InterBus.Tests.Resilience;
 
-public sealed class CircuitBreakerDispatchMiddlewareTests
+public sealed partial class CircuitBreakerDispatchMiddlewareTests
 {
     [Fact]
     public async Task CircuitBreaker_DoesNotTrip_BeforeMinimumThroughput()
@@ -146,6 +146,4 @@ public sealed class CircuitBreakerDispatchMiddlewareTests
         builder.UseCircuitBreakerMiddleware(configure);
         return services.BuildServiceProvider();
     }
-
-    private sealed class TestConsumer : IConsumer;
 }

@@ -4,7 +4,7 @@ using Npgsql;
 
 namespace InterBus.PostgreSQL.Tests;
 
-public class FailedConsumerRetriesTests(string imageTag, PostgreSqlMessagePumpMode pumpMode)
+public partial class FailedConsumerRetriesTests(string imageTag, PostgreSqlMessagePumpMode pumpMode)
     : PostgreSqlFixtureBase(imageTag, pumpMode, bus =>
     {
         bus.Services.AddSingleton<OrderPlacedTracker>();
@@ -41,14 +41,5 @@ public class FailedConsumerRetriesTests(string imageTag, PostgreSqlMessagePumpMo
     {
         await using var cmd = dataSource.CreateCommand("SELECT COUNT(*) FROM interbus.dead_letter_messages");
         return Convert.ToInt32(await cmd.ExecuteScalarAsync());
-    }
-
-    internal sealed class FailingOrderPlacedConsumer(OrderPlacedTracker tracker) : IConsumer<OrderPlaced>
-    {
-        public Task Consume(OrderPlaced message, IConsumeContext context, CancellationToken cancellationToken = default)
-        {
-            tracker.Track(message);
-            throw new InvalidOperationException("Simulated consumer failure");
-        }
     }
 }

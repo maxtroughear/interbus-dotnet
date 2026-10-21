@@ -1,7 +1,7 @@
+using InterBus.Generated;
 using InterBus.EntityFrameworkCore.Extensions;
 using InterBus.EntityFrameworkCore.LockProviders;
 using InterBus.Extensions;
-using InterBus.Generated;
 using InterBus.InMemory.Extensions;
 using InterBus.Sagas;
 using Microsoft.EntityFrameworkCore;
@@ -10,45 +10,6 @@ using Microsoft.Extensions.Hosting;
 using Testcontainers.MsSql;
 
 namespace InterBus.EntityFrameworkCore.SqlServer.IntegrationTests;
-
-// ---------------------------------------------------------------------------
-// Saga messages / state / sagas for SQL Server integration tests
-// ---------------------------------------------------------------------------
-
-public record SqlSagaOrderStarted(Guid OrderId, string CustomerEmail);
-
-public record SqlSagaOrderConfirmed(Guid OrderId);
-
-public sealed class SqlSagaOrderState
-{
-    public string? CustomerEmail { get; set; }
-    public bool IsConfirmed { get; set; }
-    public int MessageCount { get; set; }
-}
-
-public sealed class SqlSagaOrderSaga :
-    ISagaConsumer<SqlSagaOrderState, SqlSagaOrderStarted>,
-    ISagaConsumer<SqlSagaOrderState, SqlSagaOrderConfirmed>
-{
-    public string GetCorrelationId(SqlSagaOrderStarted message) => message.OrderId.ToString();
-    public string GetCorrelationId(SqlSagaOrderConfirmed message) => message.OrderId.ToString();
-
-    public Task Consume(SqlSagaOrderStarted message, ISagaContext<SqlSagaOrderState> context,
-        CancellationToken cancellationToken = default)
-    {
-        context.State.CustomerEmail = message.CustomerEmail;
-        context.State.MessageCount++;
-        return Task.CompletedTask;
-    }
-
-    public Task Consume(SqlSagaOrderConfirmed message, ISagaContext<SqlSagaOrderState> context,
-        CancellationToken cancellationToken = default)
-    {
-        context.State.IsConfirmed = true;
-        context.State.MessageCount++;
-        return Task.CompletedTask;
-    }
-}
 
 /// <summary>
 /// Integration tests for the EF Core saga repository using a real SQL Server database.

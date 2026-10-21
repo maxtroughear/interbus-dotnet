@@ -1,17 +1,10 @@
 using InterBus.Extensions;
-using InterBus.Transporting;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
 namespace InterBus.Tests;
 
-// Types used only by FifoConfigurationTests, defined at namespace level to avoid
-// source-generator accessibility issues with nested private types.
-public record FifoTestOrderPlaced(Guid OrderId, string CustomerId);
-
-public record FifoTestOrderShipped(Guid OrderId);
-
-public sealed class FifoConfigurationTests
+public sealed partial class FifoConfigurationTests
 {
     [Fact]
     public void ConfigureFifo_AddsTypeToFifoMessageTypes()
@@ -124,24 +117,5 @@ public sealed class FifoConfigurationTests
         Assert.NotNull(headers[InterBusHeaders.MessageGroupId]);
         Assert.Equal(headers[InterBusHeaders.CorrelationId],
             headers[InterBusHeaders.MessageGroupId]);
-    }
-
-    // ── Helpers ─────────────────────────────────────────────────────────────
-
-    internal sealed class FifoOrderConsumer : IConsumer<FifoTestOrderPlaced>
-    {
-        public Task Consume(FifoTestOrderPlaced message, IConsumeContext context,
-            CancellationToken cancellationToken = default) => Task.CompletedTask;
-    }
-
-    private sealed class HeaderCaptureTransport : ITransport
-    {
-        public MessageHeaders? LastHeaders { get; private set; }
-
-        public Task SendAsync(TransportSendContext context, CancellationToken cancellationToken)
-        {
-            LastHeaders = context.Headers;
-            return Task.CompletedTask;
-        }
     }
 }

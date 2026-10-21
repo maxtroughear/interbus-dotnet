@@ -4,7 +4,7 @@ using Npgsql;
 
 namespace InterBus.PostgreSQL.Tests;
 
-public class DeadLetteringTests(string imageTag, PostgreSqlMessagePumpMode pumpMode) : PostgreSqlFixtureBase(imageTag,
+public partial class DeadLetteringTests(string imageTag, PostgreSqlMessagePumpMode pumpMode) : PostgreSqlFixtureBase(imageTag,
     pumpMode, bus =>
     {
         bus.Services.AddSingleton<OrderPlacedTracker>();
@@ -63,20 +63,4 @@ public class DeadLetteringTests(string imageTag, PostgreSqlMessagePumpMode pumpM
             reader.GetFieldValue<DateTimeOffset>(3),
             reader.GetInt32(4));
     }
-
-    public sealed class DeadLetterOrderPlacedConsumer(OrderPlacedTracker tracker) : IConsumer<OrderPlaced>
-    {
-        public Task Consume(OrderPlaced message, IConsumeContext context, CancellationToken cancellationToken = default)
-        {
-            tracker.Track(message);
-            throw new InvalidOperationException("Simulated dead-letter failure");
-        }
-    }
-
-    private sealed record DeadLetterRow(
-        string QueueName,
-        string Reason,
-        string Error,
-        DateTimeOffset DeadLetteredAt,
-        int DeliveryCount);
 }

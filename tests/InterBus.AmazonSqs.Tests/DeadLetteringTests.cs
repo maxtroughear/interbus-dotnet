@@ -1,19 +1,19 @@
+using InterBus.Generated;
 using Amazon.SQS;
 using Amazon.SQS.Model;
-using InterBus.Generated;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace InterBus.AmazonSqs.Tests;
 
 [TestFixture]
-public class DeadLetteringTests() : LocalstackTestFixtureBase(bus =>
+public partial class DeadLetteringTests() : LocalstackTestFixtureBase(bus =>
 {
     bus.Services.AddSingleton(new ReceiveTracker());
     bus.AddConsumer<DeadLetterOrderPlacedConsumer>();
 })
 {
     private ReceiveTracker Tracker => Provider.GetRequiredService<ReceiveTracker>();
-    
+
     [Test]
     public async Task FailedConsumer_MessageIsMovedToDeadLetterQueueWithMetadata()
     {
@@ -59,21 +59,5 @@ public class DeadLetteringTests() : LocalstackTestFixtureBase(bus =>
         Assert.That(deadLetterMessage.MessageAttributes.ContainsKey(InterBusHeaders.DeadLetterError), Is.True);
         Assert.That(deadLetterMessage.MessageAttributes.ContainsKey(InterBusHeaders.DeadLetterTime), Is.True);
         Assert.That(Tracker.Count, Is.EqualTo(1));
-    }
-
-    public sealed class ReceiveTracker
-    {
-        private int _count;
-        public int Count => _count;
-        public void Increment() => Interlocked.Increment(ref _count);
-    }
-
-    public sealed class DeadLetterOrderPlacedConsumer(ReceiveTracker receiveTracker) : IConsumer<OrderPlaced>
-    {
-        public Task Consume(OrderPlaced message, IConsumeContext context, CancellationToken cancellationToken = default)
-        {
-            receiveTracker.Increment();
-            throw new InvalidOperationException("Simulated dead-letter failure");
-        }
     }
 }

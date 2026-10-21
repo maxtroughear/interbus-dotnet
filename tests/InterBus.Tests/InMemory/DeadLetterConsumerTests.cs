@@ -1,6 +1,6 @@
+using InterBus.Generated;
 using InterBus.DeadLettering;
 using InterBus.Extensions;
-using InterBus.Generated;
 using InterBus.InMemory.Extensions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -13,7 +13,7 @@ namespace InterBus.Tests.InMemory;
 /// <see cref="DeadLetter{T}"/> to the appropriate topic so application consumers
 /// can subscribe and process them.
 /// </summary>
-public class DeadLetterConsumerTests
+public partial class DeadLetterConsumerTests
 {
     private static async Task<(ServiceProvider Provider, CancellationTokenSource Cts)> StartAsync(
         Action<IServiceCollection> registerSingletons,
@@ -179,52 +179,6 @@ public class DeadLetterConsumerTests
         finally
         {
             await StopAsync(provider, cts);
-        }
-    }
-
-    // ---- Support types -------------------------------------------------------
-
-    public sealed class FaultingConsumerCallCount
-    {
-        private int _count;
-        public int Count => _count;
-        public void Increment() => Interlocked.Increment(ref _count);
-    }
-
-    /// <summary>Consumer that always throws, causing the message to be dead-lettered.</summary>
-    public sealed class FaultingOrderPlacedConsumer(FaultingConsumerCallCount count) : IConsumer<OrderPlaced>
-    {
-        public Task Consume(OrderPlaced message, IConsumeContext context, CancellationToken cancellationToken = default)
-        {
-            count.Increment();
-            throw new InvalidOperationException("Intentional failure for dead-letter test");
-        }
-    }
-
-    /// <summary>Consumer of <see cref="DeadLetter{T}"/> that itself always throws.</summary>
-    public sealed class FaultingDeadLetterConsumer(FaultingConsumerCallCount count)
-        : IConsumer<DeadLetter<OrderPlaced>>
-    {
-        public Task Consume(DeadLetter<OrderPlaced> message, IConsumeContext context,
-            CancellationToken cancellationToken = default)
-        {
-            count.Increment();
-            throw new InvalidOperationException("Intentional dead-letter consumer failure");
-        }
-    }
-
-    /// <summary>Tracks nested dead letters (should never be received).</summary>
-    public sealed class NestedDeadLetterTracker : MessageTracker<DeadLetter<DeadLetter<OrderPlaced>>>;
-
-    /// <summary>Consumer of <c>DeadLetter&lt;DeadLetter&lt;OrderPlaced&gt;&gt;</c> - should never be invoked.</summary>
-    public sealed class NestedDeadLetterConsumer(NestedDeadLetterTracker tracker)
-        : IConsumer<DeadLetter<DeadLetter<OrderPlaced>>>
-    {
-        public Task Consume(DeadLetter<DeadLetter<OrderPlaced>> message, IConsumeContext context,
-            CancellationToken cancellationToken = default)
-        {
-            tracker.Track(message);
-            return Task.CompletedTask;
         }
     }
 }

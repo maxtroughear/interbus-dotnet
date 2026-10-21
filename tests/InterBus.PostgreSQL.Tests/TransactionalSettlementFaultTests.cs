@@ -1,6 +1,5 @@
-using System.Collections.Concurrent;
-using InterBus.Extensions;
 using InterBus.Generated;
+using InterBus.Extensions;
 using InterBus.PostgreSQL.Extensions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -11,7 +10,7 @@ using Testcontainers.PostgreSql;
 namespace InterBus.PostgreSQL.Tests;
 
 [TestFixtureSource(typeof(PostgreSqlVersions), nameof(PostgreSqlVersions.Transactional))]
-public class TransactionalSettlementFaultTests(string imageTag, PostgreSqlMessagePumpMode mode)
+public partial class TransactionalSettlementFaultTests(string imageTag, PostgreSqlMessagePumpMode mode)
 {
     private readonly PostgreSqlContainer _container = new PostgreSqlBuilder(imageTag).Build();
     [OneTimeSetUp] public Task StartContainer() => _container.StartAsync();
@@ -30,9 +29,14 @@ public class TransactionalSettlementFaultTests(string imageTag, PostgreSqlMessag
         await using var proxy = new CommitResponseProxy(directSettings.Host!, directSettings.Port);
         var connectionSettings = new NpgsqlConnectionStringBuilder(directSettings.ConnectionString)
         {
-            Host = "127.0.0.1", Port = proxy.Port, SslMode = SslMode.Disable,
-            GssEncryptionMode = GssEncryptionMode.Disable, ApplicationName = applicationName,
-            MaxPoolSize = 8, Timeout = 5, CommandTimeout = 5
+            Host = "127.0.0.1",
+            Port = proxy.Port,
+            SslMode = SslMode.Disable,
+            GssEncryptionMode = GssEncryptionMode.Disable,
+            ApplicationName = applicationName,
+            MaxPoolSize = 8,
+            Timeout = 5,
+            CommandTimeout = 5
         };
         await using var dataSource = NpgsqlDataSource.Create(connectionSettings.ConnectionString);
         var state = new State(schema, fault);
@@ -142,48 +146,5 @@ public class TransactionalSettlementFaultTests(string imageTag, PostgreSqlMessag
     {
         await using var scope = provider.CreateAsyncScope();
         await scope.ServiceProvider.GetRequiredService<IPublisher>().PublishAsync(message);
-    }
-    public sealed class State(string schema, string fault)
-    {
-        public string Schema => schema;
-        public string Fault => fault;
-        public ConcurrentDictionary<Guid, int> Attempts { get; } = new();
-        public ConcurrentBag<long> TransactionIds { get; } = [];
-        public ConcurrentBag<IConsumeContext> Contexts { get; } = [];
-        public TaskCompletionSource<int> Claimed { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        public TaskCompletionSource Resume { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    }
-    public sealed class FaultConsumer(State state) : IConsumer<OrderPlaced>
-    {
-        public async Task Consume(OrderPlaced message, IConsumeContext context, CancellationToken cancellationToken = default)
-        {
-            var transaction = context.GetPostgreSqlTransaction() ?? throw new InvalidOperationException("Missing transaction");
-            var attempt = state.Attempts.AddOrUpdate(message.OrderId, 1, (_, count) => count + 1);
-            await using var command = transaction.Connection!.CreateCommand();
-            command.Transaction = transaction;
-            command.CommandText = "SELECT txid_current()";
-            state.TransactionIds.Add((long)(await command.ExecuteScalarAsync(cancellationToken))!);
-            command.CommandText = $"INSERT INTO {state.Schema}.ledger VALUES ($1, txid_current())";
-            command.Parameters.AddWithValue(message.OrderId);
-            await command.ExecuteNonQueryAsync(cancellationToken);
-            state.Contexts.Add(context);
-            if (state.Fault == "disconnect" && attempt == 1 && message.Total == 1)
-            {
-                state.Claimed.TrySetResult(transaction.Connection.ProcessID);
-                await state.Resume.Task.WaitAsync(cancellationToken);
-            }
-            if (!ReferenceEquals(transaction, context.GetPostgreSqlTransaction()))
-                throw new InvalidOperationException("Ambient transaction changed during dispatch");
-        }
-    }
-    private sealed class CaptureLog : ILoggerProvider, ILogger
-    {
-        public ConcurrentQueue<string> Messages { get; } = new();
-        public ILogger CreateLogger(string name) => this;
-        public bool IsEnabled(LogLevel level) => true;
-        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
-        public void Log<TState>(LogLevel level, EventId id, TState state, Exception? exception, Func<TState, Exception?, string> formatter) =>
-            Messages.Enqueue(formatter(state, exception));
-        public void Dispose() { }
     }
 }

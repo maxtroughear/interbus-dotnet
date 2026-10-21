@@ -1,11 +1,10 @@
-using System.Collections.Concurrent;
+using InterBus.Generated;
 using Amazon;
 using Amazon.Extensions.NETCore.Setup;
 using Amazon.Runtime;
 using Amazon.S3;
 using Amazon.S3.Model;
 using InterBus.Extensions;
-using InterBus.Generated;
 using InterBus.InMemory.Extensions;
 using InterBus.S3.Extensions;
 using Microsoft.Extensions.DependencyInjection;
@@ -14,36 +13,6 @@ using Testcontainers.LocalStack;
 
 namespace InterBus.S3.Tests;
 
-// ---------------------------------------------------------------------------
-// Message types
-// ---------------------------------------------------------------------------
-
-public record LargePayloadMessage(Guid MessageId, string Content);
-
-// ---------------------------------------------------------------------------
-// Trackers and consumers
-// ---------------------------------------------------------------------------
-
-public sealed class LargePayloadTracker
-{
-    private readonly ConcurrentBag<LargePayloadMessage> _messages = [];
-    public IReadOnlyCollection<LargePayloadMessage> Messages => _messages;
-    public void Track(LargePayloadMessage message) => _messages.Add(message);
-}
-
-public sealed class LargePayloadConsumer(LargePayloadTracker tracker) : IConsumer<LargePayloadMessage>
-{
-    public Task Consume(LargePayloadMessage message, IConsumeContext context,
-        CancellationToken cancellationToken = default)
-    {
-        tracker.Track(message);
-        return Task.CompletedTask;
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Test fixture
-// ---------------------------------------------------------------------------
 
 [TestFixture]
 public sealed class S3ClaimCheckTests

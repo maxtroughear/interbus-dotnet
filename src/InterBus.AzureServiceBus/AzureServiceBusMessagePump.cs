@@ -2,12 +2,11 @@ using Azure.Messaging.ServiceBus;
 using InterBus.Consuming;
 using InterBus.Dispatching;
 using InterBus.MessagePumps;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 namespace InterBus.AzureServiceBus;
 
-internal sealed class AzureServiceBusMessagePump(
+internal sealed partial class AzureServiceBusMessagePump(
     ConsumerDescriptor descriptor, AzureServiceBusClientProvider clientProvider,
     AzureServiceBusTransportOptions options, ILogger<AzureServiceBusMessagePump> logger) : IManagedSource
 {
@@ -140,31 +139,4 @@ internal sealed class AzureServiceBusMessagePump(
         if (_processor is not null) await _processor.DisposeAsync();
         if (_sessions is not null) await _sessions.DisposeAsync();
     }
-
-    private sealed class ServiceBusDelivery : IDelivery
-    {
-        private readonly Func<DispatchResult, CancellationToken, Task> _settle;
-        public ReadOnlyMemory<byte> Payload { get; }
-        public MessageHeaders Headers { get; } = new();
-        public ServiceBusDelivery(ServiceBusReceivedMessage message, Func<DispatchResult, CancellationToken, Task> settle)
-        {
-            Payload = message.Body.ToArray();
-            _settle = settle;
-            foreach (var (key, value) in message.ApplicationProperties)
-                if (value is not null) Headers[key] = value.ToString()!;
-        }
-        public async Task<bool> SettleAsync(DispatchResult result, CancellationToken cancellationToken)
-        {
-            try { await _settle(result, cancellationToken); return true; }
-            catch (ServiceBusException error) when (error.Reason is ServiceBusFailureReason.MessageLockLost or ServiceBusFailureReason.SessionLockLost)
-            { return false; }
-        }
-        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
-    }
-}
-
-internal sealed class AzureServiceBusSourceFactory(IServiceProvider provider) : IConsumerSourceFactory
-{
-    public IConsumerSource Create(ConsumerDescriptor descriptor) =>
-        ActivatorUtilities.CreateInstance<AzureServiceBusMessagePump>(provider, descriptor);
 }

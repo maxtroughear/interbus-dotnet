@@ -1,114 +1,13 @@
-using InterBus.Extensions;
 using InterBus.Generated;
+using InterBus.Extensions;
 using InterBus.InMemory.Extensions;
 using InterBus.Sagas;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Stateless;
 using Xunit;
 
 namespace InterBus.Stateless.Tests;
 
-// ---------------------------------------------------------------------------
-// State machine types
-// ---------------------------------------------------------------------------
-
-public enum TrafficLightState
-{
-    Red,
-    Green,
-    Yellow
-}
-
-public enum TrafficLightTrigger
-{
-    GoGreen,
-    GoYellow,
-    GoRed
-}
-
-// ---------------------------------------------------------------------------
-// Saga messages
-// ---------------------------------------------------------------------------
-
-public record TrafficLightCreated(Guid Id);
-
-public record TurnGreen(Guid Id);
-
-public record TurnYellow(Guid Id);
-
-public record TurnRed(Guid Id);
-
-// ---------------------------------------------------------------------------
-// Saga state
-// ---------------------------------------------------------------------------
-
-public sealed class TrafficLightSagaState : IStateMachineSagaState<TrafficLightState>
-{
-    public TrafficLightState CurrentState { get; set; } = TrafficLightState.Red;
-    public int TransitionCount { get; set; }
-}
-
-// ---------------------------------------------------------------------------
-// Saga
-// ---------------------------------------------------------------------------
-
-public sealed class TrafficLightSaga
-    : StatelessSaga<TrafficLightSagaState, TrafficLightState, TrafficLightTrigger>,
-        ISagaConsumer<TrafficLightSagaState, TrafficLightCreated>,
-        ISagaConsumer<TrafficLightSagaState, TurnGreen>,
-        ISagaConsumer<TrafficLightSagaState, TurnYellow>,
-        ISagaConsumer<TrafficLightSagaState, TurnRed>
-{
-    protected override void Configure(
-        StateMachine<TrafficLightState, TrafficLightTrigger> machine,
-        ISagaContext<TrafficLightSagaState> context)
-    {
-        machine.Configure(TrafficLightState.Red)
-            .Permit(TrafficLightTrigger.GoGreen, TrafficLightState.Green);
-
-        machine.Configure(TrafficLightState.Green)
-            .Permit(TrafficLightTrigger.GoYellow, TrafficLightState.Yellow);
-
-        machine.Configure(TrafficLightState.Yellow)
-            .Permit(TrafficLightTrigger.GoRed, TrafficLightState.Red)
-            .OnEntry(() => context.State.TransitionCount++);
-    }
-
-    public string GetCorrelationId(TrafficLightCreated message) => message.Id.ToString();
-    public string GetCorrelationId(TurnGreen message) => message.Id.ToString();
-    public string GetCorrelationId(TurnYellow message) => message.Id.ToString();
-    public string GetCorrelationId(TurnRed message) => message.Id.ToString();
-
-    public Task Consume(TrafficLightCreated message, ISagaContext<TrafficLightSagaState> context,
-        CancellationToken cancellationToken = default)
-        => Task.CompletedTask;
-
-    public async Task Consume(TurnGreen message, ISagaContext<TrafficLightSagaState> context,
-        CancellationToken cancellationToken = default)
-    {
-        var machine = await CreateStateMachineAsync(context);
-        await machine.FireAsync(TrafficLightTrigger.GoGreen);
-    }
-
-    public async Task Consume(TurnYellow message, ISagaContext<TrafficLightSagaState> context,
-        CancellationToken cancellationToken = default)
-    {
-        var machine = await CreateStateMachineAsync(context);
-        await machine.FireAsync(TrafficLightTrigger.GoYellow);
-    }
-
-    public async Task Consume(TurnRed message, ISagaContext<TrafficLightSagaState> context,
-        CancellationToken cancellationToken = default)
-    {
-        var machine = await CreateStateMachineAsync(context);
-        await machine.FireAsync(TrafficLightTrigger.GoRed);
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 public class StatelessSagaTests
 {

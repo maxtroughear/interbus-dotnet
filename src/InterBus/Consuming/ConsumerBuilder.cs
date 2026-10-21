@@ -9,50 +9,6 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace InterBus.Consuming;
 
-public class ConsumerBuilder<TConsumer>(ConsumerDescriptor descriptor, IServiceCollection services)
-    : ConsumerBuilder(descriptor, services)
-    where TConsumer : class, IConsumer
-{
-    public ConsumerBuilder<TConsumer> Consumes<TMessageConsumer, TMessage>()
-        where TMessageConsumer : class, TConsumer, IConsumer<TMessage>
-        where TMessage : class => Consumes<TMessageConsumer, TMessage>
-        (RoutingConventions.MessageTypeString(typeof(TMessage)));
-
-    public ConsumerBuilder<TConsumer> Consumes<TMessageConsumer, TMessage>(string messageTypeName)
-        where TMessageConsumer : class, TConsumer, IConsumer<TMessage>
-        where TMessage : class
-    {
-        Descriptor.MessageTypes.Add(typeof(TMessage));
-        Descriptor.SetRoute(messageTypeName,
-            static (context, pipeline, ct) => pipeline.ExecuteAsync<TMessageConsumer, TMessage>(context, ct));
-
-        Services.TryAddScoped<IConsumerExecutor<TMessageConsumer, TMessage>,
-            ConsumerExecutor<TMessageConsumer, TMessage>>();
-
-        return this;
-    }
-
-    public ConsumerBuilder<TConsumer> MessageTypeFromHeader(string headerName)
-    {
-        Descriptor.MessageTypeHeader = headerName;
-        return this;
-    }
-
-    public ConsumerBuilder<TConsumer> Dispatch(
-        Func<DispatchContext, ConsumePipelineExecutor, IServiceProvider, CancellationToken, Task> dispatch)
-    {
-        Descriptor.Dispatch = dispatch;
-        return this;
-    }
-
-    /// <inheritdoc cref="ConsumerBuilder.WithFifo"/>
-    public new ConsumerBuilder<TConsumer> WithFifo()
-    {
-        base.WithFifo();
-        return this;
-    }
-}
-
 /// <summary>
 /// Fluent builder for configuring a registered consumer.
 /// Obtained from
@@ -109,7 +65,7 @@ public class ConsumerBuilder(ConsumerDescriptor descriptor, IServiceCollection s
     /// </remarks>
     public ConsumerBuilder UseConsumeMiddleware<
         [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
-        TMiddleware>()
+    TMiddleware>()
         where TMiddleware : class, IConsumeMiddleware
     {
         services.AddKeyedScoped<IConsumeMiddleware, TMiddleware>(descriptor.ConsumerType);
@@ -125,7 +81,7 @@ public class ConsumerBuilder(ConsumerDescriptor descriptor, IServiceCollection s
     /// </remarks>
     public ConsumerBuilder UseSendMiddleware<
         [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
-        TMiddleware>()
+    TMiddleware>()
         where TMiddleware : class, ISendMiddleware
     {
         services.AddKeyedScoped<ISendMiddleware, TMiddleware>(descriptor.ConsumerType);
@@ -141,7 +97,7 @@ public class ConsumerBuilder(ConsumerDescriptor descriptor, IServiceCollection s
     /// </remarks>
     public ConsumerBuilder UsePublishMiddleware<
         [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
-        TMiddleware>()
+    TMiddleware>()
         where TMiddleware : class, IPublishMiddleware
     {
         services.AddKeyedScoped<IPublishMiddleware, TMiddleware>(descriptor.ConsumerType);
@@ -158,7 +114,7 @@ public class ConsumerBuilder(ConsumerDescriptor descriptor, IServiceCollection s
     /// </remarks>
     public ConsumerBuilder UseDispatchMiddleware<
         [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
-        TMiddleware>()
+    TMiddleware>()
         where TMiddleware : class, IDispatchMiddleware
     {
         services.AddKeyedScoped<IDispatchMiddleware, TMiddleware>(descriptor.ConsumerType);

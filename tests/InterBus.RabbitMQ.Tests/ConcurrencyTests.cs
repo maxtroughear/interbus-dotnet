@@ -1,6 +1,6 @@
+using InterBus.Generated;
 using System.Diagnostics;
 using InterBus.Extensions;
-using InterBus.Generated;
 using InterBus.RabbitMQ.Extensions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -124,15 +124,5 @@ public class ConcurrencyTests(string imageTag)
         Assert.That(
             _orderTracker.Messages.Select(m => m.OrderId),
             Is.EquivalentTo(allMessages.Select(m => m.OrderId)));
-    }
-}
-
-public sealed class ConcurrencyTestConsumer(OrderPlacedTracker tracker) : IConsumer<OrderPlaced>
-{
-    public async Task Consume(OrderPlaced message, IConsumeContext context,
-        CancellationToken cancellationToken = default)
-    {
-        tracker.Track(message);
-        await Task.Delay(Random.Shared.Next(1, 5), cancellationToken); // Simulate some work
     }
 }

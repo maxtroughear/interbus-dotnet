@@ -1,106 +1,16 @@
+using InterBus.Generated;
 using Amazon.DynamoDBv2;
 using Amazon.DynamoDBv2.Model;
 using InterBus.DynamoDB.Extensions;
 using InterBus.DynamoDB.Outbox;
 using InterBus.Extensions;
-using InterBus.Generated;
 using InterBus.InMemory.Extensions;
 using InterBus.Retry;
-using InterBus.Sending;
 using InterBus.Tests.Common;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
 namespace InterBus.DynamoDB.Tests;
-
-public sealed class OutboxConsumerExecutionTracker
-{
-    private int _count;
-    public int Count => _count;
-    public void Track() => Interlocked.Increment(ref _count);
-}
-
-public sealed class OutboxOrderPlacedConsumer(OrderPlacedTracker tracker)
-    : TrackingConsumer<OrderPlaced, OrderPlacedTracker>(tracker);
-
-public sealed class OutboxOrderPlacedPublishingConsumer(IDynamoDbOutboxContext outboxContext, IPublisher publisher)
-    : IConsumer<OrderPlaced>
-{
-    public async Task Consume(OrderPlaced message, IConsumeContext context,
-        CancellationToken cancellationToken = default)
-    {
-        await publisher.PublishAsync(new OrderShipped(message.OrderId, string.Empty), cancellationToken);
-        await outboxContext.CommitAsync(cancellationToken);
-    }
-}
-
-public sealed class OutboxOrderShippedConsumer(OrderShippedTracker tracker)
-    : TrackingConsumer<OrderShipped, OrderShippedTracker>(tracker);
-
-public sealed class OutboxInboxPublishingConsumer(
-    OutboxConsumerExecutionTracker executionTracker,
-    IPublisher publisher)
-    : IConsumer<OrderPlaced>
-{
-    public async Task Consume(OrderPlaced message, IConsumeContext context,
-        CancellationToken cancellationToken = default)
-    {
-        executionTracker.Track();
-        await publisher.PublishAsync(new OrderShipped(message.OrderId, string.Empty), cancellationToken);
-    }
-}
-
-public sealed class OutboxInboxExecutionOnlyConsumer(OutboxConsumerExecutionTracker executionTracker)
-    : IConsumer<OrderPlaced>
-{
-    public Task Consume(OrderPlaced message, IConsumeContext context,
-        CancellationToken cancellationToken = default)
-    {
-        executionTracker.Track();
-        return Task.CompletedTask;
-    }
-}
-
-public sealed class OutboxInboxFailFirstConsumer(
-    OutboxConsumerExecutionTracker executionTracker,
-    FailFirstConsumeState state)
-    : IConsumer<OrderPlaced>
-{
-    public Task Consume(OrderPlaced message, IConsumeContext context,
-        CancellationToken cancellationToken = default)
-    {
-        executionTracker.Track();
-        if (Interlocked.Increment(ref state.CallCount) == 1)
-            throw new Exception("Simulated consumer failure");
-
-        return Task.CompletedTask;
-    }
-}
-
-public sealed class FailFirstConsumeState
-{
-    public int CallCount;
-}
-
-internal sealed class FailFirstSendMiddleware(FailFirstSendState state) : ISendMiddleware
-{
-    public Task InvokeAsync(SendContext context, Func<SendContext, CancellationToken, Task> next,
-        CancellationToken cancellationToken = default)
-    {
-        if (!context.Destination.ToString().Contains(nameof(OrderShipped), StringComparison.OrdinalIgnoreCase))
-            return next(context, cancellationToken);
-
-        if (Interlocked.Increment(ref state.CallCount) == 1)
-            throw new Exception("Simulated send failure");
-
-        return next(context, cancellationToken);
-    }
-}
-
-internal sealed class FailFirstSendState
-{
-    public int CallCount;
-}
 
 [TestFixture]
 public class DynamoDbOutboxTests : DynamoDbTestFixtureBase
@@ -666,7 +576,7 @@ public class DynamoDbOutboxTests : DynamoDbTestFixtureBase
                 [DynamoDbInboxTable.MessageId] = new() { S = messageId },
                 [DynamoDbInboxTable.State] = new() { N = pendingOutboxState },
                 [DynamoDbInboxTable.CreatedAt] = new()
-                    { N = DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString() },
+                { N = DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString() },
             },
         }, CancellationToken.None);
 

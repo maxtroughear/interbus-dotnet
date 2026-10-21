@@ -1,5 +1,5 @@
-using System.Diagnostics;
 using InterBus.Generated;
+using System.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace InterBus.AmazonSqs.Tests;
@@ -18,7 +18,7 @@ public class ConcurrencyTests() : LocalstackTestFixtureBase(bus =>
     private const int MessagesPerPublisher = 1000;
 
     private OrderPlacedTracker Tracker => Provider.GetRequiredService<OrderPlacedTracker>();
-    
+
     [Test]
     public async Task LotsOfPublishedMessages_AllAreConsumed()
     {
@@ -75,15 +75,5 @@ public class ConcurrencyTests() : LocalstackTestFixtureBase(bus =>
         Assert.That(
             Tracker.Messages.Select(m => m.OrderId),
             Is.EquivalentTo(allMessages.Select(m => m.OrderId)));
-    }
-}
-
-public sealed class ConcurrencyTestConsumer(OrderPlacedTracker tracker) : IConsumer<OrderPlaced>
-{
-    public async Task Consume(OrderPlaced message, IConsumeContext context,
-        CancellationToken cancellationToken = default)
-    {
-        tracker.Track(message);
-        await Task.Delay(Random.Shared.Next(1, 5), cancellationToken); // Simulate some work
     }
 }

@@ -1,5 +1,4 @@
 using Azure.Messaging.ServiceBus;
-using Azure.Messaging.ServiceBus.Administration;
 using InterBus.Consuming;
 using InterBus.Dispatching;
 using InterBus.Extensions;
@@ -10,7 +9,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 namespace InterBus.AzureServiceBus.Tests;
 
 [TestFixture]
-public class SessionAdapterTests
+public partial class SessionAdapterTests
 {
     [TestCase(DispatchResultKind.Success)]
     [TestCase(DispatchResultKind.Release)]
@@ -137,62 +136,4 @@ public class SessionAdapterTests
     private static ProcessSessionMessageEventArgs Args(Receiver receiver, CancellationToken token) =>
         new(ServiceBusModelFactory.ServiceBusReceivedMessage(new BinaryData("body"), sessionId: "session"), receiver, token);
     private static TaskCompletionSource Signal() => new(TaskCreationOptions.RunContinuationsAsynchronously);
-    private sealed class Admin : ServiceBusAdministrationClient;
-    private sealed class Client(SessionProcessor processor) : ServiceBusClient
-    {
-        public override ValueTask DisposeAsync() => ValueTask.CompletedTask;
-        public override ServiceBusSessionProcessor CreateSessionProcessor(string queueName, ServiceBusSessionProcessorOptions options)
-        {
-            Assert.That(options.MaxConcurrentSessions, Is.EqualTo(2));
-            Assert.That(options.MaxConcurrentCallsPerSession, Is.EqualTo(1));
-            Assert.That(options.AutoCompleteMessages, Is.False);
-            Assert.That(options.MaxAutoLockRenewalDuration, Is.EqualTo(TimeSpan.FromHours(12)));
-            return processor;
-        }
-    }
-    private sealed class SessionProcessor : ServiceBusSessionProcessor
-    {
-        public Task Active = Task.CompletedTask;
-        public CancellationTokenSource? SdkStop;
-        public Exception? StartFailure;
-        public bool Closed;
-        public TaskCompletionSource Stopping { get; } = Signal();
-        private readonly ServiceBusClient _mockClient;
-        public SessionProcessor() : this(new ServiceBusClient(
-            "Endpoint=sb://unit-test.servicebus.windows.net/;SharedAccessKeyName=test;SharedAccessKey=dGVzdA==")) { }
-        private SessionProcessor(ServiceBusClient client) : base(client, "sessions", new ServiceBusSessionProcessorOptions())
-        { _mockClient = client; }
-        public Task DeliverAsync(ProcessSessionMessageEventArgs args) => OnProcessSessionMessageAsync(args);
-        public override Task StartProcessingAsync(CancellationToken cancellationToken = default) =>
-            StartFailure is null ? Task.CompletedTask : Task.FromException(StartFailure);
-        public override async Task StopProcessingAsync(CancellationToken cancellationToken = default)
-        { SdkStop?.Cancel(); Stopping.TrySetResult(); await Active; }
-        public override Task CloseAsync(CancellationToken cancellationToken = default)
-        {
-            Assert.That(Active.IsCompleted, Is.True);
-            Closed = true;
-            return _mockClient.DisposeAsync().AsTask();
-        }
-    }
-    private sealed class Receiver : ServiceBusSessionReceiver
-    {
-        public bool LostLock;
-        public int Calls;
-        public DispatchResultKind? Outcome;
-        public override string SessionId => "session";
-        private Task Settle(DispatchResultKind kind)
-        {
-            Calls++;
-            if (LostLock) throw new ServiceBusException("session lost", ServiceBusFailureReason.SessionLockLost);
-            Outcome = kind;
-            return Task.CompletedTask;
-        }
-        public override Task CompleteMessageAsync(ServiceBusReceivedMessage message, CancellationToken cancellationToken = default) =>
-            Settle(DispatchResultKind.Success);
-        public override Task AbandonMessageAsync(ServiceBusReceivedMessage message, IDictionary<string, object>? propertiesToModify = null,
-            CancellationToken cancellationToken = default) => Settle(DispatchResultKind.Release);
-        public override Task DeadLetterMessageAsync(ServiceBusReceivedMessage message, IDictionary<string, object>? propertiesToModify = null,
-            string? deadLetterReason = null, string? deadLetterErrorDescription = null, CancellationToken cancellationToken = default) =>
-            Settle(DispatchResultKind.DeadLetter);
-    }
 }

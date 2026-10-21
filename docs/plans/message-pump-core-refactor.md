@@ -1,6 +1,6 @@
 # Message pump core refactor
 
-Status: implementation plan. These contracts are proposed, not implemented.
+Status: implemented. See [validation results](message-pump-core-refactor-validation.md) and [adapter migration guidance](../docs/reference/message-pumps.md#breaking-api-migration).
 
 Follow-on: [message pump circuit breaker](message-pump-circuit-breaker.md), for [issue 210](https://github.com/maxtroughear/interbus-dotnet/issues/210).
 
@@ -18,11 +18,11 @@ Use three explicit source interfaces, without delegate-based source factories:
 
 PostgreSQL lease already implements `IBufferedSource`; this change replaces its transport-owned loop with one claim per iteration and adds configurable prefetch. Preserve its default prefetch of zero.
 
-## Proposed source contracts
+## Source contracts
 
 Retain `IConsumerSource` initialization, one-shot startup readiness, fatal background failure and asynchronous disposal. `IConsumerSourceFactory` still creates one source per descriptor. Update its documentation to describe all three execution models.
 
-The following signatures describe the intended contracts; complete XML documentation is part of implementation.
+The following signatures describe the implemented contracts; complete XML documentation is included in the public API.
 
 ```csharp
 public interface IBufferedPollingSource : IConsumerSource

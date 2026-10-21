@@ -6,6 +6,7 @@ namespace InterBus.MessagePumps;
 public sealed class PumpLifetime(ConsumerDescriptor consumer, IConsumerSource source, DeliveryProcessor processor)
     : IAsyncDisposable
 {
+    private readonly CallbackIntake? _callback = source is ICallbackSource callback ? new CallbackIntake(callback) : null;
     private readonly object _gate = new();
     private readonly CancellationTokenSource _intake = new();
     private readonly CancellationTokenSource _processing = new();
@@ -48,6 +49,15 @@ public sealed class PumpLifetime(ConsumerDescriptor consumer, IConsumerSource so
         using var initialization = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _intake.Token);
         try
         {
+            var models = (source is IBufferedPollingSource ? 1 : 0) + (source is IScopedPollingSource ? 1 : 0) + (source is ICallbackSource ? 1 : 0);
+            if (models != 1) throw new InvalidOperationException("Source must implement exactly one execution interface");
+            if (Consumer.ConcurrencyCount < 1 || Consumer.PumpCount < 1) throw new InvalidOperationException("Consumer concurrency and pump count must be positive");
+            if (source is not IBufferedPollingSource && Consumer.PumpCount != 1) throw new InvalidOperationException("Scoped and callback sources require PumpCount = 1");
+            if (source is IBufferedPollingSource settings)
+            {
+                if (settings.PrefetchCount < 0 || settings.MaxBatchSize < 1) throw new InvalidOperationException("Invalid polling capacity");
+                _ = checked(Consumer.ConcurrencyCount + settings.PrefetchCount);
+            }
             await source.InitializeAsync(initialization.Token);
             initialization.Token.ThrowIfCancellationRequested();
             runtimeStarted = true;
@@ -69,6 +79,7 @@ public sealed class PumpLifetime(ConsumerDescriptor consumer, IConsumerSource so
         }
         catch (Exception error)
         {
+            if (error is OperationCanceledException && Failure is not null) error = Failure;
             if (runtimeStarted)
             {
                 if (error is not OperationCanceledException || !initialization.IsCancellationRequested)
@@ -78,7 +89,8 @@ public sealed class PumpLifetime(ConsumerDescriptor consumer, IConsumerSource so
                 catch { /* Preserve startup failure; completion retains cleanup failures */ }
             }
             else await FinishAsync(error);
-            if (error is not OperationCanceledException || !_stopping) throw;
+            if (error is not OperationCanceledException || !_stopping)
+                System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(error).Throw();
         }
         finally
         {
@@ -90,6 +102,20 @@ public sealed class PumpLifetime(ConsumerDescriptor consumer, IConsumerSource so
         }
     }
 
+    /// <summary>Suspends SDK intake while retaining the lifetime and accepted processing.</summary>
+    public Task PauseAsync(CancellationToken operationToken = default) =>
+        _callback?.PauseAsync(operationToken) ?? throw new InvalidOperationException("Source does not use callbacks");
+
+    /// <summary>Resumes SDK intake unless terminal shutdown has begun.</summary>
+    public Task ResumeAsync(CancellationToken operationToken = default)
+    {
+        lock (_gate)
+        {
+            if (_stopping) throw new InvalidOperationException("Consumer is stopping");
+            return _callback?.ResumeAsync(operationToken) ?? throw new InvalidOperationException("Source does not use callbacks");
+        }
+    }
+
     private async Task SuperviseAsync()
     {
         Exception? failure = null;
@@ -98,8 +124,9 @@ public sealed class PumpLifetime(ConsumerDescriptor consumer, IConsumerSource so
             var runtime = new ConsumerRuntime(Consumer, processor, ReportFailure);
             await (source switch
             {
-                IBufferedSource buffered => runtime.RunAsync(buffered, _intake.Token, _processing.Token),
-                IManagedSource managed => runtime.RunAsync(managed, _intake.Token, _processing.Token),
+                IBufferedPollingSource buffered => runtime.RunAsync(buffered, _intake.Token, _processing.Token),
+                IScopedPollingSource scoped => runtime.RunAsync(scoped, _intake.Token, _processing.Token),
+                ICallbackSource callback => runtime.RunAsync(_callback!, _intake.Token, _processing.Token),
                 _ => throw new InvalidOperationException("Source must implement buffered or managed execution")
             });
             if (!_intake.IsCancellationRequested)
@@ -135,6 +162,7 @@ public sealed class PumpLifetime(ConsumerDescriptor consumer, IConsumerSource so
             _state = PumpState.Faulted;
             _fault.TrySetResult(error);
         }
+        _callback?.BeginStop();
         _intake.Cancel();
     }
 
@@ -170,6 +198,7 @@ public sealed class PumpLifetime(ConsumerDescriptor consumer, IConsumerSource so
     private async Task StopCoreAsync(CancellationToken cancellationToken)
     {
         _stopping = true;
+        _callback?.BeginStop();
         if (_state != PumpState.Faulted && _state != PumpState.Stopped) _state = PumpState.Stopping;
         var deadline = cancellationToken.Register(() => _processing.Cancel());
         try

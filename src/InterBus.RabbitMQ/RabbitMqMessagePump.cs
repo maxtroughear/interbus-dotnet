@@ -11,7 +11,7 @@ namespace InterBus.RabbitMQ;
 
 internal sealed class RabbitMqMessagePump(
     ConsumerDescriptor descriptor, RabbitMqConnectionProvider connectionProvider,
-    RabbitMqTransportOptions options, ILogger<RabbitMqMessagePump> logger) : IManagedSource
+    RabbitMqTransportOptions options, ILogger<RabbitMqMessagePump> logger) : ICallbackSource
 {
     private readonly ConsumerDescriptor _descriptor = descriptor;
     private IConnection? _connection;
@@ -53,13 +53,11 @@ internal sealed class RabbitMqMessagePump(
         };
     }
 
-    public async Task RunAsync(Func<IDelivery, CancellationToken, Task> process, CancellationToken intakeToken,
-        CancellationToken processingToken)
+    public async Task StartAsync(DeliveryHandler process, CancellationToken processingToken, CancellationToken operationToken)
     {
         var channel = _channel!;
-        var consumer = new AsyncEventingBasicConsumer(channel);
-        var unregistered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        consumer.UnregisteredAsync += (_, _) => { unregistered.TrySetResult(); return Task.CompletedTask; };
+        var consumer = _consumer = new AsyncEventingBasicConsumer(channel);
+        consumer.UnregisteredAsync += (_, _) => { _unregistered.TrySetResult(); return Task.CompletedTask; };
         consumer.ReceivedAsync += async (_, args) =>
         {
             lock (_gate) { if (_active++ == 0) _idle = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously); }
@@ -80,24 +78,35 @@ internal sealed class RabbitMqMessagePump(
                 finally { lock (_gate) { if (--_active == 0) _idle.TrySetResult(); } }
             }
         };
-        await channel.BasicConsumeAsync(_descriptor.QueueName, false, consumer, intakeToken);
+        await ResumeAsync(operationToken);
         _ready.TrySetResult();
-        try { await Task.Delay(Timeout.Infinite, intakeToken); }
-        catch (OperationCanceledException) when (intakeToken.IsCancellationRequested) { }
+    }
+
+    private AsyncEventingBasicConsumer? _consumer;
+    private TaskCompletionSource _unregistered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    public async Task ResumeAsync(CancellationToken operationToken)
+    {
+        _unregistered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        try { await _channel!.BasicConsumeAsync(_descriptor.QueueName, false, _consumer!, operationToken); }
+        catch (Exception error) { _failure.TrySetResult(error); throw; }
+    }
+
+    public async Task PauseAsync(CancellationToken operationToken)
+    {
+        if (_consumer is null) return;
+        try
+        {
+            var tags = _consumer.ConsumerTags.ToArray();
+            foreach (var activeTag in tags)
+                await _channel!.BasicCancelAsync(activeTag, cancellationToken: operationToken);
+            if (tags.Length != 0) await _unregistered.Task.WaitAsync(operationToken);
+        }
         finally
         {
-            try
-            {
-                foreach (var activeTag in consumer.ConsumerTags.ToArray())
-                    await channel.BasicCancelAsync(activeTag, cancellationToken: CancellationToken.None);
-                await unregistered.Task;
-            }
-            finally
-            {
-                Task idle;
-                lock (_gate) idle = _idle.Task;
-                await idle;
-            }
+            Task idle;
+            lock (_gate) idle = _idle.Task;
+            await idle.WaitAsync(operationToken);
         }
     }
 

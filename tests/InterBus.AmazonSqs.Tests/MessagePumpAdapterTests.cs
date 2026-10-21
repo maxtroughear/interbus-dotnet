@@ -17,7 +17,7 @@ using System.Collections.Concurrent;
 namespace InterBus.AmazonSqs.Tests;
 
 [TestFixture]
-public sealed class MessagePumpAdapterTests
+public sealed partial class MessagePumpAdapterTests
 {
     [TestCase(false)]
     [TestCase(true)]
@@ -118,17 +118,18 @@ public sealed class MessagePumpAdapterTests
         Assert.That(client.Deletes, Is.Zero);
     }
 
-    [Test]
-    public async Task BufferedDeliveries_RenewWhileConsumerIsBlocked()
+    [TestCase(1)]
+    [TestCase(10)]
+    public async Task BufferedDeliveries_RenewWhileConsumerIsBlocked(int responseBatchLimit)
     {
-        using var client = new FakeSqs();
+        using var client = new FakeSqs { ResponseBatchLimit = responseBatchLimit };
         var envelope = new SnsSqsMessageEnvelope();
         for (var i = 0; i < 4; i++)
             client.Messages.Enqueue(new Message { ReceiptHandle = i.ToString(), Body = envelope.SerializeForSnsPublish([], new MessageHeaders()) });
         var finish = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         await using var provider = Configure(client, async (_, _, _, ct) => await finish.Task.WaitAsync(ct), 1, 3);
         var descriptor = provider.GetRequiredService<InterBusOptions>().Consumers.Single();
-        await using var source = (IBufferedSource)provider.GetRequiredService<IConsumerSourceFactory>().Create(descriptor);
+        await using var source = (IBufferedPollingSource)provider.GetRequiredService<IConsumerSourceFactory>().Create(descriptor);
         await source.InitializeAsync(default);
         using var intake = new CancellationTokenSource();
         var run = new ConsumerRuntime(descriptor, provider.GetRequiredService<DeliveryProcessor>()).RunAsync(source, intake.Token, default);
@@ -136,6 +137,7 @@ public sealed class MessagePumpAdapterTests
         {
             await client.FourRenewed.Task.WaitAsync(TimeSpan.FromSeconds(5));
             Assert.That(client.Deletes, Is.Zero);
+            Assert.That(client.ReceiveCalls, Is.GreaterThanOrEqualTo((4 + responseBatchLimit - 1) / responseBatchLimit));
         }
         finally { await intake.CancelAsync(); finish.TrySetResult(); }
         await run.WaitAsync(TimeSpan.FromSeconds(5));
@@ -160,7 +162,7 @@ public sealed class MessagePumpAdapterTests
             return Task.CompletedTask;
         }, 2, 2);
         var descriptor = provider.GetRequiredService<InterBusOptions>().Consumers.Single();
-        await using var source = (IBufferedSource)provider.GetRequiredService<IConsumerSourceFactory>().Create(descriptor);
+        await using var source = (IBufferedPollingSource)provider.GetRequiredService<IConsumerSourceFactory>().Create(descriptor);
         await source.InitializeAsync(default);
         using var intake = new CancellationTokenSource();
         var run = new ConsumerRuntime(descriptor, provider.GetRequiredService<DeliveryProcessor>()).RunAsync(source, intake.Token, default);
@@ -227,7 +229,7 @@ public sealed class MessagePumpAdapterTests
             client.Messages.Enqueue(new Message { ReceiptHandle = i.ToString(), Body = envelope.SerializeForSnsPublish([], new MessageHeaders()) });
         await using var provider = Configure(client, (_, _, _, _) => throw new InvalidOperationException("Must not dispatch"), 2, 2);
         var descriptor = provider.GetRequiredService<InterBusOptions>().Consumers.Single();
-        await using var source = (IBufferedSource)provider.GetRequiredService<IConsumerSourceFactory>().Create(descriptor);
+        await using var source = (IBufferedPollingSource)provider.GetRequiredService<IConsumerSourceFactory>().Create(descriptor);
         await source.InitializeAsync(default);
         await new ConsumerRuntime(descriptor, provider.GetRequiredService<DeliveryProcessor>())
             .RunAsync(source, intake.Token, default).WaitAsync(TimeSpan.FromSeconds(5));
@@ -279,6 +281,17 @@ public sealed class MessagePumpAdapterTests
         public bool FailDelete, FailRenewal, FailSend;
         public SendMessageRequest? LastSend;
         public int Deletes, Renewals, ImmediateReleases;
+        public int ResponseBatchLimit = 10;
+        public int ReceiveCalls, Owned, MaximumOwned, ExpectedDeletes;
+        public TaskCompletionSource AllDeleted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TimeSpan ReceiveLatency;
+        private void TrackOwnership(int count)
+        {
+            var owned = Interlocked.Add(ref Owned, count);
+            int maximum;
+            do { maximum = Volatile.Read(ref MaximumOwned); if (maximum >= owned) return; }
+            while (Interlocked.CompareExchange(ref MaximumOwned, owned, maximum) != maximum);
+        }
         public CancellationTokenSource? CancelOnReceive;
         public string? BlockDeleteReceipt;
         public TaskCompletionSource DeleteBlocked { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -289,10 +302,13 @@ public sealed class MessagePumpAdapterTests
         public TaskCompletionSource Renewed { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public override async Task<ReceiveMessageResponse> ReceiveMessageAsync(ReceiveMessageRequest request, CancellationToken cancellationToken = default)
         {
+            Interlocked.Increment(ref ReceiveCalls);
+            if (ReceiveLatency > TimeSpan.Zero) await Task.Delay(ReceiveLatency, cancellationToken);
             var batch = new List<Message>();
-            while (batch.Count < request.MaxNumberOfMessages && Messages.TryDequeue(out var message)) batch.Add(message);
+            while (batch.Count < Math.Min(request.MaxNumberOfMessages ?? 1, ResponseBatchLimit) && Messages.TryDequeue(out var message)) batch.Add(message);
             if (batch.Count > 0)
             {
+                TrackOwnership(batch.Count);
                 CancelOnReceive?.Cancel();
                 return new ReceiveMessageResponse { Messages = batch };
             }
@@ -308,6 +324,8 @@ public sealed class MessagePumpAdapterTests
                 DeleteBlocked.TrySetResult();
                 await AllowDelete.Task.WaitAsync(cancellationToken);
             }
+            Interlocked.Decrement(ref Owned);
+            if (Volatile.Read(ref Deletes) == ExpectedDeletes) AllDeleted.TrySetResult();
             Deleted.TrySetResult();
             return new DeleteMessageResponse();
         }

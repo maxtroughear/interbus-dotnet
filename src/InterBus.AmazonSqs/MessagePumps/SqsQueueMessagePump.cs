@@ -14,7 +14,7 @@ internal sealed class SqsQueueMessagePump(
     SnsSqsTransportOptions options,
     ISnsSqsMessageEnvelope envelope,
     ILoggerFactory loggerFactory,
-    ILogger<SqsQueueMessagePump> logger) : IBufferedSource
+    ILogger<SqsQueueMessagePump> logger) : IBufferedPollingSource, IPollingRetryPolicy
 {
     private string _queueUrl = null!;
     private string _deadLetterQueueUrl = null!;
@@ -32,56 +32,60 @@ internal sealed class SqsQueueMessagePump(
     private async Task InitializeDeadLetterAsync(CancellationToken cancellationToken) =>
         _deadLetterQueueUrl = await topology.EnsureDeadLetterQueueAsync(descriptor.Queue, cancellationToken);
 
-    public async Task ReceiveAsync(DeliverySink sink, CancellationToken intakeToken)
+    public int MaxBatchSize => 10;
+    public TimeSpan? GetRetryDelay(Exception error, int attempt)
     {
-        while (!intakeToken.IsCancellationRequested)
+        if (error is not ReceiveException) return null;
+        logger.LogWarning(error.InnerException, "InterBus SQS: receive failed for {Queue}; retrying", _queueUrl);
+        return TimeSpan.FromSeconds(5);
+    }
+
+    public async Task<PollResult> ReceiveOnceAsync(ReceiveBatch batch, CancellationToken intakeToken)
+    {
+        var deliveries = new List<SqsPrefetchedMessage>();
+        try
         {
-            var reservations = new List<DeliverySink.Reservation> { await sink.ReserveAsync(intakeToken) };
-            var deliveries = new List<SqsPrefetchedMessage>();
+            ReceiveMessageResponse response;
             try
             {
-                while (reservations.Count < 10 && sink.TryReserve() is { } reservation)
-                    reservations.Add(reservation);
-                ReceiveMessageResponse response;
-                try
+                response = await sqsClient.ReceiveMessageAsync(new ReceiveMessageRequest
                 {
-                    response = await sqsClient.ReceiveMessageAsync(new ReceiveMessageRequest
-                    {
-                        QueueUrl = _queueUrl,
-                        MaxNumberOfMessages = reservations.Count,
-                        WaitTimeSeconds = options.ReceiveWaitTimeSeconds,
-                        VisibilityTimeout = (int)options.VisibilityTimeout.TotalSeconds,
-                        MessageAttributeNames = ["All"],
-                        MessageSystemAttributeNames = ["MessageGroupId", "MessageDeduplicationId"]
-                    }, intakeToken);
-                }
-                catch (OperationCanceledException) when (intakeToken.IsCancellationRequested) { throw; }
-                catch (Exception error)
-                {
-                    logger.LogWarning(error, "InterBus SQS: receive failed for {Queue}; retrying", _queueUrl);
-                    await Task.Delay(TimeSpan.FromSeconds(5), intakeToken);
-                    continue;
-                }
-
-                // Eager construction starts renewal for the entire batch before any handoff
-                foreach (var message in response.Messages ?? [])
-                    deliveries.Add(new SqsPrefetchedMessage(loggerFactory.CreateLogger<SqsPrefetchedMessage>(),
-                        sqsClient, options, message, _queueUrl, _deadLetterQueueUrl, envelope));
-                for (var i = 0; i < deliveries.Count; i++)
-                {
-                    intakeToken.ThrowIfCancellationRequested();
-                    reservations[i].Handoff(deliveries[i]);
-                    deliveries[i] = null!;
-                }
+                    QueueUrl = _queueUrl,
+                    MaxNumberOfMessages = batch.Capacity,
+                    WaitTimeSeconds = options.ReceiveWaitTimeSeconds,
+                    VisibilityTimeout = (int)options.VisibilityTimeout.TotalSeconds,
+                    MessageAttributeNames = ["All"],
+                    MessageSystemAttributeNames = ["MessageGroupId", "MessageDeduplicationId"]
+                }, intakeToken);
             }
-            finally
+            catch (OperationCanceledException) when (intakeToken.IsCancellationRequested) { throw; }
+            catch (Exception error) { throw new ReceiveException(error); }
+            // Start renewal for the entire response before handing any delivery to processing
+            foreach (var message in response.Messages ?? [])
+                deliveries.Add(new SqsPrefetchedMessage(loggerFactory.CreateLogger<SqsPrefetchedMessage>(),
+                    sqsClient, options, message, _queueUrl, _deadLetterQueueUrl, envelope));
+            for (var i = 0; i < deliveries.Count; i++)
             {
-                foreach (var delivery in deliveries)
-                    if (delivery is not null) await delivery.DisposeAsync();
-                foreach (var reservation in reservations) reservation.Dispose();
+                intakeToken.ThrowIfCancellationRequested();
+                batch.Transfer(deliveries[i]);
+                deliveries[i] = null!;
             }
+            return new PollResult(deliveries.Count != 0);
+        }
+        finally
+        {
+            List<Exception>? failures = null;
+            foreach (var delivery in deliveries)
+            {
+                if (delivery is null) continue;
+                try { await delivery.DisposeAsync(); }
+                catch (Exception error) { (failures ??= []).Add(error); }
+            }
+            if (failures is not null) throw new AggregateException("SQS batch cleanup failed", failures);
         }
     }
+
+    private sealed class ReceiveException(Exception error) : Exception("SQS receive failed", error);
 
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 }

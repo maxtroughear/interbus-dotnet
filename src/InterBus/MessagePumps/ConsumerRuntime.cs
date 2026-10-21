@@ -5,10 +5,13 @@ namespace InterBus.MessagePumps;
 /// <summary>Runs one consumer's shared processing limit and ownership budget across all receive pumps.</summary>
 public sealed class ConsumerRuntime(ConsumerDescriptor descriptor, DeliveryProcessor processor, Action<Exception>? reportFailure = null)
 {
+    internal Action<PollResult?, Exception?>? ObserveAcquisition { get; init; }
+
     /// <summary>Runs initialized sources until intake stops, then drains accepted deliveries using the processing token.</summary>
-    public async Task RunAsync(IBufferedSource source, CancellationToken intakeToken, CancellationToken processingToken)
+    public async Task RunAsync(IBufferedPollingSource source, CancellationToken intakeToken, CancellationToken processingToken)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(source.PrefetchCount);
+        ArgumentOutOfRangeException.ThrowIfLessThan(source.MaxBatchSize, 1);
         var sink = new DeliverySink(checked(descriptor.ConcurrencyCount + source.PrefetchCount));
         using var intake = CancellationTokenSource.CreateLinkedTokenSource(intakeToken);
         using var concurrency = new SemaphoreSlim(descriptor.ConcurrencyCount);
@@ -24,9 +27,14 @@ public sealed class ConsumerRuntime(ConsumerDescriptor descriptor, DeliveryProce
         {
             try
             {
-                await source.ReceiveAsync(sink, intake.Token);
-                if (!intake.IsCancellationRequested)
-                    throw new InvalidOperationException("Buffered source stopped unexpectedly");
+                await PollAsync(source, async () =>
+                {
+                    var reservations = new List<DeliverySink.Reservation> { await sink.ReserveAsync(intake.Token) };
+                    using var batch = new ReceiveBatch(reservations);
+                    while (reservations.Count < source.MaxBatchSize && sink.TryReserve() is { } extra)
+                        reservations.Add(extra);
+                    return await source.ReceiveOnceAsync(batch, intake.Token);
+                }, intake.Token);
             }
             catch (OperationCanceledException) when (intake.IsCancellationRequested) { }
             catch (Exception error) { reportFailure?.Invoke(error); await intake.CancelAsync(); throw; }
@@ -89,14 +97,81 @@ public sealed class ConsumerRuntime(ConsumerDescriptor descriptor, DeliveryProce
         }
     }
 
-    /// <summary>Runs processing inside transport-managed delivery lifetimes without an additional buffer.</summary>
-    public async Task RunAsync(IManagedSource source, CancellationToken intakeToken, CancellationToken processingToken)
+    /// <summary>Runs scoped iterations without buffering or holding resources behind ordering chains.</summary>
+    public async Task RunAsync(IScopedPollingSource source, CancellationToken intakeToken, CancellationToken processingToken)
     {
-        if (descriptor.PumpCount != 1)
-            throw new InvalidOperationException("Transport-managed consumers support PumpCount = 1 only");
-        var run = source.RunAsync((delivery, token) => processor.ProcessAsync(descriptor, delivery, token),
-            intakeToken, processingToken);
-        await ObserveSourceAsync(run, source);
+        using var intake = CancellationTokenSource.CreateLinkedTokenSource(intakeToken);
+        var run = RunWorkersAsync(descriptor.ConcurrencyCount, token => PollAsync(source, async () =>
+        {
+            var accepted = false;
+            try
+            {
+                return await source.ProcessOnceAsync(async (delivery, ct) =>
+                {
+                    if (accepted) throw new InvalidOperationException("Scoped iteration accepted multiple deliveries");
+                    accepted = true;
+                    await processor.ProcessAsync(descriptor, delivery, ct);
+                }, token, processingToken);
+            }
+            catch (OperationCanceledException) when (processingToken.IsCancellationRequested) { throw; }
+            catch (Exception error) when (accepted) { throw new AcceptedIterationException(error); }
+        }, token), intake.Token);
+        await ObserveSourceAsync(run, source, intake);
+    }
+
+    /// <summary>Starts callback intake and retains source resources until pause has drained accepted work.</summary>
+    public async Task RunAsync(ICallbackSource source, CancellationToken intakeToken, CancellationToken processingToken)
+    {
+        using var intake = CancellationTokenSource.CreateLinkedTokenSource(intakeToken);
+        var run = RunCallbacksAsync();
+        await ObserveSourceAsync(run, source, intake);
+        async Task RunCallbacksAsync()
+        {
+            try
+            {
+                await source.StartAsync((delivery, token) => processor.ProcessAsync(descriptor, delivery, token), processingToken, intake.Token);
+                await Task.Delay(Timeout.Infinite, intake.Token);
+            }
+            catch (OperationCanceledException) when (intake.IsCancellationRequested) { }
+            finally
+            {
+                if (source is CallbackIntake control) await control.StopAsync();
+                else await source.PauseAsync(CancellationToken.None);
+            }
+        }
+    }
+
+    private sealed class AcceptedIterationException(Exception error) : Exception("Scoped iteration failed after delivery acceptance", error);
+
+    private async Task PollAsync(IConsumerSource source, Func<Task<PollResult>> iteration, CancellationToken token)
+    {
+        var attempt = 0;
+        try
+        {
+            while (!token.IsCancellationRequested)
+            {
+                PollResult result;
+                try
+                {
+                    result = await iteration();
+                    attempt = 0;
+                    ObserveAcquisition?.Invoke(result, null);
+                }
+                catch (OperationCanceledException) when (token.IsCancellationRequested) { return; }
+                catch (Exception error)
+                {
+                    if (error is not AcceptedIterationException) ObserveAcquisition?.Invoke(null, error);
+                    var delay = error is AcceptedIterationException ? null : (source as IPollingRetryPolicy)?.GetRetryDelay(error, ++attempt);
+                    if (delay is null) throw;
+                    ArgumentOutOfRangeException.ThrowIfLessThan(delay.Value, TimeSpan.Zero);
+                    await Task.Delay(delay.Value, token);
+                    continue;
+                }
+                if (!result.FoundWork && result.IdleWait is { } wait) await wait(token);
+            }
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+        catch (Exception error) { reportFailure?.Invoke(error); throw; }
     }
 
     private async Task ObserveSourceAsync(Task run, IConsumerSource source, CancellationTokenSource? intake = null)

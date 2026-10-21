@@ -33,6 +33,12 @@ internal sealed class InMemoryQueue
     public IAsyncEnumerable<InMemoryEnvelope> ReadAllAsync(CancellationToken cancellationToken) =>
         _channel.Reader.ReadAllAsync(cancellationToken);
 
+    internal bool TryRead(out InMemoryEnvelope envelope) => _channel.Reader.TryRead(out envelope!);
+    internal async ValueTask WaitForReadabilityAsync(CancellationToken token)
+    {
+        if (!await _channel.Reader.WaitToReadAsync(token)) throw new ChannelClosedException();
+    }
+
     /// <summary>Signal that no further messages will be written (called on shutdown).</summary>
     public void Complete() => _channel.Writer.TryComplete();
 }

@@ -8,6 +8,9 @@ namespace InterBus.PostgreSQL;
 /// </summary>
 public sealed class PostgreSqlTransportOptions
 {
+    /// <summary>Additional lease-mode delivery ownership slots beyond concurrency. Defaults to zero.</summary>
+    public int PrefetchCount { get; set; }
+
     /// <summary>The connection string used to connect to PostgreSQL.</summary>
     public string ConnectionString { get; set; } = string.Empty;
 

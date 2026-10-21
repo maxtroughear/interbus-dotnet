@@ -294,11 +294,93 @@ public class PumpLifetimeTests
     private static PumpLifetime Lifetime(Source source, IServiceProvider provider) =>
         new(new ConsumerDescriptor(typeof(PumpLifetimeTests), new Uri("memory://test")), source,
             provider.GetRequiredService<DeliveryProcessor>());
+    [Fact]
+    public async Task CallbackControl_SerializesAndRejectsResumeAfterStop()
+    {
+        await using var provider = Provider();
+        var source = new CallbackSource();
+        var lifetime = new PumpLifetime(new ConsumerDescriptor(typeof(PumpLifetimeTests), new Uri("memory://callback")),
+            source, provider.GetRequiredService<DeliveryProcessor>());
+        await lifetime.StartAsync(TestContext.Current.CancellationToken);
+        var pause = lifetime.PauseAsync(TestContext.Current.CancellationToken);
+        await source.Pausing.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        var resume = lifetime.ResumeAsync(TestContext.Current.CancellationToken);
+        var stop = lifetime.StopAsync(TestContext.Current.CancellationToken);
+        Assert.False(source.Disposed);
+        Assert.Equal(0, source.Resumes);
+        source.Continue.TrySetResult();
+        await pause;
+        await Assert.ThrowsAsync<InvalidOperationException>(() => resume);
+        await stop;
+        Assert.True(source.Disposed);
+        Assert.Equal(0, source.Resumes);
+        Assert.Equal(PumpState.Stopped, lifetime.State);
+    }
+
+    [Fact]
+    public async Task CallbackControl_RepeatedResumeDoesNotRestartActiveIntake()
+    {
+        await using var provider = Provider();
+        var source = new CallbackSource();
+        source.Continue.SetResult();
+        await using var lifetime = new PumpLifetime(new ConsumerDescriptor(typeof(PumpLifetimeTests), new Uri("memory://callback")),
+            source, provider.GetRequiredService<DeliveryProcessor>());
+        await lifetime.StartAsync(TestContext.Current.CancellationToken);
+        await lifetime.ResumeAsync(TestContext.Current.CancellationToken);
+        for (var i = 0; i < 3; i++)
+        {
+            await lifetime.PauseAsync(TestContext.Current.CancellationToken);
+            await lifetime.ResumeAsync(TestContext.Current.CancellationToken);
+            await lifetime.ResumeAsync(TestContext.Current.CancellationToken);
+        }
+        Assert.Equal(1, source.Starts);
+        Assert.Equal(3, source.Resumes);
+    }
+
+    [Fact]
+    public async Task HybridExecution_IsRejectedBeforeInitialization_AndDisposedOnce()
+    {
+        await using var provider = Provider();
+        var source = new HybridSource();
+        var lifetime = new PumpLifetime(new ConsumerDescriptor(typeof(PumpLifetimeTests), new Uri("memory://invalid")),
+            source, provider.GetRequiredService<DeliveryProcessor>());
+        await Assert.ThrowsAsync<InvalidOperationException>(() => lifetime.StartAsync(TestContext.Current.CancellationToken));
+        Assert.False(source.Initialized);
+        Assert.Equal(1, source.Disposals);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => lifetime.DisposeAsync().AsTask());
+        Assert.Equal(1, source.Disposals);
+    }
+
+    private sealed class HybridSource : IBufferedPollingSource, IScopedPollingSource
+    {
+        public bool Initialized;
+        public int Disposals;
+        public int PrefetchCount => 0;
+        public int MaxBatchSize => 1;
+        public Task InitializeAsync(CancellationToken token) { Initialized = true; return Task.CompletedTask; }
+        public Task<PollResult> ReceiveOnceAsync(ReceiveBatch batch, CancellationToken token) => throw new NotSupportedException();
+        public Task<PollResult> ProcessOnceAsync(DeliveryHandler process, CancellationToken intake, CancellationToken processing) => throw new NotSupportedException();
+        public ValueTask DisposeAsync() { Disposals++; return ValueTask.CompletedTask; }
+    }
+
+    private sealed class CallbackSource : ICallbackSource
+    {
+        public int Starts, Resumes;
+        public bool Disposed;
+        public TaskCompletionSource Pausing { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Continue { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public Task InitializeAsync(CancellationToken token) => Task.CompletedTask;
+        public Task StartAsync(DeliveryHandler process, CancellationToken processing, CancellationToken operation) { Starts++; return Task.CompletedTask; }
+        public async Task PauseAsync(CancellationToken token) { Pausing.TrySetResult(); await Continue.Task.WaitAsync(token); }
+        public Task ResumeAsync(CancellationToken token) { Resumes++; return Task.CompletedTask; }
+        public ValueTask DisposeAsync() { Disposed = true; return ValueTask.CompletedTask; }
+    }
+
     private sealed class Factory(Source source) : IConsumerSourceFactory
     {
         public IConsumerSource Create(ConsumerDescriptor descriptor) => source;
     }
-    private sealed class Source : IManagedSource
+    private sealed class Source : IScopedPollingSource
     {
         public bool BlockReady, BlockInitialize, FailRun, CompleteRun, IgnoreIntake, Ran, Disposed;
         public Exception? InitializationFailure, DisposalFailure;
@@ -315,15 +397,16 @@ public class PumpLifetimeTests
             if (InitializationFailure is not null) throw InitializationFailure;
             if (BlockInitialize) await Task.Delay(Timeout.Infinite, cancellationToken);
         }
-        public async Task RunAsync(Func<IDelivery, CancellationToken, Task> process, CancellationToken intakeToken,
+        public async Task<PollResult> ProcessOnceAsync(DeliveryHandler process, CancellationToken intakeToken,
             CancellationToken processingToken)
         {
             Ran = true;
             ProcessingToken = processingToken;
             if (FailRun) throw new IOException();
-            if (CompleteRun) return;
+            if (CompleteRun) throw new InvalidOperationException("Source failed");
             if (IgnoreIntake) await Finish.Task;
             else await Task.Delay(Timeout.Infinite, intakeToken);
+            return new PollResult(false);
         }
         public ValueTask DisposeAsync()
         {

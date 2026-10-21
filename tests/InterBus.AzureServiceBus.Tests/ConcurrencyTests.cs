@@ -1,4 +1,5 @@
 using InterBus.Generated;
+using InterBus.MessagePumps;
 using System.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -76,4 +77,24 @@ public class ConcurrencyTests() : ServiceBusFixture(bus =>
             OrderTracker.Messages.Select(m => m.OrderId),
             Is.EquivalentTo(allMessages.Select(m => m.OrderId)));
     }
+    [Test]
+    public async Task RepeatedPauseResume_WithRealProcessor_PreservesSingleIntake()
+    {
+        var pump = Provider.GetRequiredService<PumpController>().Pumps.Single();
+        await using var scope = Provider.CreateAsyncScope();
+        var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
+        for (var i = 0; i < 3; i++)
+        {
+            await pump.PauseAsync(TestContext.CurrentContext.CancellationToken).WaitAsync(TimeSpan.FromSeconds(30));
+            await publisher.PublishAsync(new OrderPlaced(Guid.NewGuid(), "pause-resume", i));
+            Assert.That(OrderTracker.Messages.Count, Is.EqualTo(i));
+            await pump.ResumeAsync(TestContext.CurrentContext.CancellationToken);
+            await pump.ResumeAsync(TestContext.CurrentContext.CancellationToken);
+            await WaitUntilAsync(() => OrderTracker.Messages.Count == i + 1, timeoutMs: 30_000,
+                cancellationToken: TestContext.CurrentContext.CancellationToken);
+        }
+        await pump.PauseAsync(TestContext.CurrentContext.CancellationToken);
+        Assert.That(OrderTracker.Messages.Count, Is.EqualTo(3));
+    }
+
 }

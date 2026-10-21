@@ -119,6 +119,52 @@ public class ManagedShutdownTests
         finally { gate.Release.TrySetResult(); }
     }
 
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task PauseResume_RetainsSubscriptionAndSettlementResources(bool recoverWhilePaused)
+    {
+        await using var container = new RabbitMqBuilder("rabbitmq:4-alpine").Build();
+        await container.StartAsync();
+        var gate = new Gate();
+        gate.Release.SetResult();
+        var builder = Host.CreateApplicationBuilder();
+        builder.Services.AddSingleton(gate);
+        builder.Services.AddInterBus(bus =>
+        {
+            bus.AddRabbitMqTransport(options => options.Uri = container.GetConnectionString());
+            bus.AddConsumer<BlockingConsumer>(consumer => consumer.WithConcurrency(2));
+        });
+        using var host = builder.Build();
+        await host.StartAsync();
+        var pump = host.Services.GetRequiredService<PumpController>().Pumps.Single();
+        await using var scope = host.Services.CreateAsyncScope();
+        var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
+        for (var i = 0; i < 3; i++)
+        {
+            await pump.PauseAsync().WaitAsync(TimeSpan.FromSeconds(10));
+            var message = new OrderPlaced(Guid.NewGuid(), "pause-resume", i);
+            await publisher.PublishAsync(message);
+            if (recoverWhilePaused && i == 0)
+            {
+                var closed = await container.ExecAsync(["rabbitmqctl", "close_all_connections", "--global", "paused recovery test"]);
+                Assert.That(closed.ExitCode, Is.Zero, closed.Stderr);
+                await WaitUntilAsync(async () =>
+                {
+                    var connections = await container.ExecAsync(["rabbitmqctl", "list_connections", "--quiet", "--no-table-headers", "pid"]);
+                    return connections.Stdout.Split('\n', StringSplitOptions.RemoveEmptyEntries).Length >= 2;
+                }, timeoutMs: 30_000, cancellationToken: TestContext.CurrentContext.CancellationToken);
+            }
+            Assert.That(gate.Received.ContainsKey(message.OrderId), Is.False);
+            await pump.ResumeAsync().WaitAsync(TimeSpan.FromSeconds(10));
+            await pump.ResumeAsync().WaitAsync(TimeSpan.FromSeconds(10));
+            await WaitUntilAsync(() => gate.Received.ContainsKey(message.OrderId),
+                cancellationToken: TestContext.CurrentContext.CancellationToken);
+        }
+        await host.StopAsync().WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.That(gate.Received.Count, Is.EqualTo(3));
+        Assert.That(gate.Received.Values, Is.All.EqualTo(1));
+    }
+
     private sealed class CaptureLog : ILoggerProvider, ILogger
     {
         public ConcurrentQueue<string> Messages { get; } = new();

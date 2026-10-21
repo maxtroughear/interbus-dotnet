@@ -7,7 +7,7 @@ namespace InterBus.PostgreSQL;
 
 internal abstract class PostgreSqlConsumerSource(
     ConsumerDescriptor descriptor, NpgsqlDataSource dataSource, PostgreSqlTransportOptions options,
-    InterBusOptions busOptions, ILogger logger) : IConsumerSource
+    InterBusOptions busOptions, ILogger logger) : IConsumerSource, IPollingRetryPolicy
 {
     protected readonly ConsumerDescriptor Descriptor = descriptor;
     protected readonly NpgsqlDataSource DataSource = dataSource;
@@ -29,7 +29,7 @@ internal abstract class PostgreSqlConsumerSource(
 
     public Task InitializeAsync(CancellationToken cancellationToken) => PostgreSqlConnectionRetry.ExecuteAsync(async ct =>
     {
-        if (this is IManagedSource && Descriptor.PumpCount != 1)
+        if (this is IScopedPollingSource && Descriptor.PumpCount != 1)
             throw new InvalidOperationException("PostgreSQL transactional consumers support PumpCount = 1 only");
         await using var connection = await DataSource.OpenConnectionAsync(ct);
         await using var queue = connection.CreateCommand();
@@ -45,6 +45,14 @@ internal abstract class PostgreSqlConsumerSource(
             await subscription.ExecuteNonQueryAsync(ct);
         }
     }, Options, logger, cancellationToken);
+
+    public TimeSpan? GetRetryDelay(Exception error, int attempt)
+    {
+        if (!PostgreSqlConnectionRetry.ShouldRetry(error, Options, attempt)) return null;
+        var delay = PostgreSqlConnectionRetry.GetDelay(Options, attempt);
+        logger.LogWarning(error, "InterBus PostgreSQL: acquisition failed due to a connection error; retrying in {Delay}", delay);
+        return delay;
+    }
 
     protected async Task WaitForWorkAsync(long observedVersion, CancellationToken cancellationToken)
     {

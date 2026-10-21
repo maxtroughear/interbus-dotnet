@@ -9,7 +9,7 @@ namespace InterBus.AzureServiceBus;
 
 internal sealed class AzureServiceBusMessagePump(
     ConsumerDescriptor descriptor, AzureServiceBusClientProvider clientProvider,
-    AzureServiceBusTransportOptions options, ILogger<AzureServiceBusMessagePump> logger) : IManagedSource
+    AzureServiceBusTransportOptions options, ILogger<AzureServiceBusMessagePump> logger) : ICallbackSource
 {
     private readonly TaskCompletionSource<Exception> _failure = new(TaskCreationOptions.RunContinuationsAsynchronously);
     public Task<Exception> Failure => _failure.Task;
@@ -45,8 +45,7 @@ internal sealed class AzureServiceBusMessagePump(
         return Task.CompletedTask;
     }
 
-    public async Task RunAsync(Func<IDelivery, CancellationToken, Task> process, CancellationToken intakeToken,
-        CancellationToken processingToken)
+    public async Task StartAsync(DeliveryHandler process, CancellationToken processingToken, CancellationToken operationToken)
     {
         async Task ProcessAsync(IDelivery delivery, CancellationToken token)
         {
@@ -61,7 +60,7 @@ internal sealed class AzureServiceBusMessagePump(
                 using var callbackCancellation = args.CancellationToken.Register(() =>
                 {
                     // SDK stop cancels its callback token before accepted work has drained
-                    if (!intakeToken.IsCancellationRequested) cancellation.Cancel();
+                    if (Volatile.Read(ref _pausing) == 0) cancellation.Cancel();
                 });
                 await ProcessAsync(new ServiceBusDelivery(args.Message, async (result, ct) =>
                 {
@@ -77,14 +76,8 @@ internal sealed class AzureServiceBusMessagePump(
                 }), cancellation.Token);
             };
             _processor.ProcessErrorAsync += ReportErrorAsync;
-            try
-            {
-                await _processor.StartProcessingAsync(intakeToken);
-                _ready.TrySetResult();
-                await Task.Delay(Timeout.Infinite, intakeToken);
-            }
-            catch (OperationCanceledException) when (intakeToken.IsCancellationRequested) { }
-            finally { await _processor.StopProcessingAsync(CancellationToken.None); }
+            await _processor.StartProcessingAsync(operationToken);
+            _ready.TrySetResult();
         }
         else if (_sessions is not null)
         {
@@ -94,7 +87,7 @@ internal sealed class AzureServiceBusMessagePump(
                 using var callbackCancellation = args.CancellationToken.Register(() =>
                 {
                     // SDK stop cancels its callback token before accepted work has drained
-                    if (!intakeToken.IsCancellationRequested) cancellation.Cancel();
+                    if (Volatile.Read(ref _pausing) == 0) cancellation.Cancel();
                 });
                 await ProcessAsync(new ServiceBusDelivery(args.Message, async (result, ct) =>
                 {
@@ -110,15 +103,28 @@ internal sealed class AzureServiceBusMessagePump(
                 }), cancellation.Token);
             };
             _sessions.ProcessErrorAsync += ReportErrorAsync;
-            try
-            {
-                await _sessions.StartProcessingAsync(intakeToken);
-                _ready.TrySetResult();
-                await Task.Delay(Timeout.Infinite, intakeToken);
-            }
-            catch (OperationCanceledException) when (intakeToken.IsCancellationRequested) { }
-            finally { await _sessions.StopProcessingAsync(CancellationToken.None); }
+            await _sessions.StartProcessingAsync(operationToken);
+            _ready.TrySetResult();
         }
+    }
+
+    private int _pausing;
+    public async Task PauseAsync(CancellationToken operationToken)
+    {
+        Volatile.Write(ref _pausing, 1);
+        if (_processor is not null) await _processor.StopProcessingAsync(operationToken);
+        if (_sessions is not null) await _sessions.StopProcessingAsync(operationToken);
+    }
+
+    public async Task ResumeAsync(CancellationToken operationToken)
+    {
+        Volatile.Write(ref _pausing, 0);
+        try
+        {
+            if (_processor is not null) await _processor.StartProcessingAsync(operationToken);
+            if (_sessions is not null) await _sessions.StartProcessingAsync(operationToken);
+        }
+        catch (Exception error) { _failure.TrySetResult(error); throw; }
     }
 
     private Task ReportErrorAsync(ProcessErrorEventArgs args)

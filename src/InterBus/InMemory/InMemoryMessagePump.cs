@@ -4,7 +4,7 @@ using InterBus.Dispatching;
 
 namespace InterBus.InMemory;
 
-internal sealed class InMemoryMessagePump(ConsumerDescriptor descriptor, InMemoryBroker broker) : IManagedSource
+internal sealed class InMemoryMessagePump(ConsumerDescriptor descriptor, InMemoryBroker broker) : IScopedPollingSource
 {
     private InMemoryQueue _queue = null!;
     public Task InitializeAsync(CancellationToken cancellationToken)
@@ -15,21 +15,28 @@ internal sealed class InMemoryMessagePump(ConsumerDescriptor descriptor, InMemor
         return Task.CompletedTask;
     }
 
-    public Task RunAsync(Func<IDelivery, CancellationToken, Task> process, CancellationToken intakeToken,
-        CancellationToken processingToken) => ConsumerRuntime.RunWorkersAsync(descriptor.ConcurrencyCount,
-        async token =>
+    private readonly System.Collections.Concurrent.ConcurrentQueue<(InMemoryEnvelope Envelope, int Attempt, DateTimeOffset Due)> _retries = new();
+
+    public async Task<PollResult> ProcessOnceAsync(DeliveryHandler process, CancellationToken intakeToken,
+        CancellationToken processingToken)
+    {
+        InMemoryEnvelope envelope;
+        var attempt = 0;
+        if (_retries.TryDequeue(out var retry))
         {
-            await foreach (var envelope in _queue.ReadAllAsync(token))
-            {
-                for (var attempt = 0; attempt <= descriptor.MaxDeliveryCount; attempt++)
-                {
-                    var delivery = new MemoryDelivery(envelope);
-                    await process(delivery, processingToken);
-                    if (!delivery.Released || processingToken.IsCancellationRequested) break;
-                    await Task.Delay(_queue.DeliveryTimeout, processingToken);
-                }
-            }
-        }, intakeToken);
+            envelope = retry.Envelope;
+            attempt = retry.Attempt;
+            var delay = retry.Due - DateTimeOffset.UtcNow;
+            if (delay > TimeSpan.Zero) await Task.Delay(delay, intakeToken);
+        }
+        else if (!_queue.TryRead(out envelope!))
+            return new PollResult(false, _queue.WaitForReadabilityAsync);
+        var delivery = new MemoryDelivery(envelope);
+        await process(delivery, processingToken);
+        if (delivery.Released && attempt < descriptor.MaxDeliveryCount && !processingToken.IsCancellationRequested)
+            _retries.Enqueue((envelope, attempt + 1, DateTimeOffset.UtcNow + _queue.DeliveryTimeout));
+        return new PollResult(true);
+    }
 
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 

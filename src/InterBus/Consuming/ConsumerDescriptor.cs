@@ -47,7 +47,7 @@ public sealed class ConsumerDescriptor(Type consumerType, Uri queue)
 
     /// <summary>
     /// The number of concurrent message handlers for this consumer's queue.
-    /// Buffered transports share this limit across all receive sources. Managed transports
+    /// Buffered transports share this limit across all receive sources. Scoped and callback transports
     /// configure their SDK callbacks or transaction-owning workers with this total limit.
     /// Defaults to <c>1</c> (sequential dispatch).
     /// </summary>
@@ -55,7 +55,7 @@ public sealed class ConsumerDescriptor(Type consumerType, Uri queue)
 
     /// <summary>
     /// Buffered receive sources sharing one consumer concurrency limit and prefetch budget.
-    /// Defaults to one. Transport-managed adapters reject values above one.
+    /// Defaults to one. Scoped and callback adapters reject values above one.
     /// </summary>
     public int PumpCount { get; internal set; } = 1;
 

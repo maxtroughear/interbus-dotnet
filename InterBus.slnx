@@ -1,0 +1,56 @@
+<Solution>
+  <Configurations>
+    <Platform Name="Any CPU" />
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Folder Name="/samples/">
+    <Project Path="samples/Sample.AuditComponents/Sample.AuditComponents.csproj" />
+    <Project Path="samples/Sample.AzureServiceBus/Sample.AzureServiceBus.csproj" />
+    <Project Path="samples/Sample.Components/Sample.Components.csproj" />
+    <Project Path="samples/Sample.InMemory.Aot/Sample.InMemory.Aot.csproj" />
+    <Project Path="samples/Sample.InMemory/Sample.InMemory.csproj" />
+    <Project Path="samples/Sample.MinimalApi.Aot/Sample.MinimalApi.Aot.csproj" />
+    <Project Path="samples/Sample.PostgreSQL/Sample.PostgreSQL.csproj" />
+    <Project Path="samples/Sample.Stateless/Sample.Stateless.csproj" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/InterBus.SourceGenerator/InterBus.SourceGenerator.csproj" />
+    <Project Path="src/InterBus/InterBus.csproj" />
+  </Folder>
+  <Folder Name="/src/integrations/">
+    <Project Path="src/InterBus.DynamoDB/InterBus.DynamoDB.csproj" />
+    <Project Path="src/InterBus.EntityFrameworkCore/InterBus.EntityFrameworkCore.csproj" />
+    <Project Path="src/InterBus.Hangfire/InterBus.Hangfire.csproj" />
+    <Project Path="src/InterBus.S3/InterBus.S3.csproj" />
+    <Project Path="src/InterBus.Stateless/InterBus.Stateless.csproj" />
+    <Project Path="src/InterBus.TickerQ/InterBus.TickerQ.csproj" />
+  </Folder>
+  <Folder Name="/src/transports/">
+    <Project Path="src/InterBus.AmazonSqs/InterBus.AmazonSqs.csproj" />
+    <Project Path="src/InterBus.AzureServiceBus/InterBus.AzureServiceBus.csproj" />
+    <Project Path="src/InterBus.PostgreSQL/InterBus.PostgreSQL.csproj" />
+    <Project Path="src/InterBus.RabbitMQ/InterBus.RabbitMQ.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/InterBus.SourceGenerator.Tests/InterBus.SourceGenerator.Tests.csproj" />
+    <Project Path="tests/InterBus.Tests.Common/InterBus.Tests.Common.csproj" />
+    <Project Path="tests/InterBus.Tests/InterBus.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tests/integrations/">
+    <Project Path="tests/InterBus.DynamoDB.Tests/InterBus.DynamoDB.Tests.csproj" />
+    <Project Path="tests/InterBus.EntityFrameworkCore.PostgreSQL.IntegrationTests/InterBus.EntityFrameworkCore.PostgreSQL.IntegrationTests.csproj" />
+    <Project Path="tests/InterBus.EntityFrameworkCore.SqlServer.IntegrationTests/InterBus.EntityFrameworkCore.SqlServer.IntegrationTests.csproj" />
+    <Project Path="tests/InterBus.EntityFrameworkCore.Tests/InterBus.EntityFrameworkCore.Tests.csproj" />
+    <Project Path="tests/InterBus.Hangfire.Tests/InterBus.Hangfire.Tests.csproj" />
+    <Project Path="tests/InterBus.S3.Tests/InterBus.S3.Tests.csproj" />
+    <Project Path="tests/InterBus.Stateless.Tests/InterBus.Stateless.Tests.csproj" />
+    <Project Path="tests/InterBus.TickerQ.Tests/InterBus.TickerQ.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tests/transports/">
+    <Project Path="tests/InterBus.AmazonSqs.Tests/InterBus.AmazonSqs.Tests.csproj" />
+    <Project Path="tests/InterBus.AzureServiceBus.Tests/InterBus.AzureServiceBus.Tests.csproj" />
+    <Project Path="tests/InterBus.PostgreSQL.Tests/InterBus.PostgreSQL.Tests.csproj" />
+    <Project Path="tests/InterBus.RabbitMQ.Tests/InterBus.RabbitMQ.Tests.csproj" />
+  </Folder>
+</Solution>

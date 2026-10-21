@@ -6,7 +6,7 @@ public class FilterConsumeMiddleware<TMessage>(Func<TMessage, bool> filter) : IC
     where TMessage : class
 {
     private readonly Func<object, bool> _filter = message => filter((TMessage)message);
-    
+
     public Task InvokeAsync<T>(ConsumeContext<T> context, Func<ConsumeContext<T>, CancellationToken, Task> next,
         CancellationToken cancellationToken = default) where T : class
     {
@@ -14,7 +14,7 @@ public class FilterConsumeMiddleware<TMessage>(Func<TMessage, bool> filter) : IC
         {
             return next(context, cancellationToken);
         }
-        
+
         return _filter.Invoke(context.Message) ? next(context, cancellationToken) : Task.CompletedTask;
     }
 }

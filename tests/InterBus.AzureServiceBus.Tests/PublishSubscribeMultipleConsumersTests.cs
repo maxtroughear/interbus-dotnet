@@ -1,113 +1,55 @@
-using InterBus.AzureServiceBus.Extensions;
-using InterBus.Extensions;
 using InterBus.Generated;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using Testcontainers.ServiceBus;
 
 namespace InterBus.AzureServiceBus.Tests;
 
-public class PublishSubscribeMultipleConsumersTests
+public class PublishSubscribeMultipleConsumersTests() : ServiceBusFixture(bus =>
 {
-    private readonly ServiceBusContainer _container =
-        new ServiceBusBuilder("mcr.microsoft.com/azure-messaging/servicebus-emulator:latest")
-            .WithAcceptLicenseAgreement(true)
-            .Build();
-
-    private ServiceProvider _provider = null!;
-    private CancellationTokenSource _cts = null!;
-    private OrderPlacedTracker _orderTracker = null!;
-    private AuditTracker _auditTracker = null!;
-
-    [OneTimeSetUp]
-    public async Task OneTimeSetUp()
-    {
-        await _container.StartAsync();
-    }
-
-    [OneTimeTearDown]
-    public async Task OneTimeTearDown()
-    {
-        await _container.StopAsync();
-        await _container.DisposeAsync();
-    }
-
-    [SetUp]
-    public async Task Setup()
-    {
-        _orderTracker = new OrderPlacedTracker();
-        _auditTracker = new AuditTracker();
-
-        var services = new ServiceCollection();
-        services.AddLogging();
-        services.AddSingleton(_orderTracker);
-        services.AddSingleton(_auditTracker);
-        services.AddInterBus(bus =>
-        {
-            bus.AddAzureServiceBusTransport(o =>
-            {
-                o.ConnectionString = _container.GetConnectionString();
-                o.AdminConnectionString = _container.GetHttpConnectionString();
-            });
-            bus.AddConsumer<OrderPlacedConsumer>();
-            bus.AddConsumer<AuditConsumer>();
-        });
-
-        _provider = services.BuildServiceProvider();
-        _cts = new CancellationTokenSource();
-
-        foreach (var svc in _provider.GetServices<IHostedService>())
-            await svc.StartAsync(_cts.Token);
-    }
-
-    [TearDown]
-    public async Task TearDown()
-    {
-        await _cts.CancelAsync();
-
-        foreach (var svc in _provider.GetServices<IHostedService>())
-            await svc.StopAsync(CancellationToken.None);
-
-        _cts.Dispose();
-        await _provider.DisposeAsync();
-    }
+    bus.Services.AddSingleton<OrderPlacedTracker>();
+    bus.Services.AddSingleton<AuditTracker>();
+    bus.AddConsumer<OrderPlacedConsumer>();
+    bus.AddConsumer<AuditConsumer>();
+})
+{
+    private OrderPlacedTracker OrderTracker => Provider.GetRequiredService<OrderPlacedTracker>();
+    private AuditTracker AuditTracker => Provider.GetRequiredService<AuditTracker>();
 
     [Test]
     public async Task Publish_MultipleConsumers_AllReceiveMessage()
     {
-        using var scope = _provider.CreateScope();
+        using var scope = Provider.CreateScope();
         var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
         var msg = new OrderPlaced(Guid.NewGuid(), "fan@out.test", 50m);
         await publisher.PublishAsync(msg, TestContext.CurrentContext.CancellationToken);
 
-        await TestHelpers.WaitUntilAsync(() => _orderTracker.Messages.Count == 1 && _auditTracker.Messages.Count == 1);
+        await WaitUntilAsync(() => OrderTracker.Messages.Count == 1 && AuditTracker.Messages.Count == 1);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(_orderTracker.Messages, Has.Count.EqualTo(1));
-            Assert.That(msg.OrderId, Is.EqualTo(_orderTracker.Messages.Single().OrderId));
-            Assert.That(_auditTracker.Messages, Has.Count.EqualTo(1));
-            Assert.That(msg.OrderId, Is.EqualTo(_auditTracker.Messages.Single().OrderId));
+            Assert.That(OrderTracker.Messages, Has.Count.EqualTo(1));
+            Assert.That(msg.OrderId, Is.EqualTo(OrderTracker.Messages.Single().OrderId));
+            Assert.That(AuditTracker.Messages, Has.Count.EqualTo(1));
+            Assert.That(msg.OrderId, Is.EqualTo(AuditTracker.Messages.Single().OrderId));
         }
     }
 
     [Test]
     public async Task Send_DirectToQueue_OnlyTargetConsumerReceives()
     {
-        using var scope = _provider.CreateScope();
+        using var scope = Provider.CreateScope();
         var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
         var msg = new OrderPlaced(Guid.NewGuid(), "direct@send.test", 25m);
 
         await publisher.SendAsync<OrderPlacedConsumer, OrderPlaced>(
             msg, TestContext.CurrentContext.CancellationToken);
 
-        await TestHelpers.WaitUntilAsync(() => _orderTracker.Messages.Count == 1);
+        await WaitUntilAsync(() => OrderTracker.Messages.Count == 1);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(_orderTracker.Messages, Has.Count.EqualTo(1));
-            Assert.That(msg.OrderId, Is.EqualTo(_orderTracker.Messages.Single().OrderId));
-            Assert.That(_auditTracker.Messages, Is.Empty);
+            Assert.That(OrderTracker.Messages, Has.Count.EqualTo(1));
+            Assert.That(msg.OrderId, Is.EqualTo(OrderTracker.Messages.Single().OrderId));
+            Assert.That(AuditTracker.Messages, Is.Empty);
         }
     }
 }

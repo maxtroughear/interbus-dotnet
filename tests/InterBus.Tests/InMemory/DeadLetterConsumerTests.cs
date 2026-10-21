@@ -1,6 +1,6 @@
+using InterBus.Generated;
 using InterBus.DeadLettering;
 using InterBus.Extensions;
-using InterBus.Generated;
 using InterBus.InMemory.Extensions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -15,16 +15,6 @@ namespace InterBus.Tests.InMemory;
 /// </summary>
 public class DeadLetterConsumerTests
 {
-    private static async Task WaitUntilAsync(
-        Func<bool> condition,
-        int timeoutMs = 5000,
-        int intervalMs = 25)
-    {
-        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
-        while (!condition() && DateTime.UtcNow < deadline)
-            await Task.Delay(intervalMs);
-    }
-
     private static async Task<(ServiceProvider Provider, CancellationTokenSource Cts)> StartAsync(
         Action<IServiceCollection> registerSingletons,
         Action<InterBusBuilder> configureBus)
@@ -89,7 +79,7 @@ public class DeadLetterConsumerTests
                 new OrderPlaced(Guid.NewGuid(), "deadletter@test.com", 99m),
                 TestContext.Current.CancellationToken);
 
-            await WaitUntilAsync(() => deadLetterTracker.Messages.Count >= 1);
+            await WaitUntilAsync(() => deadLetterTracker.Messages.Count >= 1, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.NotEmpty(deadLetterTracker.Messages);
             var deadLetter = deadLetterTracker.Messages.First();
@@ -137,7 +127,7 @@ public class DeadLetterConsumerTests
                 TestContext.Current.CancellationToken);
 
             // Give enough time for dead letter to flow through and verify no nested dead letter is produced.
-            await WaitUntilAsync(() => faultingCount.Count >= 1);
+            await WaitUntilAsync(() => faultingCount.Count >= 1, cancellationToken: TestContext.Current.CancellationToken);
             await Task.Delay(200, TestContext.Current.CancellationToken);
 
             Assert.Empty(nestedDeadLetterTracker.Messages);
@@ -180,7 +170,7 @@ public class DeadLetterConsumerTests
                 TestContext.Current.CancellationToken);
 
             // Wait until the dead letter is received, then allow extra time to confirm no redelivery.
-            await WaitUntilAsync(() => deadLetterTracker.Messages.Count >= 1);
+            await WaitUntilAsync(() => deadLetterTracker.Messages.Count >= 1, cancellationToken: TestContext.Current.CancellationToken);
             await Task.Delay(200, TestContext.Current.CancellationToken);
 
             // The faulting consumer should have been called exactly once — no infinite loop.

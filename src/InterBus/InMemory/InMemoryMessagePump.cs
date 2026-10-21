@@ -1,111 +1,48 @@
 using InterBus.Consuming;
+using InterBus.MessagePumps;
 using InterBus.Dispatching;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
 
 namespace InterBus.InMemory;
 
-/// <summary>
-/// Service Activator (Message Pump). A <see cref="BackgroundService"/> that starts one reader task per
-/// registered queue and dispatches messages to consumers resolved from a fresh DI scope per message.
-/// Message dispatch runs through the <see cref="ConsumePipelineExecutor"/> so that all registered
-/// consume middleware (including the default exception-logging step) is applied to every message.
-/// </summary>
-internal sealed class InMemoryMessagePump(
-    InMemoryBroker broker,
-    IServiceScopeFactory scopeFactory,
-    ILogger<InMemoryMessagePump> logger)
-    : BackgroundService
+internal sealed class InMemoryMessagePump(ConsumerDescriptor descriptor, InMemoryBroker broker) : IManagedSource
 {
-    protected override Task ExecuteAsync(CancellationToken stoppingToken)
+    private InMemoryQueue _queue = null!;
+    public Task InitializeAsync(CancellationToken cancellationToken)
     {
-        var queues = broker.GetAllQueues();
-        if (queues.Count == 0)
-        {
-            logger.LogInformation("InterBus InMemory: no consumers registered; message pump idle");
-            return Task.CompletedTask;
-        }
-
-        // Start one reader per queue; all run concurrently.
-        var tasks = queues.Select(q => ProcessQueueAsync(q, stoppingToken));
-        return Task.WhenAll(tasks);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (descriptor.PumpCount != 1) throw new InvalidOperationException("In-memory consumers support PumpCount = 1 only");
+        _queue = broker.EnsureQueue(descriptor);
+        return Task.CompletedTask;
     }
 
-    private async Task ProcessQueueAsync(InMemoryQueue queue, CancellationToken stoppingToken)
-    {
-        logger.LogDebug(
-            "InterBus InMemory: starting pump for queue {QueueName}",
-            queue.Descriptor.QueueName);
-
-        await foreach (var envelope in queue.ReadAllAsync(stoppingToken))
+    public Task RunAsync(Func<IDelivery, CancellationToken, Task> process, CancellationToken intakeToken,
+        CancellationToken processingToken) => ConsumerRuntime.RunWorkersAsync(descriptor.ConcurrencyCount,
+        async token =>
         {
-            await ProcessEnvelopeAsync(queue, envelope, stoppingToken);
-        }
-
-        logger.LogDebug(
-            "InterBus InMemory: pump for queue {QueueName} stopped",
-            queue.Descriptor.QueueName);
-    }
-
-    private async Task ProcessEnvelopeAsync(InMemoryQueue queue, InMemoryEnvelope envelope, CancellationToken stoppingToken)
-    {
-        try
-        {
-            var deliveryCount = 0;
-            while (deliveryCount <= queue.Descriptor.MaxDeliveryCount)
+            await foreach (var envelope in _queue.ReadAllAsync(token))
             {
-                deliveryCount++;
-                var result = await DispatchAsync(queue.Descriptor, envelope, stoppingToken);
-                switch (result.Kind)
+                for (var attempt = 0; attempt <= descriptor.MaxDeliveryCount; attempt++)
                 {
-                    case DispatchResultKind.Success:
-                        break;
-                    case DispatchResultKind.DeadLetter:
-                        logger.LogWarning(
-                            result.Exception,
-                            "InterBus InMemory: consumer {ConsumerType} failed for queue {QueueName}; message dead-lettered and discarded",
-                            queue.Descriptor.ConsumerType.Name,
-                            queue.Descriptor.QueueName);
-                        break;
-                    case DispatchResultKind.Release:
-                        logger.LogWarning(
-                            result.Exception,
-                            "InterBus InMemory: consumer {ConsumerType} failed for queue {QueueName}; releasing message back to queue for redelivery",
-                            queue.Descriptor.ConsumerType.Name,
-                            queue.Descriptor.QueueName);
-
-                        await Task.Delay(queue.DeliveryTimeout, stoppingToken);
-                        continue;
-                    default:
-                        throw new ArgumentOutOfRangeException();
+                    var delivery = new MemoryDelivery(envelope);
+                    await process(delivery, processingToken);
+                    if (!delivery.Released || processingToken.IsCancellationRequested) break;
+                    await Task.Delay(_queue.DeliveryTimeout, processingToken);
                 }
-
-                break;
             }
+        }, intakeToken);
 
-            if (deliveryCount > queue.Descriptor.MaxDeliveryCount)
-            {
-                logger.LogWarning(
-                    "InterBus InMemory: consumer {ConsumerType} failed for queue {QueueName}; message discarded after {DeliveryCount} delivery attempts",
-                    queue.Descriptor.ConsumerType.Name,
-                    queue.Descriptor.QueueName,
-                    deliveryCount);
-            }
-        }
-        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-        {
-            throw;
-        }
-    }
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
-    private async Task<DispatchResult> DispatchAsync(ConsumerDescriptor descriptor, InMemoryEnvelope envelope,
-        CancellationToken ct)
+    private sealed class MemoryDelivery(InMemoryEnvelope envelope) : IDelivery
     {
-        await using var scope = scopeFactory.CreateAsyncScope();
-        var executor = scope.ServiceProvider.GetRequiredService<DispatchPipelineExecutor>();
-        var context = new DispatchContext(descriptor, envelope.Payload, envelope.Headers);
-        await executor.ExecuteAsync(context, ct);
-        return context.Result;
+        public ReadOnlyMemory<byte> Payload => envelope.Payload;
+        public MessageHeaders Headers => envelope.Headers;
+        public bool Released { get; private set; }
+        public Task<bool> SettleAsync(DispatchResult result, CancellationToken cancellationToken)
+        {
+            Released = result.Kind == DispatchResultKind.Release;
+            return Task.FromResult(true);
+        }
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 }

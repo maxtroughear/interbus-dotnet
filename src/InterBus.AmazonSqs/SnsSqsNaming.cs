@@ -17,7 +17,7 @@ public sealed class SnsSqsNaming(SnsSqsTransportOptions options)
 
     private static readonly Regex MultipleHyphens =
         new(@"-{2,}", RegexOptions.Compiled, TimeSpan.FromSeconds(1));
-    
+
     private const int MaxSqsQueueNameLength = 80;
     private const int MaxSnsTopicNameLength = 256;
     private const string FifoSuffix = ".fifo";
@@ -75,7 +75,7 @@ public sealed class SnsSqsNaming(SnsSqsTransportOptions options)
         rawName = InvalidNameChars.Replace(rawName, "-");
         rawName = MultipleHyphens.Replace(rawName, "-");
         rawName = rawName.Trim('-');
-        
+
         if (rawName.Length <= maxLength)
             return rawName;
 

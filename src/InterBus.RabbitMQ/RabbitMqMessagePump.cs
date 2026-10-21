@@ -1,70 +1,152 @@
 using InterBus.Consuming;
 using InterBus.Dispatching;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
+using InterBus.MessagePumps;
 using Microsoft.Extensions.Logging;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
 using RabbitMQ.Client.Exceptions;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace InterBus.RabbitMQ;
 
-/// <summary>
-/// Service Activator (Message Pump). A <see cref="BackgroundService"/> that starts one consumer
-/// per registered InterBus consumer queue.
-/// <para>Topology is created or verified during bus startup before this pump starts.</para>
-/// <para>
-/// Successful dispatch acknowledges the RabbitMQ message. Unhandled consumer failures are
-/// republished to a dead-letter exchange with diagnostic headers; other failures are negatively
-/// acknowledged with <c>requeue=true</c> for redelivery.
-/// </para>
-/// <para>
-/// Initial connection failures are retried using the exponential back-off configured in
-/// <see cref="RabbitMqTransportOptions.ConnectionRetry"/>.
-/// </para>
-/// </summary>
 internal sealed class RabbitMqMessagePump(
-    RabbitMqConnectionProvider connectionProvider,
-    RabbitMqTransportOptions options,
-    InterBusOptions busOptions,
-    IServiceScopeFactory scopeFactory,
-    ILogger<RabbitMqMessagePump> logger)
-    : BackgroundService
+    ConsumerDescriptor descriptor, RabbitMqConnectionProvider connectionProvider,
+    RabbitMqTransportOptions options, ILogger<RabbitMqMessagePump> logger) : IManagedSource
 {
+    private readonly ConsumerDescriptor _descriptor = descriptor;
     private IConnection? _connection;
+    private IChannel? _channel;
+    private int _generation;
+    private readonly SemaphoreSlim _dispatchGate = new(descriptor.ConcurrencyCount);
+    private readonly TaskCompletionSource<Exception> _failure = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public Task<Exception> Failure => _failure.Task;
+    private readonly TaskCompletionSource _ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public Task Ready => _ready.Task;
+    private readonly object _gate = new();
+    private int _active;
+    private TaskCompletionSource _idle = Completed();
 
-    /// <summary>
-    /// Opens the consume connection before the background loop starts.
-    /// </summary>
-    public override async Task StartAsync(CancellationToken cancellationToken)
+    private static TaskCompletionSource Completed()
     {
-        if (busOptions.Consumers.Count > 0)
-        {
-            _connection = await ConnectWithRetryAsync(cancellationToken);
-            logger.LogDebug("InterBus RabbitMQ: consume connection established");
-        }
-
-        await base.StartAsync(cancellationToken);
+        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        completion.SetResult();
+        return completion;
     }
 
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    public async Task InitializeAsync(CancellationToken cancellationToken)
     {
-        var consumers = busOptions.Consumers;
-        if (consumers.Count == 0)
+        if (_descriptor.PumpCount != 1) throw new InvalidOperationException("RabbitMQ supports PumpCount = 1 only");
+        if (_descriptor.ConcurrencyCount > ushort.MaxValue) throw new InvalidOperationException("RabbitMQ concurrency exceeds 65535");
+        _connection = await ConnectWithRetryAsync(cancellationToken);
+        _connection.ConnectionShutdownAsync += (_, _) =>
+        { Interlocked.Increment(ref _generation); return Task.CompletedTask; };
+        var concurrency = (ushort)_descriptor.ConcurrencyCount;
+        _channel = await _connection.CreateChannelAsync(new CreateChannelOptions(
+            publisherConfirmationsEnabled: false, publisherConfirmationTrackingEnabled: false,
+            consumerDispatchConcurrency: concurrency), cancellationToken);
+        await _channel.BasicQosAsync(0, concurrency, false, cancellationToken);
+        _channel.ChannelShutdownAsync += (_, reason) =>
         {
-            logger.LogInformation("InterBus RabbitMQ: no consumers registered; message pump idle");
-            return;
-        }
-
-        // Start one consumer per queue; all run concurrently.
-        var tasks = consumers.Select(d => ConsumeQueueAsync(d, stoppingToken));
-        await Task.WhenAll(tasks);
+            if (reason.Initiator != ShutdownInitiator.Application && _connection.IsOpen)
+                _failure.TrySetResult(new InvalidOperationException($"RabbitMQ consumer channel closed: {reason.ReplyText}"));
+            return Task.CompletedTask;
+        };
     }
 
-    /// <summary>
-    /// Establishes the consume connection, retrying on transient connection failures using
-    /// the policy in <see cref="RabbitMqTransportOptions.ConnectionRetry"/>.
-    /// </summary>
+    public async Task RunAsync(Func<IDelivery, CancellationToken, Task> process, CancellationToken intakeToken,
+        CancellationToken processingToken)
+    {
+        var channel = _channel!;
+        var consumer = new AsyncEventingBasicConsumer(channel);
+        var unregistered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        consumer.UnregisteredAsync += (_, _) => { unregistered.TrySetResult(); return Task.CompletedTask; };
+        consumer.ReceivedAsync += async (_, args) =>
+        {
+            lock (_gate) { if (_active++ == 0) _idle = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously); }
+            RabbitDelivery? delivery = null;
+            var transferred = false;
+            try
+            {
+                delivery = new RabbitDelivery(this, args);
+                await _dispatchGate.WaitAsync(processingToken);
+                try { transferred = true; await process(delivery, processingToken); }
+                finally { _dispatchGate.Release(); }
+            }
+            catch (OperationCanceledException) when (processingToken.IsCancellationRequested) { }
+            catch (Exception error) { _failure.TrySetResult(error); throw; }
+            finally
+            {
+                try { if (!transferred && delivery is not null) await delivery.DisposeAsync(); }
+                finally { lock (_gate) { if (--_active == 0) _idle.TrySetResult(); } }
+            }
+        };
+        await channel.BasicConsumeAsync(_descriptor.QueueName, false, consumer, intakeToken);
+        _ready.TrySetResult();
+        try { await Task.Delay(Timeout.Infinite, intakeToken); }
+        catch (OperationCanceledException) when (intakeToken.IsCancellationRequested) { }
+        finally
+        {
+            try
+            {
+                foreach (var activeTag in consumer.ConsumerTags.ToArray())
+                    await channel.BasicCancelAsync(activeTag, cancellationToken: CancellationToken.None);
+                await unregistered.Task;
+            }
+            finally
+            {
+                Task idle;
+                lock (_gate) idle = _idle.Task;
+                await idle;
+            }
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            if (_channel is not null) await _channel.DisposeAsync();
+        }
+        finally
+        {
+            try { if (_connection is not null) await _connection.DisposeAsync(); }
+            finally { _dispatchGate.Dispose(); }
+        }
+    }
+
+    private sealed class RabbitDelivery : IDelivery
+    {
+        private readonly RabbitMqMessagePump _owner;
+        private readonly BasicDeliverEventArgs _args;
+        private readonly int _generation;
+        public ReadOnlyMemory<byte> Payload { get; }
+        public MessageHeaders Headers { get; } = new();
+        public Exception? DecodeError { get; }
+        public RabbitDelivery(RabbitMqMessagePump owner, BasicDeliverEventArgs args)
+        {
+            _owner = owner; _args = args; _generation = Volatile.Read(ref owner._generation); Payload = args.Body.ToArray();
+            try { Headers = RabbitMqHeaders.ParseAmqpHeaders(args.BasicProperties.Headers); }
+            catch (Exception error) { DecodeError = error; }
+        }
+        public async Task<bool> SettleAsync(DispatchResult result, CancellationToken cancellationToken)
+        {
+            var channel = _owner._channel!;
+            if (!channel.IsOpen || _generation != Volatile.Read(ref _owner._generation)) return false;
+            switch (result.Kind)
+            {
+                case DispatchResultKind.Success:
+                    await channel.BasicAckAsync(_args.DeliveryTag, false, cancellationToken); break;
+                case DispatchResultKind.Release:
+                    await channel.BasicNackAsync(_args.DeliveryTag, false, true, cancellationToken); break;
+                case DispatchResultKind.DeadLetter:
+                    await _owner.DeadLetterAsync(channel, _owner._descriptor, _args, result, cancellationToken); break;
+                default: throw new ArgumentOutOfRangeException(nameof(result));
+            }
+            return _generation == Volatile.Read(ref _owner._generation);
+        }
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+
     private async Task<IConnection> ConnectWithRetryAsync(CancellationToken cancellationToken)
     {
         var attempt = 0;
@@ -106,124 +188,16 @@ internal sealed class RabbitMqMessagePump(
             or TimeoutException
         || (ex.InnerException is not null && IsConnectionRelated(ex.InnerException));
 
-    private async Task ConsumeQueueAsync(ConsumerDescriptor descriptor, CancellationToken stoppingToken)
-    {
-        logger.LogDebug(
-            "InterBus RabbitMQ: starting consumer for queue {QueueName}",
-            descriptor.QueueName);
-
-        var concurrency = (ushort)Math.Max(1, descriptor.ConcurrencyCount);
-        var channelOptions = new CreateChannelOptions(
-            publisherConfirmationsEnabled: false,
-            publisherConfirmationTrackingEnabled: false,
-            consumerDispatchConcurrency: concurrency);
-
-        var channel = await _connection!.CreateChannelAsync(channelOptions, stoppingToken);
-
-        // Prefetch one message at a time per concurrent handler for fair dispatch.
-        await channel.BasicQosAsync(
-            prefetchSize: 0,
-            prefetchCount: concurrency,
-            global: false,
-            cancellationToken: stoppingToken);
-
-        var consumer = new AsyncEventingBasicConsumer(channel);
-        consumer.ReceivedAsync += async (_, ea) =>
-        {
-            // ReSharper disable MethodSupportsCancellation
-            if (stoppingToken.IsCancellationRequested)
-            {
-                await channel.BasicNackAsync(ea.DeliveryTag, multiple: false, requeue: true);
-                return;
-            }
-
-            try
-            {
-                var result = await DispatchAsync(descriptor, ea, stoppingToken);
-                switch (result.Kind)
-                {
-                    case DispatchResultKind.Success:
-                        await channel.BasicAckAsync(ea.DeliveryTag, multiple: false);
-                        break;
-                    case DispatchResultKind.DeadLetter:
-                        await DeadLetterAsync(channel, descriptor, ea, result);
-                        break;
-                    case DispatchResultKind.Release:
-                        logger.LogWarning(
-                            result.Exception,
-                            "InterBus RabbitMQ: consumer {ConsumerType} failed for queue {QueueName}; requeueing message for redelivery",
-                            descriptor.ConsumerType.Name,
-                            descriptor.QueueName);
-
-                        await channel.BasicNackAsync(ea.DeliveryTag, multiple: false, requeue: true);
-                        break;
-                    default:
-                        throw new ArgumentOutOfRangeException();
-                }
-            }
-            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-            {
-                await channel.BasicNackAsync(ea.DeliveryTag, multiple: false, requeue: true);
-            }
-            catch (Exception ex)
-            {
-                logger.LogWarning(
-                    ex,
-                    "InterBus RabbitMQ: consumer {ConsumerType} failed for queue {QueueName}; requeueing message for redelivery",
-                    descriptor.ConsumerType.Name,
-                    descriptor.QueueName);
-
-                await channel.BasicNackAsync(ea.DeliveryTag, multiple: false, requeue: true);
-            }
-
-            // ReSharper restore MethodSupportsCancellation
-        };
-
-        await channel.BasicConsumeAsync(
-            queue: descriptor.QueueName,
-            autoAck: false,
-            consumer: consumer,
-            cancellationToken: stoppingToken);
-
-        // Block until the stopping token fires, then clean up the channel.
-        try
-        {
-            await Task.Delay(Timeout.Infinite, stoppingToken);
-        }
-        catch (OperationCanceledException)
-        {
-            // Expected on shutdown.
-        }
-
-        logger.LogDebug(
-            "InterBus RabbitMQ: consumer for queue {QueueName} stopped",
-            descriptor.QueueName);
-
-        await channel.CloseAsync(CancellationToken.None);
-        await channel.DisposeAsync();
-    }
-
-    private async Task<DispatchResult> DispatchAsync(ConsumerDescriptor descriptor, BasicDeliverEventArgs ea,
-        CancellationToken ct)
-    {
-        await using var scope = scopeFactory.CreateAsyncScope();
-        var executor = scope.ServiceProvider.GetRequiredService<DispatchPipelineExecutor>();
-        var headers = RabbitMqHeaders.ParseAmqpHeaders(ea.BasicProperties.Headers);
-        var context = new DispatchContext(descriptor, ea.Body.ToArray(), headers);
-        await executor.ExecuteAsync(context, ct);
-        return context.Result;
-    }
-
     private async Task DeadLetterAsync(
         IChannel consumeChannel,
         ConsumerDescriptor descriptor,
         BasicDeliverEventArgs ea,
-        DispatchResult result)
+        DispatchResult result, CancellationToken cancellationToken)
     {
         var deadLetterExchangeName = descriptor.QueueName + options.DeadLetterExchangeSuffix;
-        var publishConnection = await connectionProvider.GetPublishConnectionAsync(CancellationToken.None);
+        var publishConnection = await connectionProvider.GetPublishConnectionAsync(cancellationToken);
         await using var publishChannel =
-            await publishConnection.CreateChannelAsync(cancellationToken: CancellationToken.None);
+            await publishConnection.CreateChannelAsync(cancellationToken: cancellationToken);
         var properties = new BasicProperties
         {
             ContentType = ea.BasicProperties.ContentType,
@@ -250,27 +224,9 @@ internal sealed class RabbitMqMessagePump(
             mandatory: false,
             basicProperties: properties,
             body: ea.Body,
-            cancellationToken: CancellationToken.None);
+            cancellationToken: cancellationToken);
 
-        await consumeChannel.BasicAckAsync(ea.DeliveryTag, multiple: false);
+        await consumeChannel.BasicAckAsync(ea.DeliveryTag, multiple: false, cancellationToken: cancellationToken);
 
-        logger.LogWarning(
-            result.Exception,
-            "InterBus RabbitMQ: consumer {ConsumerType} failed for queue {QueueName}; message moved to dead-letter exchange {DeadLetterExchange}",
-            descriptor.ConsumerType.Name,
-            descriptor.QueueName,
-            deadLetterExchangeName);
-    }
-
-    public override async Task StopAsync(CancellationToken cancellationToken)
-    {
-        await base.StopAsync(cancellationToken);
-
-        if (_connection is not null)
-        {
-            await _connection.CloseAsync(cancellationToken);
-            await _connection.DisposeAsync();
-            _connection = null;
-        }
     }
 }

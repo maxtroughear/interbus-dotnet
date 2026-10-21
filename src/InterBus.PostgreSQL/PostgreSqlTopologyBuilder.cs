@@ -33,7 +33,7 @@ internal sealed class PostgreSqlTopologyBuilder(
     public async Task<string> EnsureTopicAsync(Uri topic, CancellationToken cancellationToken)
     {
         var topicName = RoutingConventions.GetDestinationName(topic);
-        
+
         await EnsureTopicIdAsync(topicName, cancellationToken);
         return topicName;
     }

@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using Hangfire;
 using InterBus.Extensions;
 using InterBus.Hangfire.Extensions;
@@ -6,6 +5,7 @@ using InterBus.InMemory.Extensions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Xunit;
+using System.Collections.Concurrent;
 
 namespace InterBus.Hangfire.Tests;
 
@@ -51,7 +51,7 @@ public sealed class HangfireSchedulerTests
             await scheduler.SchedulePublishAsync(
                 message, DateTimeOffset.UtcNow.AddSeconds(1), cts.Token);
 
-            await WaitUntilAsync(() => tracker.Messages.Count >= 1, timeoutMs: 5000);
+            await WaitUntilAsync(() => tracker.Messages.Count >= 1, timeoutMs: 5000, cancellationToken: cts.Token);
 
             var delivered = Assert.Single(tracker.Messages);
             Assert.Equal(message.Id, delivered.Id);
@@ -74,13 +74,6 @@ public sealed class HangfireSchedulerTests
             await provider.DisposeAsync();
             cts.Dispose();
         }
-    }
-
-    private static async Task WaitUntilAsync(Func<bool> condition, int timeoutMs = 5000, int intervalMs = 25)
-    {
-        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
-        while (!condition() && DateTime.UtcNow < deadline)
-            await Task.Delay(intervalMs);
     }
 
     internal record IntegrationMessage(Guid Id, string Payload);

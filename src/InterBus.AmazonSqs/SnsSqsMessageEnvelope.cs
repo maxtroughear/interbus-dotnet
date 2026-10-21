@@ -1,5 +1,4 @@
 using System.Text.Json;
-using System.Text.Json.Serialization;
 using Amazon.SimpleNotificationService.Model;
 
 namespace InterBus.AmazonSqs;
@@ -21,7 +20,7 @@ public sealed class SnsSqsMessageEnvelope : ISnsSqsMessageEnvelope
         var envelope = new InterBusEnvelopeBody(
             Convert.ToBase64String(payload),
             new Dictionary<string, string>(headers, StringComparer.Ordinal));
-        
+
         return JsonSerializer.Serialize(envelope, SnsSqsJsonContext.Default.InterBusEnvelopeBody);
     }
 
@@ -60,7 +59,3 @@ public sealed class SnsSqsMessageEnvelope : ISnsSqsMessageEnvelope
         return result;
     }
 }
-
-internal sealed record InterBusEnvelopeBody(
-    [property: JsonPropertyName("p")] string Payload,
-    [property: JsonPropertyName("h")] Dictionary<string, string> Headers);

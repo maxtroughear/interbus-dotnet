@@ -45,13 +45,6 @@ public class TopicConfigurationTests
         cts.Dispose();
     }
 
-    private static async Task WaitUntilAsync(Func<bool> condition, int timeoutMs = 5000, int intervalMs = 25)
-    {
-        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
-        while (!condition() && DateTime.UtcNow < deadline)
-            await Task.Delay(intervalMs);
-    }
-
     [Fact]
     public async Task Configure_CustomTopicName_ConsumerReceivesPublishedMessage()
     {
@@ -75,7 +68,8 @@ public class TopicConfigurationTests
             var msg = new OrderPlaced(Guid.NewGuid(), "custom@topic.test", 10m);
             await publisher.PublishAsync(msg, TestContext.Current.CancellationToken);
 
-            await WaitUntilAsync(() => tracker.Messages.Count == 1);
+            await WaitUntilAsync(() => tracker.Messages.Count == 1,
+                cancellationToken: TestContext.Current.CancellationToken);
 
             // Assert: consumer received the message via the custom topic.
             Assert.Single(tracker.Messages);
@@ -114,7 +108,8 @@ public class TopicConfigurationTests
             var msg = new OrderPlaced(Guid.NewGuid(), "fanout@custom.test", 20m);
             await publisher.PublishAsync(msg, TestContext.Current.CancellationToken);
 
-            await WaitUntilAsync(() => orderTracker.Messages.Count == 1 && auditTracker.Messages.Count == 1);
+            await WaitUntilAsync(() => orderTracker.Messages.Count == 1 && auditTracker.Messages.Count == 1,
+                cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Single(orderTracker.Messages);
             Assert.Single(auditTracker.Messages);
@@ -154,7 +149,8 @@ public class TopicConfigurationTests
             // Send directly to OrderPlacedConsumer - queue is resolved from the registered descriptor.
             await publisher.SendAsync<OrderPlacedConsumer, OrderPlaced>(msg, TestContext.Current.CancellationToken);
 
-            await WaitUntilAsync(() => orderTracker.Messages.Count == 1);
+            await WaitUntilAsync(() => orderTracker.Messages.Count == 1,
+                cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Single(orderTracker.Messages);
             Assert.Equal(msg.OrderId, orderTracker.Messages.Single().OrderId);
@@ -202,7 +198,8 @@ public class TopicConfigurationTests
 
             await publisher.SendAsync(queueName, msg, TestContext.Current.CancellationToken);
 
-            await WaitUntilAsync(() => orderTracker.Messages.Count == 1);
+            await WaitUntilAsync(() => orderTracker.Messages.Count == 1,
+                cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Single(orderTracker.Messages);
             Assert.Equal(msg.OrderId, orderTracker.Messages.Single().OrderId);
@@ -249,7 +246,8 @@ public class TopicConfigurationTests
             await publisher.SendAsync(queueName, msg, ctx => ctx.Headers["x-source"] = "cross-project",
                 TestContext.Current.CancellationToken);
 
-            await WaitUntilAsync(() => orderTracker.Messages.Count == 1);
+            await WaitUntilAsync(() => orderTracker.Messages.Count == 1,
+                cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Single(orderTracker.Messages);
             Assert.Equal(msg.OrderId, orderTracker.Messages.Single().OrderId);

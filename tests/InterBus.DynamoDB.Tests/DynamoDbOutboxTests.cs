@@ -1,189 +1,23 @@
-using System.Collections.Concurrent;
+using InterBus.Generated;
 using Amazon.DynamoDBv2;
 using Amazon.DynamoDBv2.Model;
 using InterBus.DynamoDB.Extensions;
 using InterBus.DynamoDB.Outbox;
 using InterBus.Extensions;
-using InterBus.Generated;
 using InterBus.InMemory.Extensions;
 using InterBus.Retry;
-using InterBus.Sending;
+using InterBus.Tests.Common;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Testcontainers.LocalStack;
 
 namespace InterBus.DynamoDB.Tests;
 
-// ---------------------------------------------------------------------------
-// Outbox-specific message types
-// ---------------------------------------------------------------------------
-
-public record OutboxOrderPlaced(Guid OrderId, string CustomerEmail);
-
-public record OutboxOrderShipped(Guid OrderId);
-
-// ---------------------------------------------------------------------------
-// Trackers
-// ---------------------------------------------------------------------------
-
-public sealed class OutboxOrderPlacedTracker
-{
-    private readonly ConcurrentBag<OutboxOrderPlaced> _messages = [];
-    public IReadOnlyCollection<OutboxOrderPlaced> Messages => _messages;
-    public void Track(OutboxOrderPlaced msg) => _messages.Add(msg);
-}
-
-public sealed class OutboxOrderShippedTracker
-{
-    private readonly ConcurrentBag<OutboxOrderShipped> _messages = [];
-    public IReadOnlyCollection<OutboxOrderShipped> Messages => _messages;
-    public void Track(OutboxOrderShipped msg) => _messages.Add(msg);
-}
-
-public sealed class OutboxConsumerExecutionTracker
-{
-    private int _count;
-    public int Count => _count;
-    public void Track() => Interlocked.Increment(ref _count);
-}
-
-// ---------------------------------------------------------------------------
-// Consumers
-// ---------------------------------------------------------------------------
-
-public sealed class OutboxOrderPlacedConsumer(OutboxOrderPlacedTracker tracker)
-    : IConsumer<OutboxOrderPlaced>
-{
-    public Task Consume(OutboxOrderPlaced message, IConsumeContext context,
-        CancellationToken cancellationToken = default)
-    {
-        tracker.Track(message);
-        return Task.CompletedTask;
-    }
-}
-
-/// <summary>
-/// Consumer that publishes <see cref="OutboxOrderShipped"/> to the outbox when it receives
-/// <see cref="OutboxOrderPlaced"/>. Calls <see cref="IDynamoDbOutboxContext.CommitAsync"/>
-/// so the outbox row is atomically committed.
-/// </summary>
-public sealed class OutboxOrderPlacedPublishingConsumer(
-    IDynamoDbOutboxContext outboxContext,
-    IPublisher publisher)
-    : IConsumer<OutboxOrderPlaced>
-{
-    public async Task Consume(OutboxOrderPlaced message, IConsumeContext context,
-        CancellationToken cancellationToken = default)
-    {
-        await publisher.PublishAsync(new OutboxOrderShipped(message.OrderId), cancellationToken);
-        await outboxContext.CommitAsync(cancellationToken);
-    }
-}
-
-public sealed class OutboxOrderShippedConsumer(OutboxOrderShippedTracker tracker)
-    : IConsumer<OutboxOrderShipped>
-{
-    public Task Consume(OutboxOrderShipped message, IConsumeContext context,
-        CancellationToken cancellationToken = default)
-    {
-        tracker.Track(message);
-        return Task.CompletedTask;
-    }
-}
-
-public sealed class OutboxInboxPublishingConsumer(
-    OutboxConsumerExecutionTracker executionTracker,
-    IPublisher publisher)
-    : IConsumer<OutboxOrderPlaced>
-{
-    public async Task Consume(OutboxOrderPlaced message, IConsumeContext context,
-        CancellationToken cancellationToken = default)
-    {
-        executionTracker.Track();
-        await publisher.PublishAsync(new OutboxOrderShipped(message.OrderId), cancellationToken);
-    }
-}
-
-public sealed class OutboxInboxExecutionOnlyConsumer(OutboxConsumerExecutionTracker executionTracker)
-    : IConsumer<OutboxOrderPlaced>
-{
-    public Task Consume(OutboxOrderPlaced message, IConsumeContext context,
-        CancellationToken cancellationToken = default)
-    {
-        executionTracker.Track();
-        return Task.CompletedTask;
-    }
-}
-
-public sealed class OutboxInboxFailFirstConsumer(
-    OutboxConsumerExecutionTracker executionTracker,
-    FailFirstConsumeState state)
-    : IConsumer<OutboxOrderPlaced>
-{
-    public Task Consume(OutboxOrderPlaced message, IConsumeContext context,
-        CancellationToken cancellationToken = default)
-    {
-        executionTracker.Track();
-        if (Interlocked.Increment(ref state.CallCount) == 1)
-            throw new Exception("Simulated consumer failure");
-
-        return Task.CompletedTask;
-    }
-}
-
-public sealed class FailFirstConsumeState
-{
-    public int CallCount;
-}
-
-internal sealed class FailFirstSendMiddleware(FailFirstSendState state) : ISendMiddleware
-{
-    public Task InvokeAsync(SendContext context, Func<SendContext, CancellationToken, Task> next,
-        CancellationToken cancellationToken = default)
-    {
-        if (!context.Destination.ToString().Contains(nameof(OutboxOrderShipped), StringComparison.OrdinalIgnoreCase))
-            return next(context, cancellationToken);
-
-        if (Interlocked.Increment(ref state.CallCount) == 1)
-            throw new Exception("Simulated send failure");
-
-        return next(context, cancellationToken);
-    }
-}
-
-internal sealed class FailFirstSendState
-{
-    public int CallCount;
-}
-
-// ---------------------------------------------------------------------------
-// Test fixture
-// ---------------------------------------------------------------------------
-
 [TestFixture]
-public class DynamoDbOutboxTests
+public class DynamoDbOutboxTests : DynamoDbTestFixtureBase
 {
-    private readonly LocalStackContainer? _container = TestHelpers.CreateLocalStackContainer();
     private IAmazonDynamoDB _dynamoDb = null!;
     private string _tableName = string.Empty;
     private string _inboxTableName = string.Empty;
-
-    [OneTimeSetUp]
-    public async Task OneTimeSetUp()
-    {
-        if (_container is null)
-            return;
-        await _container.StartAsync();
-    }
-
-    [OneTimeTearDown]
-    public async Task OneTimeTearDown()
-    {
-        if (_container is null)
-            return;
-        await _container.StopAsync();
-        await _container.DisposeAsync();
-    }
 
     [SetUp]
     public async Task SetUp()
@@ -192,7 +26,7 @@ public class DynamoDbOutboxTests
         _tableName = $"{runId}-InterBusOutboxTest";
         _inboxTableName = $"{runId}-InterBusInboxTest";
 
-        var awsOptions = TestHelpers.CreateAwsOptions(_container);
+        var awsOptions = TestHelpers.CreateAwsOptions(Container);
         var services = new ServiceCollection();
         if (awsOptions is not null)
             services.AddDefaultAWSOptions(awsOptions);
@@ -225,7 +59,7 @@ public class DynamoDbOutboxTests
     [Test]
     public async Task Publish_CommitAsync_StoresMessageInOutboxTable()
     {
-        var tracker = new OutboxOrderPlacedTracker();
+        var tracker = new OrderPlacedTracker();
 
         var (provider, cts) = await StartBusAsync(bus =>
         {
@@ -246,7 +80,7 @@ public class DynamoDbOutboxTests
             var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
             var outboxContext = scope.ServiceProvider.GetRequiredService<IDynamoDbOutboxContext>();
 
-            var msg = new OutboxOrderPlaced(Guid.NewGuid(), "test@example.com");
+            var msg = new OrderPlaced(Guid.NewGuid(), "test@example.com", 0);
             await publisher.PublishAsync(msg, CancellationToken.None);
 
             // Message should NOT have been forwarded yet — outbox middleware buffered it.
@@ -288,7 +122,7 @@ public class DynamoDbOutboxTests
     [Test]
     public async Task OutboxProcessor_ForwardsMessages_ToTransport()
     {
-        var tracker = new OutboxOrderPlacedTracker();
+        var tracker = new OrderPlacedTracker();
 
         var (provider, cts) = await StartBusAsync(bus =>
         {
@@ -308,14 +142,14 @@ public class DynamoDbOutboxTests
                 var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
                 var outboxContext = scope.ServiceProvider.GetRequiredService<IDynamoDbOutboxContext>();
 
-                var msg = new OutboxOrderPlaced(Guid.NewGuid(), "deliver@example.com");
+                var msg = new OrderPlaced(Guid.NewGuid(), "deliver@example.com", 0);
                 await publisher.PublishAsync(msg, CancellationToken.None);
                 await outboxContext.CommitAsync(CancellationToken.None);
             }
 
             await StartHostedServicesAsync(provider, cts.Token);
 
-            await TestHelpers.WaitUntilAsync(() => tracker.Messages.Count == 1);
+            await WaitUntilAsync(() => tracker.Messages.Count == 1);
 
             Assert.That(tracker.Messages, Has.Count.EqualTo(1));
             Assert.That(tracker.Messages.Single().CustomerEmail, Is.EqualTo("deliver@example.com"));
@@ -340,7 +174,7 @@ public class DynamoDbOutboxTests
     [Test]
     public async Task OutboxProcessor_ForwardsMultipleMessages_FromSameGroup()
     {
-        var tracker = new OutboxOrderPlacedTracker();
+        var tracker = new OrderPlacedTracker();
 
         var (provider, cts) = await StartBusAsync(bus =>
         {
@@ -361,10 +195,10 @@ public class DynamoDbOutboxTests
                 var outboxContext = scope.ServiceProvider.GetRequiredService<IDynamoDbOutboxContext>();
 
                 await publisher.PublishAsync(
-                    new OutboxOrderPlaced(Guid.NewGuid(), "a@example.com"),
+                    new OrderPlaced(Guid.NewGuid(), "a@example.com", 0),
                     CancellationToken.None);
                 await publisher.PublishAsync(
-                    new OutboxOrderPlaced(Guid.NewGuid(), "b@example.com"),
+                    new OrderPlaced(Guid.NewGuid(), "b@example.com", 0),
                     CancellationToken.None);
 
                 await outboxContext.CommitAsync(CancellationToken.None);
@@ -372,7 +206,7 @@ public class DynamoDbOutboxTests
 
             await StartHostedServicesAsync(provider, cts.Token);
 
-            await TestHelpers.WaitUntilAsync(() => tracker.Messages.Count == 2);
+            await WaitUntilAsync(() => tracker.Messages.Count == 2);
 
             Assert.That(tracker.Messages, Has.Count.EqualTo(2));
         }
@@ -389,7 +223,7 @@ public class DynamoDbOutboxTests
     [Test]
     public async Task Consumer_PublishViaOutbox_MessageForwardedByProcessor()
     {
-        var shippedTracker = new OutboxOrderShippedTracker();
+        var shippedTracker = new OrderShippedTracker();
 
         var (provider, cts) = await StartBusAsync(bus =>
         {
@@ -413,11 +247,11 @@ public class DynamoDbOutboxTests
             {
                 var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
                 await publisher.PublishAsync(
-                    new OutboxOrderPlaced(Guid.NewGuid(), "consumer@example.com"),
+                    new OrderPlaced(Guid.NewGuid(), "consumer@example.com", 0),
                     CancellationToken.None);
             }
 
-            await TestHelpers.WaitUntilAsync(() => shippedTracker.Messages.Count == 1);
+            await WaitUntilAsync(() => shippedTracker.Messages.Count == 1);
 
             Assert.That(shippedTracker.Messages, Has.Count.EqualTo(1));
         }
@@ -433,7 +267,7 @@ public class DynamoDbOutboxTests
     [Test]
     public async Task CommitAsync_AtomicallyWritesBusinessItemsAndOutboxMessages()
     {
-        var tracker = new OutboxOrderPlacedTracker();
+        var tracker = new OrderPlacedTracker();
         var businessTable = $"{Guid.NewGuid():N}-BusinessTable";
 
         await EnsureSimpleTableExistsAsync(_dynamoDb, businessTable);
@@ -474,7 +308,7 @@ public class DynamoDbOutboxTests
                 });
 
                 await publisher.PublishAsync(
-                    new OutboxOrderPlaced(Guid.NewGuid(), "atomic@example.com"),
+                    new OrderPlaced(Guid.NewGuid(), "atomic@example.com", 0),
                     CancellationToken.None);
 
                 // Single atomic commit writes both the business item and the outbox message.
@@ -522,7 +356,7 @@ public class DynamoDbOutboxTests
     public async Task Consumer_UseInboxOutbox_RedeliverySkipsConsumerAndClearsOutbox()
     {
         const string completedInboxState = "2";
-        var shippedTracker = new OutboxOrderShippedTracker();
+        var shippedTracker = new OrderShippedTracker();
         var executionTracker = new OutboxConsumerExecutionTracker();
         var (provider, cts) = await StartBusAsync(bus =>
         {
@@ -560,11 +394,11 @@ public class DynamoDbOutboxTests
             {
                 var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
                 await publisher.PublishAsync(
-                    new OutboxOrderPlaced(Guid.NewGuid(), "inbox-outbox@example.com"),
+                    new OrderPlaced(Guid.NewGuid(), "inbox-outbox@example.com", 0),
                     CancellationToken.None);
             }
 
-            await TestHelpers.WaitUntilAsync(() => shippedTracker.Messages.Count > 0, timeoutMs: 10_000);
+            await WaitUntilAsync(() => shippedTracker.Messages.Count > 0, timeoutMs: 10_000);
 
             using (Assert.EnterMultipleScope())
             {
@@ -622,17 +456,17 @@ public class DynamoDbOutboxTests
                 var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
 
                 await publisher.PublishAsync(
-                    new OutboxOrderPlaced(Guid.NewGuid(), "missing-id-1@example.com"),
+                    new OrderPlaced(Guid.NewGuid(), "missing-id-1@example.com", 0),
                     ctx => ctx.Headers.Remove(InterBusHeaders.MessageId),
                     CancellationToken.None);
 
                 await publisher.PublishAsync(
-                    new OutboxOrderPlaced(Guid.NewGuid(), "missing-id-2@example.com"),
+                    new OrderPlaced(Guid.NewGuid(), "missing-id-2@example.com", 0),
                     ctx => ctx.Headers.Remove(InterBusHeaders.MessageId),
                     CancellationToken.None);
             }
 
-            await TestHelpers.WaitUntilAsync(() => executionTracker.Count == 2);
+            await WaitUntilAsync(() => executionTracker.Count == 2);
 
             Assert.That(executionTracker.Count, Is.EqualTo(2));
 
@@ -691,12 +525,12 @@ public class DynamoDbOutboxTests
             {
                 var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
                 await publisher.PublishAsync(
-                    new OutboxOrderPlaced(Guid.NewGuid(), "retry@example.com"),
+                    new OrderPlaced(Guid.NewGuid(), "retry@example.com", 0),
                     ctx => ctx.Headers[InterBusHeaders.MessageId] = messageId,
                     CancellationToken.None);
             }
 
-            await TestHelpers.WaitUntilAsync(() => executionTracker.Count == 2, timeoutMs: 10000);
+            await WaitUntilAsync(() => executionTracker.Count == 2, timeoutMs: 10000);
             await WaitForInboxStateAsync(consumerName, messageId, completedInboxState, timeoutMs: 10000);
 
             Assert.That(executionTracker.Count, Is.EqualTo(2));
@@ -742,7 +576,7 @@ public class DynamoDbOutboxTests
                 [DynamoDbInboxTable.MessageId] = new() { S = messageId },
                 [DynamoDbInboxTable.State] = new() { N = pendingOutboxState },
                 [DynamoDbInboxTable.CreatedAt] = new()
-                    { N = DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString() },
+                { N = DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString() },
             },
         }, CancellationToken.None);
 
@@ -767,7 +601,7 @@ public class DynamoDbOutboxTests
             {
                 var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
                 await publisher.PublishAsync(
-                    new OutboxOrderPlaced(Guid.NewGuid(), "pending-outbox-no-group@example.com"),
+                    new OrderPlaced(Guid.NewGuid(), "pending-outbox-no-group@example.com", 0),
                     ctx => ctx.Headers[InterBusHeaders.MessageId] = messageId,
                     CancellationToken.None);
             }
@@ -792,29 +626,32 @@ public class DynamoDbOutboxTests
         }
     }
 
-    // -----------------------------------------------------------------------
-    // Helpers
-    // -----------------------------------------------------------------------
-
-    private async Task<(ServiceProvider Provider, CancellationTokenSource Cts)> StartBusAsync(
+    private Task<(ServiceProvider Provider, CancellationTokenSource Cts)> StartBusAsync(
         Action<InterBusBuilder> configureBus,
         Action<IServiceCollection>? extraServices = null)
     {
-        var services = new ServiceCollection();
-        services.AddLogging();
+        try
+        {
+            var services = new ServiceCollection();
+            services.AddLogging();
 
-        var awsOptions = TestHelpers.CreateAwsOptions(_container);
-        if (awsOptions is not null)
-            services.AddDefaultAWSOptions(awsOptions);
+            var awsOptions = TestHelpers.CreateAwsOptions(Container);
+            if (awsOptions is not null)
+                services.AddDefaultAWSOptions(awsOptions);
 
-        services.AddAWSService<IAmazonDynamoDB>();
-        extraServices?.Invoke(services);
-        services.AddInterBus(configureBus);
+            services.AddAWSService<IAmazonDynamoDB>();
+            extraServices?.Invoke(services);
+            services.AddInterBus(configureBus);
 
-        var provider = services.BuildServiceProvider();
-        var cts = new CancellationTokenSource();
+            var provider = services.BuildServiceProvider();
+            var cts = new CancellationTokenSource();
 
-        return (provider, cts);
+            return Task.FromResult((provider, cts));
+        }
+        catch (Exception exception)
+        {
+            return Task.FromException<(ServiceProvider Provider, CancellationTokenSource Cts)>(exception);
+        }
     }
 
     private static async Task StartHostedServicesAsync(ServiceProvider provider, CancellationToken ct)

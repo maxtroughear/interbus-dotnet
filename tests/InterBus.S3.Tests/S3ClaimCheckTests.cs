@@ -1,11 +1,10 @@
-using System.Collections.Concurrent;
+using InterBus.Generated;
 using Amazon;
 using Amazon.Extensions.NETCore.Setup;
 using Amazon.Runtime;
 using Amazon.S3;
 using Amazon.S3.Model;
 using InterBus.Extensions;
-using InterBus.Generated;
 using InterBus.InMemory.Extensions;
 using InterBus.S3.Extensions;
 using Microsoft.Extensions.DependencyInjection;
@@ -14,41 +13,12 @@ using Testcontainers.LocalStack;
 
 namespace InterBus.S3.Tests;
 
-// ---------------------------------------------------------------------------
-// Message types
-// ---------------------------------------------------------------------------
-
-public record LargePayloadMessage(Guid MessageId, string Content);
-
-// ---------------------------------------------------------------------------
-// Trackers and consumers
-// ---------------------------------------------------------------------------
-
-public sealed class LargePayloadTracker
-{
-    private readonly ConcurrentBag<LargePayloadMessage> _messages = [];
-    public IReadOnlyCollection<LargePayloadMessage> Messages => _messages;
-    public void Track(LargePayloadMessage message) => _messages.Add(message);
-}
-
-public sealed class LargePayloadConsumer(LargePayloadTracker tracker) : IConsumer<LargePayloadMessage>
-{
-    public Task Consume(LargePayloadMessage message, IConsumeContext context,
-        CancellationToken cancellationToken = default)
-    {
-        tracker.Track(message);
-        return Task.CompletedTask;
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Test fixture
-// ---------------------------------------------------------------------------
 
 [TestFixture]
 public sealed class S3ClaimCheckTests
 {
-    private static readonly LocalStackContainer? Container = new LocalStackBuilder("ministackorg/ministack:full").Build();
+    private static readonly LocalStackContainer? Container =
+        new LocalStackBuilder("ministackorg/ministack:full").Build();
 
     private IAmazonS3 _s3Client = null!;
     private string _bucketName = string.Empty;
@@ -276,15 +246,5 @@ public sealed class S3ClaimCheckTests
 
         await provider.DisposeAsync();
         cts.Dispose();
-    }
-
-    private static async Task WaitUntilAsync(
-        Func<bool> condition,
-        int timeoutMs = 15_000,
-        int intervalMs = 100)
-    {
-        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
-        while (!condition() && DateTime.UtcNow < deadline)
-            await Task.Delay(intervalMs);
     }
 }

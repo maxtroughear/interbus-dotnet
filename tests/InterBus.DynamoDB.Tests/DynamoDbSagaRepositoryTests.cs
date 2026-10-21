@@ -75,7 +75,7 @@ public class DynamoDbSagaRepositoryTests : DynamoDbSagaTestFixtureBase
         var correlationId = Guid.NewGuid().ToString();
         var repo = CreateRepo();
         await using var sagaLock = await repo.AcquireLockAsync(correlationId);
-        Assert.DoesNotThrowAsync(async () =>
+        await Assert.DoesNotThrowAsync(async () =>
             await repo.DeleteAsync(correlationId));
     }
 

@@ -1,7 +1,7 @@
+using InterBus.Generated;
 using InterBus.EntityFrameworkCore.Extensions;
 using InterBus.EntityFrameworkCore.LockProviders;
 using InterBus.Extensions;
-using InterBus.Generated;
 using InterBus.InMemory.Extensions;
 using InterBus.Sagas;
 using Microsoft.EntityFrameworkCore;
@@ -10,45 +10,6 @@ using Microsoft.Extensions.Hosting;
 using Testcontainers.PostgreSql;
 
 namespace InterBus.EntityFrameworkCore.PostgreSQL.IntegrationTests;
-
-// ---------------------------------------------------------------------------
-// Saga messages / state / sagas for PostgreSQL integration tests
-// ---------------------------------------------------------------------------
-
-public record PgSagaOrderStarted(Guid OrderId, string CustomerEmail);
-
-public record PgSagaOrderConfirmed(Guid OrderId);
-
-public sealed class PgSagaOrderState
-{
-    public string? CustomerEmail { get; set; }
-    public bool IsConfirmed { get; set; }
-    public int MessageCount { get; set; }
-}
-
-public sealed class PgSagaOrderSaga :
-    ISagaConsumer<PgSagaOrderState, PgSagaOrderStarted>,
-    ISagaConsumer<PgSagaOrderState, PgSagaOrderConfirmed>
-{
-    public string GetCorrelationId(PgSagaOrderStarted message) => message.OrderId.ToString();
-    public string GetCorrelationId(PgSagaOrderConfirmed message) => message.OrderId.ToString();
-
-    public Task Consume(PgSagaOrderStarted message, ISagaContext<PgSagaOrderState> context,
-        CancellationToken cancellationToken = default)
-    {
-        context.State.CustomerEmail = message.CustomerEmail;
-        context.State.MessageCount++;
-        return Task.CompletedTask;
-    }
-
-    public Task Consume(PgSagaOrderConfirmed message, ISagaContext<PgSagaOrderState> context,
-        CancellationToken cancellationToken = default)
-    {
-        context.State.IsConfirmed = true;
-        context.State.MessageCount++;
-        return Task.CompletedTask;
-    }
-}
 
 /// <summary>
 /// Integration tests for the EF Core saga repository using a real PostgreSQL database.
@@ -130,16 +91,6 @@ public class SagaPostgreSqlIntegrationTests(string imageTag)
         var repo = scope.ServiceProvider
             .GetRequiredService<ISagaRepository<PgSagaOrderSaga, PgSagaOrderState>>();
         return await repo.GetAsync(correlationId);
-    }
-
-    private static async Task WaitUntilAsync(
-        Func<Task<bool>> condition,
-        int timeoutMs = 10_000,
-        int intervalMs = 50)
-    {
-        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
-        while (!await condition() && DateTime.UtcNow < deadline)
-            await Task.Delay(intervalMs);
     }
 
     [Test]

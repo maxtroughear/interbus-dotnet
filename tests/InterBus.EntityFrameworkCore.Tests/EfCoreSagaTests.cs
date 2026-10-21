@@ -1,7 +1,6 @@
-using InterBus.EntityFrameworkCore.Extensions;
-using InterBus.EntityFrameworkCore.Sagas;
-using InterBus.Extensions;
 using InterBus.Generated;
+using InterBus.EntityFrameworkCore.Extensions;
+using InterBus.Extensions;
 using InterBus.InMemory.Extensions;
 using InterBus.Sagas;
 using Microsoft.Data.Sqlite;
@@ -12,117 +11,6 @@ using Xunit;
 
 namespace InterBus.EntityFrameworkCore.Tests;
 
-// ---------------------------------------------------------------------------
-// Saga-specific messages (separate from outbox test messages to avoid conflicts)
-// ---------------------------------------------------------------------------
-
-public record EfSagaOrderStarted(Guid OrderId, string CustomerEmail);
-
-public record EfSagaOrderConfirmed(Guid OrderId);
-
-public record EfSagaOrderCancelled(Guid OrderId);
-
-// ---------------------------------------------------------------------------
-// Saga state
-// ---------------------------------------------------------------------------
-
-public sealed class EfSagaOrderState
-{
-    public string? CustomerEmail { get; set; }
-    public bool IsConfirmed { get; set; }
-    public bool IsCancelled { get; set; }
-    public int MessageCount { get; set; }
-}
-
-// ---------------------------------------------------------------------------
-// Saga implementations
-// ---------------------------------------------------------------------------
-
-public sealed class EfSagaOrderSaga :
-    ISagaConsumer<EfSagaOrderState, EfSagaOrderStarted>,
-    ISagaConsumer<EfSagaOrderState, EfSagaOrderConfirmed>
-{
-    public string GetCorrelationId(EfSagaOrderStarted message) => message.OrderId.ToString();
-    public string GetCorrelationId(EfSagaOrderConfirmed message) => message.OrderId.ToString();
-
-    public Task Consume(EfSagaOrderStarted message, ISagaContext<EfSagaOrderState> context,
-        CancellationToken cancellationToken = default)
-    {
-        context.State.CustomerEmail = message.CustomerEmail;
-        context.State.MessageCount++;
-        return Task.CompletedTask;
-    }
-
-    public Task Consume(EfSagaOrderConfirmed message, ISagaContext<EfSagaOrderState> context,
-        CancellationToken cancellationToken = default)
-    {
-        context.State.IsConfirmed = true;
-        context.State.MessageCount++;
-        return Task.CompletedTask;
-    }
-}
-
-public sealed class EfSagaOrderWithDeletionSaga :
-    ISagaConsumer<EfSagaOrderState, EfSagaOrderStarted>,
-    ISagaConsumer<EfSagaOrderState, EfSagaOrderCancelled>
-{
-    public string GetCorrelationId(EfSagaOrderStarted message) => message.OrderId.ToString();
-    public string GetCorrelationId(EfSagaOrderCancelled message) => message.OrderId.ToString();
-
-    public Task Consume(EfSagaOrderStarted message, ISagaContext<EfSagaOrderState> context,
-        CancellationToken cancellationToken = default)
-    {
-        context.State.CustomerEmail = message.CustomerEmail;
-        context.State.MessageCount++;
-        return Task.CompletedTask;
-    }
-
-    public Task Consume(EfSagaOrderCancelled message, ISagaContext<EfSagaOrderState> context,
-        CancellationToken cancellationToken = default)
-    {
-        context.State.IsCancelled = true;
-        context.Delete();
-        return Task.CompletedTask;
-    }
-}
-
-public sealed class EfSagaCompletingOrderSaga :
-    ISagaConsumer<EfSagaOrderState, EfSagaOrderStarted>,
-    ISagaConsumer<EfSagaOrderState, EfSagaOrderConfirmed>
-{
-    public string GetCorrelationId(EfSagaOrderStarted message) => message.OrderId.ToString();
-    public string GetCorrelationId(EfSagaOrderConfirmed message) => message.OrderId.ToString();
-
-    public Task Consume(EfSagaOrderStarted message, ISagaContext<EfSagaOrderState> context,
-        CancellationToken cancellationToken = default)
-    {
-        context.State.CustomerEmail = message.CustomerEmail;
-        context.State.MessageCount++;
-        return Task.CompletedTask;
-    }
-
-    public Task Consume(EfSagaOrderConfirmed message, ISagaContext<EfSagaOrderState> context,
-        CancellationToken cancellationToken = default)
-    {
-        context.State.MessageCount++;
-        context.Complete();
-        return Task.CompletedTask;
-    }
-}
-
-// ---------------------------------------------------------------------------
-// DbContext for saga tests
-// ---------------------------------------------------------------------------
-
-public sealed class SagaTestDbContext(DbContextOptions<SagaTestDbContext> options)
-    : DbContext(options)
-{
-    public DbSet<SagaStateEntry> SagaStateEntries => Set<SagaStateEntry>();
-
-    protected override void OnModelCreating(ModelBuilder modelBuilder) =>
-        modelBuilder.AddInterBusSagas();
-}
-
 /// <summary>
 /// Integration tests for the EF Core saga repository using SQLite in-memory.
 /// Verifies state persistence, multi-message accumulation, deletion, completion, and TTL
@@ -130,17 +18,6 @@ public sealed class SagaTestDbContext(DbContextOptions<SagaTestDbContext> option
 /// </summary>
 public class EfCoreSagaTests
 {
-    // Async WaitUntil that creates a fresh scope per poll to work with scoped DbContext.
-    private static async Task WaitUntilAsync(
-        Func<Task<bool>> condition,
-        int timeoutMs = 5000,
-        int intervalMs = 25)
-    {
-        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
-        while (!await condition() && DateTime.UtcNow < deadline)
-            await Task.Delay(intervalMs);
-    }
-
     private static async Task<(ServiceProvider Provider, CancellationTokenSource Cts, SqliteConnection KeepAlive)>
         StartAsync(Action<InterBusBuilder> configureBus)
     {
@@ -232,7 +109,7 @@ public class EfCoreSagaTests
 
             await WaitUntilAsync(async () =>
                 (await GetSagaEntryAsync<EfSagaOrderSaga>(provider, orderId.ToString()))
-                ?.State.MessageCount == 1);
+                ?.State.MessageCount == 1, cancellationToken: TestContext.Current.CancellationToken);
 
             var entry = await GetSagaEntryAsync<EfSagaOrderSaga>(provider, orderId.ToString());
 
@@ -270,7 +147,7 @@ public class EfCoreSagaTests
 
             await WaitUntilAsync(async () =>
                 (await GetSagaEntryAsync<EfSagaOrderSaga>(provider, orderId.ToString()))
-                ?.State.MessageCount == 2);
+                ?.State.MessageCount == 2, cancellationToken: TestContext.Current.CancellationToken);
 
             var entry = await GetSagaEntryAsync<EfSagaOrderSaga>(provider, orderId.ToString());
 
@@ -314,7 +191,7 @@ public class EfCoreSagaTests
                 var e1 = await GetSagaEntryAsync<EfSagaOrderSaga>(provider, orderId1.ToString());
                 var e2 = await GetSagaEntryAsync<EfSagaOrderSaga>(provider, orderId2.ToString());
                 return e1?.State.MessageCount == 1 && e2?.State.MessageCount == 1;
-            });
+            }, cancellationToken: TestContext.Current.CancellationToken);
 
             var entry1 = await GetSagaEntryAsync<EfSagaOrderSaga>(provider, orderId1.ToString());
             var entry2 = await GetSagaEntryAsync<EfSagaOrderSaga>(provider, orderId2.ToString());
@@ -353,13 +230,12 @@ public class EfCoreSagaTests
 
             await WaitUntilAsync(async () =>
                 (await GetSagaEntryAsync<EfSagaOrderWithDeletionSaga>(provider, orderId.ToString()))
-                ?.State.MessageCount == 1);
+                ?.State.MessageCount == 1, cancellationToken: TestContext.Current.CancellationToken);
 
             await publisher.PublishAsync(new EfSagaOrderCancelled(orderId), TestContext.Current.CancellationToken);
 
             await WaitUntilAsync(async () =>
-                    await GetSagaEntryAsync<EfSagaOrderWithDeletionSaga>(provider, orderId.ToString()) == null,
-                timeoutMs: 3000);
+                    await GetSagaEntryAsync<EfSagaOrderWithDeletionSaga>(provider, orderId.ToString()) == null, timeoutMs: 3000, cancellationToken: TestContext.Current.CancellationToken);
 
             var entry = await GetSagaEntryAsync<EfSagaOrderWithDeletionSaga>(provider, orderId.ToString());
             Assert.Null(entry);
@@ -392,12 +268,12 @@ public class EfCoreSagaTests
                 TestContext.Current.CancellationToken);
             await WaitUntilAsync(async () =>
                 (await GetSagaEntryAsync<EfSagaCompletingOrderSaga>(provider, orderId.ToString()))
-                ?.State.MessageCount == 1);
+                ?.State.MessageCount == 1, cancellationToken: TestContext.Current.CancellationToken);
 
             await publisher.PublishAsync(new EfSagaOrderConfirmed(orderId), TestContext.Current.CancellationToken);
             await WaitUntilAsync(async () =>
                 (await GetSagaEntryAsync<EfSagaCompletingOrderSaga>(provider, orderId.ToString()))
-                ?.IsCompleted == true);
+                ?.IsCompleted == true, cancellationToken: TestContext.Current.CancellationToken);
 
             var completedEntry = await GetSagaEntryAsync<EfSagaCompletingOrderSaga>(provider, orderId.ToString());
             Assert.NotNull(completedEntry);
@@ -410,8 +286,7 @@ public class EfCoreSagaTests
                 TestContext.Current.CancellationToken);
             await WaitUntilAsync(async () =>
                     (await GetSagaEntryAsync<EfSagaCompletingOrderSaga>(provider, orderId.ToString()))
-                    ?.State.CustomerEmail == "new@test.com",
-                timeoutMs: 500, intervalMs: 10);
+                    ?.State.CustomerEmail == "new@test.com", timeoutMs: 500, intervalMs: 10, cancellationToken: TestContext.Current.CancellationToken);
 
             var entryAfter = await GetSagaEntryAsync<EfSagaCompletingOrderSaga>(provider, orderId.ToString());
             Assert.NotNull(entryAfter);
@@ -448,7 +323,7 @@ public class EfCoreSagaTests
                 TestContext.Current.CancellationToken);
 
             await WaitUntilAsync(async () =>
-                await GetSagaEntryAsync<EfSagaOrderSaga>(provider, orderId.ToString()) != null);
+                await GetSagaEntryAsync<EfSagaOrderSaga>(provider, orderId.ToString()) != null, cancellationToken: TestContext.Current.CancellationToken);
 
             // Wait for the entry to expire.
             await Task.Delay(200, TestContext.Current.CancellationToken);

@@ -167,7 +167,7 @@ public class OutboxSqlServerIntegrationTests(string imageTag)
             await dbContext.SaveChangesAsync(TestContext.CurrentContext.CancellationToken);
         }
 
-        await TestHelpers.WaitUntilAsync(() => _tracker.Messages.Count == 1);
+        await WaitUntilAsync(() => _tracker.Messages.Count == 1);
 
         Assert.That(_tracker.Messages, Has.Count.EqualTo(1));
         Assert.That(_tracker.Messages.Single().CustomerEmail, Is.EqualTo("ss-deliver@example.com"));
@@ -217,7 +217,7 @@ public class OutboxSqlServerIntegrationTests(string imageTag)
             await dbContext.SaveChangesAsync(TestContext.CurrentContext.CancellationToken);
         }
 
-        await TestHelpers.WaitUntilAsync(() => _tracker.Messages.Count >= count);
+        await WaitUntilAsync(() => _tracker.Messages.Count >= count);
 
         Assert.That(_tracker.Messages, Has.Count.EqualTo(count));
     }
@@ -255,7 +255,7 @@ public class OutboxSqlServerIntegrationTests(string imageTag)
             await dbContext.SaveChangesAsync(TestContext.CurrentContext.CancellationToken);
         }
 
-        await TestHelpers.WaitUntilAsync(() => _tracker.Messages.Count >= 2);
+        await WaitUntilAsync(() => _tracker.Messages.Count >= 2);
 
         using (Assert.EnterMultipleScope())
         {
@@ -292,7 +292,7 @@ public class OutboxSqlServerIntegrationTests(string imageTag)
         }
 
         var stopwatch = Stopwatch.StartNew();
-        await TestHelpers.WaitUntilAsync(() => _tracker.Messages.Count == messageCount,
+        await WaitUntilAsync(() => _tracker.Messages.Count == messageCount,
             timeoutMs: messageCount * Convert.ToInt32(minMessagesPerSecond), intervalMs: 10);
         stopwatch.Stop();
 
@@ -372,7 +372,7 @@ public class OutboxSqlServerIntegrationTests(string imageTag)
         }
 
         await StartHostedServicesAsync();
-        await TestHelpers.WaitUntilAsync(() => _sendTracker.Count == expectedTotal, timeoutMs: 30_000, intervalMs: 20);
+        await WaitUntilAsync(() => _sendTracker.Count == expectedTotal, timeoutMs: 30_000, intervalMs: 20);
 
         var hotObserved = _sendTracker.Observations
             .Where(o => o.MessageGroupId == hotGroupId)
@@ -415,7 +415,7 @@ public class OutboxSqlServerIntegrationTests(string imageTag)
             await dbContext.SaveChangesAsync(TestContext.CurrentContext.CancellationToken);
         }
 
-        await TestHelpers.WaitUntilAsync(() => _sendTracker.Count == groupCount, timeoutMs: 30_000, intervalMs: 10);
+        await WaitUntilAsync(() => _sendTracker.Count == groupCount, timeoutMs: 30_000, intervalMs: 10);
         stopwatch.Stop();
 
         await TestContext.Progress.WriteLineAsync(

@@ -24,7 +24,7 @@ public sealed class InterBusBuilder
     public IServiceCollection Services { get; }
 
     public InterBusOptions Options { get; }
-    
+
     internal InterBusBuilder(IServiceCollection services, InterBusOptions options)
     {
         Services = services;
@@ -48,14 +48,14 @@ public sealed class InterBusBuilder
     public InterBusBuilder Configure<T>(Action<PublisherBuilder<T>> configure) where T : class
     {
         var topic = RoutingConventions.TopicUri(Options.TopicUriScheme, typeof(T));
-        
+
         var descriptor = new PublisherDescriptor(typeof(T), topic);
         var publisherBuilder = new PublisherBuilder<T>(descriptor, Options);
-        
+
         configure(publisherBuilder);
-        
+
         Options.AddPublisher(descriptor);
-        
+
         return this;
     }
 

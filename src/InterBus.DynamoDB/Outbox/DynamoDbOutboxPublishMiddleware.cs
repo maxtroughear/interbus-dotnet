@@ -58,7 +58,7 @@ internal sealed class DynamoDbOutboxPublishMiddleware(
 
         var payload = serializer.Serialize(context.Message);
         var headersJson = DynamoDbOutboxContext.SerializeHeaders(context.Headers);
-        
+
         var msgItem = new Dictionary<string, AttributeValue>
         {
             [DynamoDbOutboxContext.AttrGroupId] = new() { S = groupId },

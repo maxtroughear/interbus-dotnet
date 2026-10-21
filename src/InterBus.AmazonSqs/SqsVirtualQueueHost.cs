@@ -76,7 +76,8 @@ internal sealed class SqsVirtualQueueHost(
                 return;
 
             var rawQueueName = $"interbus-reply-{Guid.CreateVersion7():N}";
-            var queueName = naming.BuildSqsQueueName(RoutingConventions.QueueUri(SqsTransport.QueueScheme, rawQueueName));
+            var queueName =
+                naming.BuildSqsQueueName(RoutingConventions.QueueUri(SqsTransport.QueueScheme, rawQueueName));
 
             var attributes = new Dictionary<string, string>(StringComparer.Ordinal)
             {

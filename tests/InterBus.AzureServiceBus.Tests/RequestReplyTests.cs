@@ -1,9 +1,5 @@
-using InterBus.AzureServiceBus.Extensions;
-using InterBus.Extensions;
 using InterBus.Generated;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using Testcontainers.ServiceBus;
 
 namespace InterBus.AzureServiceBus.Tests;
 
@@ -11,68 +7,12 @@ namespace InterBus.AzureServiceBus.Tests;
 /// Integration tests for Azure Service Bus request/reply using session-based virtual queues.
 /// </summary>
 [TestFixture]
-public class RequestReplyTests
+public class RequestReplyTests() : ServiceBusFixture(bus => { bus.AddConsumer<GetOrderStatusConsumer>(); })
 {
-    private readonly ServiceBusContainer _container =
-        new ServiceBusBuilder("mcr.microsoft.com/azure-messaging/servicebus-emulator:latest")
-            .WithAcceptLicenseAgreement(true)
-            .Build();
-
-    private ServiceProvider _provider = null!;
-    private CancellationTokenSource _cts = null!;
-
-    [OneTimeSetUp]
-    public async Task OneTimeSetUp()
-    {
-        await _container.StartAsync();
-    }
-
-    [OneTimeTearDown]
-    public async Task OneTimeTearDown()
-    {
-        await _container.StopAsync();
-        await _container.DisposeAsync();
-    }
-
-    [SetUp]
-    public async Task Setup()
-    {
-        var services = new ServiceCollection();
-        services.AddLogging();
-
-        services.AddInterBus(bus =>
-        {
-            bus.AddAzureServiceBusTransport(o =>
-            {
-                o.ConnectionString = _container.GetConnectionString();
-                o.AdminConnectionString = _container.GetHttpConnectionString();
-            });
-            bus.AddConsumer<GetOrderStatusConsumer>();
-        });
-
-        _provider = services.BuildServiceProvider();
-        _cts = new CancellationTokenSource();
-
-        foreach (var svc in _provider.GetServices<IHostedService>())
-            await svc.StartAsync(_cts.Token);
-    }
-
-    [TearDown]
-    public async Task TearDown()
-    {
-        await _cts.CancelAsync();
-
-        foreach (var svc in _provider.GetServices<IHostedService>())
-            await svc.StopAsync(CancellationToken.None);
-
-        _cts.Dispose();
-        await _provider.DisposeAsync();
-    }
-
     [Test]
     public async Task RequestAsync_ConsumerReplies_ReturnsReply()
     {
-        using var scope = _provider.CreateScope();
+        using var scope = Provider.CreateScope();
         var client = scope.ServiceProvider
             .GetRequiredService<IRequestClient<GetOrderStatusRequest, GetOrderStatusReply>>();
 

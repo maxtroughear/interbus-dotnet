@@ -1,127 +1,16 @@
-using InterBus.Extensions;
 using InterBus.Generated;
+using InterBus.Extensions;
 using InterBus.InMemory.Extensions;
 using InterBus.Sagas;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Stateless;
 using Xunit;
 
 namespace InterBus.Stateless.Tests;
 
-// ---------------------------------------------------------------------------
-// State machine types
-// ---------------------------------------------------------------------------
-
-public enum TrafficLightState
-{
-    Red,
-    Green,
-    Yellow
-}
-
-public enum TrafficLightTrigger
-{
-    GoGreen,
-    GoYellow,
-    GoRed
-}
-
-// ---------------------------------------------------------------------------
-// Saga messages
-// ---------------------------------------------------------------------------
-
-public record TrafficLightCreated(Guid Id);
-
-public record TurnGreen(Guid Id);
-
-public record TurnYellow(Guid Id);
-
-public record TurnRed(Guid Id);
-
-// ---------------------------------------------------------------------------
-// Saga state
-// ---------------------------------------------------------------------------
-
-public sealed class TrafficLightSagaState : IStateMachineSagaState<TrafficLightState>
-{
-    public TrafficLightState CurrentState { get; set; } = TrafficLightState.Red;
-    public int TransitionCount { get; set; }
-}
-
-// ---------------------------------------------------------------------------
-// Saga
-// ---------------------------------------------------------------------------
-
-public sealed class TrafficLightSaga
-    : StatelessSaga<TrafficLightSagaState, TrafficLightState, TrafficLightTrigger>,
-        ISagaConsumer<TrafficLightSagaState, TrafficLightCreated>,
-        ISagaConsumer<TrafficLightSagaState, TurnGreen>,
-        ISagaConsumer<TrafficLightSagaState, TurnYellow>,
-        ISagaConsumer<TrafficLightSagaState, TurnRed>
-{
-    protected override void Configure(
-        StateMachine<TrafficLightState, TrafficLightTrigger> machine,
-        ISagaContext<TrafficLightSagaState> context)
-    {
-        machine.Configure(TrafficLightState.Red)
-            .Permit(TrafficLightTrigger.GoGreen, TrafficLightState.Green);
-
-        machine.Configure(TrafficLightState.Green)
-            .Permit(TrafficLightTrigger.GoYellow, TrafficLightState.Yellow);
-
-        machine.Configure(TrafficLightState.Yellow)
-            .Permit(TrafficLightTrigger.GoRed, TrafficLightState.Red)
-            .OnEntry(() => context.State.TransitionCount++);
-    }
-
-    public string GetCorrelationId(TrafficLightCreated message) => message.Id.ToString();
-    public string GetCorrelationId(TurnGreen message) => message.Id.ToString();
-    public string GetCorrelationId(TurnYellow message) => message.Id.ToString();
-    public string GetCorrelationId(TurnRed message) => message.Id.ToString();
-
-    public Task Consume(TrafficLightCreated message, ISagaContext<TrafficLightSagaState> context,
-        CancellationToken cancellationToken = default)
-        => Task.CompletedTask;
-
-    public async Task Consume(TurnGreen message, ISagaContext<TrafficLightSagaState> context,
-        CancellationToken cancellationToken = default)
-    {
-        var machine = await CreateStateMachineAsync(context);
-        await machine.FireAsync(TrafficLightTrigger.GoGreen);
-    }
-
-    public async Task Consume(TurnYellow message, ISagaContext<TrafficLightSagaState> context,
-        CancellationToken cancellationToken = default)
-    {
-        var machine = await CreateStateMachineAsync(context);
-        await machine.FireAsync(TrafficLightTrigger.GoYellow);
-    }
-
-    public async Task Consume(TurnRed message, ISagaContext<TrafficLightSagaState> context,
-        CancellationToken cancellationToken = default)
-    {
-        var machine = await CreateStateMachineAsync(context);
-        await machine.FireAsync(TrafficLightTrigger.GoRed);
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 public class StatelessSagaTests
 {
-    private static async Task WaitUntilAsync(
-        Func<bool> condition,
-        int timeoutMs = 5000,
-        int intervalMs = 25)
-    {
-        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
-        while (!condition() && DateTime.UtcNow < deadline)
-            await Task.Delay(intervalMs);
-    }
-
     private static async Task<(ServiceProvider Provider, CancellationTokenSource Cts)> StartAsync(
         Action<InterBusBuilder> configureBus)
     {
@@ -179,7 +68,7 @@ public class StatelessSagaTests
             {
                 var e = repo.GetAsync(id.ToString()).GetAwaiter().GetResult();
                 return e?.State.CurrentState == TrafficLightState.Green;
-            });
+            }, cancellationToken: TestContext.Current.CancellationToken);
 
             var entry = await repo.GetAsync(id.ToString(), TestContext.Current.CancellationToken);
             Assert.NotNull(entry);
@@ -217,7 +106,7 @@ public class StatelessSagaTests
                 var e = repo.GetAsync(id.ToString()).GetAwaiter().GetResult();
                 return e?.State.CurrentState == TrafficLightState.Red
                        && e.State.TransitionCount == 1;
-            });
+            }, cancellationToken: TestContext.Current.CancellationToken);
 
             var entry = await repo.GetAsync(id.ToString(), TestContext.Current.CancellationToken);
             Assert.NotNull(entry);
@@ -258,7 +147,7 @@ public class StatelessSagaTests
             {
                 var e = repo.GetAsync(id1.ToString()).GetAwaiter().GetResult();
                 return e?.State.CurrentState == TrafficLightState.Green;
-            });
+            }, cancellationToken: TestContext.Current.CancellationToken);
 
             var entry1 = await repo.GetAsync(id1.ToString(), TestContext.Current.CancellationToken);
             var entry2 = await repo.GetAsync(id2.ToString(), TestContext.Current.CancellationToken);

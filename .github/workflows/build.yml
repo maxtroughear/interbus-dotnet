@@ -75,6 +75,7 @@ jobs:
           
   test-dynamodb-aws:
     name: Test - DynamoDB (AWS)
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -132,6 +133,7 @@ jobs:
 
   test-sqs-aws:
     name: Test - SQS (AWS)
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       id-token: write

@@ -2,7 +2,7 @@
 title: Message pumps
 ---
 
-Each consumer has one supervised runtime and a fresh DI scope for every dispatch. All transports use the same middleware pipeline and outcome handling. Successful settlement is logged only after the transport accepts it. A rejected ownership token is logged as a rejected settlement.
+Settings, transport guarantees and adapter contracts for message pumps. For the execution models and ownership lifecycle, see [How message pumps work](../explanation/message-pumps.md).
 
 ## Concurrency and intake
 
@@ -19,7 +19,7 @@ Each consumer has one supervised runtime and a fresh DI scope for every dispatch
 | RabbitMQ | SDK callbacks | One |
 | In-memory | Scoped polling | One |
 
-Scoped and callback adapters reject pump counts above one. PostgreSQL transactional workers retain their connection, transaction and ambient transaction context until processing and settlement finish. Azure processors retain SDK lock renewal and session scheduling. RabbitMQ retains channel QoS and SDK dispatch concurrency. Each consumer runtime owns a dedicated consume connection; publishing retains a shared connection.
+Scoped and callback adapters reject pump counts above one. PostgreSQL transactional workers retain their connection, transaction and ambient transaction context through processing and settlement. Each RabbitMQ consumer runtime owns a dedicated consume connection; publishing retains a shared connection.
 
 SQS `PrefetchCount` is extra capacity beyond `ConcurrencyCount`. Zero is supported and means no extra prefetch. One shared ownership budget covers outstanding receives, queued deliveries and active processing, across all receive pumps. Each batch fits reserved capacity and contains at most ten messages. PostgreSQL lease mode exposes the same nonnegative `PrefetchCount` ownership setting, defaulting to zero. Its claim batch size is one.
 
@@ -30,6 +30,8 @@ SQS polling accepts 0–20 seconds. Renewing SQS consumers require a visibility 
 SQS FIFO message groups are serialized in handoff order through settlement and cleanup; different groups can run concurrently. Azure sessions allow one callback per session, with `ConcurrencyCount` concurrent sessions. Other buffered deliveries have no ordering key unless their adapter supplies one. Concurrency one keeps in-memory processing sequential, including retry attempts. Raising concurrency permits overlap and changes completion order.
 
 ## Settlement and failures
+
+Successful settlement is logged only after the transport accepts it. A rejected ownership token is logged as a rejected settlement.
 
 Success acknowledges the delivery, release requests redelivery, and dead-letter forwards or discards according to the transport. SQS release stops renewal and lets visibility expire; it does not set visibility to zero. PostgreSQL lease release preserves the configured failure redelivery delay and validates the unique lease token. In-memory retains the existing delivery limit and release delay, and discards dead-lettered envelopes.
 
@@ -55,7 +57,7 @@ Register one `IConsumerSourceFactory` through the transport extension. The facto
 
 Both polling interfaces permit concurrent calls on one adapter. Keep per-delivery resources local. Return `PollResult(true)` whenever acquisition found a delivery, regardless of its settlement outcome. For empty polls, return `PollResult(false, deferredWait)` after releasing acquisition resources. Core releases unused reservations before invoking that wait. PostgreSQL waits retain the pre-query notification version; in-memory waits observe readability without removing messages.
 
-The core starts `PumpCount` buffered workers or `ConcurrencyCount` scoped workers. Scoped sources bypass buffered ordering chains: PostgreSQL obtains database ownership before immediate processing; in-memory preserves sequential retries at concurrency one. Increasing in-memory concurrency permits overlap, as before.
+The core starts `PumpCount` buffered workers or `ConcurrencyCount` scoped workers. Scoped sources bypass buffered ordering chains and invoke processing within their acquisition scope.
 
 Implement optional `IPollingRetryPolicy.GetRetryDelay(error, attempt)` to classify acquisition errors. A null delay is terminal. Core owns scheduling, releases reservations before delays, and resets attempts after successful acquisitions including empty responses. After a scoped adapter invokes `process`, any iteration failure is terminal to that runtime and cannot trigger acquisition replay. Initialization retries and listener reconnection remain separate. SDK retries can delay cancellation of an intake operation.
 

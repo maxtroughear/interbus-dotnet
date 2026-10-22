@@ -288,6 +288,40 @@ public class MessagePumpRuntimeTests
     }
 
     [Fact]
+    public async Task FoundWork_StillPerformsDeferredPacing_AfterScopeCleanup()
+    {
+        var waiting = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var cleaned = false;
+        var calls = 0;
+        var delivery = new Delivery();
+        var source = new ScopedSource(async (process, _, ct) =>
+        {
+            Interlocked.Increment(ref calls);
+            await process(delivery, ct);
+            cleaned = true;
+            return new PollResult(true, async token =>
+            {
+                Assert.True(cleaned);
+                Assert.True(delivery.Disposed);
+                waiting.TrySetResult();
+                await Task.Delay(Timeout.Infinite, token);
+            });
+        });
+        var (services, descriptor) = Create((_, _, _, _) => Task.CompletedTask);
+        await using var provider = services.BuildServiceProvider();
+        using var intake = new CancellationTokenSource();
+        var run = new ConsumerRuntime(descriptor, provider.GetRequiredService<DeliveryProcessor>())
+            .RunAsync(source, intake.Token, TestContext.Current.CancellationToken);
+        try
+        {
+            await waiting.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+            Assert.Equal(1, calls);
+        }
+        finally { await intake.CancelAsync(); }
+        await run.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+    }
+
+    [Fact]
     public async Task AcquisitionRetryCount_ResetsAfterEmptyPoll()
     {
         var calls = 0;

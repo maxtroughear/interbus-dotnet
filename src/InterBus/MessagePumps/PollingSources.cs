@@ -34,7 +34,7 @@ public interface ICallbackSource : IConsumerSource
     /// <summary>Installs callbacks once and starts intake. Returns after startup succeeds.</summary>
     /// <param name="process">Transfers ownership on callback invocation and awaits settlement and cleanup.</param>
     /// <param name="processingToken">Canceled only at the accepted processing deadline.</param>
-    /// <param name="operationToken">Bounds startup; failures must leave intake stopped or publish a fatal failure.</param>
+    /// <param name="operationToken">Bounds startup. Expected cancellation is followed by terminal pause and drain; other failures must leave intake stopped or publish a fatal failure.</param>
     Task StartAsync(DeliveryHandler process, CancellationToken processingToken, CancellationToken operationToken);
     /// <summary>Stops new intake and drains scheduled callbacks without canceling accepted processing.</summary>
     /// <param name="operationToken">Bounds the control operation. On failure, report fatal health if intake state is uncertain.</param>
@@ -46,7 +46,7 @@ public interface ICallbackSource : IConsumerSource
 
 /// <summary>Acquisition outcome, independent of acknowledgement.</summary>
 /// <param name="FoundWork">Whether an acquisition found a delivery, including released or dead-lettered work.</param>
-/// <param name="IdleWait">Deferred empty-poll wait, invoked only after unused capacity and acquisition resources are released.</param>
+/// <param name="IdleWait">Deferred pacing wait for an empty poll or completed iteration, invoked after unused capacity and acquisition resources are released. Independent of FoundWork.</param>
 public readonly record struct PollResult(bool FoundWork, Func<CancellationToken, ValueTask>? IdleWait = null);
 
 /// <summary>Optional transport classification of acquisition failures. Processing and cleanup failures after acceptance bypass this policy.</summary>

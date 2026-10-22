@@ -48,3 +48,21 @@ Raw elapsed times in milliseconds:
 | 32 | 347.0, 356.2, 356.6 | 347.8, 358.8, 357.3 |
 
 Reproduce with the `ReceiveThroughput_WithFixedLatency` filter in `InterBus.AmazonSqs.Tests`. Set `INTERBUS_PUMP_BENCHMARK_OUTPUT` to a writable output file to capture measurements. Core ownership tests separately cover reservations, buffered deliveries and active processing; the benchmark's ownership counter measures acquired deliveries.
+
+## PR review follow-up
+
+Validated on 2026-10-22 after addressing the three review findings on PR #293:
+
+- Transactional acquisition still reports `FoundWork = true` after release or unsuccessful settlement, while a separate deferred wait preserves notification/fallback pacing after transaction and connection disposal. Core invokes the deferred wait independently of acquisition success
+- Callback sources using default health no longer race the shared never-completing task against local health, allowing stopped adapters and lifetimes to be collected
+- Expected cancellation during callback startup proceeds through terminal pause and drain without publishing a fatal failure. RabbitMQ distinguishes startup subscription cancellation from resume failure; canceled pause/resume controls remain fatal
+
+| Suite | Passed |
+| --- | ---: |
+| Full core runtime, lifetime and in-memory suite | 197 |
+| PostgreSQL transactional pacing, settlement faults, context and notifications (17 and 18) | 18 |
+| Full RabbitMQ suite | 13 |
+| Full Azure Service Bus suite | 26 |
+| Total | 254 |
+
+The strengthened blocked-start readiness check and other lifetime tests also passed in a separate 22-test run. New coverage verifies deferred pacing after cleanup, release acquisition reporting and connection disposal, collection after clean callback shutdown, blocked-start shutdown, fatal pause cancellation, and RabbitMQ startup versus resume subscription cancellation. Integration checks used local containers/emulators. The solution build and `git diff --check` passed; existing nullable-reference warnings remain.

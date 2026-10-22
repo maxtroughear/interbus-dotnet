@@ -78,7 +78,9 @@ internal sealed class RabbitMqMessagePump(
                 finally { lock (_gate) { if (--_active == 0) _idle.TrySetResult(); } }
             }
         };
-        await ResumeAsync(operationToken);
+        try { await SubscribeAsync(operationToken); }
+        catch (OperationCanceledException) when (operationToken.IsCancellationRequested) { throw; }
+        catch (Exception error) { _failure.TrySetResult(error); throw; }
         _ready.TrySetResult();
     }
 
@@ -87,9 +89,14 @@ internal sealed class RabbitMqMessagePump(
 
     public async Task ResumeAsync(CancellationToken operationToken)
     {
-        _unregistered = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        try { await _channel!.BasicConsumeAsync(_descriptor.QueueName, false, _consumer!, operationToken); }
+        try { await SubscribeAsync(operationToken); }
         catch (Exception error) { _failure.TrySetResult(error); throw; }
+    }
+
+    private async Task SubscribeAsync(CancellationToken operationToken)
+    {
+        _unregistered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        await _channel!.BasicConsumeAsync(_descriptor.QueueName, false, _consumer!, operationToken);
     }
 
     public async Task PauseAsync(CancellationToken operationToken)

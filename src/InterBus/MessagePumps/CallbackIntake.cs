@@ -8,8 +8,16 @@ internal sealed class CallbackIntake(ICallbackSource source) : ICallbackSource
     private bool _started;
     private bool _paused;
     public Task Ready => source.Ready;
-    public Task<Exception> Failure => ObserveFailureAsync();
-    private async Task<Exception> ObserveFailureAsync() => await await Task.WhenAny(source.Failure, _failure.Task);
+    public Task<Exception> Failure
+    {
+        get
+        {
+            var health = source.Failure;
+            // A pending race on the shared never-task would root this adapter after shutdown
+            return ReferenceEquals(health, SourceHealth.Never) ? _failure.Task : ObserveFailureAsync(health);
+        }
+    }
+    private async Task<Exception> ObserveFailureAsync(Task<Exception> health) => await await Task.WhenAny(health, _failure.Task);
     public Task InitializeAsync(CancellationToken token) => source.InitializeAsync(token);
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
@@ -19,7 +27,7 @@ internal sealed class CallbackIntake(ICallbackSource source) : ICallbackSource
             if (_started) throw new InvalidOperationException("Callback intake already started");
             _started = true;
             await source.StartAsync(process, processingToken, operationToken);
-        }, operationToken);
+        }, operationToken, starting: true);
 
     public Task PauseAsync(CancellationToken operationToken) =>
         ControlAsync(async () =>
@@ -48,7 +56,7 @@ internal sealed class CallbackIntake(ICallbackSource source) : ICallbackSource
         finally { _control.Release(); }
     }
 
-    private async Task ControlAsync(Func<Task> action, CancellationToken token)
+    private async Task ControlAsync(Func<Task> action, CancellationToken token, bool starting = false)
     {
         await _control.WaitAsync(token);
         try
@@ -59,6 +67,8 @@ internal sealed class CallbackIntake(ICallbackSource source) : ICallbackSource
                 throw new InvalidOperationException("Callback intake is stopping");
             }
             try { await action(); }
+            // The runtime follows canceled startup with terminal pause and drain
+            catch (OperationCanceledException) when (starting && token.IsCancellationRequested) { throw; }
             catch (Exception error) { _failure.TrySetResult(error); throw; }
         }
         finally { _control.Release(); }

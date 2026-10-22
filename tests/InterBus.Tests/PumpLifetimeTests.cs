@@ -351,6 +351,70 @@ public class PumpLifetimeTests
         Assert.Equal(1, source.Disposals);
     }
 
+    [Fact]
+    public async Task CallbackStartup_TerminalCancellation_StopsWithoutFaulting()
+    {
+        await using var provider = Provider();
+        var source = new CallbackSource { BlockStart = true };
+        source.Continue.SetResult();
+        await using var lifetime = new PumpLifetime(new ConsumerDescriptor(typeof(PumpLifetimeTests), new Uri("memory://callback")),
+            source, provider.GetRequiredService<DeliveryProcessor>());
+        var start = lifetime.StartAsync(TestContext.Current.CancellationToken);
+        await source.Starting.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        Assert.False(start.IsCompleted);
+        await Task.WhenAll(start, lifetime.StopAsync(TestContext.Current.CancellationToken)).WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        Assert.Equal(PumpState.Stopped, lifetime.State);
+        Assert.Null(lifetime.Failure);
+        Assert.False(lifetime.Fault.IsCompleted);
+        Assert.True(source.Disposed);
+        Assert.True(source.Pausing.Task.IsCompletedSuccessfully);
+    }
+
+    [Fact]
+    public async Task CallbackPause_Cancellation_RemainsFatal()
+    {
+        await using var provider = Provider();
+        var source = new CallbackSource();
+        var lifetime = new PumpLifetime(new ConsumerDescriptor(typeof(PumpLifetimeTests), new Uri("memory://callback")),
+            source, provider.GetRequiredService<DeliveryProcessor>());
+        await lifetime.StartAsync(TestContext.Current.CancellationToken);
+        using var operation = new CancellationTokenSource();
+        var pause = lifetime.PauseAsync(operation.Token);
+        await source.Pausing.Task;
+        operation.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => pause);
+        source.Continue.TrySetResult();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => lifetime.Completion);
+        Assert.Equal(PumpState.Faulted, lifetime.State);
+        Assert.IsAssignableFrom<OperationCanceledException>(lifetime.Failure);
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => lifetime.DisposeAsync().AsTask());
+    }
+
+    [Fact]
+    public async Task CallbackDefaultHealth_DoesNotRetainStoppedAdapters()
+    {
+        await using var provider = Provider();
+        var references = StopCallback(provider);
+        for (var i = 0; i < 3; i++)
+        {
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+        }
+        Assert.All(references, reference => Assert.False(reference.IsAlive));
+    }
+
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static WeakReference[] StopCallback(IServiceProvider provider)
+    {
+        var source = new CallbackSource();
+        source.Continue.SetResult();
+        var lifetime = new PumpLifetime(new ConsumerDescriptor(typeof(PumpLifetimeTests), new Uri("memory://callback")),
+            source, provider.GetRequiredService<DeliveryProcessor>());
+        lifetime.StartAsync(TestContext.Current.CancellationToken).GetAwaiter().GetResult();
+        lifetime.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        return [new WeakReference(source), new WeakReference(lifetime)];
+    }
+
     private sealed class HybridSource : IBufferedPollingSource, IScopedPollingSource
     {
         public bool Initialized;
@@ -366,11 +430,20 @@ public class PumpLifetimeTests
     private sealed class CallbackSource : ICallbackSource
     {
         public int Starts, Resumes;
-        public bool Disposed;
+        public bool Disposed, BlockStart;
+        private readonly TaskCompletionSource _ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public Task Ready => _ready.Task;
+        public TaskCompletionSource Starting { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource Pausing { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource Continue { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public Task InitializeAsync(CancellationToken token) => Task.CompletedTask;
-        public Task StartAsync(DeliveryHandler process, CancellationToken processing, CancellationToken operation) { Starts++; return Task.CompletedTask; }
+        public async Task StartAsync(DeliveryHandler process, CancellationToken processing, CancellationToken operation)
+        {
+            Starts++;
+            Starting.TrySetResult();
+            if (BlockStart) await Task.Delay(Timeout.Infinite, operation);
+            _ready.TrySetResult();
+        }
         public async Task PauseAsync(CancellationToken token) { Pausing.TrySetResult(); await Continue.Task.WaitAsync(token); }
         public Task ResumeAsync(CancellationToken token) { Resumes++; return Task.CompletedTask; }
         public ValueTask DisposeAsync() { Disposed = true; return ValueTask.CompletedTask; }

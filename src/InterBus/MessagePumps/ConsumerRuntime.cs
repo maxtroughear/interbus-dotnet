@@ -167,7 +167,7 @@ public sealed class ConsumerRuntime(ConsumerDescriptor descriptor, DeliveryProce
                     await Task.Delay(delay.Value, token);
                     continue;
                 }
-                if (!result.FoundWork && result.IdleWait is { } wait) await wait(token);
+                if (result.IdleWait is { } wait) await wait(token);
             }
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { }

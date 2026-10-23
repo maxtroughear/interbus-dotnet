@@ -26,7 +26,7 @@ public class SessionAdapterTests
         var receiver = new Receiver();
         var entered = Signal();
         var finish = Signal();
-        var run = source.RunAsync(async (delivery, token) =>
+        var run = RunAsync(source, async (delivery, token) =>
         {
             await using (delivery)
             {
@@ -71,7 +71,7 @@ public class SessionAdapterTests
         var finish = Signal();
         bool? accepted = null;
         bool? canceled = null;
-        var run = source.RunAsync(async (delivery, token) =>
+        var run = RunAsync(source, async (delivery, token) =>
         {
             await using (delivery)
             {
@@ -152,6 +152,7 @@ public class SessionAdapterTests
     }
     private sealed class SessionProcessor : ServiceBusSessionProcessor
     {
+        public int Starts;
         public Task Active = Task.CompletedTask;
         public CancellationTokenSource? SdkStop;
         public Exception? StartFailure;
@@ -163,8 +164,8 @@ public class SessionAdapterTests
         private SessionProcessor(ServiceBusClient client) : base(client, "sessions", new ServiceBusSessionProcessorOptions())
         { _mockClient = client; }
         public Task DeliverAsync(ProcessSessionMessageEventArgs args) => OnProcessSessionMessageAsync(args);
-        public override Task StartProcessingAsync(CancellationToken cancellationToken = default) =>
-            StartFailure is null ? Task.CompletedTask : Task.FromException(StartFailure);
+        public override Task StartProcessingAsync(CancellationToken cancellationToken = default)
+        { Starts++; return StartFailure is null ? Task.CompletedTask : Task.FromException(StartFailure); }
         public override async Task StopProcessingAsync(CancellationToken cancellationToken = default)
         { SdkStop?.Cancel(); Stopping.TrySetResult(); await Active; }
         public override Task CloseAsync(CancellationToken cancellationToken = default)
@@ -195,4 +196,40 @@ public class SessionAdapterTests
             string? deadLetterReason = null, string? deadLetterErrorDescription = null, CancellationToken cancellationToken = default) =>
             Settle(DispatchResultKind.DeadLetter);
     }
+    [Test]
+    public async Task RepeatedPauseResume_RetainsOneCallbackRegistration()
+    {
+        var processor = new SessionProcessor();
+        await using var clients = new AzureServiceBusClientProvider(new Client(processor), new Admin());
+        await using var source = Source(clients);
+        await source.InitializeAsync(default);
+        var calls = 0;
+        await source.StartAsync(async (delivery, token) =>
+        {
+            Interlocked.Increment(ref calls);
+            await using (delivery) await delivery.SettleAsync(DispatchResult.Success, token);
+        }, default, default);
+        for (var i = 0; i < 3; i++)
+        {
+            await source.PauseAsync(default);
+            await source.ResumeAsync(default);
+            await processor.DeliverAsync(Args(new Receiver(), default));
+        }
+        await source.PauseAsync(default);
+        Assert.That(calls, Is.EqualTo(3));
+        Assert.That(processor.Starts, Is.EqualTo(4));
+    }
+
+    private static async Task RunAsync(ICallbackSource source, DeliveryHandler process, CancellationToken intakeToken,
+        CancellationToken processingToken)
+    {
+        try
+        {
+            await source.StartAsync(process, processingToken, intakeToken);
+            await Task.Delay(Timeout.Infinite, intakeToken);
+        }
+        catch (OperationCanceledException) when (intakeToken.IsCancellationRequested) { }
+        finally { await source.PauseAsync(CancellationToken.None); }
+    }
+
 }

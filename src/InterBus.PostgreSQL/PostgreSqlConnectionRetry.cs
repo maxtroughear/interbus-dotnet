@@ -65,7 +65,7 @@ internal static class PostgreSqlConnectionRetry
             logger,
             cancellationToken);
 
-    private static bool ShouldRetry(Exception exception, PostgreSqlTransportOptions options, int attempt)
+    internal static bool ShouldRetry(Exception exception, PostgreSqlTransportOptions options, int attempt)
     {
         if (!IsConnectionRelated(exception))
             return false;
@@ -77,7 +77,7 @@ internal static class PostgreSqlConnectionRetry
         return retry.ShouldRetry?.Invoke(exception) ?? true;
     }
 
-    private static TimeSpan GetDelay(PostgreSqlTransportOptions options, int attempt)
+    internal static TimeSpan GetDelay(PostgreSqlTransportOptions options, int attempt)
     {
         var delay = options.ConnectionRetry.DelayProvider(attempt);
         return delay > TimeSpan.Zero ? delay : TimeSpan.Zero;

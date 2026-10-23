@@ -8,11 +8,11 @@ namespace InterBus.AmazonSqs.Tests;
 public class ConcurrencyTests() : LocalstackTestFixtureBase(bus =>
 {
     bus.Services.AddSingleton(new OrderPlacedTracker());
-    bus.AddConsumer<ConcurrencyTestConsumer>(cfg => cfg.WithConcurrency(20));
+    bus.AddConsumer<ConcurrencyTestConsumer>(cfg => cfg.WithConcurrency(50).WithPumpCount(5));
 })
 {
     /// <summary>Number of concurrent publishers used in the concurrency test.</summary>
-    private const int PublisherCount = 10;
+    private const int PublisherCount = 50;
 
     /// <summary>Number of messages each publisher sends.</summary>
     private const int MessagesPerPublisher = 1000;

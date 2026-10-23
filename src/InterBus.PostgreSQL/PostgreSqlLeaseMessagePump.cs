@@ -7,7 +7,7 @@ using NpgsqlTypes;
 
 namespace InterBus.PostgreSQL;
 
-internal sealed class PostgreSqlLeaseMessagePump : PostgreSqlConsumerSource, IBufferedSource
+internal sealed class PostgreSqlLeaseMessagePump : PostgreSqlConsumerSource, IBufferedPollingSource
 {
     private readonly TimeSpan _leaseDuration;
     private readonly TimeSpan _leaseRenewInterval;
@@ -23,22 +23,19 @@ internal sealed class PostgreSqlLeaseMessagePump : PostgreSqlConsumerSource, IBu
         _leaseRenewInterval = options.GetEffectiveLeaseRenewInterval();
     }
 
-    public int PrefetchCount => 0;
+    public int PrefetchCount => Options.PrefetchCount;
+    public int MaxBatchSize => 1;
 
-    public async Task ReceiveAsync(DeliverySink sink, CancellationToken intakeToken)
+    public async Task<PollResult> ReceiveOnceAsync(ReceiveBatch batch, CancellationToken intakeToken)
     {
-        while (!intakeToken.IsCancellationRequested)
-        {
-            using var reservation = await sink.ReserveAsync(intakeToken);
-            var version = WorkVersion;
-            var token = CreateLeaseToken();
-            var claim = await PostgreSqlConnectionRetry.ExecuteAsync(
-                ct => TryClaimNextAsync(QueueId, token, ct), Options, _logger, intakeToken);
-            if (claim is null) { await WaitForWorkAsync(version, intakeToken); continue; }
-            var delivery = new LeaseDelivery(this, claim, token);
-            try { intakeToken.ThrowIfCancellationRequested(); reservation.Handoff(delivery); }
-            catch { await delivery.DisposeAsync(); throw; }
-        }
+        var version = WorkVersion;
+        var token = CreateLeaseToken();
+        var claim = await TryClaimNextAsync(QueueId, token, intakeToken);
+        if (claim is null) return new PollResult(false, ct => new ValueTask(WaitForWorkAsync(version, ct)));
+        var delivery = new LeaseDelivery(this, claim, token);
+        try { intakeToken.ThrowIfCancellationRequested(); batch.Transfer(delivery); }
+        catch { await delivery.DisposeAsync(); throw; }
+        return new PollResult(true);
     }
 
     private sealed class LeaseDelivery : IDelivery

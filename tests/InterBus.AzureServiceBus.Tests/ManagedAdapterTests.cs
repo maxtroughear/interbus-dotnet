@@ -28,7 +28,7 @@ public class ManagedAdapterTests
         var receiver = new FakeReceiver();
         var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var finish = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var run = source.RunAsync(async (delivery, ct) =>
+        var run = RunAsync(source, async (delivery, ct) =>
         {
             entered.SetResult();
             await finish.Task.WaitAsync(ct);
@@ -66,7 +66,7 @@ public class ManagedAdapterTests
         await source.InitializeAsync(default);
         using var intake = new CancellationTokenSource();
         bool? accepted = null;
-        var run = source.RunAsync(async (delivery, ct) =>
+        var run = RunAsync(source, async (delivery, ct) =>
         {
             await using (delivery) accepted = await delivery.SettleAsync(DispatchResult.Success, ct);
         }, intake.Token, default);
@@ -89,7 +89,7 @@ public class ManagedAdapterTests
             new AzureServiceBusTransportOptions(), NullLogger<AzureServiceBusMessagePump>.Instance);
         await source.InitializeAsync(default);
         using var intake = new CancellationTokenSource();
-        var run = source.RunAsync((_, _) => Task.CompletedTask, intake.Token, default);
+        var run = RunAsync(source, (_, _) => Task.CompletedTask, intake.Token, default);
         await processor.ReportAsync(new ProcessErrorEventArgs(new ServiceBusException("temporary",
             ServiceBusFailureReason.ServiceCommunicationProblem), ServiceBusErrorSource.Receive,
             "namespace", "queue", "processor", default));
@@ -111,12 +111,13 @@ public class ManagedAdapterTests
     }
     private sealed class FakeProcessor : ServiceBusProcessor
     {
+        public int Starts;
         public Task Active = Task.CompletedTask;
         public bool Stopped;
         public CancellationTokenSource? SdkStop;
         public Task DeliverAsync(ProcessMessageEventArgs args) => OnProcessMessageAsync(args);
         public Task ReportAsync(ProcessErrorEventArgs args) => OnProcessErrorAsync(args);
-        public override Task StartProcessingAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public override Task StartProcessingAsync(CancellationToken cancellationToken = default) { Starts++; return Task.CompletedTask; }
         public override async Task StopProcessingAsync(CancellationToken cancellationToken = default)
         { SdkStop?.Cancel(); await Active; Stopped = true; }
         public override Task CloseAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
@@ -138,4 +139,40 @@ public class ManagedAdapterTests
             string? deadLetterErrorDescription = null, CancellationToken cancellationToken = default)
         { Outcome = DispatchResultKind.DeadLetter; return Task.CompletedTask; }
     }
+    [Test]
+    public async Task RepeatedPauseResume_RetainsOneCallbackRegistration()
+    {
+        var processor = new FakeProcessor();
+        await using var clients = new AzureServiceBusClientProvider(new FakeClient(processor), new FakeAdmin());
+        await using var source = new AzureServiceBusMessagePump(new ConsumerDescriptor(typeof(ManagedAdapterTests), new Uri("asbqueue://test")), clients, new AzureServiceBusTransportOptions(), NullLogger<AzureServiceBusMessagePump>.Instance);
+        await source.InitializeAsync(default);
+        var calls = 0;
+        await source.StartAsync(async (delivery, token) =>
+        {
+            Interlocked.Increment(ref calls);
+            await using (delivery) await delivery.SettleAsync(DispatchResult.Success, token);
+        }, default, default);
+        for (var i = 0; i < 3; i++)
+        {
+            await source.PauseAsync(default);
+            await source.ResumeAsync(default);
+            await processor.DeliverAsync(new ProcessMessageEventArgs(ServiceBusModelFactory.ServiceBusReceivedMessage(new BinaryData("body")), new FakeReceiver(), default));
+        }
+        await source.PauseAsync(default);
+        Assert.That(calls, Is.EqualTo(3));
+        Assert.That(processor.Starts, Is.EqualTo(4));
+    }
+
+    private static async Task RunAsync(ICallbackSource source, DeliveryHandler process, CancellationToken intakeToken,
+        CancellationToken processingToken)
+    {
+        try
+        {
+            await source.StartAsync(process, processingToken, intakeToken);
+            await Task.Delay(Timeout.Infinite, intakeToken);
+        }
+        catch (OperationCanceledException) when (intakeToken.IsCancellationRequested) { }
+        finally { await source.PauseAsync(CancellationToken.None); }
+    }
+
 }

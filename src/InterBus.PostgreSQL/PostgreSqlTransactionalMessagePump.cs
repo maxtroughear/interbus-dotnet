@@ -10,34 +10,17 @@ namespace InterBus.PostgreSQL;
 internal sealed class PostgreSqlTransactionalMessagePump(
     ConsumerDescriptor descriptor, NpgsqlDataSource dataSource, PostgreSqlTransportOptions options,
     InterBusOptions busOptions, ILogger<PostgreSqlTransactionalMessagePump> logger)
-    : PostgreSqlConsumerSource(descriptor, dataSource, options, busOptions, logger), IManagedSource
+    : PostgreSqlConsumerSource(descriptor, dataSource, options, busOptions, logger), IScopedPollingSource
 {
-    public async Task RunAsync(Func<IDelivery, CancellationToken, Task> process, CancellationToken intakeToken,
+    public async Task<PollResult> ProcessOnceAsync(DeliveryHandler process, CancellationToken intakeToken,
         CancellationToken processingToken)
     {
-        using var workers = CancellationTokenSource.CreateLinkedTokenSource(intakeToken);
-        await Task.WhenAll(Enumerable.Range(0, Descriptor.ConcurrencyCount).Select(_ => WorkerAsync()));
-
-        async Task WorkerAsync()
-        {
-            try
-            {
-                await PostgreSqlConnectionRetry.ExecuteAsync(async ct =>
-                {
-                    while (!ct.IsCancellationRequested)
-                    {
-                        var version = WorkVersion;
-                        var processed = await ProcessNextAsync(process, ct, processingToken);
-                        if (!processed) await WaitForWorkAsync(version, ct);
-                    }
-                }, Options, logger, workers.Token);
-            }
-            catch (OperationCanceledException) when (workers.IsCancellationRequested) { }
-            catch (Exception error) { ReportFailure(error); await workers.CancelAsync(); throw; }
-        }
+        var version = WorkVersion;
+        var (found, acknowledged) = await ProcessNextAsync(process, intakeToken, processingToken);
+        return new PollResult(found, acknowledged ? null : ct => new ValueTask(WaitForWorkAsync(version, ct)));
     }
 
-    private async Task<bool> ProcessNextAsync(Func<IDelivery, CancellationToken, Task> process,
+    private async Task<(bool FoundWork, bool Acknowledged)> ProcessNextAsync(DeliveryHandler process,
         CancellationToken intakeToken, CancellationToken processingToken)
     {
         await using var connection = await DataSource.OpenConnectionAsync(intakeToken);
@@ -47,7 +30,7 @@ internal sealed class PostgreSqlTransactionalMessagePump(
         select.CommandText = $"SELECT * FROM \"{EscapeIdentifier(Options.SchemaName)}\".consume_next($1)";
         select.Parameters.Add(new NpgsqlParameter<long> { TypedValue = QueueId });
         await using var reader = await select.ExecuteReaderAsync(intakeToken);
-        if (!await reader.ReadAsync(intakeToken)) return false;
+        if (!await reader.ReadAsync(intakeToken)) return (false, false);
         var id = reader.GetInt64(0);
         var payload = (byte[])reader.GetValue(1);
         var headers = reader.GetString(2);
@@ -62,7 +45,7 @@ internal sealed class PostgreSqlTransactionalMessagePump(
             var delivery = new TransactionDelivery(connection, transaction, Options.SchemaName,
                 Descriptor.QueueName, id, payloadId, payload, headers);
             await process(delivery, processingToken);
-            return delivery.Acknowledged;
+            return (true, delivery.Acknowledged);
         }
         finally { PostgreSqlTransactionContext.Current.Value = previous; }
     }

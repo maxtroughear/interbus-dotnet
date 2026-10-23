@@ -149,22 +149,15 @@ public static class PostgreSqlTransportBuilderExtensions
                 builder.Services.Add(descriptor);
         }
 
-        switch (options.MessagePumpMode)
-        {
-            case PostgreSqlMessagePumpMode.Lease:
-                builder.Services.AddSingleton<InterBus.MessagePumps.IConsumerSourceFactory, PostgreSqlConsumerSourceFactory>();
-                break;
-            case PostgreSqlMessagePumpMode.Transactional:
-                builder.Services.AddSingleton<InterBus.MessagePumps.IConsumerSourceFactory, PostgreSqlConsumerSourceFactory>();
-                break;
-            default:
-                throw new ArgumentOutOfRangeException(nameof(options.MessagePumpMode), options.MessagePumpMode,
-                    "Unsupported PostgreSQL message pump mode");
-        }
+        if (!Enum.IsDefined(options.MessagePumpMode))
+            throw new ArgumentOutOfRangeException(nameof(options.MessagePumpMode), options.MessagePumpMode,
+                "Unsupported PostgreSQL message pump mode");
+        builder.Services.AddSingleton<InterBus.MessagePumps.IConsumerSourceFactory, PostgreSqlConsumerSourceFactory>();
     }
 
     private static void ValidateOptions(PostgreSqlTransportOptions options)
     {
+        ArgumentOutOfRangeException.ThrowIfNegative(options.PrefetchCount);
         if (options.LeaseDuration <= TimeSpan.Zero)
             throw new InvalidOperationException("PostgreSqlTransportOptions.LeaseDuration must be greater than zero");
 

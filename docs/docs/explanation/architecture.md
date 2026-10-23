@@ -33,7 +33,7 @@ This architecture allows swapping transports or infrastructure integrations with
 | Publish-Subscribe Channel | Topic (fan-out to all subscriber queues) |
 | Point-to-Point Channel | Queue (one consumer per queue) |
 | Message Router | `RoutingConventions` (type → topic/queue name) |
-| Service Activator / Message Pump | `InMemoryMessagePump` (BackgroundService) |
+| Service Activator / Message Pump | Shared consumer runtime with a transport source |
 
 ## Components
 
@@ -51,7 +51,9 @@ This architecture allows swapping transports or infrastructure integrations with
 - **`InMemoryBroker`** — Singleton that owns all `InMemoryTopic` and `InMemoryQueue` instances.
 - **`InMemoryTopic`** — Fans out payloads to all subscriber queues (`Channel<byte[]>`-backed).
 - **`InMemoryQueue`** — `Channel<byte[]>`-backed queue for a single consumer/message-type pair.
-- **`InMemoryMessagePump`** — `BackgroundService` that reads each queue and dispatches messages.
+- **`InMemoryMessagePump`** — Scoped polling source that reads a queue and invokes processing within each iteration. The shared consumer runtime supervises it and controls concurrency.
+
+Read [How message pumps work](./message-pumps.md) for the shared runtime, transport execution models and delivery ownership.
 
 ## Currently Supported Transports
 
@@ -102,7 +104,7 @@ Publisher                   Topic                    Queue (per consumer)
    │── Publish<T>(msg) ──►  FanOut ──► WriteAsync ──►  Channel<byte[]>
    │                                                         │
    │                                               InMemoryMessagePump
-   │                                                  (BackgroundService)
+   │                                              shared consumer runtime
    │                                                         │
    │                                               per-message DI scope
    │                                                         │

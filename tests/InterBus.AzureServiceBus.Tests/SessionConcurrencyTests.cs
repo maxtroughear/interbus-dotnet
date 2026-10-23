@@ -1,4 +1,5 @@
 using InterBus.Generated;
+using InterBus.MessagePumps;
 using Microsoft.Extensions.DependencyInjection;
 using System.Collections.Concurrent;
 
@@ -33,6 +34,29 @@ public class SessionConcurrencyTests() : ServiceBusFixture(bus =>
         foreach (var group in new[] { "a", "b" })
             Assert.That(gate.Started.Where(item => item.Group == group).Select(item => item.Sequence), Is.EqualTo(new[] { 0, 1 }));
         Assert.That(gate.Maximum, Is.EqualTo(2));
+        Assert.That(gate.PerSessionMaximum.Values, Is.All.EqualTo(1));
+    }
+
+    [Test]
+    public async Task RepeatedPauseResume_WithRealSessionProcessor_PreservesOrder()
+    {
+        var gate = Provider.GetRequiredService<Gate>();
+        gate.Release.SetResult();
+        var pump = Provider.GetRequiredService<PumpController>().Pumps.Single();
+        await using var scope = Provider.CreateAsyncScope();
+        var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
+        for (var i = 0; i < 3; i++)
+        {
+            await pump.PauseAsync(TestContext.CurrentContext.CancellationToken).WaitAsync(TimeSpan.FromSeconds(30));
+            await publisher.PublishAsync(new SessionOrderPlaced(Guid.NewGuid(), "same-session", i));
+            Assert.That(gate.Started.Count, Is.EqualTo(i));
+            await pump.ResumeAsync(TestContext.CurrentContext.CancellationToken);
+            await pump.ResumeAsync(TestContext.CurrentContext.CancellationToken);
+            await WaitUntilAsync(() => gate.Started.Count == i + 1, timeoutMs: 30_000,
+                cancellationToken: TestContext.CurrentContext.CancellationToken);
+        }
+        await pump.PauseAsync(TestContext.CurrentContext.CancellationToken);
+        Assert.That(gate.Started.Select(item => item.Sequence), Is.EqualTo(new[] { 0, 1, 2 }));
         Assert.That(gate.PerSessionMaximum.Values, Is.All.EqualTo(1));
     }
 

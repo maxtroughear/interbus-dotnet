@@ -17,7 +17,9 @@ public sealed class AzureServiceBusTransportOptions
 
     /// <summary>
     /// Credential used with <see cref="FullyQualifiedNamespace"/> for messaging and entity administration.
-    /// Required when a namespace host name is configured. The host owns credential lifetime.
+    /// Required when a namespace host name is configured. Supports managed identity credentials
+    /// on Azure hosts and developer credentials locally. The same credential is used by both SDK
+    /// clients; the host owns its lifetime.
     /// </summary>
     public TokenCredential? Credential { get; set; }
 

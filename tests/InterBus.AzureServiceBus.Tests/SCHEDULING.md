@@ -2,18 +2,8 @@
 
 Local and PR runs use the emulator. Queue cancellation cases are skipped with an NUnit
 assumption because of [emulator issue #119](https://github.com/Azure/azure-service-bus-emulator-installer/issues/119).
-Microsoft marked the bug fixed on 2026-10-06 for the next emulator image release. Our image
-still reproduced it on 2026-10-23, including cancellation at least five seconds before activation.
-The tested local image was built on 2026-01-12, with digest
-`sha256:a00c9626c8960f6b9be6178aa91a7ac8f1a102c0d9deda7603a1ba0ac9d9ab51`.
-The `latest` tag may be cached locally. Remove the skip after verifying an image containing the fix. Topic cancellation and all delivery
-cases continue to run locally. Provider unit tests always verify exact cancellation arguments.
-
-A retest after pulling `latest` on 2026-10-23 used the image built on 2026-07-01,
-with digest `sha256:5a96d893b245031740f7d46e0fe5ff282d24b78c4b7d761dd57590f3f010a9b3`.
-With the skip removed, native scheduling tests reported 7 passed and 1 failed: queue
-cancellation still allowed delivery after cancellation completed well before activation.
-Topic cancellation passed. The emulator queue cancellation skip remains in place.
+Remove the skip after verifying an emulator image containing the fix. Topic cancellation and
+all delivery cases continue to run locally. Provider unit tests always verify exact cancellation arguments.
 
 ## Azure and Entra configuration
 
@@ -53,8 +43,6 @@ To run against Azure locally, use `az login`, set those two `INTERBUS_*` variabl
 ```sh
 dotnet test --project tests/InterBus.AzureServiceBus.Tests/InterBus.AzureServiceBus.Tests.csproj
 ```
-
-The Azure path has been built but needs its first authenticated run after infrastructure setup.
 
 References:
 - [Federated credential setup](https://learn.microsoft.com/en-us/entra/workload-id/workload-identity-federation-create-trust-user-assigned-managed-identity)

@@ -41,8 +41,8 @@ public class FailedConsumerRetriesTests() : ServiceBusFixture(bus =>
 
     private async Task<ServiceBusReceivedMessage?> TryReadDeadLetterAsync()
     {
-        var queueName = typeof(DeadLetterOrderPlacedConsumer).FullName!;
-        await using var client = new ServiceBusClient(Container.GetConnectionString());
+        var queueName = EntityPrefix + typeof(DeadLetterOrderPlacedConsumer).FullName!;
+        await using var client = CreateClient();
         await using var receiver = client.CreateReceiver(
             queueName,
             new ServiceBusReceiverOptions { SubQueue = SubQueue.DeadLetter });

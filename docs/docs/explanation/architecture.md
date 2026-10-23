@@ -72,10 +72,29 @@ Read [How message pumps work](./message-pumps.md) for the shared runtime, transp
   - Saga repository via `UseDynamoDbRepository<TSaga, TState>(...)`
 - **Scheduling providers**
   - TickerQ via `AddTickerQScheduler()`
+  - Native Azure Service Bus scheduling with cancellable, namespace-scoped opaque IDs via `AddAzureServiceBusScheduler()`
   - Hangfire via `AddHangfireScheduler()`
   - Amazon EventBridge scheduler via `AddEventBridgeScheduler(...)`
 - **Compile-time registration**
   - Source generator package: `InterBus.SourceGenerator`
+
+### Azure Service Bus scheduling
+
+Configure the transport and native scheduler together:
+
+```csharp
+bus.AddAzureServiceBusTransport(options => options.ConnectionString = connectionString);
+bus.AddScheduling(scheduler => scheduler.AddAzureServiceBusScheduler().Directly());
+```
+
+`IScheduler` returns an opaque ID containing the physical destination and broker sequence number.
+Store it unchanged and pass it to `CancelAsync` using the same Service Bus namespace, including
+from another process. Target queues must exist; topics are ensured automatically.
+Cancellation cannot recall an activated message and may race activation; SDK errors propagate.
+
+`ViaRequest()` with `AddSchedulingConsumer()` returns the ID through request/reply.
+`ViaPublish()` with the consumer returns null inline and exposes the ID in `ScheduleCreatedEvent`.
+`OnTransport()` continues to use transport delays without cancellable IDs.
 
 ## Feature Areas
 

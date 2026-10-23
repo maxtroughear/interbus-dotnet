@@ -46,27 +46,11 @@ internal sealed class AzureServiceBusTopicTransport(
         var entityPath = await topology.EnsureTopicAsync(context.Destination, cancellationToken);
 
         var sender = clientProvider.GetOrCreateSender(entityPath);
-        var message = BuildMessage(context);
+        var message = AzureServiceBusMessageFactory.Create(context.Payload, context.Headers);
+        if (context.Delay is { } delay && delay > TimeSpan.Zero)
+            message.ScheduledEnqueueTime = DateTimeOffset.UtcNow + delay;
+
         await sender.SendMessageAsync(message, cancellationToken);
     }
 
-    private static ServiceBusMessage BuildMessage(TransportSendContext context)
-    {
-        var message = new ServiceBusMessage(context.Payload);
-
-        foreach (var header in context.Headers)
-            message.ApplicationProperties[header.Key] = header.Value;
-
-        if (context.Delay.HasValue && context.Delay.Value > TimeSpan.Zero)
-            message.ScheduledEnqueueTime = DateTimeOffset.UtcNow + context.Delay.Value;
-
-        // Set SessionId from MessageGroupId header so messages are routed to the correct
-        // session when forwarded to a session-enabled queue (FIFO via topic subscriptions).
-        // Publisher always stamps MessageGroupId (defaults to CorrelationId), so this is safe
-        // even when the target queue does not require sessions.
-        if (context.Headers.TryGetValue(InterBusHeaders.MessageGroupId, out var groupId))
-            message.SessionId = groupId;
-
-        return message;
-    }
 }

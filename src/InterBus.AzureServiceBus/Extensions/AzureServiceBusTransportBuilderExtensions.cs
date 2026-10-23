@@ -34,8 +34,10 @@ public static class AzureServiceBusTransportBuilderExtensions
         /// </para>
         /// </summary>
         /// <param name="configure">
-        /// Delegate to configure <see cref="AzureServiceBusTransportOptions"/>. At minimum set
-        /// <see cref="AzureServiceBusTransportOptions.ConnectionString"/>.
+        /// Delegate to configure <see cref="AzureServiceBusTransportOptions"/>. Set
+        /// <see cref="AzureServiceBusTransportOptions.ConnectionString"/> or configure
+        /// <see cref="AzureServiceBusTransportOptions.FullyQualifiedNamespace"/> and
+        /// <see cref="AzureServiceBusTransportOptions.Credential"/> for Microsoft Entra authentication.
         /// </param>
         public InterBusBuilder AddAzureServiceBusTransport(Action<AzureServiceBusTransportOptions>? configure = null)
         {

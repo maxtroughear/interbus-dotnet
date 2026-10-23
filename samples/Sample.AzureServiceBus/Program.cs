@@ -9,7 +9,7 @@ using Sample.Components;
 
 var builder = Host.CreateApplicationBuilder(args);
 
-// Register InterBus with In-Memory transport
+// Register InterBus with Azure Service Bus transport
 builder.Services.AddInterBus(bus =>
 {
     bus.AddAzureServiceBusTransport(options =>
@@ -18,6 +18,8 @@ builder.Services.AddInterBus(bus =>
                                    throw new InvalidOperationException(
                                        "Azure Service Bus connection string not configured. Set AzureServiceBus:ConnectionString in appsettings.json or the AZURESERVICEBUS__CONNECTIONSTRING environment variable");
     });
+
+    bus.AddScheduling(scheduler => scheduler.AddAzureServiceBusScheduler().Directly());
 
     bus.AddConsumer<GreetingConsumer>();
     bus.AddConsumer<FarewellConsumer>();

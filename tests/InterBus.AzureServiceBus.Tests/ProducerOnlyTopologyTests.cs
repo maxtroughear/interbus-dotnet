@@ -16,8 +16,8 @@ public class ProducerOnlyTopologyTests() : ServiceBusFixture(_ => { })
         var msg = new OrderPlaced(Guid.NewGuid(), "publish-only@test.com", 42m);
         await publisher.PublishAsync(msg, TestContext.CurrentContext.CancellationToken);
 
-        var expectedTopicName = RoutingConventions.TopicName(typeof(OrderPlaced));
-        var adminClient = new ServiceBusAdministrationClient(Container.GetHttpConnectionString());
+        var expectedTopicName = EntityPrefix + RoutingConventions.TopicName(typeof(OrderPlaced));
+        var adminClient = CreateAdminClient();
 
         var exists = await adminClient.TopicExistsAsync(
             expectedTopicName,
@@ -34,14 +34,14 @@ public class ProducerOnlyTopologyTests() : ServiceBusFixture(_ => { })
         var publisher = scope.ServiceProvider.GetRequiredService<IPublisher>();
 
         const string rawQueueName = "direct-no-consumer";
-        var expectedQueueName = rawQueueName;
+        var expectedQueueName = EntityPrefix + rawQueueName;
 
         var msg = new OrderPlaced(Guid.NewGuid(), "queue-only@test.com", 7m);
         Assert.That(
             async () => await publisher.SendAsync(rawQueueName, msg, TestContext.CurrentContext.CancellationToken),
             Throws.TypeOf<ServiceBusException>());
 
-        var adminClient = new ServiceBusAdministrationClient(Container.GetHttpConnectionString());
+        var adminClient = CreateAdminClient();
         var exists = await adminClient.QueueExistsAsync(
             expectedQueueName,
             TestContext.CurrentContext.CancellationToken);

@@ -22,6 +22,15 @@ internal sealed class AzureServiceBusClientProvider : IAsyncDisposable
 
     public AzureServiceBusClientProvider(AzureServiceBusTransportOptions options)
     {
+        if (!string.IsNullOrWhiteSpace(options.FullyQualifiedNamespace))
+        {
+            var credential = options.Credential ?? throw new ArgumentException(
+                "Credential is required when FullyQualifiedNamespace is configured", nameof(options));
+            _client = new ServiceBusClient(options.FullyQualifiedNamespace, credential);
+            AdminClient = new ServiceBusAdministrationClient(options.FullyQualifiedNamespace, credential);
+            return;
+        }
+
         _client = new ServiceBusClient(options.ConnectionString);
         var adminConnectionString = options.AdminConnectionString ?? options.ConnectionString;
         AdminClient = new ServiceBusAdministrationClient(adminConnectionString);

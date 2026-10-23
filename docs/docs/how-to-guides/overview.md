@@ -10,3 +10,5 @@ How-to guides are for solving specific problems with InterBus.
 - [EF Core outbox and inbox](./efcore-outbox-inbox)
 - [DynamoDB outbox](./dynamodb-outbox)
 - [Implement request/reply](./request-reply)
+- [Schedule messages](./scheduling.md)
+- [Schedule with Azure Service Bus](./azure-service-bus-scheduling.md)

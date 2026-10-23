@@ -1,3 +1,4 @@
+using TokenCredential = Azure.Core.TokenCredential;
 using InterBus.Retry;
 
 namespace InterBus.AzureServiceBus;
@@ -8,7 +9,23 @@ namespace InterBus.AzureServiceBus;
 public sealed class AzureServiceBusTransportOptions
 {
     /// <summary>
-    /// The Azure Service Bus namespace connection string. Required.
+    /// Namespace host name, such as <c>example.servicebus.windows.net</c>, used with
+    /// <see cref="Credential"/> for Microsoft Entra authentication. When set, both SDK clients
+    /// use this namespace instead of the connection strings.
+    /// </summary>
+    public string? FullyQualifiedNamespace { get; set; }
+
+    /// <summary>
+    /// Credential used with <see cref="FullyQualifiedNamespace"/> for messaging and entity administration.
+    /// Required when a namespace host name is configured. Supports managed identity credentials
+    /// on Azure hosts and developer credentials locally. The same credential is used by both SDK
+    /// clients; the host owns its lifetime.
+    /// </summary>
+    public TokenCredential? Credential { get; set; }
+
+    /// <summary>
+    /// The Azure Service Bus namespace connection string. Required unless using
+    /// <see cref="FullyQualifiedNamespace"/> and <see cref="Credential"/>.
     /// Used by <see cref="Azure.Messaging.ServiceBus.ServiceBusClient"/> for publishing and consuming messages.
     /// </summary>
     public string ConnectionString { get; set; } = string.Empty;

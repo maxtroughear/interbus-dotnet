@@ -1,3 +1,6 @@
+using Azure.Identity;
+using Azure.Messaging.ServiceBus;
+using Azure.Messaging.ServiceBus.Administration;
 using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Networks;
 using InterBus.AzureServiceBus.Extensions;
@@ -11,6 +14,22 @@ namespace InterBus.AzureServiceBus.Tests;
 
 public abstract class ServiceBusFixture(Action<InterBusBuilder> configureBus)
 {
+    protected static bool UseRealAzure => string.Equals(
+        Environment.GetEnvironmentVariable("INTERBUS_USE_REAL_AZURE"), "true", StringComparison.OrdinalIgnoreCase);
+    protected virtual bool IsolateEntities => UseRealAzure;
+    protected string EntityPrefix { get; private set; } = string.Empty;
+    private readonly AzureCliCredential _credential = new();
+    private string Namespace => Environment.GetEnvironmentVariable("INTERBUS_AZURE_SERVICEBUS_NAMESPACE")
+        ?? throw new InvalidOperationException("INTERBUS_AZURE_SERVICEBUS_NAMESPACE is required for real Azure tests");
+
+    protected ServiceBusAdministrationClient CreateAdminClient() => UseRealAzure
+        ? new ServiceBusAdministrationClient(Namespace, _credential)
+        : new ServiceBusAdministrationClient(Container.GetHttpConnectionString());
+
+    protected ServiceBusClient CreateClient() => UseRealAzure
+        ? new ServiceBusClient(Namespace, _credential)
+        : new ServiceBusClient(Container.GetConnectionString());
+
     private INetwork _network;
     private MsSqlContainer _sqlContainer;
     protected ServiceBusContainer Container;
@@ -21,6 +40,11 @@ public abstract class ServiceBusFixture(Action<InterBusBuilder> configureBus)
     [OneTimeSetUp]
     public async Task OneTimeSetUpBase()
     {
+        if (UseRealAzure)
+        {
+            _ = Namespace;
+            return;
+        }
         _network = new NetworkBuilder().Build();
         _sqlContainer = new MsSqlBuilder("mcr.microsoft.com/mssql/server:2025-latest")
             .WithPassword("Password123!")
@@ -40,6 +64,7 @@ public abstract class ServiceBusFixture(Action<InterBusBuilder> configureBus)
     [OneTimeTearDown]
     public async Task OneTimeTearDownBase()
     {
+        if (UseRealAzure) return;
         await Container.StopAsync();
         await _sqlContainer.StopAsync();
         await Container.DisposeAsync();
@@ -52,6 +77,7 @@ public abstract class ServiceBusFixture(Action<InterBusBuilder> configureBus)
     [SetUp]
     public async Task SetupBase()
     {
+        EntityPrefix = IsolateEntities ? $"int-test-{Guid.NewGuid():N}-" : string.Empty;
         var services = new ServiceCollection();
         services.AddLogging();
 
@@ -59,8 +85,18 @@ public abstract class ServiceBusFixture(Action<InterBusBuilder> configureBus)
         {
             bus.AddAzureServiceBusTransport(o =>
             {
-                o.ConnectionString = Container.GetConnectionString();
-                o.AdminConnectionString = Container.GetHttpConnectionString();
+                o.QueuePrefix = EntityPrefix;
+                o.TopicPrefix = EntityPrefix;
+                if (UseRealAzure)
+                {
+                    o.FullyQualifiedNamespace = Namespace;
+                    o.Credential = _credential;
+                }
+                else
+                {
+                    o.ConnectionString = Container.GetConnectionString();
+                    o.AdminConnectionString = Container.GetHttpConnectionString();
+                }
             });
             configureBus(bus);
         });
@@ -75,12 +111,24 @@ public abstract class ServiceBusFixture(Action<InterBusBuilder> configureBus)
     [TearDown]
     public async Task TearDownBase()
     {
-        await _cts.CancelAsync();
+        using var shutdown = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        await _cts.CancelAsync().WaitAsync(shutdown.Token);
 
         foreach (var svc in Provider.GetServices<IHostedService>())
-            await svc.StopAsync(CancellationToken.None);
+            await svc.StopAsync(shutdown.Token).WaitAsync(shutdown.Token);
 
         _cts.Dispose();
         await Provider.DisposeAsync();
+        if (IsolateEntities)
+        {
+            using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            var admin = CreateAdminClient();
+            await foreach (var topic in admin.GetTopicsAsync(cleanup.Token))
+                if (topic.Name.StartsWith(EntityPrefix, StringComparison.Ordinal))
+                    await admin.DeleteTopicAsync(topic.Name, cleanup.Token);
+            await foreach (var queue in admin.GetQueuesAsync(cleanup.Token))
+                if (queue.Name.StartsWith(EntityPrefix, StringComparison.Ordinal))
+                    await admin.DeleteQueueAsync(queue.Name, cleanup.Token);
+        }
     }
 }

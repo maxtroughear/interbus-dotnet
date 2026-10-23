@@ -72,6 +72,7 @@ Read [How message pumps work](./message-pumps.md) for the shared runtime, transp
   - Saga repository via `UseDynamoDbRepository<TSaga, TState>(...)`
 - **Scheduling providers**
   - TickerQ via `AddTickerQScheduler()`
+  - Azure Service Bus via `AddAzureServiceBusScheduler()`
   - Hangfire via `AddHangfireScheduler()`
   - Amazon EventBridge scheduler via `AddEventBridgeScheduler(...)`
 - **Compile-time registration**
@@ -83,7 +84,7 @@ Read [How message pumps work](./message-pumps.md) for the shared runtime, transp
 - Consumer middleware composition
 - Retry middleware (`UseRetryMiddleware(...)`)
 - Saga orchestration and state lifecycle (persist, complete, delete)
-- Scheduling abstraction (`AddScheduling(...)`, `IScheduler`)
+- [Scheduling](../how-to-guides/scheduling.md) abstraction (`AddScheduling(...)`, `IScheduler`)
 - Durable outbox support with EF Core
 
 ## Routing Conventions

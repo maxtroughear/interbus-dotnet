@@ -7,7 +7,7 @@ namespace InterBus.PostgreSQL;
 
 internal abstract class PostgreSqlConsumerSource(
     ConsumerDescriptor descriptor, NpgsqlDataSource dataSource, PostgreSqlTransportOptions options,
-    InterBusOptions busOptions, ILogger logger) : IConsumerSource, IPollingRetryPolicy
+    InterBusOptions busOptions, ILogger logger) : IConsumerSource, IPollingRetryPolicy, IPollingFailureClassifier
 {
     protected readonly ConsumerDescriptor Descriptor = descriptor;
     protected readonly NpgsqlDataSource DataSource = dataSource;
@@ -45,6 +45,8 @@ internal abstract class PostgreSqlConsumerSource(
             await subscription.ExecuteNonQueryAsync(ct);
         }
     }, Options, logger, cancellationToken);
+
+    public bool IsRecoverable(Exception error) => PostgreSqlConnectionRetry.IsConnectionRelated(error);
 
     public TimeSpan? GetRetryDelay(Exception error, int attempt)
     {

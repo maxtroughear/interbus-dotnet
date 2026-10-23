@@ -3,9 +3,12 @@ using InterBus.Consuming;
 namespace InterBus.MessagePumps;
 
 /// <summary>Supervises initialization, intake, graceful drain and disposal for one consumer.</summary>
-public sealed class PumpLifetime(ConsumerDescriptor consumer, IConsumerSource source, DeliveryProcessor processor)
+public sealed class PumpLifetime(ConsumerDescriptor consumer, IConsumerSource source, DeliveryProcessor processor, TimeProvider? timeProvider = null)
     : IAsyncDisposable
 {
+    private ConsumerRuntime? _runtime;
+    /// <summary>Current intake policies, separate from lifecycle state.</summary>
+    public IReadOnlyList<InterBus.Resilience.PumpCircuitSnapshot> Circuits => _runtime?.CircuitSnapshots ?? [];
     private readonly CallbackIntake? _callback = source is ICallbackSource callback ? new CallbackIntake(callback) : null;
     private readonly object _gate = new();
     private readonly CancellationTokenSource _intake = new();
@@ -58,6 +61,9 @@ public sealed class PumpLifetime(ConsumerDescriptor consumer, IConsumerSource so
                 if (settings.PrefetchCount < 0 || settings.MaxBatchSize < 1) throw new InvalidOperationException("Invalid polling capacity");
                 _ = checked(Consumer.ConcurrencyCount + settings.PrefetchCount);
             }
+            Consumer.PumpCircuitBreaker?.Validate();
+            if (Consumer.PumpCircuitBreaker is not null && source is ICallbackSource && source is not IProbeControlledCallbackSource)
+                throw new InvalidOperationException("UsePumpCircuitBreaker requires a callback source with bounded probe support");
             await source.InitializeAsync(initialization.Token);
             initialization.Token.ThrowIfCancellationRequested();
             runtimeStarted = true;
@@ -112,6 +118,8 @@ public sealed class PumpLifetime(ConsumerDescriptor consumer, IConsumerSource so
         lock (_gate)
         {
             if (_stopping) throw new InvalidOperationException("Consumer is stopping");
+            if (Circuits.Any(policy => policy.State != "Closed"))
+                throw new InvalidOperationException("Callback intake cannot resume while a pump circuit is open");
             return _callback?.ResumeAsync(operationToken) ?? throw new InvalidOperationException("Source does not use callbacks");
         }
     }
@@ -121,7 +129,7 @@ public sealed class PumpLifetime(ConsumerDescriptor consumer, IConsumerSource so
         Exception? failure = null;
         try
         {
-            var runtime = new ConsumerRuntime(Consumer, processor, ReportFailure);
+            var runtime = _runtime = new ConsumerRuntime(Consumer, processor, ReportFailure, timeProvider);
             await (source switch
             {
                 IBufferedPollingSource buffered => runtime.RunAsync(buffered, _intake.Token, _processing.Token),

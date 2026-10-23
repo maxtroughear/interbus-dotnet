@@ -62,6 +62,13 @@ internal sealed class AzureServiceBusClientProvider : IAsyncDisposable
         CancellationToken cancellationToken = default) =>
         _client.AcceptSessionAsync(queueName, sessionId, cancellationToken: cancellationToken);
 
+    internal ServiceBusReceiver CreateProbeReceiver(string queueName) =>
+        _client.CreateReceiver(queueName, new ServiceBusReceiverOptions { ReceiveMode = ServiceBusReceiveMode.PeekLock, PrefetchCount = 0 });
+
+    internal Task<ServiceBusSessionReceiver> AcceptProbeSessionAsync(string queueName, CancellationToken token) =>
+        _client.AcceptNextSessionAsync(queueName, new ServiceBusSessionReceiverOptions
+        { ReceiveMode = ServiceBusReceiveMode.PeekLock, PrefetchCount = 0 }, token);
+
     /// <summary>Creates a <see cref="ServiceBusProcessor"/> for the given topic subscription.</summary>
     public ServiceBusProcessor CreateSubscriptionProcessor(
         string topicName,

@@ -99,6 +99,23 @@ public class ManagedAdapterTests
         await run;
     }
 
+    [Test]
+    public async Task TerminalReceiveError_PublishesFatalHealth()
+    {
+        var processor = new FakeProcessor();
+        await using var clients = new AzureServiceBusClientProvider(new FakeClient(processor), new FakeAdmin());
+        await using var source = new AzureServiceBusMessagePump(
+            new ConsumerDescriptor(typeof(ManagedAdapterTests), new Uri("asbqueue://test")), clients,
+            new AzureServiceBusTransportOptions(), NullLogger<AzureServiceBusMessagePump>.Instance);
+        await source.InitializeAsync(default);
+        await source.StartAsync((_, _) => Task.CompletedTask, default, default);
+        var error = new ServiceBusException("queue removed", ServiceBusFailureReason.MessagingEntityNotFound);
+        await processor.ReportAsync(new ProcessErrorEventArgs(error, ServiceBusErrorSource.Receive,
+            "namespace", "queue", "processor", default));
+        Assert.That(await source.Failure.WaitAsync(TimeSpan.FromSeconds(5)), Is.SameAs(error));
+        await source.PauseAsync(default);
+    }
+
     private sealed class FakeAdmin : ServiceBusAdministrationClient;
     private sealed class FakeClient(FakeProcessor processor) : ServiceBusClient
     {

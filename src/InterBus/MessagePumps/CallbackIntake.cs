@@ -1,12 +1,18 @@
 namespace InterBus.MessagePumps;
 
-internal sealed class CallbackIntake(ICallbackSource source) : ICallbackSource
+internal sealed class CallbackIntake(ICallbackSource source) : IProbeControlledCallbackSource, IPollingFailureClassifier, IAcquisitionHealthSource
 {
+    public event Action<Exception>? AcquisitionFailed
+    {
+        add { if (source is IAcquisitionHealthSource health) health.AcquisitionFailed += value; }
+        remove { if (source is IAcquisitionHealthSource health) health.AcquisitionFailed -= value; }
+    }
     private readonly SemaphoreSlim _control = new(1);
     private readonly TaskCompletionSource<Exception> _failure = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private int _stopping;
     private bool _started;
     private bool _paused;
+    internal Func<bool>? AllowResume { get; set; }
     public Task Ready => source.Ready;
     public Task<Exception> Failure
     {
@@ -41,10 +47,24 @@ internal sealed class CallbackIntake(ICallbackSource source) : ICallbackSource
         ControlAsync(async () =>
         {
             if (!_started) throw new InvalidOperationException("Callback intake has not started");
-            if (!_paused) return;
+            if (!_paused || AllowResume?.Invoke() == false) return;
             await source.ResumeAsync(operationToken);
             _paused = false;
         }, operationToken);
+
+    public bool IsRecoverable(Exception error) => (source as IPollingFailureClassifier)?.IsRecoverable(error) ?? false;
+
+    public async Task<PollResult> ReceiveProbeAsync(CancellationToken processingToken, CancellationToken operationToken)
+    {
+        await _control.WaitAsync(operationToken);
+        try
+        {
+            if (Volatile.Read(ref _stopping) != 0) throw new OperationCanceledException(operationToken);
+            if (!_started || !_paused) throw new InvalidOperationException("Callback probes require paused ordinary intake");
+            return await ((IProbeControlledCallbackSource)source).ReceiveProbeAsync(processingToken, operationToken);
+        }
+        finally { _control.Release(); }
+    }
 
     internal void BeginStop() => Interlocked.Exchange(ref _stopping, 1);
 

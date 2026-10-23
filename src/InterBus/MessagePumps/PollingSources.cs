@@ -58,3 +58,28 @@ public interface IPollingRetryPolicy
     /// <returns>A nonnegative delay for retry, or null to stop the runtime.</returns>
     TimeSpan? GetRetryDelay(Exception error, int attempt);
 }
+
+/// <summary>A callback source that can acquire at most one delivery while ordinary intake is paused.</summary>
+public interface IProbeControlledCallbackSource : ICallbackSource
+{
+    /// <summary>Receives once without prefetch, then awaits the installed processing delegate and required cleanup.</summary>
+    /// <param name="processingToken">Bounds accepted processing, independently of acquisition.</param>
+    /// <param name="operationToken">Bounds acquisition only; must not cancel an accepted delivery.</param>
+    /// <returns>Acquisition evidence only, never proof of successful settlement.</returns>
+    Task<PollResult> ReceiveProbeAsync(CancellationToken processingToken, CancellationToken operationToken);
+}
+
+/// <summary>Classifies acquisition errors independently of retry budget exhaustion.</summary>
+public interface IPollingFailureClassifier
+{
+    /// <summary>Returns true for recoverable transport failures, including when the retry budget is exhausted.</summary>
+    /// <param name="error">The original acquisition exception.</param>
+    bool IsRecoverable(Exception error);
+}
+
+/// <summary>Optional acquisition health reported by an SDK-managed callback source.</summary>
+public interface IAcquisitionHealthSource
+{
+    /// <summary>Reports recoverable acquisition errors. Subscribers must not throw or await intake controls.</summary>
+    event Action<Exception>? AcquisitionFailed;
+}

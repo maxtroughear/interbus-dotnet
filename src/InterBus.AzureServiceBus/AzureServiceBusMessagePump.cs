@@ -9,7 +9,7 @@ namespace InterBus.AzureServiceBus;
 
 internal sealed class AzureServiceBusMessagePump(
     ConsumerDescriptor descriptor, AzureServiceBusClientProvider clientProvider,
-    AzureServiceBusTransportOptions options, ILogger<AzureServiceBusMessagePump> logger) : ICallbackSource
+    AzureServiceBusTransportOptions options, ILogger<AzureServiceBusMessagePump> logger) : IProbeControlledCallbackSource, IPollingFailureClassifier, IAcquisitionHealthSource
 {
     private readonly TaskCompletionSource<Exception> _failure = new(TaskCreationOptions.RunContinuationsAsynchronously);
     public Task<Exception> Failure => _failure.Task;
@@ -47,6 +47,8 @@ internal sealed class AzureServiceBusMessagePump(
 
     public async Task StartAsync(DeliveryHandler process, CancellationToken processingToken, CancellationToken operationToken)
     {
+        _process = process;
+        _processingToken = processingToken;
         async Task ProcessAsync(IDelivery delivery, CancellationToken token)
         {
             try { await process(delivery, token); }
@@ -108,12 +110,81 @@ internal sealed class AzureServiceBusMessagePump(
         }
     }
 
+    private DeliveryHandler? _process;
+    private CancellationToken _processingToken;
+    public bool IsRecoverable(Exception error) => error is ServiceBusException { IsTransient: true } or ServiceBusException
+        { Reason: ServiceBusFailureReason.MessageLockLost or ServiceBusFailureReason.SessionLockLost } or TimeoutException;
+
+    public async Task<PollResult> ReceiveProbeAsync(CancellationToken processingToken, CancellationToken operationToken)
+    {
+        var queue = AzureServiceBusNaming.SanitizeEntityName(options.QueuePrefix + descriptor.QueueName);
+        ServiceBusReceiver receiver;
+        try
+        {
+            receiver = descriptor.IsFifo
+                ? await clientProvider.AcceptProbeSessionAsync(queue, operationToken)
+                : clientProvider.CreateProbeReceiver(queue);
+        }
+        catch (ServiceBusException error) when (descriptor.IsFifo && error.Reason == ServiceBusFailureReason.ServiceTimeout)
+        { return new PollResult(false); }
+        await using (receiver)
+        {
+            var message = await receiver.ReceiveMessageAsync(TimeSpan.FromSeconds(2), operationToken);
+            if (message is null) return new PollResult(false);
+            using var renewalStop = new CancellationTokenSource();
+            var renewal = RenewAsync();
+            try
+            {
+                await _process!(new ServiceBusDelivery(message, async (result, ct) =>
+                {
+                    if (renewal.IsFaulted) await renewal;
+                    switch (result.Kind)
+                    {
+                        case DispatchResultKind.Success: await receiver.CompleteMessageAsync(message, ct); break;
+                        case DispatchResultKind.Release: await receiver.AbandonMessageAsync(message, cancellationToken: ct); break;
+                        case DispatchResultKind.DeadLetter:
+                            await receiver.DeadLetterMessageAsync(message, Properties(result), result.DeadLetterReason, result.DeadLetterError, ct); break;
+                        default: throw new ArgumentOutOfRangeException(nameof(result));
+                    }
+                }), processingToken);
+            }
+            finally
+            {
+                await renewalStop.CancelAsync();
+                try { await renewal; }
+                catch (OperationCanceledException) when (renewalStop.IsCancellationRequested) { }
+            }
+            return new PollResult(true);
+
+            async Task RenewAsync()
+            {
+                while (true)
+                {
+                    var lockedUntil = receiver is ServiceBusSessionReceiver session ? session.SessionLockedUntil : message.LockedUntil;
+                    var remaining = lockedUntil - DateTimeOffset.UtcNow;
+                    var delay = TimeSpan.FromTicks(Math.Max(TimeSpan.FromMilliseconds(100).Ticks, remaining.Ticks / 2));
+                    await Task.Delay(delay, renewalStop.Token);
+                    if (receiver is ServiceBusSessionReceiver sessions) await sessions.RenewSessionLockAsync(renewalStop.Token);
+                    else await receiver.RenewMessageLockAsync(message, renewalStop.Token);
+                }
+            }
+        }
+    }
+
     private int _pausing;
     public async Task PauseAsync(CancellationToken operationToken)
     {
         Volatile.Write(ref _pausing, 1);
         if (_processor is not null) await _processor.StopProcessingAsync(operationToken);
-        if (_sessions is not null) await _sessions.StopProcessingAsync(operationToken);
+        if (_sessions is not null)
+        {
+            await _sessions.StopProcessingAsync(operationToken);
+            if (descriptor.PumpCircuitBreaker is not null)
+            {
+                await _sessions.DisposeAsync();
+                _sessions = null;
+            }
+        }
     }
 
     public async Task ResumeAsync(CancellationToken operationToken)
@@ -121,14 +192,28 @@ internal sealed class AzureServiceBusMessagePump(
         Volatile.Write(ref _pausing, 0);
         try
         {
+            if (descriptor.IsFifo && _sessions is null && descriptor.PumpCircuitBreaker is not null)
+            {
+                await InitializeAsync(operationToken);
+                await StartAsync(_process!, _processingToken, operationToken);
+                return;
+            }
             if (_processor is not null) await _processor.StartProcessingAsync(operationToken);
             if (_sessions is not null) await _sessions.StartProcessingAsync(operationToken);
         }
         catch (Exception error) { _failure.TrySetResult(error); throw; }
     }
 
+    public event Action<Exception>? AcquisitionFailed;
     private Task ReportErrorAsync(ProcessErrorEventArgs args)
     {
+        if (args.ErrorSource == ServiceBusErrorSource.Receive)
+        {
+            if (args.Exception is UnauthorizedAccessException or ServiceBusException
+                { Reason: ServiceBusFailureReason.MessagingEntityNotFound or ServiceBusFailureReason.MessagingEntityDisabled })
+                _failure.TrySetResult(args.Exception);
+            else if (IsRecoverable(args.Exception)) AcquisitionFailed?.Invoke(args.Exception);
+        }
         logger.LogError(args.Exception, "InterBus Azure Service Bus: processor error for {Consumer}; source={Source}",
             descriptor.ConsumerType, args.ErrorSource);
         return Task.CompletedTask;

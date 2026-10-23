@@ -66,3 +66,83 @@ Implement optional `IPollingRetryPolicy.GetRetryDelay(error, attempt)` to classi
 ## Breaking API migration
 
 `IBufferedSource` and `IManagedSource` have been removed. Replace a buffered source's `ReceiveAsync(DeliverySink, ...)` loop with `IBufferedPollingSource.ReceiveOnceAsync(ReceiveBatch, ...)`; remove transport reservation and retry loops. Replace transaction-owning managed workers with `IScopedPollingSource`, and SDK managed workers with `ICallbackSource`. Keep the existing factory registration and application transport configuration. No circuit configuration is introduced by this change.
+
+## Intake circuit breakers
+
+Enable a circuit on an individual consumer with no transport registration changes:
+
+```csharp
+bus.AddConsumer<OrderConsumer>(consumer => consumer.UsePumpCircuitBreaker(options =>
+{
+    options.Dependency(policy =>
+    {
+        policy.MinimumThroughput = 20;
+        policy.FailureThreshold = 0.5;
+        policy.BreakDuration = TimeSpan.FromSeconds(30);
+    });
+    options.Transport();
+    options.DependencyFailure = result => result.Exception is TimeoutException;
+}));
+```
+
+`Dependency(...)` and `Transport(...)` configure policies with the same fluent API;
+calling either without an argument enables its default settings. Use
+`DisableDependency()` for a transport-only circuit or `DisableTransport()` to turn
+transport sampling off. Both policy methods return the options object for chaining:
+
+```csharp
+consumer.UsePumpCircuitBreaker(circuit => circuit
+    .Dependency(policy => policy.BreakDuration = TimeSpan.FromSeconds(30))
+    .Transport());
+```
+
+`CircuitBreakerOptions` and `PumpCircuitBreakerOptions` are in `InterBus.Resilience`.
+Dependency sampling is enabled by default; transport sampling is opt-in. A threshold
+opens intake for this consumer instance only. Accepted messages continue through
+settlement and cleanup with their existing ownership renewal and concurrency limits.
+The pump lifetime stays running while intake is paused.
+
+After the break duration and accepted work have drained, core grants at most
+`ProbeDeliveryLimit` recovery deliveries across the entire consumer (default one).
+`SuccessfulProbesRequired` defaults to one and must not exceed that limit. Delivery
+recovery requires successful dispatch, settlement, disposal and enclosing resource
+cleanup. Empty acquisitions can recover an acquisition-only transport policy but
+cannot recover the dependency policy. All enabled policies must recover before
+ordinary intake resumes.
+
+`ProbeTimeout` bounds recovery operations. Expiry reopens the circuit without
+canceling accepted processing or disposing resources still in use. An adapter that
+ignores acquisition cancellation retains its grant until it actually returns.
+`ReopenJitter` adds up to three seconds by default to each break; `EmptyProbeDelay`
+paces empty recovery receives. Register a `TimeProvider` before `AddInterBus` to
+control core circuit and retry scheduling. SDK retries and lock renewal keep their
+transport timing contracts.
+
+By default, dependency failures are final exception-based release/dead-letter
+results after dispatch middleware has finished. Decode errors and expected shutdown
+cancellation are excluded. Use `DependencyFailure` to exclude business/poison
+exceptions. Middleware that republishes a failed message and reports success hides
+that failure from the pump; observe it explicitly in that middleware if needed.
+Settlement failures are separate transport evidence and count only when
+`ObserveSettlementFailures` is enabled. They always prevent delivery recovery.
+Polling retry exhaustion remains terminal, even if the error also opens a circuit.
+
+RabbitMQ pauses its callback subscription and uses manual-ack single-message gets
+for probes. Azure Service Bus uses standalone receivers with prefetch disabled and
+explicit message/session lock renewal. Session recovery drains and disposes the old
+session processor, retains the probe session until cleanup, then creates a fresh
+processor after recovery. Callback adapters without bounded probe capability fail
+startup when this feature is enabled.
+
+`PumpController.Pumps` exposes each lifetime's `Circuits` snapshots, including policy
+state, reason, generation, next probe time, outstanding probes and transition counts.
+Transitions are also logged with consumer and policy identity. Circuit state is
+separate from `PumpState`; shutdown and fatal failures permanently stop intake.
+
+### Migrating from dispatch-only circuits
+
+Replace `UseCircuitBreakerMiddleware(...)` with `UsePumpCircuitBreaker(...)` and put
+its policy settings inside `options.Dependency(policy => ...)`. Configuring both on
+one consumer is rejected because the dispatch-only breaker can reject accepted drain
+work and recovery probes before they reach the handler. The existing dispatch-only middleware retains its behavior for consumers
+that use it; pump circuits observe dispatch results and suspend future acquisition.

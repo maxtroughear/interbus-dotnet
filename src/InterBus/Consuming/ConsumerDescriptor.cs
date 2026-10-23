@@ -15,6 +15,9 @@ namespace InterBus.Consuming;
 /// </summary>
 public sealed class ConsumerDescriptor(Type consumerType, Uri queue)
 {
+    /// <summary>Opt-in intake circuit configuration, shared by this consumer's workers.</summary>
+    public InterBus.Resilience.PumpCircuitBreakerOptions? PumpCircuitBreaker { get; internal set; }
+
     private static readonly Func<DispatchContext, ConsumePipelineExecutor, IServiceProvider, CancellationToken, Task>
         MissingDispatchDelegate = MissingDispatch;
 

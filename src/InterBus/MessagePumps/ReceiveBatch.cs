@@ -4,6 +4,7 @@ namespace InterBus.MessagePumps;
 public sealed class ReceiveBatch : IDisposable
 {
     private readonly List<DeliverySink.Reservation> _reservations;
+    internal Func<IDelivery, IDelivery>? Wrap { get; set; }
     private int _used;
     private bool _disposed;
     internal ReceiveBatch(List<DeliverySink.Reservation> reservations) => _reservations = reservations;
@@ -18,7 +19,7 @@ public sealed class ReceiveBatch : IDisposable
         ArgumentNullException.ThrowIfNull(delivery);
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (_used == Capacity) throw new InvalidOperationException("Receive batch capacity exceeded");
-        _reservations[_used].Handoff(delivery);
+        _reservations[_used].Handoff(Wrap?.Invoke(delivery) ?? delivery);
         _used++;
     }
     /// <summary>Ends the iteration and returns unused capacity.</summary>

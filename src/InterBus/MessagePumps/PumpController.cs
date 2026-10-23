@@ -3,7 +3,7 @@ using InterBus.Consuming;
 namespace InterBus.MessagePumps;
 
 /// <summary>Owns one supervised runtime per consumer and exposes diagnostic snapshots.</summary>
-public sealed class PumpController(IConsumerSourceFactory factory, DeliveryProcessor processor)
+public sealed class PumpController(IConsumerSourceFactory factory, DeliveryProcessor processor, TimeProvider? timeProvider = null)
 {
     private readonly List<PumpLifetime> _pumps = [];
     /// <summary>A snapshot retaining terminal states and failures for diagnostics.</summary>
@@ -19,7 +19,7 @@ public sealed class PumpController(IConsumerSourceFactory factory, DeliveryProce
                 !existing.Completion.IsCompleted)!;
             if (pump is null)
             {
-                pump = new PumpLifetime(consumer, factory.Create(consumer), processor);
+                pump = new PumpLifetime(consumer, factory.Create(consumer), processor, timeProvider);
                 _pumps.Add(pump);
             }
         }

@@ -16,6 +16,7 @@ public abstract class ServiceBusFixture(Action<InterBusBuilder> configureBus)
 {
     protected static bool UseRealAzure => string.Equals(
         Environment.GetEnvironmentVariable("INTERBUS_USE_REAL_AZURE"), "true", StringComparison.OrdinalIgnoreCase);
+    protected virtual bool IsolateEntities => UseRealAzure;
     protected string EntityPrefix { get; private set; } = string.Empty;
     private readonly AzureCliCredential _credential = new();
     private string Namespace => Environment.GetEnvironmentVariable("INTERBUS_AZURE_SERVICEBUS_NAMESPACE")
@@ -76,7 +77,7 @@ public abstract class ServiceBusFixture(Action<InterBusBuilder> configureBus)
     [SetUp]
     public async Task SetupBase()
     {
-        EntityPrefix = UseRealAzure ? $"int-test-{Guid.NewGuid():N}-" : string.Empty;
+        EntityPrefix = IsolateEntities ? $"int-test-{Guid.NewGuid():N}-" : string.Empty;
         var services = new ServiceCollection();
         services.AddLogging();
 
@@ -84,12 +85,12 @@ public abstract class ServiceBusFixture(Action<InterBusBuilder> configureBus)
         {
             bus.AddAzureServiceBusTransport(o =>
             {
+                o.QueuePrefix = EntityPrefix;
+                o.TopicPrefix = EntityPrefix;
                 if (UseRealAzure)
                 {
                     o.FullyQualifiedNamespace = Namespace;
                     o.Credential = _credential;
-                    o.QueuePrefix = EntityPrefix;
-                    o.TopicPrefix = EntityPrefix;
                 }
                 else
                 {
@@ -110,22 +111,24 @@ public abstract class ServiceBusFixture(Action<InterBusBuilder> configureBus)
     [TearDown]
     public async Task TearDownBase()
     {
-        await _cts.CancelAsync();
+        using var shutdown = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        await _cts.CancelAsync().WaitAsync(shutdown.Token);
 
         foreach (var svc in Provider.GetServices<IHostedService>())
-            await svc.StopAsync(CancellationToken.None);
+            await svc.StopAsync(shutdown.Token).WaitAsync(shutdown.Token);
 
         _cts.Dispose();
         await Provider.DisposeAsync();
-        if (UseRealAzure)
+        if (IsolateEntities)
         {
+            using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(30));
             var admin = CreateAdminClient();
-            await foreach (var topic in admin.GetTopicsAsync())
+            await foreach (var topic in admin.GetTopicsAsync(cleanup.Token))
                 if (topic.Name.StartsWith(EntityPrefix, StringComparison.Ordinal))
-                    await admin.DeleteTopicAsync(topic.Name);
-            await foreach (var queue in admin.GetQueuesAsync())
+                    await admin.DeleteTopicAsync(topic.Name, cleanup.Token);
+            await foreach (var queue in admin.GetQueuesAsync(cleanup.Token))
                 if (queue.Name.StartsWith(EntityPrefix, StringComparison.Ordinal))
-                    await admin.DeleteQueueAsync(queue.Name);
+                    await admin.DeleteQueueAsync(queue.Name, cleanup.Token);
         }
     }
 }

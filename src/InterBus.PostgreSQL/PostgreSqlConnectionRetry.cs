@@ -6,7 +6,7 @@ namespace InterBus.PostgreSQL;
 
 internal static class PostgreSqlConnectionRetry
 {
-    private static bool IsConnectionRelated(Exception exception)
+    internal static bool IsConnectionRelated(Exception exception)
     {
         if (exception is PostgresException postgres)
             return postgres.SqlState.StartsWith("08", StringComparison.Ordinal) ||

@@ -17,11 +17,13 @@ public class TransactionalSettlementFaultTests(string imageTag, PostgreSqlMessag
     [OneTimeSetUp] public Task StartContainer() => _container.StartAsync();
     [OneTimeTearDown] public ValueTask DisposeContainer() => _container.DisposeAsync();
 
-    [TestCase("ack")]
-    [TestCase("commit")]
-    [TestCase("disconnect")]
-    [TestCase("ambiguous-commit")]
-    public async Task SettlementFault_RecoversWithoutLeakingTransactionsOrAcknowledgingFailedWork(string fault)
+    [TestCase("ack", false)]
+    [TestCase("commit", false)]
+    [TestCase("commit", true)]
+    [TestCase("disconnect", false)]
+    [TestCase("ambiguous-commit", false)]
+    [TestCase("ambiguous-commit", true)]
+    public async Task SettlementFault_RecoversWithoutLeakingTransactionsOrAcknowledgingFailedWork(string fault, bool pumpCircuit)
     {
         var schema = "fault_" + Guid.NewGuid().ToString("N")[..10];
         var applicationName = schema + "_worker";
@@ -50,7 +52,20 @@ public class TransactionalSettlementFaultTests(string imageTag, PostgreSqlMessag
                 options.ConnectionRetry.RetryCount = 2;
                 options.ConnectionRetry.DelayProvider = _ => TimeSpan.FromMilliseconds(50);
             });
-            bus.AddConsumer<FaultConsumer>();
+            bus.AddConsumer<FaultConsumer>(consumer =>
+            {
+                if (pumpCircuit) consumer.UsePumpCircuitBreaker(options =>
+                {
+                    options.Transport(policy =>
+                    {
+                        policy.MinimumThroughput = 1;
+                        policy.FailureThreshold = 0.000001;
+                        policy.BreakDuration = TimeSpan.FromMilliseconds(100);
+                    });
+                    options.ObserveSettlementFailures = true;
+                    options.ReopenJitter = TimeSpan.Zero;
+                });
+            });
         });
         var host = builder.Build();
         try
@@ -84,6 +99,10 @@ public class TransactionalSettlementFaultTests(string imageTag, PostgreSqlMessag
             Assert.That(log.Messages.Any(message => message.Contains("settlement failed")), Is.True);
             if (fault == "ambiguous-commit")
                 Assert.That(log.Messages.Any(message => message.Contains("acknowledged")), Is.False);
+
+            if (pumpCircuit && fault == "ambiguous-commit")
+                Assert.That(host.Services.GetRequiredService<InterBus.MessagePumps.PumpController>().Pumps.Single()
+                    .Circuits.Single(policy => policy.Policy == "Transport").State, Is.Not.EqualTo("Closed"));
 
             var sentinel = new OrderPlaced(Guid.NewGuid(), "after-fault@test", 2);
             await PublishAsync(host.Services, sentinel);

@@ -14,7 +14,7 @@ internal sealed class SqsQueueMessagePump(
     SnsSqsTransportOptions options,
     ISnsSqsMessageEnvelope envelope,
     ILoggerFactory loggerFactory,
-    ILogger<SqsQueueMessagePump> logger) : IBufferedPollingSource, IPollingRetryPolicy
+    ILogger<SqsQueueMessagePump> logger) : IBufferedPollingSource, IPollingRetryPolicy, IPollingFailureClassifier
 {
     private string _queueUrl = null!;
     private string _deadLetterQueueUrl = null!;
@@ -33,6 +33,13 @@ internal sealed class SqsQueueMessagePump(
         _deadLetterQueueUrl = await topology.EnsureDeadLetterQueueAsync(descriptor.Queue, cancellationToken);
 
     public int MaxBatchSize => 10;
+    public bool IsRecoverable(Exception error) => error is ReceiveException receive && receive.InnerException switch
+    {
+        AmazonSQSException service => (int)service.StatusCode >= 500 || service.ErrorCode is "RequestTimeout" or "RequestThrottled" or "ThrottlingException",
+        HttpRequestException or IOException or TimeoutException => true,
+        _ => false
+    };
+
     public TimeSpan? GetRetryDelay(Exception error, int attempt)
     {
         if (error is not ReceiveException) return null;

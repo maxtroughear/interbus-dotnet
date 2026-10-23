@@ -59,6 +59,8 @@ public static class ServiceCollectionExtensions
             services.AddKeyedScoped<IPublishMiddleware, TelemetryPublishMiddleware>(InterBusConstants.BusContext);
 
             configure(builder);
+            foreach (var consumer in options.Consumers)
+                PumpCircuitBreakerInterBusBuilderExtensions.ValidateConfiguration(services, consumer);
 
             if (services.Any(service => service.ServiceType == typeof(IConsumerSourceFactory)))
             {
@@ -77,6 +79,7 @@ public static class ServiceCollectionExtensions
 
             services.AddSingleton<Dispatcher>();
             services.AddSingleton<DeliveryProcessor>();
+            services.TryAddSingleton<TimeProvider>(TimeProvider.System);
             
             services.AddScoped<DispatchPipelineExecutor>();
             services.AddScoped<ConsumePipelineExecutor>();

@@ -11,8 +11,9 @@ namespace InterBus.RabbitMQ;
 
 internal sealed class RabbitMqMessagePump(
     ConsumerDescriptor descriptor, RabbitMqConnectionProvider connectionProvider,
-    RabbitMqTransportOptions options, ILogger<RabbitMqMessagePump> logger) : ICallbackSource
+    RabbitMqTransportOptions options, ILogger<RabbitMqMessagePump> logger) : IProbeControlledCallbackSource, IPollingFailureClassifier, IAcquisitionHealthSource
 {
+    public event Action<Exception>? AcquisitionFailed;
     private readonly ConsumerDescriptor _descriptor = descriptor;
     private IConnection? _connection;
     private IChannel? _channel;
@@ -39,7 +40,11 @@ internal sealed class RabbitMqMessagePump(
         if (_descriptor.ConcurrencyCount > ushort.MaxValue) throw new InvalidOperationException("RabbitMQ concurrency exceeds 65535");
         _connection = await ConnectWithRetryAsync(cancellationToken);
         _connection.ConnectionShutdownAsync += (_, _) =>
-        { Interlocked.Increment(ref _generation); return Task.CompletedTask; };
+        {
+            Interlocked.Increment(ref _generation);
+            AcquisitionFailed?.Invoke(new IOException("RabbitMQ consumer connection closed"));
+            return Task.CompletedTask;
+        };
         var concurrency = (ushort)_descriptor.ConcurrencyCount;
         _channel = await _connection.CreateChannelAsync(new CreateChannelOptions(
             publisherConfirmationsEnabled: false, publisherConfirmationTrackingEnabled: false,
@@ -55,6 +60,7 @@ internal sealed class RabbitMqMessagePump(
 
     public async Task StartAsync(DeliveryHandler process, CancellationToken processingToken, CancellationToken operationToken)
     {
+        _process = process;
         var channel = _channel!;
         var consumer = _consumer = new AsyncEventingBasicConsumer(channel);
         consumer.UnregisteredAsync += (_, _) => { _unregistered.TrySetResult(); return Task.CompletedTask; };
@@ -82,6 +88,19 @@ internal sealed class RabbitMqMessagePump(
         catch (OperationCanceledException) when (operationToken.IsCancellationRequested) { throw; }
         catch (Exception error) { _failure.TrySetResult(error); throw; }
         _ready.TrySetResult();
+    }
+
+    private DeliveryHandler? _process;
+    public bool IsRecoverable(Exception error) => IsConnectionRelated(error) || error is AlreadyClosedException;
+
+    public async Task<PollResult> ReceiveProbeAsync(CancellationToken processingToken, CancellationToken operationToken)
+    {
+        var result = await _channel!.BasicGetAsync(_descriptor.QueueName, false, operationToken);
+        if (result is null) return new PollResult(false);
+        var args = new BasicDeliverEventArgs("", result.DeliveryTag, result.Redelivered, result.Exchange,
+            result.RoutingKey, result.BasicProperties, result.Body, processingToken);
+        await _process!(new RabbitDelivery(this, args), processingToken);
+        return new PollResult(true);
     }
 
     private AsyncEventingBasicConsumer? _consumer;

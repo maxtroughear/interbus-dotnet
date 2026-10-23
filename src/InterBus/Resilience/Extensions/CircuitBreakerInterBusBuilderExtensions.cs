@@ -18,6 +18,8 @@ public static class CircuitBreakerInterBusBuilderExtensions
         this ConsumerBuilder builder,
         Action<CircuitBreakerOptions>? configure = null)
     {
+        if (builder.Descriptor.PumpCircuitBreaker is not null)
+            throw new InvalidOperationException("UseCircuitBreakerMiddleware cannot be combined with UsePumpCircuitBreaker: dispatch-only admission can reject accepted drain work and recovery probes");
         var options = new CircuitBreakerOptions();
         configure?.Invoke(options);
         options.Validate();

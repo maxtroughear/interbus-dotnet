@@ -7,6 +7,12 @@ namespace InterBus.MessagePumps;
 /// <summary>Runs the shared scoped dispatch pipeline and settles an owned delivery.</summary>
 public sealed class DeliveryProcessor(Dispatcher dispatcher, ILogger<DeliveryProcessor> logger)
 {
+    internal void LogCircuitDiagnostic(Exception error) => logger.LogError(error, "InterBus: pump circuit observer or predicate failed");
+
+    internal void LogCircuit(Type consumer, InterBus.Resilience.PumpCircuitSnapshot snapshot) =>
+        logger.LogInformation("InterBus: {Consumer} {Policy} circuit {State}; generation={Generation}, reason={Reason}, nextProbe={NextProbe}",
+            consumer, snapshot.Policy, snapshot.State, snapshot.Generation, snapshot.Reason, snapshot.NextProbeAt);
+
     /// <summary>Processes and disposes a delivery before returning, including on cancellation or failed settlement.</summary>
     /// <remarks>A failed settlement is never followed by another settlement attempt.</remarks>
     public async Task ProcessAsync(ConsumerDescriptor descriptor, IDelivery delivery, CancellationToken cancellationToken)
@@ -24,6 +30,7 @@ public sealed class DeliveryProcessor(Dispatcher dispatcher, ILogger<DeliveryPro
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
+                (delivery as CircuitDelivery)?.ObserveDispatch(DispatchResult.Success, canceled: true);
                 return;
             }
             catch (Exception error)
@@ -31,6 +38,7 @@ public sealed class DeliveryProcessor(Dispatcher dispatcher, ILogger<DeliveryPro
                 result = DispatchResult.Release(error);
             }
 
+            (delivery as CircuitDelivery)?.ObserveDispatch(result, canceled: false);
             try
             {
                 if (await delivery.SettleAsync(result, cancellationToken))

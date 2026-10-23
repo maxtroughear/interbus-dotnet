@@ -1,6 +1,6 @@
 # Message pump circuit breaker proposal
 
-Status: feature proposal for [issue 210](https://github.com/maxtroughear/interbus-dotnet/issues/210). The [pump core refactor](message-pump-core-refactor.md) is implemented and its ownership, concurrency and ordinary callback controls have been validated. Circuit admission, structured outcomes and bounded callback probes remain to be implemented.
+Status: implemented with local core, broker and database validation. See [validation results](message-pump-circuit-breaker-validation.md) and the [configuration reference](../docs/reference/message-pumps.md#intake-circuit-breakers). Live Azure validation remains outstanding. The proposal below records the original design and implementation baseline.
 
 ## Outcome and scope
 

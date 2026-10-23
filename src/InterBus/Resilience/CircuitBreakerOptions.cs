@@ -38,7 +38,7 @@ public sealed class CircuitBreakerOptions
             throw new ArgumentOutOfRangeException(nameof(MinimumThroughput),
                 "Minimum throughput must be at least 1");
 
-        if (FailureThreshold <= 0 || FailureThreshold > 1)
+        if (!double.IsFinite(FailureThreshold) || FailureThreshold <= 0 || FailureThreshold > 1)
             throw new ArgumentOutOfRangeException(nameof(FailureThreshold),
                 "Failure threshold must be greater than 0 and at most 1");
 

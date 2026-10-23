@@ -64,8 +64,17 @@ public class NativeSchedulingTests(bool viaRequest) : ServiceBusFixture(bus =>
         }
         else
         {
-            await WaitUntilAsync(() => tracker.Messages.Any(m => m.OrderId == message.OrderId), timeoutMs: 15_000);
-            if (topic) await WaitUntilAsync(() => audit.Messages.Any(m => m.OrderId == message.OrderId), timeoutMs: 15_000);
+            await WaitUntilAsync(() => tracker.Messages.Any(m => m.OrderId == message.OrderId),
+                timeoutMs: 15_000, cancellationToken: token);
+            Assert.That(tracker.Messages.Any(m => m.OrderId == message.OrderId), Is.True,
+                "The target consumer must receive the scheduled message");
+            if (topic)
+            {
+                await WaitUntilAsync(() => audit.Messages.Any(m => m.OrderId == message.OrderId),
+                    timeoutMs: 15_000, cancellationToken: token);
+                Assert.That(audit.Messages.Any(m => m.OrderId == message.OrderId), Is.True,
+                    "The audit consumer must receive a copy of the scheduled topic message");
+            }
             else Assert.That(audit.Messages.Any(m => m.OrderId == message.OrderId), Is.False);
         }
     }

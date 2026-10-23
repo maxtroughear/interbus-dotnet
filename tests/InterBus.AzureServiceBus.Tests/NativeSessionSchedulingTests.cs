@@ -21,6 +21,9 @@ public class NativeSessionSchedulingTests() : ServiceBusFixture(bus =>
         var message = new SessionOrderPlaced(Guid.NewGuid(), "scheduled-session", 10m);
         await scheduler.SchedulePublishAsync(message, DateTimeOffset.UtcNow.AddSeconds(2), TestContext.CurrentContext.CancellationToken);
         var tracker = Provider.GetRequiredService<SessionOrderPlacedTracker>();
-        await WaitUntilAsync(() => tracker.Messages.Any(m => m.OrderId == message.OrderId), timeoutMs: 15_000);
+        await WaitUntilAsync(() => tracker.Messages.Any(m => m.OrderId == message.OrderId),
+            timeoutMs: 15_000, cancellationToken: TestContext.CurrentContext.CancellationToken);
+        Assert.That(tracker.Messages.Any(m => m.OrderId == message.OrderId), Is.True,
+            "The session consumer must receive the scheduled message");
     }
 }

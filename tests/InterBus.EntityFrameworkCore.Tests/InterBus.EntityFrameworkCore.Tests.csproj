@@ -15,8 +15,8 @@
             <PrivateAssets>all</PrivateAssets>
         </PackageReference>
         <PackageReference Include="xunit.v3" Version="4.0.2"/>
-        <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.13"/>
-        <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.13"/>
+        <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.15"/>
+        <PackageReference Include="Microsoft.Extensions.Hosting" Version="11.0.0"/>
     </ItemGroup>
     <ItemGroup>
         <Using Include="InterBus.Tests.Common"/>
